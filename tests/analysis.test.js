@@ -36,6 +36,12 @@ test('planner keeps one unified possibility pool without predefined event types'
     assert.match(SYSTEM, /note_resolution as null when there is no AI-assisted note or its intent is genuinely ambiguous/);
     assert.match(SYSTEM, /preserves the user's exact instruction text/);
     assert.match(SYSTEM, /Choose developments from the evidence and established tone/);
+    assert.match(SYSTEM, /Treat setting lore as an active causal system rather than background decoration/);
+    assert.match(SYSTEM, /metaphysical rules, powers, technologies, cultures, laws, institutions, factions/);
+    assert.match(SYSTEM, /State the causal mechanism and bridge/);
+    assert.match(SYSTEM, /what can perceive or transmit it/);
+    assert.match(SYSTEM, /never invoke it merely because it is iconic to the franchise/);
+    assert.match(SYSTEM, /Distinguish established lore mechanisms from character belief and speculative interpretation/);
     assert.match(SYSTEM, /leave room for uncertainty and natural friction/);
     assert.match(SYSTEM, /Warmth, relief, cooperation, and happy outcomes are equally valid when the scene earns them/);
     assert.match(SYSTEM, /Never add darkness merely for variety/);

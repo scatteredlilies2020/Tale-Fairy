@@ -73,6 +73,11 @@
     grid-template-columns: minmax(130px, .45fr) minmax(190px, 1.55fr);
 }
 
+/* The instruction is a single wide editor, not a two-column form field. */
+.living-world-guide-note-grid > label {
+    grid-column: 1 / -1;
+}
+
 .living-world-guide-button-row {
     display: flex;
     flex-wrap: wrap;
