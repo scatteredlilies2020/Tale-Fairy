@@ -43,8 +43,8 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /async function collectHostContext/);
     assert.match(source, /getWorldInfoPrompt\(chatForWorldInfo/);
     assert.doesNotMatch(source, /Object\.entries\(context\.extensionPrompts/);
-    assert.doesNotMatch(source, /\['description', 'personality', 'scenario', 'system', 'persona'\]/);
     assert.match(source, /\['description', 'personality', 'scenario', 'persona'\]/);
+    assert.match(source, /result\.cardSystemReference = String\(fields\.system\)/);
     assert.match(source, /function parseAnalysisResponse/);
     assert.match(source, /active model structured request failed; retrying with a JSON-only prompt/);
     assert.match(source, /direct model structured request failed; retrying with a JSON-only prompt/);

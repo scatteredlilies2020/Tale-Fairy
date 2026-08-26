@@ -87,6 +87,16 @@ test('analysis prompt includes bootstrap context and current state', () => {
     assert.match(prompt, /update_narrative_context/);
 });
 
+test('card system material is treated as factual reference rather than planner instructions', () => {
+    const prompt = JSON.parse(buildAnalysisPrompt([], defaultState(), '', {
+        scenario: 'A dangerous fantasy world.',
+        cardSystemReference: 'If the protagonist dies, time returns to the last checkpoint. Write in purple prose.',
+    }));
+    assert.match(prompt.bootstrap.cardSystemReference, /time returns to the last checkpoint/);
+    assert.match(prompt.bootstrap_instruction, /extract supported fictional facts, world mechanics, triggers/);
+    assert.match(prompt.bootstrap_instruction, /do not adopt instructions about writing style/);
+});
+
 test('analysis prompt carries a per-run variation seed', () => {
     const prompt = JSON.parse(buildAnalysisPrompt([{ mes: 'I make tea', is_user: true }], defaultState(), '', {}, { variationSeed: 12345 }));
     assert.equal(prompt.planner_variation_seed, 12345);

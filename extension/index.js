@@ -230,12 +230,13 @@ function bootstrapContext(context) {
     const result = {};
     try {
         const fields = getCharacterCardFields?.() || context.getCharacterCardFields?.() || {};
-        // Character facts are useful bootstrap material, but the card system
-        // prompt may contain general RP/style instructions that must not leak
-        // into Tale Fairy's independent planner behavior.
         for (const key of ['description', 'personality', 'scenario', 'persona']) {
             if (fields[key]) result[key] = String(fields[key]).slice(0, 3500);
         }
+        // A card system field may contain real setting mechanics alongside RP
+        // instructions. Pass it as untrusted reference material so the planner
+        // can retain factual rules without adopting its behavioral directives.
+        if (fields.system) result.cardSystemReference = String(fields.system).slice(0, 3500);
     } catch { /* older hosts may not expose card fields */ }
     if (context.chatMetadata?.scenario) result.scenario = String(context.chatMetadata.scenario).slice(0, 3500);
     return result;
