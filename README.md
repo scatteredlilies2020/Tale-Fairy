@@ -8,6 +8,7 @@ Tale Fairy is a standalone SillyTavern extension that quietly supplies **narrati
 - Starts planning as soon as the user message is committed, allowing Tale Fairy to prepare independently alongside earlier generation work such as Continuity Memory; the roleplay request waits only for both prerequisites to finish.
 - Waits until current non-empty guidance is available. Temporary planner failures retry automatically; **Stop** cancels both the wait and the pending reply.
 - Uses one optional planner request through the active SillyTavern connection, a connection profile, a custom OpenAI-compatible endpoint, or OpenRouter.
+- Direct OpenAI-compatible and OpenRouter configurations can securely fetch available models through SillyTavern and select them from a dropdown, with manual model IDs retained as a fallback.
 - Gives every planner run a fresh random variation seed. Regenerate and swipe runs force a new planner pass even when the chat text is unchanged; supported providers receive the same seed in the request, while the seed in the planner payload also varies providers that ignore the API parameter.
 - Stores its compact state in chat metadata, so exported/copied chats carry it with them.
 - Keeps up to three optional objectives, relevant entities, possibilities, and concise Director Notes.

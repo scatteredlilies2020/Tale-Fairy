@@ -35,11 +35,18 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(template, /class="text_pole" data-setting="connection"/);
     assert.match(template, /value="__direct_custom__"/);
     assert.match(template, /value="__direct_openrouter__"/);
+    assert.match(template, /data-action="fetch-models"/);
+    assert.match(template, /data-setting="model-list"/);
+    assert.match(template, /Model ID \(manual or selected\)/);
     assert.doesNotMatch(template, /data-setting="source"|data-setting="profile"|data-setting="provider"/);
     assert.match(source, /function applyAnalysisConnectionChoice/);
     assert.match(source, /function rememberDirectSettings/);
     assert.match(source, /function restoreDirectSettings/);
     assert.match(source, /function refreshConnectionProfiles/);
+    assert.match(source, /async function fetchDirectModels/);
+    assert.match(source, /chat_completion_source: openRouter \? 'openrouter' : 'custom'/);
+    assert.match(source, /secret_id: s.analysisSecretId/);
+    assert.match(source, /\/api\/backends\/chat-completions\/status/);
     assert.match(source, /async function collectHostContext/);
     assert.match(source, /getWorldInfoPrompt\(chatForWorldInfo/);
     assert.doesNotMatch(source, /Object\.entries\(context\.extensionPrompts/);

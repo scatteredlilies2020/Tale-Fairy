@@ -9,6 +9,7 @@ import { buildPromptPayload, clearState, defaultState, fingerprintMessages, isGu
 import { resolveInjectionPlacement } from './injection-placement.js';
 import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js';
 import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, textHasCurrentGuidance } from './request-injection.js';
+import { normalizeModelListResponse } from './models.js';
 
 const EXTENSION_ID = 'living-world-guide';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
@@ -31,6 +32,7 @@ let pendingRequestVerification = null;
 let uiMountPromise = null;
 let uiMountObserver = null;
 let uiMountTimeout = null;
+const directModelCache = new Map();
 const ANALYSIS_TIMEOUT_MS = 90000;
 const PLANNER_RESPONSE_TOKENS = 3000;
 const UI_MOUNT_TIMEOUT_MS = 30000;
@@ -146,6 +148,108 @@ function refreshConnectionProfiles(root = document.querySelector(`#${EXTENSION_I
         select.append(unavailable);
     }
     select.value = selected;
+}
+
+function directModelCacheKey(s = getSettings()) {
+    if (s.analysisSource !== 'direct' && s.analysisSource !== 'openrouter') return '';
+    const fallbackUrl = s.analysisSource === 'openrouter' ? 'https://openrouter.ai/api/v1' : '';
+    const url = String(s.analysisUrl || fallbackUrl).trim().replace(/\/+$/, '');
+    return `${s.analysisSource}:${url}`;
+}
+
+function setModelListStatus(root, message) {
+    const status = root?.querySelector('[data-role="model-list-status"]');
+    if (status) status.textContent = message;
+}
+
+function renderDirectModelOptions(root = document.querySelector(`#${EXTENSION_ID}-settings`)) {
+    const select = root?.querySelector('[data-setting="model-list"]');
+    const button = root?.querySelector('[data-action="fetch-models"]');
+    if (!select) return;
+
+    const s = getSettings();
+    const direct = s.analysisSource === 'direct' || s.analysisSource === 'openrouter';
+    const models = directModelCache.get(directModelCacheKey(s)) || [];
+    const selected = String(s.analysisModel || '').trim();
+    select.replaceChildren();
+
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = models.length ? 'Choose a fetched model…' : 'Fetch models to populate this list';
+    select.append(placeholder);
+
+    for (const model of models) {
+        const option = document.createElement('option');
+        option.value = model.id;
+        option.textContent = model.name && model.name !== model.id ? `${model.name} — ${model.id}` : model.id;
+        select.append(option);
+    }
+
+    if (selected && !models.some(model => model.id === selected)) {
+        const saved = document.createElement('option');
+        saved.value = selected;
+        saved.textContent = `${selected} (saved/manual)`;
+        select.append(saved);
+    }
+
+    select.value = selected;
+    if (select.value !== selected) select.value = '';
+    select.disabled = !direct || models.length === 0;
+    if (button) button.disabled = !direct;
+    setModelListStatus(root, models.length ? `${models.length} models available.` : 'No model list fetched yet.');
+}
+
+async function fetchDirectModels(root = document.querySelector(`#${EXTENSION_ID}-settings`)) {
+    const s = getSettings();
+    const openRouter = s.analysisSource === 'openrouter';
+    if (!openRouter && s.analysisSource !== 'direct') return;
+
+    const url = String(s.analysisUrl || (openRouter ? 'https://openrouter.ai/api/v1' : '')).trim();
+    const button = root?.querySelector('[data-action="fetch-models"]');
+    const select = root?.querySelector('[data-setting="model-list"]');
+    if (!url) {
+        setModelListStatus(root, 'Enter an API URL before fetching models.');
+        return;
+    }
+    try {
+        new URL(url);
+    } catch {
+        setModelListStatus(root, 'Enter a valid API URL before fetching models.');
+        return;
+    }
+
+    if (button) button.disabled = true;
+    if (select) select.disabled = true;
+    setModelListStatus(root, 'Fetching models…');
+    try {
+        const body = {
+            chat_completion_source: openRouter ? 'openrouter' : 'custom',
+            secret_id: s.analysisSecretId || undefined,
+            ...(openRouter ? { api_url: url } : { custom_url: url }),
+        };
+        const response = await fetch('/api/backends/chat-completions/status', {
+            method: 'POST',
+            headers: currentContext().getRequestHeaders?.() || getRequestHeaders?.() || { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+            cache: 'no-cache',
+        });
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok || payload?.error) {
+            const detail = String(payload?.message || payload?.error?.message || response.statusText || 'request failed');
+            throw new Error(detail);
+        }
+        const models = normalizeModelListResponse(payload);
+        if (!models.length) throw new Error('the endpoint returned no models');
+        directModelCache.set(directModelCacheKey(s), models);
+        renderDirectModelOptions(root);
+        setModelListStatus(root, `${models.length} models loaded.`);
+    } catch (error) {
+        console.warn(`[${EXTENSION_ID}] Could not fetch planner models`, error);
+        setModelListStatus(root, `Could not fetch models: ${error?.message || error}`);
+    } finally {
+        if (button) button.disabled = false;
+        if (select) select.disabled = !(directModelCache.get(directModelCacheKey(s)) || []).length;
+    }
 }
 
 function continuityContextState(context) {
@@ -817,6 +921,7 @@ function resetSettingsToDefaults(root = document.querySelector(`#${EXTENSION_ID}
     if (typeof globalThis.confirm === 'function' && !globalThis.confirm('Reset all Tale Fairy settings to their defaults? Guide state in the current chat will be kept.')) return;
     stopAnalysis();
     pendingRequestVerification = null;
+    directModelCache.clear();
     const s = getSettings();
     for (const key of Object.keys(s)) delete s[key];
     Object.assign(s, { ...DEFAULT_SETTINGS });
@@ -873,8 +978,22 @@ async function mountUI() {
     });
     root.querySelector('[data-setting="mode"]').addEventListener('change', e => { invalidatePlanner(); s.mode = e.target.value; save(); });
     root.querySelector('[data-setting="connection"]').addEventListener('change', e => { invalidatePlanner(); applyAnalysisConnectionChoice(e.target.value, s); save(); });
-    root.querySelector('[data-setting="model"]').addEventListener('change', e => { invalidatePlanner(); s.analysisModel = e.target.value.trim(); save(); });
-    root.querySelector('[data-setting="url"]').addEventListener('change', e => { invalidatePlanner(); s.analysisUrl = e.target.value.trim(); save(); });
+    root.querySelector('[data-setting="model"]').addEventListener('change', e => { invalidatePlanner(); s.analysisModel = e.target.value.trim(); rememberDirectSettings(s); save(); });
+    root.querySelector('[data-setting="model-list"]').addEventListener('change', e => {
+        const model = String(e.target.value || '').trim();
+        if (!model) return;
+        invalidatePlanner();
+        s.analysisModel = model;
+        rememberDirectSettings(s);
+        save();
+    });
+    root.querySelector('[data-setting="url"]').addEventListener('change', e => {
+        invalidatePlanner();
+        directModelCache.delete(directModelCacheKey(s));
+        s.analysisUrl = e.target.value.trim();
+        rememberDirectSettings(s);
+        save();
+    });
     root.querySelector('[data-setting="continuity"]').addEventListener('change', e => { invalidatePlanner(); s.continuityIntegration = e.target.checked; save(); });
     root.querySelector('[data-setting="window"]').addEventListener('change', e => { invalidatePlanner(); s.messageWindow = Math.max(1, Math.min(80, Number(e.target.value) || 24)); e.target.value = s.messageWindow; save(); });
     root.querySelector('[data-setting="budget"]').addEventListener('change', e => { invalidatePlanner(); s.maxPromptChars = Math.max(8000, Math.min(30000, Number(e.target.value) || 18000)); e.target.value = s.maxPromptChars; save(); });
@@ -890,6 +1009,7 @@ async function mountUI() {
         root.querySelector('[data-setting="key"]').value = '';
         save();
     });
+    root.querySelector('[data-action="fetch-models"]').addEventListener('click', () => void fetchDirectModels(root));
     refreshConnectionProfiles(root);
     root.querySelector('[data-action="guide"]').addEventListener('click', async () => {
         const existing = loadState(currentContext().chatMetadata);
@@ -972,6 +1092,7 @@ function refreshControls(root = document.querySelector(`#${EXTENSION_ID}-setting
     const saved = Boolean(s.analysisSecretId) && Object.values(secret_state || {}).some(list => Array.isArray(list) && list.some(item => item?.id === s.analysisSecretId));
     const keyStatus = root.querySelector('[data-role="key-status"]');
     if (keyStatus) keyStatus.textContent = saved ? 'A password/key is saved in SillyTavern.' : 'No password/key saved; keyless endpoints are supported.';
+    renderDirectModelOptions(root);
 }
 
 export function livingWorldGuideGenerateInterceptor(chat, _contextSize, _abort, type) {

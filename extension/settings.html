@@ -95,11 +95,19 @@
           </label>
           <div class="living-world-guide-button-row">
             <button class="menu_button" data-action="save-key" type="button"><i class="fa-solid fa-key"></i> Save planner password</button>
+            <button class="menu_button" data-action="fetch-models" type="button"><i class="fa-solid fa-arrows-rotate"></i> Fetch models</button>
           </div>
           <div class="living-world-guide-progress" data-role="key-status">No password/key saved; keyless endpoints are supported.</div>
-          <label>Model
+          <label>Available models
+            <select class="text_pole" data-setting="model-list" disabled>
+              <option value="">Fetch models to populate this list</option>
+            </select>
+          </label>
+          <div class="living-world-guide-progress" data-role="model-list-status">No model list fetched yet.</div>
+          <label>Model ID (manual or selected)
             <input class="text_pole" type="text" data-setting="model" placeholder="gpt-4.1-mini">
           </label>
+          <small>Fetch Models uses the API URL and saved key above. Manual model IDs remain available for endpoints that do not expose a model list.</small>
         </div>
       </div>
 
