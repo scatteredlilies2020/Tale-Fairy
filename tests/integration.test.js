@@ -72,8 +72,12 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /Guidance unavailable; retrying in/);
     assert.match(source, /analyzeNow\(\{ messages, force: reroll \|\| failures > 0 \}\)/);
     assert.match(source, /function randomPlannerSeed/);
+    assert.match(source, /function isolatePlannerGenerationData/);
     assert.match(source, /generateData\.seed = variationSeed/);
     assert.match(source, /generateData\.sampler_seed = variationSeed/);
+    assert.match(source, /generateData\.custom_prompt_post_processing = ''/);
+    assert.match(source, /'stop', 'stopping_strings', 'logit_bias', 'tools', 'tool_choice'/);
+    assert.match(source, /generateRaw\(\{[\s\S]{0,320}instructOverride: true/);
     assert.match(source, /MESSAGE_SENT[\s\S]{0,600}void analyzeNow\(\{ messages, force: false \}\)/);
     assert.match(source, /guidanceGateStopSequence/);
     assert.match(source, /abort\(true\)/);

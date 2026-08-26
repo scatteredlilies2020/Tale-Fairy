@@ -450,6 +450,23 @@ function waitForAbortable(promise, signal) {
     ]);
 }
 
+function isolatePlannerGenerationData(generateData, variationSeed) {
+    if (!generateData || typeof generateData !== 'object') return;
+    generateData.seed = variationSeed;
+    if (Object.hasOwn(generateData, 'sampler_seed')) generateData.sampler_seed = variationSeed;
+    generateData.stream = false;
+    generateData.n = 1;
+    generateData.temperature = 0.7;
+    generateData.top_p = 1;
+    generateData.frequency_penalty = 0;
+    generateData.presence_penalty = 0;
+    generateData.repetition_penalty = 1;
+    generateData.custom_prompt_post_processing = '';
+    for (const key of ['stop', 'stopping_strings', 'logit_bias', 'tools', 'tool_choice', 'enable_web_search', 'request_images', 'request_image_resolution', 'request_image_aspect_ratio']) {
+        delete generateData[key];
+    }
+}
+
 function normalizeUserNote(note) {
     if (!note) return null;
     if (typeof note === 'string') {
@@ -533,14 +550,14 @@ async function requestAnalysis(prompt, externalSignal, variationSeed) {
                 const mainApi = currentContext().mainApi;
                 const seedEvent = mainApi === 'openai' ? event_types.CHAT_COMPLETION_SETTINGS_READY : event_types.GENERATE_AFTER_DATA;
                 const applySeed = generateData => {
-                    if (!generateData || typeof generateData !== 'object') return;
-                    if (mainApi === 'openai') generateData.seed = variationSeed;
-                    if (Object.hasOwn(generateData, 'seed')) generateData.seed = variationSeed;
-                    if (Object.hasOwn(generateData, 'sampler_seed')) generateData.sampler_seed = variationSeed;
+                    isolatePlannerGenerationData(generateData, variationSeed);
                 };
                 eventSource.once(seedEvent, applySeed);
                 return waitForAbortable(generateRaw({
                     prompt,
+                    // The planner must not inherit the user's text-completion
+                    // instruct template or preset formatting.
+                    instructOverride: true,
                     systemPrompt: structured ? SYSTEM : fallbackSystemPrompt(),
                     responseLength: PLANNER_RESPONSE_TOKENS,
                     ...(structured ? { jsonSchema: ANALYSIS_SCHEMA } : {}),
