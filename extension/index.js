@@ -45,8 +45,12 @@ function randomPlannerSeed() {
 }
 
 function getSettings() {
-    extension_settings[EXTENSION_ID] = { ...DEFAULT_SETTINGS, ...(extension_settings[EXTENSION_ID] || {}) };
+    const stored = extension_settings[EXTENSION_ID];
+    if (!stored || typeof stored !== 'object' || Array.isArray(stored)) extension_settings[EXTENSION_ID] = {};
     settings = extension_settings[EXTENSION_ID];
+    for (const [key, value] of Object.entries(DEFAULT_SETTINGS)) {
+        if (!Object.hasOwn(settings, key)) settings[key] = value;
+    }
     if (!settings.directSettingsMigrated) {
         const legacySource = settings.analysisSource === 'openrouter' || settings.analysisProvider === 'openrouter' ? 'openrouter' : 'direct';
         const keys = directSettingKeys(legacySource);

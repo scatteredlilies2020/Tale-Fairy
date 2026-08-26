@@ -3,9 +3,17 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const source = await readFile(new URL('../extension/index.js', import.meta.url), 'utf8');
+const stateSource = await readFile(new URL('../extension/state.js', import.meta.url), 'utf8');
 const template = await readFile(new URL('../extension/settings.html', import.meta.url), 'utf8');
 const styles = await readFile(new URL('../extension/style.css', import.meta.url), 'utf8');
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
+
+test('injected guidance is authoritative context without forcing plot outcomes', () => {
+    assert.match(stateSource, /authoritative context guidance for the next roleplay reply/);
+    assert.match(stateSource, /not as a command to force a plot event/);
+    assert.match(stateSource, /Do not omit a supported influence merely because its outcome is uncertain/);
+    assert.match(stateSource, /without declaring an unestablished result/);
+});
 
 test('extension UI and interceptor use SillyTavern third-party-compatible registration', () => {
     assert.equal(manifest.loading_order, 65);
@@ -17,6 +25,8 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /eventSource\.on\(event_types\.EXTENSIONS_FIRST_LOAD, startUIMounting\)/);
     assert.match(source, /getCharacterCardFields, saveSettingsDebounced } from '\/script\.js'/);
     assert.match(source, /import \{ extension_settings \} from '\/scripts\/extensions\.js'/);
+    assert.match(source, /if \(!Object\.hasOwn\(settings, key\)\) settings\[key\] = value/);
+    assert.doesNotMatch(source, /extension_settings\[EXTENSION_ID\] = \{ \.\.\.DEFAULT_SETTINGS/);
     assert.match(template, /class="inline-drawer-toggle inline-drawer-header"/);
     assert.match(template, /class="inline-drawer-icon fa-solid fa-circle-chevron-down down"/);
     assert.match(template, /id="living-world-guide-settings" class="extension_container living-world-guide-panel"/);
