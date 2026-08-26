@@ -213,12 +213,6 @@ async function collectHostContext(context, messages = []) {
         }
     }
 
-    const ignoredPromptKeys = new Set([PROMPT_KEY, 'continuity_memory_context']);
-    const extensionPrompts = Object.entries(context.extensionPrompts || {})
-        .filter(([key, prompt]) => !ignoredPromptKeys.has(key) && typeof prompt?.value === 'string' && prompt.value.trim())
-        .sort(([left], [right]) => Number(usefulKey.test(right)) - Number(usefulKey.test(left)));
-    for (const [key, prompt] of extensionPrompts) append(`Active context: ${key}`, prompt.value);
-
     if (typeof context.getWorldInfoPrompt === 'function' && messages.length) {
         try {
             const chatForWorldInfo = messages.map(message => String(message?.mes || '')).filter(Boolean).reverse();
@@ -236,7 +230,10 @@ function bootstrapContext(context) {
     const result = {};
     try {
         const fields = getCharacterCardFields?.() || context.getCharacterCardFields?.() || {};
-        for (const key of ['description', 'personality', 'scenario', 'system', 'persona']) {
+        // Character facts are useful bootstrap material, but the card system
+        // prompt may contain general RP/style instructions that must not leak
+        // into Tale Fairy's independent planner behavior.
+        for (const key of ['description', 'personality', 'scenario', 'persona']) {
             if (fields[key]) result[key] = String(fields[key]).slice(0, 3500);
         }
     } catch { /* older hosts may not expose card fields */ }
