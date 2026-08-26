@@ -158,8 +158,8 @@ export function isStateAligned(state, messages = [], chatId = '') {
 export function isGuidanceUsable(state, messages = [], chatId = '') {
     const s = normalizeState(state);
     // Older Tale Fairy states could be aligned while intentionally containing
-    // no guide. Always-guide mode must treat those states as stale so the next
-    // generation requests a fresh, non-empty planner note.
+    // no guide. Treat those states as stale so background planning refreshes
+    // them instead of considering an empty result usable.
     if (!s.lastInject || !s.guidance) return false;
     if (isStateAligned(s, messages, chatId)) return true;
     if (s.scene.status === 'uninitialized' || !s.lastAnalysisFingerprint) return false;
