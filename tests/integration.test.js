@@ -55,6 +55,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /analysisAbortController\.abort/);
     assert.match(source, /waitForAbortable\(generateRaw/);
     assert.match(source, /PLANNER_RESPONSE_TOKENS = 3000/);
+    assert.match(source, /suppressErrorToasts: true/);
     assert.match(source, /activeSource === 'openrouter'/);
     assert.match(source, /model\.provider === 'openrouter'\) return await send\(false\)/);
     assert.match(source, /isGuidanceUsable\(state, messages/);

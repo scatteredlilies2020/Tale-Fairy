@@ -565,6 +565,7 @@ async function requestAnalysis(prompt, externalSignal, variationSeed) {
                     instructOverride: true,
                     systemPrompt: structured ? SYSTEM : fallbackSystemPrompt(),
                     responseLength: PLANNER_RESPONSE_TOKENS,
+                    suppressErrorToasts: true,
                     ...(structured ? { jsonSchema: ANALYSIS_SCHEMA } : {}),
                     trimNames: false,
                 }), controller.signal).finally(() => eventSource.removeListener(seedEvent, applySeed));
