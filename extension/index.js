@@ -1042,7 +1042,9 @@ eventSource.on(event_types.CHAT_CHANGED, () => {
     cancelRunningAnalysis('The active chat changed while Tale Fairy was analyzing.', 'Ready');
     if (backgroundTimer) clearTimeout(backgroundTimer);
     updatePrompt(loadState(currentContext().chatMetadata));
-    setTimeout(() => { renderBoard(); scheduleBackgroundAnalysis(300); }, 0);
+    // Do not contact the planner merely because SillyTavern started or the user switched chats.
+    // The first planner request is triggered only after an actual roleplay reply has been received.
+    setTimeout(() => { renderBoard(); }, 0);
 });
 for (const event of [event_types.CONNECTION_PROFILE_CREATED, event_types.CONNECTION_PROFILE_UPDATED, event_types.CONNECTION_PROFILE_DELETED]) {
     if (event) eventSource.on(event, () => refreshConnectionProfiles());

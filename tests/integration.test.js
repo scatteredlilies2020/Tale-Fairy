@@ -92,6 +92,8 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /allowNextUserMessage: true/);
     assert.match(source, /const matchesPlannedTurn = guard\.allowNextUserMessage/);
     assert.match(source, /MESSAGE_RECEIVED[\s\S]{0,500}scheduleBackgroundAnalysis\(250\)/);
+    assert.match(source, /Do not contact the planner merely because SillyTavern started or the user switched chats/);
+    assert.doesNotMatch(source, /setTimeout\(\(\) => \{ renderBoard\(\); scheduleBackgroundAnalysis\(300\); \}, 0\)/);
     assert.doesNotMatch(source, /guidanceGateStopSequence|guidanceGateActive/);
     assert.match(source, /CHAT_COMPLETION_PROMPT_READY, ensureChatCompletionRequestGuidance/);
     assert.match(source, /CHAT_COMPLETION_SETTINGS_READY, ensureProviderChatRequestGuidance/);
