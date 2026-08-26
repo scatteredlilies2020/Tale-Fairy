@@ -13,6 +13,8 @@ test('injected guidance is authoritative context without forcing plot outcomes',
     assert.match(stateSource, /not as a command to force a plot event/);
     assert.match(stateSource, /Do not omit a supported influence merely because its outcome is uncertain/);
     assert.match(stateSource, /without declaring an unestablished result/);
+    assert.match(stateSource, /do not freeze NPCs or the wider world until the user explicitly requests movement/);
+    assert.match(stateSource, /current focus or silence is not a veto on supported external developments/);
 });
 
 test('extension UI and interceptor use SillyTavern third-party-compatible registration', () => {

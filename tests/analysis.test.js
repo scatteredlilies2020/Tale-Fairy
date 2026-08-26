@@ -42,6 +42,10 @@ test('planner keeps one unified possibility pool without predefined event types'
     assert.match(SYSTEM, /what can perceive or transmit it/);
     assert.match(SYSTEM, /never invoke it merely because it is iconic to the franchise/);
     assert.match(SYSTEM, /Distinguish established lore mechanisms from character belief and speculative interpretation/);
+    assert.match(SYSTEM, /Player silence, mundane focus, or lack of explicit pursuit is not a veto/);
+    assert.match(SYSTEM, /supported NPC decisions, institutional processes, off-screen activity/);
+    assert.match(SYSTEM, /must wait for the player character to initiate it unless the established mechanism literally requires/);
+    assert.match(SYSTEM, /allow supported external processes and actors to take concrete steps/);
     assert.match(SYSTEM, /leave room for uncertainty and natural friction/);
     assert.match(SYSTEM, /Warmth, relief, cooperation, and happy outcomes are equally valid when the scene earns them/);
     assert.match(SYSTEM, /Never add darkness merely for variety/);
