@@ -37,7 +37,7 @@ export function textHasCurrentGuidance(prompt, payload) {
     return Boolean(guide && String(prompt || '').includes(guide));
 }
 
-export function ensureGuidanceInChat(chat, payload, { role = 'user', depth = 3 } = {}) {
+export function ensureGuidanceInChat(chat, payload, { role = 'user', depth = 2 } = {}) {
     const guide = guideSegment(payload);
     if (!Array.isArray(chat) || !guide || chatHasCurrentGuidance(chat, payload)) return false;
 

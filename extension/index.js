@@ -15,7 +15,7 @@ const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
 const INJECTION_POSITIONS = new Set(['before-main', 'after-main', 'before-character-definitions', 'after-character-definitions', 'before-example-messages', 'after-example-messages', 'before-an', 'after-an', 'before-chat-history', 'after-chat-history', 'before-jailbreak', 'after-jailbreak', 'at-depth']);
-const DEFAULT_SETTINGS = { enabled: true, mode: 'balanced', analysisProfileId: '', analysisSource: 'active', analysisProvider: 'custom', analysisModel: '', analysisUrl: '', analysisSecretId: '', directSettingsMigrated: false, directCustomModel: '', directCustomUrl: '', directCustomSecretId: '', directOpenRouterModel: '', directOpenRouterUrl: '', directOpenRouterSecretId: '', injectionPosition: 'at-depth', injectionDepth: 3, injectionRole: 'user', includeWorldInfo: false, showDirectorNotes: false, backgroundDelay: 1200, messageWindow: 24, messageCharLimit: 1200, maxPromptChars: 18000, continuityIntegration: true, continuityContextLimit: 5000 };
+const DEFAULT_SETTINGS = { enabled: true, mode: 'balanced', analysisProfileId: '', analysisSource: 'active', analysisProvider: 'custom', analysisModel: '', analysisUrl: '', analysisSecretId: '', directSettingsMigrated: false, directCustomModel: '', directCustomUrl: '', directCustomSecretId: '', directOpenRouterModel: '', directOpenRouterUrl: '', directOpenRouterSecretId: '', injectionPosition: 'at-depth', injectionDepth: 2, injectionRole: 'user', includeWorldInfo: false, showDirectorNotes: false, backgroundDelay: 1200, messageWindow: 24, messageCharLimit: 1200, maxPromptChars: 18000, continuityIntegration: true, continuityContextLimit: 5000 };
 let settings = null;
 let analysisPromise = null;
 let analysisAbortController = null;
@@ -25,8 +25,6 @@ let generationRevision = 0;
 let internalAnalysisRequests = 0;
 let analysisQueued = false;
 let backgroundTimer = null;
-let guidanceGateActive = 0;
-let guidanceGateStopSequence = 0;
 let pendingRequestVerification = null;
 let uiMountPromise = null;
 let uiMountObserver = null;
@@ -362,8 +360,12 @@ async function persist(state, guard = {}) {
     const context = currentContext();
     const chat = messagesFromChat(context.chat || []);
     const chatId = String(context.getCurrentChatId?.() || '');
+    const matchesPlannedTurn = guard.allowNextUserMessage
+        && chat.length === Number(guard.sourceMessageCount) + 1
+        && chat.at(-1)?.is_user
+        && fingerprintMessages(chat.slice(0, -1)) === guard.fingerprint;
     if ((guard.chatId && chatId !== guard.chatId)
-        || (guard.fingerprint && fingerprintMessages(chat) !== guard.fingerprint)
+        || (guard.fingerprint && fingerprintMessages(chat) !== guard.fingerprint && !matchesPlannedTurn)
         || chat.length === 0) {
         throw new DOMException('The chat changed before Tale Fairy could save its analysis.', 'AbortError');
     }
@@ -417,7 +419,6 @@ function cancelRunningAnalysis(reason, status) {
 }
 
 function stopAnalysis() {
-    if (guidanceGateActive) guidanceGateStopSequence++;
     if (backgroundTimer) clearTimeout(backgroundTimer);
     backgroundTimer = null;
     analysisQueued = false;
@@ -449,6 +450,16 @@ function waitForAbortable(promise, signal) {
         promise,
         new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true })),
     ]);
+}
+
+async function waitForBackgroundPlanner(maxWaitMs = 2000) {
+    if (!analysisPromise) return false;
+    const pending = analysisPromise;
+    await Promise.race([
+        pending.catch(() => null),
+        new Promise(resolve => setTimeout(resolve, maxWaitMs)),
+    ]);
+    return pending === analysisPromise || !analysisPromise;
 }
 
 function isolatePlannerGenerationData(generateData, variationSeed) {
@@ -609,7 +620,7 @@ async function requestAnalysis(prompt, externalSignal, variationSeed) {
     }
 }
 
-export async function analyzeNow({ note = null, force = false, messages = null, rebuild = false } = {}) {
+export async function analyzeNow({ note = null, force = false, messages = null, rebuild = false, allowNextUserMessage = false } = {}) {
     const context = currentContext();
     const s = getSettings();
     if (!s.enabled) return loadState(context.chatMetadata);
@@ -658,7 +669,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         next.analysisModel = analysisSelection;
         if (resolvedNote) next.userNotes = [...next.userNotes, { ...resolvedNote, at: Date.now() }].slice(-12);
         next.noteNeedsClarification = Boolean(userNote && !resolvedNote);
-        await persist(next, { chatId, fingerprint });
+        await persist(next, { chatId, fingerprint, sourceMessageCount: chat.length, allowNextUserMessage });
         finalStatus = userNote && !resolvedNote
             ? 'Note not applied · try again'
             : 'Guidance ready';
@@ -770,7 +781,7 @@ function scheduleBackgroundAnalysis(delay = Number(getSettings().backgroundDelay
     backgroundTimer = setTimeout(() => {
         backgroundTimer = null;
         if (analysisPromise) { analysisQueued = true; return; }
-        void analyzeNow({ force: false });
+        void analyzeNow({ force: false, allowNextUserMessage: true });
     }, Math.max(250, delay));
 }
 
@@ -946,7 +957,7 @@ function refreshControls(root = document.querySelector(`#${EXTENSION_ID}-setting
     if (keyStatus) keyStatus.textContent = saved ? 'A password/key is saved in SillyTavern.' : 'No password/key saved; keyless endpoints are supported.';
 }
 
-export async function livingWorldGuideGenerateInterceptor(chat, _contextSize, abort, type) {
+export async function livingWorldGuideGenerateInterceptor(chat, _contextSize, _abort, type) {
     if (internalAnalysisRequests > 0 || !getSettings().enabled) return;
     const context = currentContext();
     const state = loadState(context.chatMetadata);
@@ -954,35 +965,12 @@ export async function livingWorldGuideGenerateInterceptor(chat, _contextSize, ab
     // fingerprints match background analyses and saved chat metadata.
     const messages = messagesFromChat(context.chat?.length ? context.chat : chat);
     updatePrompt(state);
-    const reroll = type === 'regenerate' || type === 'swipe';
-    if (!reroll && isGuidanceUsable(state, messages, String(context.getCurrentChatId?.() || ''))) return;
-
-    // Always-guide means the outgoing roleplay must not outrun its planner.
-    // Keep retrying through transient commute connectivity; Stop remains an
-    // explicit escape hatch and cancels the pending roleplay generation.
-    const stopSequence = guidanceGateStopSequence;
-    let failures = 0;
-    guidanceGateActive++;
-    try {
-        while (getSettings().enabled && guidanceGateStopSequence === stopSequence) {
-            // MESSAGE_SENT starts the current analysis before earlier host
-            // interceptors (such as Continuity Memory) finish. Reuse that
-            // matching request on the first pass so both preparations overlap.
-            const next = await analyzeNow({ messages, force: reroll || failures > 0 });
-            if (guidanceGateStopSequence !== stopSequence) break;
-            if (isGuidanceUsable(next, messages, String(context.getCurrentChatId?.() || ''))) {
-                updatePrompt(next);
-                return;
-            }
-            failures++;
-            const delay = Math.min(20000, 2000 * (2 ** Math.min(4, failures - 1)));
-            renderAnalysisActivity(`Guidance unavailable; retrying in ${Math.round(delay / 1000)}s…`, true);
-            await new Promise(resolve => setTimeout(resolve, delay));
-        }
-        abort(true);
-    } finally {
-        guidanceGateActive = Math.max(0, guidanceGateActive - 1);
-    }
+    // Reuse a planner already running from the previous assistant turn. This
+    // is a short handoff wait only; it never starts planning or retries here.
+    await waitForBackgroundPlanner();
+    updatePrompt(loadState(context.chatMetadata));
+    // Planning is performed between turns, after assistant replies. Never
+    // start a competing planner request while roleplay generation is running.
 }
 
 // SillyTavern resolves manifest.generate_interceptor through globalThis.
@@ -999,9 +987,6 @@ eventSource.on(event_types.GENERATE_AFTER_COMBINE_PROMPTS, ensureTextCompletionR
 
 if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPED, () => {
     pendingRequestVerification = null;
-    if (!guidanceGateActive || internalAnalysisRequests > 0) return;
-    guidanceGateStopSequence++;
-    cancelRunningAnalysis('Tale Fairy guidance wait stopped with generation.', 'Stopped');
 });
 
 eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
@@ -1009,19 +994,13 @@ eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
     cancelRunningAnalysis('The chat advanced while Tale Fairy was analyzing.', 'Refreshing…');
     await confirmReturnedReplyUsedGuidance();
     updatePrompt(loadState(currentContext().chatMetadata));
-    scheduleBackgroundAnalysis();
+    // Prepare the next turn as soon as the completed assistant reply is saved.
+    scheduleBackgroundAnalysis(250);
 });
 if (event_types.MESSAGE_SENT) eventSource.on(event_types.MESSAGE_SENT, () => {
-    generationRevision++;
     const context = currentContext();
     const state = loadState(context.chatMetadata);
-    const messages = messagesFromChat(context.chat || []);
     updatePrompt(state);
-    if (getSettings().enabled && !isGuidanceUsable(state, messages, String(context.getCurrentChatId?.() || ''))) {
-        // Start without awaiting: SillyTavern can continue into CM's
-        // interceptor while Tale Fairy plans from the committed user turn.
-        void analyzeNow({ messages, force: false });
-    }
 });
 for (const event of [event_types.MESSAGE_EDITED, event_types.MESSAGE_UPDATED, event_types.MESSAGE_DELETED]) {
     if (event) eventSource.on(event, () => {
