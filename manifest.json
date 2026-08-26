@@ -1,0 +1,14 @@
+{
+  "display_name": "Tale Fairy",
+  "loading_order": 65,
+  "requires": [],
+  "optional": [],
+  "js": "extension/index.js",
+  "css": "extension/style.css",
+  "generate_interceptor": "livingWorldGuideGenerateInterceptor",
+  "author": "ScatteredLilies2020",
+  "version": "0.1.3",
+  "homePage": "https://github.com/scatteredlilies2020/Tale-Fairy",
+  "auto_update": true,
+  "description": "A quiet story companion that preserves scene pace and gently guides a living roleplay world."
+}

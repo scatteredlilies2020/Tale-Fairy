@@ -1,0 +1,155 @@
+.living-world-guide-panel .inline-drawer-content {
+    padding: 0 8px 10px;
+}
+
+.living-world-guide-master-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 8px 0;
+}
+
+.living-world-guide-status {
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 999px;
+    padding: 3px 9px;
+    font-size: .85em;
+}
+
+.living-world-guide-card {
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 8px;
+    padding: 10px;
+    margin: 8px 0;
+    background: rgba(0, 0, 0, .08);
+}
+
+.living-world-guide-card h4 {
+    margin: 0 0 8px;
+}
+
+.living-world-guide-card-inset {
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 6px;
+    padding: 8px;
+    margin: 8px 0 0;
+}
+
+.living-world-guide-panel label:not(.checkbox_label) {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    margin: 7px 0;
+}
+
+.living-world-guide-panel .checkbox_label {
+    margin: 7px 0;
+}
+
+.living-world-guide-panel .checkbox_label input {
+    flex: 0 0 auto;
+}
+
+.living-world-guide-panel .text_pole {
+    box-sizing: border-box;
+    width: 100%;
+}
+
+.living-world-guide-panel textarea.text_pole {
+    min-height: 76px;
+    resize: vertical;
+    font-family: inherit;
+}
+
+.living-world-guide-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(145px, 1fr));
+    gap: 8px;
+}
+
+.living-world-guide-note-grid {
+    grid-template-columns: minmax(130px, .45fr) minmax(190px, 1.55fr);
+}
+
+.living-world-guide-button-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 8px 0;
+}
+
+.living-world-guide-progress {
+    min-height: 1.3em;
+    margin-top: 6px;
+    font-size: .9em;
+}
+
+.living-world-guide-board {
+    display: none;
+    margin-top: 8px;
+    padding: 8px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 6px;
+    background: rgba(0, 0, 0, .12);
+    font-size: .9em;
+}
+
+#living-world-guide-settings.is-expanded .living-world-guide-board {
+    display: block;
+}
+
+.living-world-guide-board [data-role] {
+    margin: 4px 0;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+}
+
+.living-world-guide-scratchpad-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-bottom: 8px;
+}
+
+.living-world-guide-scratchpad-title > span {
+    opacity: .75;
+    font-size: .9em;
+}
+
+.living-world-guide-board section {
+    margin: 7px 0;
+    padding: 7px 8px;
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 5px;
+    background: rgba(0, 0, 0, .1);
+}
+
+.living-world-guide-board section h5 {
+    margin: 0 0 4px;
+    font-size: 1em;
+}
+
+.living-world-guide-panel small {
+    display: block;
+    margin: 3px 0 7px;
+    line-height: 1.35;
+    opacity: .8;
+}
+
+.living-world-guide-panel [hidden] {
+    display: none !important;
+}
+
+@media (max-width: 600px) {
+    .living-world-guide-note-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .living-world-guide-button-row .menu_button {
+        flex: 1 1 150px;
+    }
+}

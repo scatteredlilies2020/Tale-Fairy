@@ -1,0 +1,13 @@
+{
+  "name": "tale-fairy",
+  "private": true,
+  "type": "module",
+  "license": "AGPL-3.0-only",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/scatteredlilies2020/Tale-Fairy.git"
+  },
+  "homepage": "https://github.com/scatteredlilies2020/Tale-Fairy",
+  "bugs": "https://github.com/scatteredlilies2020/Tale-Fairy/issues",
+  "scripts": { "test": "node --test" }
+}

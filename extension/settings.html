@@ -1,0 +1,174 @@
+<div id="living-world-guide-settings" class="extension_container living-world-guide-panel">
+  <div class="inline-drawer">
+    <div class="inline-drawer-toggle inline-drawer-header">
+      <b><i class="fa-solid fa-wand-magic-sparkles"></i> Tale Fairy</b>
+      <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+    </div>
+    <div class="inline-drawer-content">
+      <div class="living-world-guide-master-row">
+        <label class="checkbox_label">
+          <input type="checkbox" data-setting="enabled">
+          <span>Enable quiet narrative guidance</span>
+        </label>
+        <span class="living-world-guide-status" data-role="analysis-status">Ready</span>
+      </div>
+
+      <div class="living-world-guide-card">
+        <h4>Story guidance</h4>
+        <div class="living-world-guide-grid">
+          <label>Mode
+            <select class="text_pole" data-setting="mode">
+              <option value="light">Light</option>
+              <option value="balanced">Balanced (default)</option>
+              <option value="fun">Fun</option>
+            </select>
+          </label>
+          <label>Recent messages sent to planner
+            <input class="text_pole" type="number" data-setting="window" min="1" max="80" step="1" value="24">
+          </label>
+          <label>Planner context budget
+            <input class="text_pole" type="number" data-setting="budget" min="8000" max="30000" step="1000" value="18000">
+          </label>
+        </div>
+        <small>The planner combines the recent raw window with its portable narrative ledger. The context budget is a soft character target, not the roleplay model's context size.</small>
+        <small>Tale Fairy waits for current guidance before every roleplay reply. Temporary connection failures retry automatically; Stop cancels the pending analysis and reply.</small>
+        <label class="checkbox_label">
+          <input type="checkbox" data-setting="continuity">
+          <span>Use Continuity context when available</span>
+        </label>
+        <small>Reads a trimmed existing Continuity prompt snapshot without triggering extraction or writing to Continuity Memory.</small>
+      </div>
+
+      <div class="living-world-guide-card">
+        <h4>Prompt placement</h4>
+        <div class="living-world-guide-grid">
+          <label>Injection position
+            <select class="text_pole" data-setting="injection-position">
+              <option value="before-main">Before Main Prompt / Story String</option>
+              <option value="after-main">After Main Prompt / Story String</option>
+              <option value="before-character-definitions">Before Character Definitions</option>
+              <option value="after-character-definitions">After Character Definitions</option>
+              <option value="before-example-messages">Before Example Messages</option>
+              <option value="after-example-messages">After Example Messages</option>
+              <option value="before-an">Before Author's Note</option>
+              <option value="after-an">After Author's Note</option>
+              <option value="before-chat-history">Before Chat History</option>
+              <option value="after-chat-history">After Chat History</option>
+              <option value="before-jailbreak">Before Jailbreak</option>
+              <option value="after-jailbreak">After Jailbreak</option>
+              <option value="at-depth">In-chat at Depth (default)</option>
+            </select>
+          </label>
+          <label data-placement-depth>Chat depth
+            <input class="text_pole" type="number" data-setting="injection-depth" min="0" max="100" step="1" value="3">
+            <small>0 = newest edge; default 3</small>
+          </label>
+          <label>Injection role
+            <select class="text_pole" data-setting="injection-role">
+              <option value="user">User (default)</option>
+              <option value="system">System</option>
+              <option value="assistant">Assistant</option>
+            </select>
+          </label>
+        </div>
+        <small>Prompt Manager positions apply exactly on Chat Completion APIs. Other APIs use the closest safe main-prompt anchor. At-depth placement works across APIs.</small>
+      </div>
+
+      <div class="living-world-guide-card">
+        <h4>Planner model</h4>
+        <label>Analysis model
+          <select class="text_pole" data-setting="connection">
+            <option value="">Current active SillyTavern model</option>
+            <option value="__direct_custom__">Direct OpenAI-compatible / proxy</option>
+            <option value="__direct_openrouter__">Direct OpenRouter</option>
+          </select>
+        </label>
+        <small>Choose the active model, a Connection Manager profile, or a direct provider. Connection profiles supply the endpoint, model, and authentication.</small>
+
+        <div class="living-world-guide-card-inset" data-source-panel="direct" hidden>
+          <b data-role="direct-title">Direct planner API</b>
+          <label>API URL
+            <input class="text_pole" type="url" data-setting="url" placeholder="https://api.openai.com/v1">
+          </label>
+          <label>API password / key
+            <input class="text_pole" type="password" data-setting="key" autocomplete="new-password" placeholder="Leave blank to keep the saved password">
+          </label>
+          <div class="living-world-guide-button-row">
+            <button class="menu_button" data-action="save-key" type="button"><i class="fa-solid fa-key"></i> Save planner password</button>
+          </div>
+          <div class="living-world-guide-progress" data-role="key-status">No password/key saved; keyless endpoints are supported.</div>
+          <label>Model
+            <input class="text_pole" type="text" data-setting="model" placeholder="gpt-4.1-mini">
+          </label>
+        </div>
+      </div>
+
+      <div class="living-world-guide-card">
+        <h4>Guide controls</h4>
+        <div class="living-world-guide-button-row">
+          <button class="menu_button" data-action="guide" type="button" title="Guide now; rebuild from the chat when Tale Fairy already has state"><i class="fa-solid fa-wand-magic-sparkles"></i> Guide now</button>
+          <button class="menu_button" data-action="stop" type="button" disabled><i class="fa-solid fa-stop"></i> Stop analysis</button>
+          <button class="menu_button" data-action="reset-settings" type="button" title="Restore Tale Fairy configuration defaults without deleting guide state"><i class="fa-solid fa-arrow-rotate-left"></i> Reset settings</button>
+          <button class="menu_button" data-action="reset" type="button"><i class="fa-solid fa-trash-can"></i> Delete guide state</button>
+        </div>
+        <small>Reset settings restores configuration defaults but keeps the current chat's guide state. Saved API passwords remain in SillyTavern but are no longer selected.</small>
+        <div class="living-world-guide-grid living-world-guide-note-grid">
+          <label>AI-assisted instruction
+            <textarea class="text_pole" data-setting="note" rows="3" placeholder="Write naturally. Tale Fairy will understand whether this is a suggestion, correction, canon detail, or hard exclusion."></textarea>
+          </label>
+        </div>
+        <small>Tale Fairy infers your intent in the same planner call. If it is genuinely unsure, it will ask. Suggestions stay optional, corrections replace planner mistakes, canon details become established, and hard exclusions must never be proposed or injected.</small>
+        <div class="living-world-guide-button-row">
+          <button class="menu_button" data-action="note" type="button"><i class="fa-solid fa-check"></i> Apply with AI</button>
+          <button class="menu_button" data-action="board" type="button"><i class="fa-solid fa-clipboard-list"></i> Show/Hide Planner Scratchpad</button>
+        </div>
+        <div id="living-world-guide-board" class="living-world-guide-board">
+          <div class="living-world-guide-scratchpad-title">
+            <b><i class="fa-solid fa-wand-magic-sparkles"></i> Planner Scratchpad</b>
+            <span><span data-role="scratchpad-continuity">Continuity: unavailable</span> · <span data-role="scratchpad-meta">Not analyzed yet.</span></span>
+          </div>
+          <section>
+            <h5>Current scene</h5>
+            <div data-role="scratchpad-scene">No scene reading yet.</div>
+          </section>
+          <section>
+            <h5>Story frame</h5>
+            <div data-role="scratchpad-frame">Story frame is still uncertain.</div>
+          </section>
+          <section>
+            <h5>Guidance decision</h5>
+            <div data-role="scratchpad-guidance">No guidance decision yet.</div>
+          </section>
+          <section>
+            <h5>Last verified provider request</h5>
+            <div data-role="scratchpad-request-verification">No provider request has been verified yet.</div>
+          </section>
+          <section>
+            <h5>Objectives</h5>
+            <div data-role="scratchpad-objectives">No active objectives.</div>
+          </section>
+          <section>
+            <h5>Possible developments</h5>
+            <div data-role="scratchpad-possibilities">No supported possibilities currently retained.</div>
+          </section>
+          <section>
+            <h5>Relevant people and threads</h5>
+            <div data-role="scratchpad-entities">No relevant off-screen entities retained.</div>
+          </section>
+          <section>
+            <h5>Narrative ledger</h5>
+            <div data-role="scratchpad-ledger">No narrative ledger yet.</div>
+          </section>
+          <section>
+            <h5>Internal events</h5>
+            <div data-role="scratchpad-events">No internal narrative events retained.</div>
+          </section>
+          <section>
+            <h5>Your planner notes</h5>
+            <div data-role="scratchpad-notes">No user notes.</div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
