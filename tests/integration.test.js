@@ -81,8 +81,14 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /generateRaw\(\{[\s\S]{0,320}instructOverride: true/);
     assert.doesNotMatch(source, /MESSAGE_SENT[\s\S]{0,500}void analyzeNow/);
     assert.doesNotMatch(source, /MESSAGE_SENT[\s\S]{0,180}generationRevision\+\+/);
-    assert.match(source, /function waitForBackgroundPlanner/);
-    assert.match(source, /await waitForBackgroundPlanner\(\)/);
+    assert.doesNotMatch(source, /waitForBackgroundPlanner/);
+    assert.match(source, /function backgroundRetryDelay/);
+    assert.match(source, /Background planner retrying in/);
+    assert.match(source, /scheduleBackgroundAnalysis\(retryDelay, backgroundRetryAttempt\)/);
+    assert.match(source, /if \(roleplayGenerationActive\)/);
+    assert.match(source, /roleplayGenerationActive = true/);
+    assert.match(source, /roleplayGenerationActive = false/);
+    assert.match(source, /event_types\.GENERATION_ENDED/);
     assert.match(source, /allowNextUserMessage: true/);
     assert.match(source, /const matchesPlannedTurn = guard\.allowNextUserMessage/);
     assert.match(source, /MESSAGE_RECEIVED[\s\S]{0,500}scheduleBackgroundAnalysis\(250\)/);

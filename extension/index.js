@@ -25,6 +25,8 @@ let generationRevision = 0;
 let internalAnalysisRequests = 0;
 let analysisQueued = false;
 let backgroundTimer = null;
+let backgroundRetryAttempt = 0;
+let roleplayGenerationActive = false;
 let pendingRequestVerification = null;
 let uiMountPromise = null;
 let uiMountObserver = null;
@@ -421,6 +423,7 @@ function cancelRunningAnalysis(reason, status) {
 function stopAnalysis() {
     if (backgroundTimer) clearTimeout(backgroundTimer);
     backgroundTimer = null;
+    backgroundRetryAttempt = 0;
     analysisQueued = false;
     generationRevision++;
     if (!cancelRunningAnalysis('Tale Fairy analysis stopped by the user.', 'Stopped')) {
@@ -450,16 +453,6 @@ function waitForAbortable(promise, signal) {
         promise,
         new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true })),
     ]);
-}
-
-async function waitForBackgroundPlanner(maxWaitMs = 2000) {
-    if (!analysisPromise) return false;
-    const pending = analysisPromise;
-    await Promise.race([
-        pending.catch(() => null),
-        new Promise(resolve => setTimeout(resolve, maxWaitMs)),
-    ]);
-    return pending === analysisPromise || !analysisPromise;
 }
 
 function isolatePlannerGenerationData(generateData, variationSeed) {
@@ -776,12 +769,35 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     scratchpadText(board, 'scratchpad-notes', scratchpadList(state.userNotes, item => item?.text ? `[${String(item.kind || 'note').toUpperCase()}] ${item.text}` : '', ''), 'No user notes.');
 }
 
-function scheduleBackgroundAnalysis(delay = Number(getSettings().backgroundDelay) || 1200) {
+function backgroundRetryDelay(attempt) {
+    return Math.min(30000, 2000 * (2 ** Math.min(4, Math.max(0, attempt - 1))));
+}
+
+function scheduleBackgroundAnalysis(delay = Number(getSettings().backgroundDelay) || 1200, retryAttempt = 0) {
     if (backgroundTimer) clearTimeout(backgroundTimer);
-    backgroundTimer = setTimeout(() => {
+    backgroundTimer = setTimeout(async () => {
         backgroundTimer = null;
+        if (!getSettings().enabled) return;
+        if (roleplayGenerationActive) {
+            scheduleBackgroundAnalysis(1000, retryAttempt);
+            return;
+        }
         if (analysisPromise) { analysisQueued = true; return; }
-        void analyzeNow({ force: false, allowNextUserMessage: true });
+        const context = currentContext();
+        const chatId = String(context.getCurrentChatId?.() || '');
+        const messages = messagesFromChat(context.chat || []);
+        const fingerprint = fingerprintMessages(messages);
+        const result = await analyzeNow({ messages, force: retryAttempt > 0, allowNextUserMessage: true });
+        const currentChatId = String(currentContext().getCurrentChatId?.() || '');
+        const succeeded = result.lastInject && result.guidance && result.lastAnalysisFingerprint === fingerprint;
+        if (succeeded || currentChatId !== chatId || !getSettings().enabled) {
+            backgroundRetryAttempt = 0;
+            return;
+        }
+        backgroundRetryAttempt = retryAttempt + 1;
+        const retryDelay = backgroundRetryDelay(backgroundRetryAttempt);
+        renderAnalysisActivity(`Background planner retrying in ${Math.round(retryDelay / 1000)}s`, false);
+        scheduleBackgroundAnalysis(retryDelay, backgroundRetryAttempt);
     }, Math.max(250, delay));
 }
 
@@ -957,7 +973,7 @@ function refreshControls(root = document.querySelector(`#${EXTENSION_ID}-setting
     if (keyStatus) keyStatus.textContent = saved ? 'A password/key is saved in SillyTavern.' : 'No password/key saved; keyless endpoints are supported.';
 }
 
-export async function livingWorldGuideGenerateInterceptor(chat, _contextSize, _abort, type) {
+export function livingWorldGuideGenerateInterceptor(chat, _contextSize, _abort, type) {
     if (internalAnalysisRequests > 0 || !getSettings().enabled) return;
     const context = currentContext();
     const state = loadState(context.chatMetadata);
@@ -965,10 +981,7 @@ export async function livingWorldGuideGenerateInterceptor(chat, _contextSize, _a
     // fingerprints match background analyses and saved chat metadata.
     const messages = messagesFromChat(context.chat?.length ? context.chat : chat);
     updatePrompt(state);
-    // Reuse a planner already running from the previous assistant turn. This
-    // is a short handoff wait only; it never starts planning or retries here.
-    await waitForBackgroundPlanner();
-    updatePrompt(loadState(context.chatMetadata));
+    roleplayGenerationActive = true;
     // Planning is performed between turns, after assistant replies. Never
     // start a competing planner request while roleplay generation is running.
 }
@@ -986,10 +999,16 @@ eventSource.on(event_types.CHAT_COMPLETION_SETTINGS_READY, ensureProviderChatReq
 eventSource.on(event_types.GENERATE_AFTER_COMBINE_PROMPTS, ensureTextCompletionRequestGuidance);
 
 if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPED, () => {
+    roleplayGenerationActive = false;
     pendingRequestVerification = null;
+});
+if (event_types.GENERATION_ENDED) eventSource.on(event_types.GENERATION_ENDED, () => {
+    roleplayGenerationActive = false;
 });
 
 eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
+    roleplayGenerationActive = false;
+    backgroundRetryAttempt = 0;
     generationRevision++;
     cancelRunningAnalysis('The chat advanced while Tale Fairy was analyzing.', 'Refreshing…');
     await confirmReturnedReplyUsedGuidance();
@@ -998,6 +1017,7 @@ eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
     scheduleBackgroundAnalysis(250);
 });
 if (event_types.MESSAGE_SENT) eventSource.on(event_types.MESSAGE_SENT, () => {
+    roleplayGenerationActive = true;
     const context = currentContext();
     const state = loadState(context.chatMetadata);
     updatePrompt(state);
