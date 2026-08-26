@@ -110,6 +110,14 @@ test('analysis prompt asks for novelty without forcing player action', () => {
     assert.match(prompt.novelty_instruction, /never invent player-character action/);
 });
 
+test('analysis prompt maintains a lightweight world model', () => {
+    const prompt = JSON.parse(buildAnalysisPrompt([{ mes: 'We are inside the Jedi Temple.', is_user: true }], defaultState()));
+    assert.match(SYSTEM, /Maintain a lightweight world model across turns/);
+    assert.match(prompt.world_model_instruction, /relevant people and factions, likely locations, knowledge, motives/);
+    assert.match(prompt.world_model_instruction, /outside the user\'s immediate focus/);
+    assert.match(prompt.world_model_instruction, /without inventing unsupported specifics/);
+});
+
 test('analysis prompt limits sent messages and accepts optional continuity context', () => {
     const messages = Array.from({ length: 5 }, (_, i) => ({ mes: `message-${i}`, is_user: i % 2 === 0 }));
     const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { messageWindow: 2, messageCharLimit: 20, continuityContext: 'older context' }));
