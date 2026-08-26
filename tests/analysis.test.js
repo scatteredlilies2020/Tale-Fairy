@@ -103,6 +103,13 @@ test('analysis prompt carries a per-run variation seed', () => {
     assert.match(prompt.planner_variation_instruction, /tie-breaker/);
 });
 
+test('analysis prompt asks for novelty without forcing player action', () => {
+    const prompt = JSON.parse(buildAnalysisPrompt([{ mes: 'We visit the art gallery again', is_user: true }], defaultState()));
+    assert.match(prompt.novelty_instruction, /Avoid recency fixation/);
+    assert.match(prompt.novelty_instruction, /Rotate among supported threads/);
+    assert.match(prompt.novelty_instruction, /never invent player-character action/);
+});
+
 test('analysis prompt limits sent messages and accepts optional continuity context', () => {
     const messages = Array.from({ length: 5 }, (_, i) => ({ mes: `message-${i}`, is_user: i % 2 === 0 }));
     const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { messageWindow: 2, messageCharLimit: 20, continuityContext: 'older context' }));
