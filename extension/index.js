@@ -370,7 +370,8 @@ function currentGuidancePayload() {
     const state = loadState(context.chatMetadata);
     const messages = messagesFromChat(context.chat || []);
     const usable = isGuidanceUsable(state, messages, String(context.getCurrentChatId?.() || ''));
-    return buildPromptPayload(state, { enabled: getSettings().enabled, guidanceUsable: usable });
+    const latestUserMessage = messages.at(-1)?.is_user ? messages.at(-1).mes : '';
+    return buildPromptPayload(state, { enabled: getSettings().enabled, guidanceUsable: usable, latestUserMessage });
 }
 
 function requestInjectionOptions() {

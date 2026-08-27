@@ -45,6 +45,8 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /function rememberDirectSettings/);
     assert.match(source, /function restoreDirectSettings/);
     assert.match(source, /function refreshConnectionProfiles/);
+    assert.match(source, /latestUserMessage = messages\.at\(-1\)\?\.is_user/);
+    assert.match(source, /buildPromptPayload\(state, \{ enabled: getSettings\(\)\.enabled, guidanceUsable: usable, latestUserMessage \}\)/);
     assert.match(source, /async function fetchDirectModels/);
     assert.match(source, /chat_completion_source: openRouter \? 'openrouter' : 'custom'/);
     assert.match(source, /secret_id: s.analysisSecretId/);

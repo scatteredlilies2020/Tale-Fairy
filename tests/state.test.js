@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPromptPayload, clearState, defaultState, fingerprintMessages, isGuidanceUsable, isStateAligned, loadState, normalizeState, saveState, STATE_KEY } from '../extension/state.js';
+import { buildPromptPayload, clearState, defaultState, fingerprintMessages, hasExplicitProgressDirective, isGuidanceUsable, isStateAligned, loadState, normalizeState, saveState, STATE_KEY } from '../extension/state.js';
 
 test('state normalizes caps and invalid mode', () => {
     const state = normalizeState({ mode: 'hard', objectives: Array.from({ length: 9 }, (_, i) => ({ title: String(i) })), enabled: false });
@@ -82,4 +82,26 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(current, /without sanitizing supported conflict, danger, flaws, rejection, loss, stakes, or consequences/);
     assert.match(current, /Do not substitute safer alternatives, plot armor, forced sympathy/);
     assert.equal(buildPromptPayload(state, { enabled: false, guidanceUsable: true }), '');
+});
+
+test('latest explicit progress overrides a preplanned Tale Fairy stall', () => {
+    const state = {
+        ...defaultState(),
+        guidance: 'Do NOT deliver the actual results this turn; end with Lucia about to enter.',
+        lastInject: true,
+    };
+    assert.equal(hasExplicitProgressDirective('Advance to my turn. I proceed.'), true);
+    assert.equal(hasExplicitProgressDirective('I continue until he is done.'), true);
+    assert.equal(hasExplicitProgressDirective('I want the results right now, before doing anything else.'), true);
+    assert.equal(hasExplicitProgressDirective('Do not proceed yet.'), false);
+    assert.equal(hasExplicitProgressDirective('I watch quietly.'), false);
+    const payload = buildPromptPayload(state, {
+        enabled: true,
+        guidanceUsable: true,
+        latestUserMessage: 'I want the results now. Advance to my turn. I proceed.',
+    });
+    assert.match(payload, /latest user turn explicitly commands forward progress/);
+    assert.match(payload, /Complete the requested transition or reach its stated milestone in this reply/);
+    assert.match(payload, /Any earlier Tale Fairy sentence that says not this turn[\s\S]*is void/);
+    assert.ok(payload.indexOf('Do NOT deliver the actual results') < payload.indexOf('<latest-user-action-override>'));
 });
