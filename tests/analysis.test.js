@@ -193,6 +193,24 @@ test('analysis prompt limits sent messages and accepts optional continuity conte
     assert.match(prompt.continuity_instruction, /ground planner decisions/);
 });
 
+test('analysis prompt retrieves a few relevant older user statements without continuity memory', () => {
+    const messages = Array.from({ length: 70 }, (_, index) => ({ mes: `Unrelated turn ${index} about corridor lighting.`, is_user: index % 2 === 0 }));
+    messages[44] = { mes: 'I want the message to discuss the war and my homeworld.', is_user: true };
+    messages[46] = { mes: 'I wish for the war to stop and help the affected families. That is what I truly want.', is_user: true };
+    messages[68] = { mes: 'What should the Chancellor message say?', is_user: false };
+    messages[69] = { mes: 'I already told you exactly what my message is.', is_user: true };
+    const state = {
+        ...defaultState(),
+        activeBeat: { ...activeBeat, objective: 'Resolve the Chancellor petition about peace and aid for affected families.' },
+        contextLedger: 'The current thread concerns Lucia’s message to the Chancellor about the war.',
+    };
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, state, '', {}, { messageWindow: 6, maxPromptChars: 12000 }));
+    assert.ok(prompt.retrieved_user_evidence.length <= 4);
+    assert.ok(prompt.retrieved_user_evidence.some(item => item.index === 46 && /affected families/.test(item.content)));
+    assert.match(prompt.retrieval_instruction, /older raw user turns/);
+    assert.equal('optional_continuity_context' in prompt, false);
+});
+
 test('analysis prompt accepts supporting host context without declaring it canon', () => {
     const prompt = JSON.parse(buildAnalysisPrompt([{ mes: 'Tea', is_user: true }], defaultState(), '', {}, { hostContext: '[Chat summary] Yesterday was quiet.' }));
     assert.equal(prompt.optional_host_context, '[Chat summary] Yesterday was quiet.');

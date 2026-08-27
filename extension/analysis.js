@@ -233,6 +233,107 @@ function compactMessageContent(value, limit, { latest = false } = {}) {
     return `${cleaned.slice(0, head)} … ${cleaned.slice(-tail)}`;
 }
 
+const RETRIEVAL_STOP_WORDS = new Set([
+    'about', 'after', 'again', 'also', 'and', 'are', 'because', 'been', 'before', 'being', 'but', 'can', 'could',
+    'did', 'does', 'doing', 'for', 'from', 'had', 'has', 'have', 'her', 'here', 'him', 'his', 'how', 'into', 'its',
+    'just', 'like', 'more', 'not', 'now', 'off', 'only', 'our', 'out', 'over', 'said', 'say', 'she', 'some', 'still',
+    'than', 'that', 'the', 'their', 'them', 'then', 'there', 'they', 'this', 'those', 'through', 'too', 'very', 'was',
+    'were', 'what', 'when', 'where', 'which', 'while', 'who', 'why', 'will', 'with', 'would', 'you', 'your',
+]);
+
+function retrievalTerms(value) {
+    return String(value || '')
+        .toLocaleLowerCase()
+        .match(/[\p{L}\p{N}][\p{L}\p{N}'-]{2,}/gu)?.map(term => term.replace(/(?:'s|s')$/u, ''))
+        .filter(term => term.length >= 3 && !RETRIEVAL_STOP_WORDS.has(term)) || [];
+}
+
+function retrievalQueryTerms(state, recentMessages) {
+    const current = stateForPrompt(state);
+    const weighted = new Map();
+    const add = (values, weight) => {
+        for (const value of values.flat(Infinity).filter(Boolean)) {
+            for (const term of new Set(retrievalTerms(value))) weighted.set(term, Math.min(12, weight + (weighted.get(term) || 0)));
+        }
+    };
+    add((recentMessages || []).slice(-6).map(message => compactMessageContent(message?.mes, 700)), 3);
+    add([
+        current.scene?.intent,
+        (current.objectives || []).flatMap(item => [item.title, item.detail]),
+        current.activeBeat?.objective,
+        current.activeBeat?.nextAction,
+    ], 2);
+    return weighted;
+}
+
+function retrieveOlderUserEvidence(messages, state, recentStart, selectedIndexes, maxItems = 4) {
+    if (recentStart <= 0) return [];
+    const queryTerms = retrievalQueryTerms(state, messages.slice(recentStart));
+    if (!queryTerms.size) return [];
+    const selected = selectedIndexes instanceof Set ? selectedIndexes : new Set(selectedIndexes || []);
+    const intentPattern = /\b(?:i|we)\s+(?:already\s+)?(?:want|wanted|wish|wished|hope|hoped|need|needed|plan|planned|intend|intended|decide|decided|prefer|preferred|told|asked|promised|believe|believed|will|won't|would)\b/iu;
+    const correctionPattern = /\b(?:actually|already|exactly|remember|don't forget|do not forget|i (?:said|told|meant))\b/iu;
+    const documentFrequency = new Map();
+    let userDocumentCount = 0;
+    for (let index = 0; index < recentStart; index++) {
+        if (!messages[index]?.is_user || selected.has(index)) continue;
+        userDocumentCount++;
+        for (const term of new Set(retrievalTerms(compactMessageContent(messages[index].mes, 500)))) {
+            documentFrequency.set(term, (documentFrequency.get(term) || 0) + 1);
+        }
+    }
+    const records = [];
+    for (let index = 0; index < recentStart; index++) {
+        const message = messages[index];
+        if (!message?.is_user || selected.has(index)) continue;
+        const content = compactMessageContent(message.mes, 360);
+        if (!content) continue;
+        const terms = new Set(retrievalTerms(content));
+        const overlap = [...terms].filter(term => queryTerms.has(term));
+        const specificity = overlap.reduce((sum, term) => {
+            const rarity = Math.log((userDocumentCount + 1) / ((documentFrequency.get(term) || 0) + 1)) + 0.25;
+            return sum + rarity * queryTerms.get(term);
+        }, 0);
+        const hasIntent = intentPattern.test(content);
+        const hasCorrection = correctionPattern.test(content);
+        const intentBoost = hasIntent ? 1.75 : 0;
+        const correctionBoost = hasCorrection ? 1 : 0;
+        const proximity = index / Math.max(1, recentStart) * 0.35;
+        records.push({ index, role: 'user', content, overlap: overlap.length, specificity, hasIntent, hasCorrection, intentBoost, correctionBoost, proximity });
+    }
+    const topicSeeds = records
+        .filter(item => item.overlap >= 1)
+        .sort((a, b) => b.specificity - a.specificity || b.index - a.index)
+        .slice(0, 1);
+    const candidates = records.flatMap(item => {
+        const linkedSeed = topicSeeds
+            .map(seed => ({ seed, distance: item.index - seed.index }))
+            .filter(link => link.distance > 0 && link.distance <= 16)
+            .sort((a, b) => a.distance - b.distance)[0];
+        const threadBoost = linkedSeed && item.hasIntent
+            ? linkedSeed.seed.specificity * 1.5 * (1 - linkedSeed.distance / 17)
+            : 0;
+        if (item.overlap < 2 && !(item.overlap >= 1 && (item.hasIntent || item.hasCorrection)) && !threadBoost) return [];
+        return [{ index: item.index, role: item.role, content: item.content, score: item.specificity + item.intentBoost + item.correctionBoost + item.proximity + threadBoost }];
+    });
+    const limit = Math.max(1, Math.min(4, maxItems));
+    const primarySeed = topicSeeds[0];
+    const threadEvidence = primarySeed
+        ? candidates.filter(item => {
+            const record = records.find(candidate => candidate.index === item.index);
+            return item.index > primarySeed.index && item.index - primarySeed.index <= 16 && (record?.hasIntent || record?.overlap >= 2);
+        }).slice(-3)
+        : [];
+    const chosen = new Map(threadEvidence.map(item => [item.index, item]));
+    for (const item of candidates.sort((a, b) => b.score - a.score || b.index - a.index)) {
+        if (chosen.size >= limit) break;
+        chosen.set(item.index, item);
+    }
+    return [...chosen.values()]
+        .sort((a, b) => a.index - b.index)
+        .map(({ score: _score, ...item }) => item);
+}
+
 const PROMPT_PACING_INSTRUCTION = 'USER-CONTROLLED PACING — Match the user’s demonstrated speed and granularity. Complete declared actions, direct questions, and routine implied mechanics through an immediate meaningful consequence without adding permission checkpoints. Slow pacing means meaningful development, not artificial delay; mode changes narrative pressure, not speed. Explicit requests to advance or reach a milestone are binding minimum progress. If established facts make an action impossible, show the attempt and concrete obstacle. Let causal motives, constraints, hidden information, and world processes determine interesting outcomes without inventing the player’s choices. Respond directly to the complete latest user turn.';
 const PROMPT_EXTREME_CANON_INSTRUCTION = 'USER-ESTABLISHED CANON FIDELITY — Explicit user/OOC facts remain authoritative even when extreme, unique, unprecedented, or beyond familiar setting records. Preserve their magnitude, scope, rank, and qualifiers; averages are context, not ceilings. Unspecified details remain creative space and may be invented consistently rather than causing refusal, delay, or hedging. Keep the complete current durable user-established constraints until explicitly corrected. Ordinary event history, status reports, old observations, and planner inferences are not canon constraints and must be removed if mistakenly present.';
 
@@ -248,11 +349,17 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         role: m?.is_user ? 'user' : 'assistant',
         content: compactMessageContent(m?.mes, index === messages.length - 1 ? latestLimit : kind === 'recent' ? charLimit : Math.min(450, charLimit), { latest: index === messages.length - 1 }),
     }));
+    const recentStart = Math.max(0, messages.length - windowSize);
+    const retrievedUserEvidence = retrieveOlderUserEvidence(messages, state, recentStart, new Set(selected.map(item => item.index)));
     const payload = {
         task: 'update_narrative_context',
         current: stateForPrompt(state),
         messages: compact,
     };
+    if (retrievedUserEvidence.length) {
+        payload.retrieved_user_evidence = retrievedUserEvidence;
+        payload.retrieval_instruction = 'These are a few relevance-selected older raw user turns, not a full transcript. Treat explicit user statements as primary evidence even when distant; use them to audit summaries and current planner claims. Distance does not erase a stated intent or fact, but a wish remains a wish rather than a completed event.';
+    }
     payload.mode_instruction = MODE_INSTRUCTIONS[payload.current.mode] || MODE_INSTRUCTIONS.balanced;
     payload.pacing_instruction = PROMPT_PACING_INSTRUCTION;
     payload.extreme_canon_instruction = PROMPT_EXTREME_CANON_INSTRUCTION;
@@ -332,6 +439,9 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     if (serialized.length > budget) {
         payload.current = compactPromptStateForBudget(payload.current);
         if (payload.user_instruction) payload.user_instruction = payload.user_instruction.slice(0, 300);
+        if (payload.retrieved_user_evidence) {
+            payload.retrieved_user_evidence = payload.retrieved_user_evidence.slice(-3).map(item => ({ ...item, content: compactMessageContent(item.content, 180) }));
+        }
         delete payload.planner_variation_instruction;
         serialized = JSON.stringify(payload);
     }
@@ -352,6 +462,15 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     if (serialized.length > budget) {
         const latest = payload.messages.at(-1);
         payload.messages = latest ? [latest] : [];
+        serialized = JSON.stringify(payload);
+    }
+    if (serialized.length > budget && payload.retrieved_user_evidence) {
+        payload.retrieved_user_evidence = payload.retrieved_user_evidence.slice(-2).map(item => ({ ...item, content: compactMessageContent(item.content, 120) }));
+        delete payload.retrieval_instruction;
+        serialized = JSON.stringify(payload);
+    }
+    if (serialized.length > budget && payload.retrieved_user_evidence) {
+        delete payload.retrieved_user_evidence;
         serialized = JSON.stringify(payload);
     }
     if (serialized.length > budget && payload.messages.length) {
