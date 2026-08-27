@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, AnalysisValidationError, applyAnalysis, buildAnalysisPrompt, extractJson, requireValidAnalysisResult, SYSTEM, validateAnalysisResult } from '../extension/analysis.js';
+import { ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, AnalysisValidationError, MODE_INSTRUCTIONS, applyAnalysis, buildAnalysisPrompt, extractJson, requireValidAnalysisResult, SYSTEM, validateAnalysisResult } from '../extension/analysis.js';
 import { defaultState } from '../extension/state.js';
 
 test('extractJson accepts fenced and wrapped JSON', () => {
@@ -108,6 +108,24 @@ test('analysis prompt asks for novelty without forcing player action', () => {
     assert.match(prompt.novelty_instruction, /Avoid recency fixation/);
     assert.match(prompt.novelty_instruction, /Rotate among supported threads/);
     assert.match(prompt.novelty_instruction, /never invent player-character action/);
+});
+
+test('planner modes provide materially distinct intervention policies', () => {
+    const prompts = Object.fromEntries(['light', 'balanced', 'fun'].map(mode => {
+        const state = { ...defaultState(), mode };
+        return [mode, JSON.parse(buildAnalysisPrompt([{ mes: 'The room goes quiet.', is_user: false }], state))];
+    }));
+    assert.equal(prompts.light.mode_instruction, MODE_INSTRUCTIONS.light);
+    assert.match(prompts.light.mode_instruction, /at most one active possibility/);
+    assert.match(prompts.light.mode_instruction, /rather than redirect it/);
+    assert.match(prompts.balanced.mode_instruction, /one to three distinct supported possibilities/);
+    assert.match(prompts.balanced.mode_instruction, /moderate intensity/);
+    assert.match(prompts.fun.mode_instruction, /Be bold, energetic/);
+    assert.match(prompts.fun.mode_instruction, /three to six genuinely distinct supported possibilities/);
+    assert.match(prompts.fun.mode_instruction, /decisively bring the strongest one onstage/);
+    assert.match(prompts.fun.mode_instruction, /Do not merely hint, defer, or wait/);
+    assert.notEqual(prompts.light.mode_instruction, prompts.balanced.mode_instruction);
+    assert.notEqual(prompts.balanced.mode_instruction, prompts.fun.mode_instruction);
 });
 
 test('analysis prompt maintains a lightweight world model', () => {
