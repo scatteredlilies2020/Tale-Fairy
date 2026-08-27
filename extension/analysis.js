@@ -208,7 +208,7 @@ function compactPromptStateForBudget(current = {}) {
         possibilities: (current.possibilities || []).slice(-1).map(item => ({ description: compactText(item.description, 100), conditions: (item.conditions || []).slice(0, 1).map(value => compactText(value, 70)), force: compactText(item.force, 30) })),
         activeBeat: { id: compactText(beat.id, 80), objective: compactText(beat.objective, 180), nextAction: compactText(beat.nextAction, 260), completion: compactText(beat.completion, 180), lifecycle: beat.lifecycle },
         planHorizons: {
-            items: (horizons.items || []).map(item => ({ id: compactText(item.id, 60), direction: compactText(item.direction, 80), timeframe: compactText(item.timeframe, 60), stability: item.stability })),
+            items: (horizons.items || []).map(item => ({ id: compactText(item.id, 50), direction: compactText(item.direction, 60), timeframe: compactText(item.timeframe, 50), stability: item.stability })),
             deviation: { level: horizons.deviation?.level, reason: compactText(horizons.deviation?.reason, 100) },
         },
         canonConstraints: (current.canonConstraints || []).slice(-4).map(item => compactText(item, 150)),
@@ -234,7 +234,7 @@ function compactMessageContent(value, limit, { latest = false } = {}) {
 }
 
 const PROMPT_PACING_INSTRUCTION = 'USER-CONTROLLED PACING — Match the user’s demonstrated speed and granularity. Complete declared actions, direct questions, and routine implied mechanics through an immediate meaningful consequence without adding permission checkpoints. Slow pacing means meaningful development, not artificial delay; mode changes narrative pressure, not speed. Explicit requests to advance or reach a milestone are binding minimum progress. If established facts make an action impossible, show the attempt and concrete obstacle. Let causal motives, constraints, hidden information, and world processes determine interesting outcomes without inventing the player’s choices. Respond directly to the complete latest user turn.';
-const PROMPT_EXTREME_CANON_INSTRUCTION = 'USER-ESTABLISHED CANON FIDELITY — Explicit user/OOC facts remain authoritative even when extreme, unique, unprecedented, or beyond familiar setting records. Preserve their magnitude, scope, rank, and qualifiers; averages are context, not ceilings. Unspecified details remain creative space and may be invented consistently rather than causing refusal, delay, or hedging. Keep the complete current durable constraints until the user explicitly corrects them.';
+const PROMPT_EXTREME_CANON_INSTRUCTION = 'USER-ESTABLISHED CANON FIDELITY — Explicit user/OOC facts remain authoritative even when extreme, unique, unprecedented, or beyond familiar setting records. Preserve their magnitude, scope, rank, and qualifiers; averages are context, not ceilings. Unspecified details remain creative space and may be invented consistently rather than causing refusal, delay, or hedging. Keep the complete current durable user-established constraints until explicitly corrected. Ordinary event history, status reports, old observations, and planner inferences are not canon constraints and must be removed if mistakenly present.';
 
 export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, options = {}) {
     const windowSize = Math.max(1, Math.min(80, Number(options.messageWindow) || 12));
@@ -313,9 +313,9 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
             ...item,
             content: item.index === latestIndex ? item.content : compactMessageContent(item.content, item.kind === 'recent' ? 180 : item.kind === 'directive' ? 140 : 100),
         }));
-        const firstIndex = payload.messages[0]?.index;
+        const trajectoryAnchorIndex = payload.messages.filter(item => item.kind === 'anchor').at(-1)?.index;
         const retainedDirectives = new Set(payload.messages.filter(item => item.kind === 'directive').slice(-3).map(item => item.index));
-        payload.messages = payload.messages.filter(item => item.kind === 'recent' || item.index === firstIndex || retainedDirectives.has(item.index));
+        payload.messages = payload.messages.filter(item => item.kind === 'recent' || item.index === trajectoryAnchorIndex || retainedDirectives.has(item.index));
         serialized = JSON.stringify(payload);
     }
     if (serialized.length > budget) {
@@ -337,10 +337,10 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     }
     if (serialized.length > budget) {
         const latest = payload.messages.at(-1);
-        const firstAnchor = payload.messages.find(item => item.kind === 'anchor');
+        const trajectoryAnchor = payload.messages.filter(item => item.kind === 'anchor').at(-1);
         const directives = payload.messages.filter(item => item.kind === 'directive').slice(-3);
         const recentTail = payload.messages.filter(item => item.kind === 'recent' && item.index !== latest?.index).slice(-3);
-        payload.messages = [...new Map([firstAnchor, ...directives, ...recentTail, latest].filter(Boolean).map(item => [item.index, item])).values()].sort((a, b) => a.index - b.index);
+        payload.messages = [...new Map([trajectoryAnchor, ...directives, ...recentTail, latest].filter(Boolean).map(item => [item.index, item])).values()].sort((a, b) => a.index - b.index);
         serialized = JSON.stringify(payload);
     }
     if (serialized.length > budget) {
@@ -365,23 +365,16 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
 function mergePlanHorizons(previous, proposed) {
     if (!previous?.items?.length || proposed.items.length < 6) return proposed;
     const deviation = proposed.deviation.level;
-    const merged = proposed.items.map((candidate, index) => {
-        const prior = previous.items.find(item => item.id && item.id === candidate.id) || previous.items[index];
+    const merged = proposed.items.map(candidate => {
+        const prior = previous.items.find(item => item.id && item.id === candidate.id);
         if (!prior) return candidate;
         if (candidate.change === 'keep') return prior;
+        if (candidate.change === 'replace') return candidate;
         const stability = prior.stability || candidate.stability;
         if (stability === 'adaptive' && deviation === 'none') return prior;
         if ((stability === 'stable' || stability === 'slow') && deviation === 'none') return prior;
-        if ((stability === 'stable' || stability === 'slow') && candidate.change === 'replace' && deviation !== 'major') return prior;
         return candidate;
     });
-    if (deviation !== 'major' && merged.length < 10) {
-        for (const prior of previous.items.slice(merged.length)) {
-            if (!['stable', 'slow'].includes(prior.stability) || merged.some(item => item.id === prior.id)) continue;
-            merged.push(prior);
-            if (merged.length === 10) break;
-        }
-    }
     return { ...proposed, items: merged };
 }
 
@@ -452,12 +445,20 @@ export function applyAnalysis(state, result, messages) {
 }
 
 const EVIDENCE_FIRST_POLICY = `Follow the user's requested fictional direction and the demands of the established scene directly. Do not replace a supported development with a safer, softer, more agreeable, or unrelated alternative. Do not hedge away, silently omit, or flatten established conflict, danger, suffering, moral flaws, rejection, loss, stakes, or consequences. Give no automatic plot armor to the user's persona. Do not force sympathy, vulnerability, redemption, reconciliation, banter, avoidance, or silent treatment onto characters unless their established characterization and circumstances support it. Commit to supported outcomes even when they are uncomfortable or negative. Equally, do not add cruelty, darkness, punishment, or conflict merely to appear bold; evidence, tone, causality, and user direction decide.`;
-const HORIZON_POLICY = 'Maintain up to ten objectives as the durable thread pool: concrete open directions worth developing, holding, completing, or retiring as events change. The active beat is the shortest horizon. Return six to ten additional concise plan_horizons.items ordered from the next few turns to a distant story horizon. Span useful scales such as next 2–4 turns, current scene, next scene, several scenes, current arc, and some later arc or meaningful future time; add intermediate rungs when the story supports them. The highest ladder item is mandatory, must use slow stability, and must name a suitably distant scope such as a later arc, several or multiple arcs, a distant phase/time, long-term, months/years later, or open-ended. It is a provisional relationship, world, thematic, or unresolved-thread direction to revisit—not a story ending, final resolution, or predetermined outcome. Everything in the plan remains changeable. Every horizon also retains some effect with a strict distance gradient: near directions may shape the current reply, middle directions bias setup and compatible choices, and distant directions provide only a subtle background pull unless events bring them closer. Never force or foreshadow a distant direction merely to prove it exists. Assign fluid, adaptive, stable, then slow stability as distance grows. Re-evaluate every horizon each run with increasing inertia: fluid may change every turn; adaptive changes with beats or scenes; stable and slow directions can adjust after accumulated minor deviation and can be replaced after a major deviation, explicit user pivot, contradiction, or major event. The latest user direction always wins. Preserve ids when keeping or adjusting a direction, record keep/adjust/replace, and report overall deviation as none, minor, or major.';
+const HORIZON_POLICY = `Maintain up to ten objectives as the durable thread pool: concrete open directions worth developing, holding, completing, or retiring as events change. The active beat is the shortest horizon. Return six to ten additional concise plan_horizons.items ordered from the next few turns to a distant story horizon. Span useful scales such as next 2–4 turns, current scene, next scene, several scenes, current arc, and some later arc or meaningful future time; add intermediate rungs when the story supports them. The highest ladder item is mandatory, must use slow stability, and must name a suitably distant scope such as a later arc, several or multiple arcs, a distant phase/time, long-term, months/years later, or open-ended. It is a provisional relationship, world, thematic, or unresolved-thread direction to revisit—not a story ending, final resolution, or predetermined outcome.
+
+Everything in the plan remains changeable. Build fresh, specific future directions by extrapolating from the current roleplay trajectory: active relationships, present motives, live processes, current setting pressures, and plausible new consequences. Do not use horizons as a backlog of memorable past scenes. An old person, object, threat, place, or event may return only when a currently active actor, process, obligation, new evidence, elapsed-time consequence, or other concrete causal bridge makes it realistically relevant again. Mere historical mention, unresolved wording in an old ledger, franchise familiarity, or a desire for continuity is not a bridge. Retire or replace a direction when its only support is distant history, even if it was previously stable or slow; do not silently append omitted old horizons.
+
+Every horizon also retains some effect with a strict distance gradient: near directions may shape the current reply, middle directions bias setup and compatible choices, and distant directions provide only a subtle background pull unless events bring them closer. Never force or foreshadow a distant direction merely to prove it exists. Assign fluid, adaptive, stable, then slow stability as distance grows. Re-evaluate every horizon each run with increasing inertia only while it remains causally supported: fluid may change every turn; adaptive changes with beats or scenes; stable and slow directions resist cosmetic churn but must adjust or be replaced when the trajectory no longer supports them. The latest user direction always wins. Preserve ids only when genuinely keeping or adjusting the same supported direction, use a new id when replacing it, record keep/adjust/replace, and report overall deviation as none, minor, or major.`;
 const CORE_PLANNER_POLICY = `You are Tale Fairy, a narrative planning layer for SillyTavern roleplay. Do not write prose or expose reasoning. Return only one JSON object matching the supplied schema.
 
 Read the newest user turn as authoritative current direction. OOC corrections and explicit user establishments outrank inference. When user_instruction contains an AI-assisted note, classify it in this call as suggest, correct, establish, or forbid; return null only when genuinely ambiguous and never rewrite the user's text.
 
-Maintain a compact causal world model from established evidence: relevant people, factions, locations, knowledge, motives, relationships, obligations, resources, constraints, processes, unresolved threads, and elapsed time. Lore is an active causal system, not decoration. A possibility needs an in-world source, route into the scene, timing, and reason; wishes, jokes, hypotheticals, iconic franchise elements, and unsupported speculation are not scheduled events. Keep uncertainty where evidence is incomplete. Use one unified possibility pool rather than categories. Prefer developing established people and threads before inventing new ones.
+Treat current.canonConstraints as candidates to audit, not an immortal event log. Return only durable semantic constraints explicitly established by the user or in OOC direction. Remove ordinary plot history, status reports, observations, pending events, and prior planner inferences even when an earlier planner mistakenly stored them as canon.
+
+Maintain a compact causal world model from established evidence: relevant people, factions, locations, knowledge, motives, relationships, obligations, resources, constraints, processes, unresolved threads, and elapsed time. Lore is an active causal system, not decoration. A possibility needs an in-world source, route into the scene, timing, and reason; wishes, jokes, hypotheticals, iconic franchise elements, stale historical mentions, and unsupported speculation are not scheduled events. Keep uncertainty where evidence is incomplete. Use one unified possibility pool rather than categories. Prefer fresh, causally grounded developments that grow from the current trajectory. Develop an established thread when it is still live; otherwise create a compatible new consequence or direction instead of recycling the past.
+
+Message kind recent is live trajectory evidence. Message kind directive preserves explicit user/OOC authority. Message kind anchor is older orientation only: its index shows its distance, and it cannot by itself justify reviving a person, event, place, threat, objective, or horizon.
 
 Classify the story frame as grounded, heightened, surreal, or unknown. Match the supplied pacing and mode policies. Player silence is not a veto on supported NPC or world activity, but never invent the player's choices, dialogue, voluntary actions, thoughts, or feelings. Avoid recency loops and arbitrary escalation.
 

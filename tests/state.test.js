@@ -12,7 +12,7 @@ test('state normalizes caps and invalid mode', () => {
     assert.equal(state.mode, 'balanced');
     assert.equal(state.enabled, false);
     assert.equal(state.objectives.length, 9);
-    assert.equal(state.version, 8);
+    assert.equal(state.version, 9);
 });
 
 test('state round trips through portable metadata', () => {

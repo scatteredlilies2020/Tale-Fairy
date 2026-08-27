@@ -44,7 +44,7 @@ test('planner validation rejects empty or incomplete structured output', () => {
 test('planner keeps a causal possibility pool and adaptive multi-horizon plan', () => {
     assert.match(SYSTEM, /one unified possibility pool rather than categories/);
     assert.match(SYSTEM, /source, route into the scene, timing, and reason/);
-    assert.match(SYSTEM, /iconic franchise elements, and unsupported speculation are not scheduled events/);
+    assert.match(SYSTEM, /iconic franchise elements, stale historical mentions, and unsupported speculation are not scheduled events/);
     assert.match(SYSTEM, /classify it in this call as suggest, correct, establish, or forbid/);
     assert.match(SYSTEM, /return null only when genuinely ambiguous/);
     assert.match(SYSTEM, /never rewrite the user's text/);
@@ -55,8 +55,15 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /Everything in the plan remains changeable/);
     assert.match(SYSTEM, /Every horizon also retains some effect with a strict distance gradient/);
     assert.match(SYSTEM, /distant directions provide only a subtle background pull/);
-    assert.match(SYSTEM, /stable and slow directions can adjust after accumulated minor deviation/);
+    assert.match(SYSTEM, /stable and slow directions resist cosmetic churn but must adjust or be replaced/);
     assert.match(SYSTEM, /not a story ending, final resolution, or predetermined outcome/);
+    assert.match(SYSTEM, /Build fresh, specific future directions by extrapolating from the current roleplay trajectory/);
+    assert.match(SYSTEM, /Do not use horizons as a backlog of memorable past scenes/);
+    assert.match(SYSTEM, /only support is distant history/);
+    assert.match(SYSTEM, /currently active actor, process, obligation, new evidence, elapsed-time consequence/);
+    assert.match(SYSTEM, /current\.canonConstraints as candidates to audit, not an immortal event log/);
+    assert.match(SYSTEM, /Message kind anchor is older orientation only/);
+    assert.match(SYSTEM, /cannot by itself justify reviving/);
     assert.match(SYSTEM, /Do not replace a supported development with a safer, softer/);
     assert.match(SYSTEM, /Give no automatic plot armor/);
     assert.match(SYSTEM, /Do not force sympathy, vulnerability, redemption, reconciliation, banter, avoidance, or silent treatment/);
@@ -109,7 +116,8 @@ test('planner preserves explicit extreme canon without normalizing it to setting
     assert.match(prompt.extreme_canon_instruction, /facts remain authoritative even when extreme, unique, unprecedented/);
     assert.match(prompt.extreme_canon_instruction, /averages are context, not ceilings/);
     assert.match(prompt.extreme_canon_instruction, /Unspecified details remain creative space/);
-    assert.match(prompt.extreme_canon_instruction, /complete current durable constraints until the user explicitly corrects them/);
+    assert.match(prompt.extreme_canon_instruction, /complete current durable user-established constraints until explicitly corrected/);
+    assert.match(prompt.extreme_canon_instruction, /Ordinary event history, status reports, old observations, and planner inferences are not canon constraints/);
     const next = applyAnalysis(defaultState(), { canon_constraints: ['Lucia is among the highest in history; exact count is unspecified.'] }, []);
     assert.deepEqual(next.canonConstraints, ['Lucia is among the highest in history; exact count is unspecified.']);
 });
@@ -218,7 +226,7 @@ test('analysis application keeps guidance bounded and records its injection deci
     assert.match(next.lastReason, /established pace/);
 });
 
-test('active beat persists, adapts, and advances without rewriting distant horizons', () => {
+test('active beat persists while supported horizons resist cosmetic churn but stale ones can retire', () => {
     const messages = [{ mes: 'What does Mara say?', is_user: true }];
     const starting = {
         ...defaultState(),
@@ -227,16 +235,20 @@ test('active beat persists, adapts, and advances without rewriting distant horiz
         planHorizons: { items: planHorizons.items.map(item => ({ ...item, change: 'keep' })), deviation: { level: 'none', reason: 'On plan.' } },
     };
     const attemptedHorizons = planHorizons.items.map((item, index) => index === planHorizons.items.length - 1
-        ? { ...item, direction: 'Remove the obligation from every future direction.', change: 'replace' }
+        ? { ...item, direction: 'Cosmetically reword the same distant obligation.', change: 'adjust' }
         : { ...item, change: 'keep' });
-    const kept = applyAnalysis(starting, { active_beat: { ...activeBeat, lifecycle: 'keep' }, plan_horizons: { items: attemptedHorizons, deviation: { level: 'minor', reason: 'The wording changed, not the direction.' } } }, messages);
+    const kept = applyAnalysis(starting, { active_beat: { ...activeBeat, lifecycle: 'keep' }, plan_horizons: { items: attemptedHorizons, deviation: { level: 'none', reason: 'The wording changed, not the direction.' } } }, messages);
     assert.equal(kept.activeBeat.id, 'tea-talk');
     assert.equal(kept.activeBeat.startedAtTurn, 3);
     assert.equal(kept.beatHistory.length, 0);
     assert.equal(kept.planHorizons.items.at(-1).direction, 'Keep the obligation available as one evolving long-term pressure.');
 
-    const majorPivot = applyAnalysis(kept, { plan_horizons: { items: attemptedHorizons, deviation: { level: 'major', reason: 'The user explicitly rejected the obligation.' } } }, messages);
-    assert.equal(majorPivot.planHorizons.items.at(-1).direction, 'Remove the obligation from every future direction.');
+    const replacementHorizons = planHorizons.items.map((item, index) => index === planHorizons.items.length - 1
+        ? { ...item, id: 'fresh-future', direction: 'Let a new consequence grow from the current relationship.', change: 'replace' }
+        : { ...item, change: 'keep' });
+    const retired = applyAnalysis(kept, { plan_horizons: { items: replacementHorizons, deviation: { level: 'minor', reason: 'The old direction has no current causal support.' } } }, messages);
+    assert.equal(retired.planHorizons.items.at(-1).id, 'fresh-future');
+    assert.doesNotMatch(retired.planHorizons.items.at(-1).direction, /obligation/i);
 
     const advanced = applyAnalysis(kept, { active_beat: { ...activeBeat, id: 'reaction', objective: 'Let the answer change the relationship.', lifecycle: 'advance' } }, [...messages, { mes: 'Mara explains the concern.', is_user: false }]);
     assert.equal(advanced.activeBeat.id, 'reaction');
@@ -274,7 +286,7 @@ test('planner prompt enforces its hard budget while retaining priority context',
     assert.ok(prompt.length <= 10000);
     assert.ok(parsed.messages.filter(item => item.kind === 'recent').length >= 6);
     assert.ok(parsed.messages.some(item => item.kind === 'recent' && item.index === 39));
-    assert.ok(parsed.messages.some(item => item.kind === 'anchor' && item.index === 0));
+    assert.ok(parsed.messages.some(item => item.kind === 'anchor' && item.index > 0 && item.index < 16));
     assert.equal(parsed.messages.find(item => item.index === 39).content, messages[39].mes);
 });
 
@@ -294,6 +306,14 @@ test('latest turn stays complete by compacting redundant state and older excerpt
     const parsed = JSON.parse(prompt);
     assert.ok(prompt.length <= 12000);
     assert.equal(parsed.messages.at(-1).content, latest.trim());
+});
+
+test('bootstrap compaction keeps a recent trajectory anchor instead of reviving the opening scene', () => {
+    const messages = Array.from({ length: 520 }, (_, index) => ({ mes: `${index}: ${'current trajectory '.repeat(60)}`, is_user: index % 2 === 0 }));
+    messages[0] = { mes: `Old opening armored walker attack. ${'past '.repeat(300)}`, is_user: false };
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { messageWindow: 12, messageCharLimit: 700, maxPromptChars: 12000, bootstrapScan: true }));
+    assert.doesNotMatch(JSON.stringify(prompt.messages), /armored walker/i);
+    assert.ok(prompt.messages.some(item => item.kind === 'anchor' && item.index > 400));
 });
 
 test('hard budget also compacts a fully populated long-running planner state', () => {

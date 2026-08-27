@@ -10,6 +10,7 @@ Tale Fairy is a standalone SillyTavern extension that supplies an **adaptive nar
 - Maintains up to ten durable story threads plus six to ten ordered planning horizons, from the current reply through later arcs or meaningful distant timeframes—without assuming an ending.
 - Everything remains changeable. Short horizons move freely; increasingly distant horizons change more gradually as deviations accumulate, while explicit user pivots always win.
 - Gives every horizon a nonzero but decreasing influence: near directions can shape the reply, middle directions bias setup, and distant directions remain a subtle background pull until events bring them closer.
+- Builds distant horizons forward from the current roleplay trajectory instead of keeping a backlog of old scenes. A historical element returns only when a live actor, process, obligation, new fact, or elapsed-time consequence gives it a realistic route back into relevance.
 - Tracks one active beat with a concrete current action and observable completion condition. It keeps, advances, or replaces that beat as actual events and user direction demand.
 - Uses one planner pass through the active SillyTavern connection, a connection profile, a custom OpenAI-compatible endpoint, or OpenRouter.
 - Direct OpenAI-compatible and OpenRouter configurations can securely fetch available models through SillyTavern and select them from a dropdown, with manual model IDs retained as a fallback.
