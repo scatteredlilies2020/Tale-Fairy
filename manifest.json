@@ -3,12 +3,12 @@
   "loading_order": 65,
   "requires": [],
   "optional": [],
-  "js": "extension/index.js?v=0.3.9",
-  "css": "extension/style.css?v=0.3.9",
+  "js": "extension/index.js?v=0.4.0",
+  "css": "extension/style.css?v=0.4.0",
   "generate_interceptor": "livingWorldGuideGenerateInterceptor",
   "author": "ScatteredLilies2020",
-  "version": "0.3.9",
+  "version": "0.4.0",
   "homePage": "https://github.com/scatteredlilies2020/Tale-Fairy",
   "auto_update": true,
-  "description": "An adaptive multi-horizon story planner that turns current user actions into a concrete live beat."
+  "description": "A non-blocking adaptive story planner with conditional pathways and multi-horizon guidance."
 }

@@ -1,4 +1,4 @@
-import { fingerprintMessages, normalizeBeat, normalizeState, stateForPrompt } from './state.js';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js';
 
 export const DEFAULT_PROMPT_BUDGET = 12000;
 
@@ -19,9 +19,9 @@ export const ANALYSIS_SCHEMA_VALUE = {
         objectives: { type: 'array', maxItems: 10, items: { type: 'object', additionalProperties: false, properties: { title: { type: 'string', maxLength: 120 }, detail: { type: 'string', maxLength: 300 }, status: { type: 'string', maxLength: 40 }, source: { type: 'string', maxLength: 120 } }, required: ['title','detail','status','source'] } },
         entities: { type: 'array', maxItems: 8, items: { type: 'object', additionalProperties: false, properties: { name: { type: 'string', maxLength: 100 }, state: { type: 'string', maxLength: 220 }, location: { type: 'string', maxLength: 140 }, relevance: { type: 'string', maxLength: 140 }, confidence: { type: 'string', maxLength: 40 }, window: { type: 'string', maxLength: 100 } }, required: ['name','state','location','relevance','confidence','window'] } },
         possibilities: { type: 'array', maxItems: 6, items: { type: 'object', additionalProperties: false, properties: { description: { type: 'string', maxLength: 280 }, conditions: { type: 'array', maxItems: 4, items: { type: 'string', maxLength: 140 } }, force: { type: 'string', maxLength: 40 } }, required: ['description','conditions','force'] } },
-        active_beat: { type: 'object', additionalProperties: false, properties: {
-            id: { type: 'string', maxLength: 100 }, objective: { type: 'string', maxLength: 360 }, next_action: { type: 'string', maxLength: 500 }, completion: { type: 'string', maxLength: 360 }, lifecycle: { type: 'string', enum: ['keep','advance','replace'] }, reason: { type: 'string', maxLength: 280 },
-        }, required: ['id','objective','next_action','completion','lifecycle','reason'] },
+        pathways: { type: 'array', minItems: 1, maxItems: 5, items: { type: 'object', additionalProperties: false, properties: {
+            id: { type: 'string', maxLength: 100 }, direction: { type: 'string', maxLength: 320 }, when: { type: 'string', maxLength: 240 }, response_bias: { type: 'string', maxLength: 300 }, horizon: { type: 'string', maxLength: 80 }, status: { type: 'string', enum: ['foreground','available','latent','blocked'] }, conditions: { type: 'array', maxItems: 3, items: { type: 'string', maxLength: 140 } }, change: { type: 'string', enum: ['keep','adjust','activate','deactivate','replace','retire'] }, reason: { type: 'string', maxLength: 220 },
+        }, required: ['id','direction','when','response_bias','horizon','status','conditions','change','reason'] } },
         plan_horizons: { type: 'object', additionalProperties: false, properties: {
             items: { type: 'array', minItems: 6, maxItems: 10, items: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', maxLength: 100 }, direction: { type: 'string', maxLength: 360 }, timeframe: { type: 'string', maxLength: 120 }, stability: { type: 'string', enum: ['fluid','adaptive','stable','slow'] }, conditions: { type: 'array', maxItems: 3, items: { type: 'string', maxLength: 140 } }, change: { type: 'string', enum: ['keep','adjust','replace'] }, reason: { type: 'string', maxLength: 220 } }, required: ['id','direction','timeframe','stability','conditions','change','reason'] } },
             deviation: { type: 'object', additionalProperties: false, properties: { level: { type: 'string', enum: ['none','minor','major'] }, reason: { type: 'string' } }, required: ['level','reason'] },
@@ -34,7 +34,7 @@ export const ANALYSIS_SCHEMA_VALUE = {
         ledger: { type: 'string', maxLength: 3000 },
         narrative_events: { type: 'array', maxItems: 6, items: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', maxLength: 80 }, title: { type: 'string', maxLength: 120 }, summary: { type: 'string', maxLength: 300 }, status: { type: 'string', maxLength: 40 }, relevance: { type: 'string', maxLength: 40 }, confidence: { type: 'string', maxLength: 40 }, feasibility: { type: 'string', maxLength: 40 }, basis: { type: 'string', maxLength: 160 }, requirements: { type: 'array', maxItems: 4, items: { type: 'string', maxLength: 120 } }, interpretation: { type: 'string', maxLength: 40 }, source_hint: { type: 'string', maxLength: 120 } }, required: ['id','title','summary','status','relevance','confidence','feasibility','basis','requirements','interpretation','source_hint'] } },
         guidance: { type: 'string', maxLength: 700 }, inject: { type: 'boolean', const: true }, reason: { type: 'string', maxLength: 300 },
-    }, required: ['story_frame','scene','objectives','entities','possibilities','active_beat','plan_horizons','canon_constraints','note_resolution','ledger','narrative_events','guidance','inject','reason'],
+    }, required: ['story_frame','scene','objectives','entities','possibilities','pathways','plan_horizons','canon_constraints','note_resolution','ledger','narrative_events','guidance','inject','reason'],
 };
 
 export const ANALYSIS_SCHEMA = Object.freeze({
@@ -87,14 +87,17 @@ export function validateAnalysisResult(result) {
     for (const key of ['objectives', 'entities', 'possibilities']) {
         if (!Array.isArray(result[key])) errors.push(`${key} must be an array`);
     }
-    const beat = result.active_beat;
-    if (!beat || typeof beat !== 'object' || Array.isArray(beat)) {
-        errors.push('active_beat must be an object');
-    } else {
-        for (const key of ['id', 'objective', 'next_action', 'completion', 'reason']) {
-            if (typeof beat[key] !== 'string' || !beat[key].trim()) errors.push(`active_beat.${key} must be a non-empty string`);
+    if (!Array.isArray(result.pathways) || result.pathways.length < 1 || result.pathways.length > 5) {
+        errors.push('pathways must contain 1 to 5 conditional routes');
+    }
+    for (const [index, pathway] of (Array.isArray(result.pathways) ? result.pathways : []).entries()) {
+        for (const key of ['id', 'direction', 'when', 'response_bias', 'horizon', 'reason']) {
+            if (typeof pathway?.[key] !== 'string') errors.push(`pathways[${index}].${key} must be a string`);
         }
-        if (!['keep', 'advance', 'replace'].includes(beat.lifecycle)) errors.push('active_beat.lifecycle must be keep, advance, or replace');
+        if (!pathway?.id?.trim() || !pathway?.direction?.trim() || !pathway?.when?.trim()) errors.push(`pathways[${index}] must identify a direction and activation condition`);
+        if (!Array.isArray(pathway?.conditions)) errors.push(`pathways[${index}].conditions must be an array`);
+        if (!['foreground', 'available', 'latent', 'blocked'].includes(pathway?.status)) errors.push(`pathways[${index}].status is invalid`);
+        if (!['keep', 'adjust', 'activate', 'deactivate', 'replace', 'retire'].includes(pathway?.change)) errors.push(`pathways[${index}].change is invalid`);
     }
     const horizons = result.plan_horizons;
     if (!horizons || typeof horizons !== 'object' || Array.isArray(horizons)) {
@@ -133,7 +136,7 @@ export function validateAnalysisResult(result) {
             if (!['suggest', 'correct', 'establish', 'forbid'].includes(resolution.kind)) errors.push('note_resolution.kind must be a supported note kind');
         }
     }
-    if (typeof result.guidance !== 'string' || !result.guidance.trim()) errors.push('guidance must not be empty');
+    if (typeof result.guidance !== 'string') errors.push('guidance must be a string');
     return { valid: errors.length === 0, errors };
 }
 
@@ -216,7 +219,8 @@ function compactPromptStateForPriority(current = {}) {
         objectives: (current.objectives || []).slice(-2).map(item => ({ title: compactText(item.title, 80), detail: compactText(item.detail, 100), status: compactText(item.status, 30) })),
         entities: (current.entities || []).slice(-1).map(item => ({ name: compactText(item.name, 80), state: compactText(item.state, 100), location: compactText(item.location, 60), relevance: compactText(item.relevance, 60) })),
         possibilities: (current.possibilities || []).slice(-1).map(item => ({ description: compactText(item.description, 120), conditions: (item.conditions || []).slice(0, 1).map(value => compactText(value, 80)), force: compactText(item.force, 30) })),
-        activeBeat: current.activeBeat,
+        pathways: (current.pathways || []).slice(0, 5).map(item => ({ id: compactText(item.id, 60), direction: compactText(item.direction, 140), when: compactText(item.when, 100), responseBias: compactText(item.responseBias, 120), horizon: compactText(item.horizon, 40), status: item.status, change: item.change })),
+        activeBeat: current.pathways?.length ? undefined : current.activeBeat,
         planHorizons: {
             items: (horizons.items || []).map(item => ({ id: compactText(item.id, 80), direction: compactText(item.direction, 140), timeframe: compactText(item.timeframe, 80), stability: item.stability, change: item.change })),
             deviation: { level: horizons.deviation?.level, reason: compactText(horizons.deviation?.reason, 140) },
@@ -237,7 +241,8 @@ function compactPromptStateForBudget(current = {}) {
         objectives: (current.objectives || []).slice(-2).map(item => ({ title: compactText(item.title, 80), detail: compactText(item.detail, 100), status: compactText(item.status, 30) })),
         entities: (current.entities || []).slice(-1).map(item => ({ name: compactText(item.name, 80), state: compactText(item.state, 80), location: compactText(item.location, 60), relevance: compactText(item.relevance, 60) })),
         possibilities: (current.possibilities || []).slice(-1).map(item => ({ description: compactText(item.description, 100), conditions: (item.conditions || []).slice(0, 1).map(value => compactText(value, 70)), force: compactText(item.force, 30) })),
-        activeBeat: { id: compactText(beat.id, 80), objective: compactText(beat.objective, 180), nextAction: compactText(beat.nextAction, 260), completion: compactText(beat.completion, 180), lifecycle: beat.lifecycle },
+        pathways: (current.pathways || []).slice(0, 4).map(item => ({ id: compactText(item.id, 50), direction: compactText(item.direction, 100), when: compactText(item.when, 80), responseBias: compactText(item.responseBias, 90), horizon: compactText(item.horizon, 30), status: item.status })),
+        activeBeat: current.pathways?.length ? undefined : { id: compactText(beat.id, 80), objective: compactText(beat.objective, 180), nextAction: compactText(beat.nextAction, 260), completion: compactText(beat.completion, 180), lifecycle: beat.lifecycle },
         planHorizons: {
             items: (horizons.items || []).map(item => ({ id: compactText(item.id, 50), direction: compactText(item.direction, 60), timeframe: compactText(item.timeframe, 50), stability: item.stability })),
             deviation: { level: horizons.deviation?.level, reason: compactText(horizons.deviation?.reason, 100) },
@@ -293,6 +298,7 @@ function retrievalQueryTerms(state, recentMessages) {
         (current.objectives || []).flatMap(item => [item.title, item.detail]),
         current.activeBeat?.objective,
         current.activeBeat?.nextAction,
+        (current.pathways || []).flatMap(item => [item.direction, item.when, item.responseBias]),
     ], 2);
     return weighted;
 }
@@ -534,6 +540,15 @@ function mergePlanHorizons(previous, proposed) {
     return { ...proposed, items: merged };
 }
 
+function mergePathways(previous = [], proposed = []) {
+    return proposed.flatMap(candidate => {
+        if (candidate.change === 'retire') return [];
+        const prior = previous.find(item => item.id && item.id === candidate.id);
+        if (candidate.change === 'keep' && prior) return [{ ...prior, status: candidate.status }];
+        return [candidate];
+    }).slice(0, 5);
+}
+
 export function applyAnalysis(state, result, messages) {
     const playerName = playerCharacterName(messages);
     const next = normalizeState(useSpecificPlayerName(state, playerName));
@@ -543,6 +558,10 @@ export function applyAnalysis(state, result, messages) {
     next.objectives = Array.isArray(value.objectives) ? value.objectives.slice(0, 10) : next.objectives;
     next.entities = Array.isArray(value.entities) ? value.entities.slice(-8) : next.entities;
     next.possibilities = Array.isArray(value.possibilities) ? value.possibilities.slice(-6) : next.possibilities;
+    if (Array.isArray(value.pathways)) {
+        const proposed = normalizeState({ pathways: value.pathways }).pathways;
+        next.pathways = mergePathways(next.pathways, proposed);
+    }
     if (value.plan_horizons && typeof value.plan_horizons === 'object') {
         const proposed = normalizeState({ planHorizons: {
             items: value.plan_horizons.items,
@@ -550,30 +569,11 @@ export function applyAnalysis(state, result, messages) {
         } }).planHorizons;
         next.planHorizons = mergePlanHorizons(next.planHorizons, proposed);
     }
-    if (value.active_beat && typeof value.active_beat === 'object') {
-        const previous = next.activeBeat;
-        const planned = normalizeBeat(value.active_beat);
-        const nextTurn = next.turnCount + 1;
-        const continues = planned.lifecycle === 'keep' && previous.objective && planned.id === previous.id;
-        if (previous.objective && !continues) {
-            next.beatHistory = [...next.beatHistory, {
-                ...previous,
-                lifecycle: planned.lifecycle,
-                reason: planned.reason || previous.reason,
-                updatedAtTurn: nextTurn,
-            }].slice(-6);
-        }
-        next.activeBeat = {
-            ...planned,
-            startedAtTurn: continues ? previous.startedAtTurn : nextTurn,
-            updatedAtTurn: nextTurn,
-        };
-    }
     next.canonConstraints = Array.isArray(value.canon_constraints)
         ? value.canon_constraints.slice(-12).map(item => String(item || '').trim().slice(0, 500)).filter(Boolean)
         : next.canonConstraints;
     next.guidance = String(value.guidance || '').trim().slice(0, 700);
-    next.lastInject = Boolean(next.guidance);
+    next.lastInject = Boolean(next.pathways.length);
     next.lastReason = String(value.reason || '').trim().slice(0, 500);
     if (typeof value.ledger === 'string' && value.ledger.trim()) next.contextLedger = value.ledger.trim().slice(0, 3000);
     if (Array.isArray(value.narrative_events)) {
@@ -602,7 +602,7 @@ export function applyAnalysis(state, result, messages) {
 }
 
 const EVIDENCE_FIRST_POLICY = `Follow the user's requested fictional direction and the demands of the established scene directly. Do not replace a supported development with a safer, softer, more agreeable, or unrelated alternative. Do not hedge away, silently omit, or flatten established conflict, danger, suffering, moral flaws, rejection, loss, stakes, or consequences. Give no automatic plot armor to the user's persona. Do not force sympathy, vulnerability, redemption, reconciliation, banter, avoidance, or silent treatment onto characters unless their established characterization and circumstances support it. Commit to supported outcomes even when they are uncomfortable or negative. Equally, do not add cruelty, darkness, punishment, or conflict merely to appear bold; evidence, tone, causality, and user direction decide.`;
-const HORIZON_POLICY = `Maintain up to ten objectives as the durable thread pool: concrete open directions worth developing, holding, completing, or retiring as events change. The active beat is the shortest horizon. Return six to ten additional concise plan_horizons.items ordered from the next few turns to a distant story horizon. Span useful scales such as next 2–4 turns, current scene, next scene, several scenes, current arc, and some later arc or meaningful future time; add intermediate rungs when the story supports them. The highest ladder item is mandatory, must use slow stability, and must name a suitably distant scope such as a later arc, several or multiple arcs, a distant phase/time, long-term, months/years later, or open-ended. It is a provisional relationship, world, thematic, or unresolved-thread direction to revisit—not a story ending, final resolution, or predetermined outcome.
+const HORIZON_POLICY = `Maintain up to ten objectives as the durable thread pool: concrete open directions worth developing, holding, completing, or retiring as events change. Return six to ten concise plan_horizons.items ordered from the next few turns to a distant story horizon. Span useful scales such as next 2–4 turns, current scene, next scene, several scenes, current arc, and some later arc or meaningful future time; add intermediate rungs when the story supports them. The highest ladder item is mandatory, must use slow stability, and must name a suitably distant scope such as a later arc, several or multiple arcs, a distant phase/time, long-term, months/years later, or open-ended. It is a provisional relationship, world, thematic, or unresolved-thread direction to revisit—not a story ending, final resolution, or predetermined outcome.
 
 Everything in the plan remains changeable. Build fresh, specific future directions by extrapolating from the current roleplay trajectory: active relationships, present motives, live processes, current setting pressures, and plausible new consequences. Do not use horizons as a backlog of memorable past scenes. An old person, object, threat, place, or event may return only when a currently active actor, process, obligation, new evidence, elapsed-time consequence, or other concrete causal bridge makes it realistically relevant again. Mere historical mention, unresolved wording in an old ledger, franchise familiarity, or a desire for continuity is not a bridge. Retire or replace a direction when its only support is distant history, even if it was previously stable or slow; do not silently append omitted old horizons.
 
@@ -621,9 +621,9 @@ Classify the story frame as grounded, heightened, surreal, or unknown. Match the
 
 ${HORIZON_POLICY}
 
-Return one active_beat for the current reply. Compare current.activeBeat with the newest user action and actual last outcome. lifecycle=keep means the same beat remains but next_action may adapt; advance means its observable completion condition was met and the plan moves forward; replace means user direction or events invalidated it. Keep a stable id while continuing a beat. Its objective should span roughly one to three replies, next_action must be concrete and visibly performable now, and completion must be observable. It is a revisable plan, never a railroad or a required player action.
+Return one to five compact conditional pathways for what may follow the completed turn. A pathway is an editable route, not an event that must happen. Give every pathway a stable id, a specific direction, a clear when condition based on a possible user action or causal development, an optional response_bias, a horizon, a status, remaining conditions, a change operation, and a reason. Use foreground only for the most natural continuation, but it remains conditional. Use available for credible alternatives, latent for routes needing setup, and blocked when a known condition prevents entry. Keep preserves a route, adjust edits it, activate/deactivate switches availability, replace changes direction, and retire removes it. Re-evaluate the set after every completed assistant response. Do not manufacture immediate business merely to fill response_bias; an empty response_bias is valid when the next user action should decide the response. Never require the player to take a route.
 
-Always return inject=true, a complete active beat, six to ten plan horizons, and non-empty concise guidance containing only supporting facts or constraints not already stated in the beat. Keep the ledger compact. Every scene can have a useful beat, including quiet scenes.`;
+Always return inject=true, one to five pathways, six to ten plan horizons, and a guidance string containing only optional supporting detail not already represented by the pathways. Guidance may be empty. Keep the ledger compact.`;
 const PLANNER_SYSTEM = `${CORE_PLANNER_POLICY}\n${EVIDENCE_FIRST_POLICY}`;
 
 export { PLANNER_SYSTEM as SYSTEM, extractJson };

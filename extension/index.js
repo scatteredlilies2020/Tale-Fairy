@@ -13,7 +13,7 @@ import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.3.9';
+const RUNTIME_VERSION = '0.4.0';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -26,8 +26,6 @@ let analysisRequestFingerprint = '';
 let analysisRunId = 0;
 let generationRevision = 0;
 let internalAnalysisRequests = 0;
-let guidanceGateActive = 0;
-let guidanceGateStopSequence = 0;
 let analysisStopSequence = 0;
 let lastAnalysisError = '';
 let pendingRequestVerification = null;
@@ -558,7 +556,6 @@ function cancelRunningAnalysis(reason, status) {
 }
 
 function stopAnalysis() {
-    if (guidanceGateActive) guidanceGateStopSequence++;
     analysisStopSequence++;
     generationRevision++;
     if (!cancelRunningAnalysis('Tale Fairy analysis stopped by the user.', 'Stopped')) {
@@ -870,7 +867,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         lastAnalysisError = '';
         finalStatus = userNote && !resolvedNote
             ? 'Note not applied · try again'
-            : 'Guidance ready';
+            : 'Pathways ready';
         renderBoard(next);
         return next;
     })().catch(error => {
@@ -924,16 +921,13 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         : '';
     scratchpadText(board, 'scratchpad-frame', frame, 'Story frame is still uncertain.');
 
-    const beat = state.activeBeat?.objective
-        ? [
-            `Direction: ${state.activeBeat.objective}`,
-            state.activeBeat.nextAction && `This reply: ${state.activeBeat.nextAction}`,
-            state.activeBeat.completion && `Complete/reassess when: ${state.activeBeat.completion}`,
-            `Plan action: ${state.activeBeat.lifecycle || 'replace'}`,
-            state.activeBeat.reason && `Why: ${state.activeBeat.reason}`,
-        ].filter(Boolean).join('\n')
-        : '';
-    scratchpadText(board, 'scratchpad-active-beat', beat, 'No active beat yet.');
+    const pathwayLines = (state.pathways || []).map(item => [
+        `${item.id} [${item.status}${item.horizon ? ` · ${item.horizon}` : ''}${item.change !== 'keep' ? ` · ${item.change}` : ''}] — ${item.direction}`,
+        `Use when: ${item.when}`,
+        item.responseBias && `If chosen: ${item.responseBias}`,
+        item.conditions?.length && `Needs: ${item.conditions.join('; ')}`,
+    ].filter(Boolean).join('\n'));
+    scratchpadText(board, 'scratchpad-pathways', pathwayLines.join('\n\n'), 'No conditional pathways yet.');
 
     const horizonLines = (state.planHorizons?.items || []).map((item, index, items) => {
         const change = item.change && item.change !== 'keep' ? ` · ${item.change}` : '';
@@ -945,8 +939,8 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
 
     const decision = state.guidance
         ? `${state.guidance}${state.lastReason ? `\n\nWhy: ${state.lastReason}` : ''}`
-        : (state.lastReason ? `No guidance injected.\nWhy: ${state.lastReason}` : 'No guidance decision yet.');
-    scratchpadText(board, 'scratchpad-guidance', decision, 'No guidance decision yet.');
+        : (state.lastReason ? `No extra guidance.\nWhy: ${state.lastReason}` : 'No extra guidance.');
+    scratchpadText(board, 'scratchpad-guidance', decision, 'No extra guidance.');
 
     const chatId = String(currentContext().getCurrentChatId?.() || '');
     const verification = pendingRequestVerification?.chatId === chatId
@@ -1240,50 +1234,13 @@ function refreshControls(root = document.querySelector(`#${EXTENSION_ID}-setting
     renderDirectModelOptions(root);
 }
 
-export async function livingWorldGuideGenerateInterceptor(chat, _contextSize, abort, type) {
+export async function livingWorldGuideGenerateInterceptor(_chat, _contextSize, _abort, type) {
     if (internalAnalysisRequests > 0 || type === 'quiet' || !getSettings().enabled) return;
     const context = currentContext();
     const state = loadState(context.chatMetadata);
-    // Use the raw persisted chat rather than the host's prompt-processed copy so
-    // fingerprints match background analyses and saved chat metadata.
-    const messages = messagesFromChat(context.chat?.length ? context.chat : chat);
+    // Planning never blocks generation. The completed-turn plan is already in
+    // metadata and the latest user action selects or overrides its routes now.
     updatePrompt(state);
-    const chatId = String(context.getCurrentChatId?.() || '');
-    const reroll = type === 'regenerate' || type === 'swipe';
-    if (!reroll && isGuidanceUsable(state, messages, chatId)) return;
-
-    // MESSAGE_SENT normally starts this request first, allowing Tale Fairy to
-    // plan alongside earlier interceptors. The gate reuses that promise and
-    // prevents the provider request from outrunning the current live beat.
-    const stopSequence = guidanceGateStopSequence;
-    guidanceGateActive++;
-    try {
-        for (let attempt = 0; attempt < 3 && getSettings().enabled && guidanceGateStopSequence === stopSequence; attempt++) {
-            const next = await analyzeNow({ messages, force: reroll || attempt > 0 });
-            if (guidanceGateStopSequence !== stopSequence) break;
-            if (isGuidanceUsable(next, messages, chatId)) {
-                updatePrompt(next);
-                renderAnalysisActivity('Live beat ready', false);
-                return;
-            }
-            if (attempt < 2) {
-                const delay = 1500 * (2 ** attempt);
-                renderAnalysisActivity(`Planner retrying in ${Math.round(delay / 1000)}s…`, true);
-                await new Promise(resolve => setTimeout(resolve, delay));
-            }
-        }
-        if (guidanceGateStopSequence !== stopSequence || !getSettings().enabled) {
-            abort(true);
-            return;
-        }
-        // A broken planner must not strand the chat indefinitely. Continue
-        // with persistent canon/notes and clearly report the missing live beat.
-        updatePrompt(loadState(context.chatMetadata));
-        const detail = lastAnalysisError || 'reply continued without a live beat';
-        renderAnalysisActivity(`Planner unavailable · ${detail}`, false);
-    } finally {
-        guidanceGateActive = Math.max(0, guidanceGateActive - 1);
-    }
 }
 
 // SillyTavern resolves manifest.generate_interceptor through globalThis.
@@ -1300,27 +1257,22 @@ eventSource.on(event_types.GENERATE_AFTER_COMBINE_PROMPTS, ensureTextCompletionR
 
 if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPED, () => {
     pendingRequestVerification = null;
-    if (!guidanceGateActive || internalAnalysisRequests > 0) return;
-    guidanceGateStopSequence++;
-    cancelRunningAnalysis('Tale Fairy stopped with the pending reply.', 'Stopped');
 });
 eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
     generationRevision++;
     cancelRunningAnalysis('The chat advanced while Tale Fairy was analyzing.', 'Refreshing…');
     await confirmReturnedReplyUsedGuidance();
-    updatePrompt(loadState(currentContext().chatMetadata));
+    const context = currentContext();
+    const messages = messagesFromChat(context.chat || []);
+    updatePrompt(loadState(context.chatMetadata));
+    // One background planning cycle revises the routes after the completed
+    // assistant response. The next user generation never waits for it.
+    if (getSettings().enabled) void analyzeNow({ messages });
 });
 if (event_types.MESSAGE_SENT) eventSource.on(event_types.MESSAGE_SENT, () => {
     const context = currentContext();
     const state = loadState(context.chatMetadata);
-    const messages = messagesFromChat(context.chat || []);
     updatePrompt(state);
-    if (getSettings().enabled && !isGuidanceUsable(state, messages, String(context.getCurrentChatId?.() || ''))) {
-        // Start without awaiting so Continuity Memory and other interceptors
-        // can prepare in parallel. The Tale Fairy interceptor awaits this exact
-        // fingerprint before provider generation begins.
-        void analyzeNow({ messages });
-    }
 });
 for (const event of [event_types.MESSAGE_EDITED, event_types.MESSAGE_UPDATED, event_types.MESSAGE_DELETED]) {
     if (event) eventSource.on(event, () => {

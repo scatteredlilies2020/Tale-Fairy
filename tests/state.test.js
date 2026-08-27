@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { buildPromptPayload, clearState, defaultState, fingerprintMessages, hasExplicitProgressDirective, horizonInfluence, isGuidanceUsable, isStateAligned, loadState, normalizeState, saveState, STATE_KEY } from '../extension/state.js';
 
 const currentPlan = {
-    activeBeat: { id: 'beat', objective: 'Continue the active exchange.', nextAction: 'Have Mara answer.', completion: 'Mara has answered.', lifecycle: 'keep', reason: 'The question is current.' },
+    pathways: [{ id: 'answer', direction: 'Continue the active exchange.', when: 'The user continues or asks Mara.', responseBias: 'Have Mara answer.', horizon: 'near', status: 'foreground', conditions: [], change: 'keep', reason: 'The exchange is current.' }],
     planHorizons: { items: Array.from({ length: 6 }, (_, index) => ({ id: `h${index}`, direction: `Direction ${index}`, timeframe: index === 5 ? 'later arcs / open-ended' : `range ${index}`, stability: index < 2 ? 'adaptive' : index === 5 ? 'slow' : 'stable', conditions: [], change: 'keep', reason: 'Still relevant.' })), deviation: { level: 'none', reason: 'Aligned.' } },
 };
 
@@ -12,7 +12,7 @@ test('state normalizes caps and invalid mode', () => {
     assert.equal(state.mode, 'balanced');
     assert.equal(state.enabled, false);
     assert.equal(state.objectives.length, 9);
-    assert.equal(state.version, 9);
+    assert.equal(state.version, 10);
 });
 
 test('state round trips through portable metadata', () => {
@@ -53,11 +53,11 @@ test('alignment rejects changed or transferred chats', () => {
     assert.equal(isStateAligned(state, messages, 'b'), false);
 });
 
-test('guidance is usable only for the exact turn it analyzed', () => {
+test('completed-turn guidance can route exactly one new user action', () => {
     const analyzed = [{ mes: 'The room settles.', is_user: false }];
     const state = { ...defaultState(), ...currentPlan, scene: { status: 'active' }, guidance: 'Keep the pace quiet.', lastInject: true, sourceChatId: 'a', sourceMessageCount: 1, lastAnalysisFingerprint: fingerprintMessages(analyzed) };
     assert.equal(isGuidanceUsable(state, analyzed, 'a'), true);
-    assert.equal(isGuidanceUsable(state, [...analyzed, { mes: 'I look around.', is_user: true }], 'a'), false);
+    assert.equal(isGuidanceUsable(state, [...analyzed, { mes: 'I look around.', is_user: true }], 'a'), true);
     assert.equal(isGuidanceUsable(state, [...analyzed, { mes: 'Changed assistant text.', is_user: false }], 'a'), false);
     assert.equal(isGuidanceUsable(state, [...analyzed, { mes: 'I look.', is_user: true }, { mes: 'Reply', is_user: false }], 'a'), false);
     assert.equal(isGuidanceUsable(state, [...analyzed, { mes: 'I look around.', is_user: true }], 'b'), false);
@@ -95,7 +95,7 @@ test('prompt payload keeps user directives active and only includes usable guida
     const state = {
         ...defaultState(),
         guidance: 'Keep the scene grounded.',
-        activeBeat: { id: 'answer', objective: 'Resolve the immediate question.', nextAction: 'Have Mara answer with the established facts.', completion: 'Mara has answered.', lifecycle: 'replace', reason: 'The user asked her directly.' },
+        pathways: [{ id: 'answer', direction: 'Resolve the immediate question.', when: 'The user asks Mara or continues the exchange.', responseBias: 'Have Mara answer with the established facts.', horizon: 'this reply', status: 'foreground', conditions: [], change: 'replace', reason: 'The user may address her directly.' }],
         planHorizons: { items: [
             { id: 'now', direction: 'Answer Mara.', timeframe: 'this reply', stability: 'fluid', conditions: [], change: 'replace', reason: 'Direct question.' },
             { id: 'soon', direction: 'Explore the reaction.', timeframe: 'next 2–4 turns', stability: 'adaptive', conditions: [], change: 'replace', reason: 'Follow-through.' },
@@ -117,13 +117,14 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(stale, /without inventing the player's next voluntary action/);
     const current = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
     assert.match(current, /Keep the scene grounded/);
-    assert.match(current, /ACTIVE DIRECTION: Resolve the immediate question/);
-    assert.match(current, /NEXT BEAT — DO THIS IN THE CURRENT REPLY: Have Mara answer/);
-    assert.match(current, /COMPLETE OR REASSESS THIS BEAT WHEN: Mara has answered/);
+    assert.match(current, /PATHWAYS/);
+    assert.match(current, /Resolve the immediate question/);
+    assert.match(current, /USE WHEN: The user asks Mara or continues the exchange/);
+    assert.match(current, /IF CHOSEN: Have Mara answer with the established facts/);
     assert.match(current, /next 2–4 turns \[adaptive; moderate influence\]: Explore the reaction/);
     assert.match(current, /current arc \[stable; background influence\]: Revisit the obligation/);
     assert.match(current, /later arcs \/ open-ended \[slow; background influence\]: Let the obligation remain an evolving possibility/);
-    assert.match(current, /background should remain a subtle nonzero pull/);
+    assert.match(current, /Horizon influence decreases line by line/);
     assert.equal(buildPromptPayload(state, { enabled: false, guidanceUsable: true }), '');
 });
 
@@ -163,5 +164,5 @@ test('the compact policy advances declared actions while preserving player agenc
     assert.equal(hasExplicitProgressDirective('I open the consultation door and walk inside to receive my results.'), false);
     assert.match(payload, /Carry declared actions, questions, and choices through their immediate meaningful consequence/);
     assert.match(payload, /without inventing the player's next voluntary action/);
-    assert.match(payload, /The latest user action wins any conflict/);
+    assert.match(payload, /The latest user turn is authoritative/);
 });

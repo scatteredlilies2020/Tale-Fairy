@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, AnalysisValidationError, MODE_INSTRUCTIONS, applyAnalysis, buildAnalysisPrompt, extractJson, requireValidAnalysisResult, SYSTEM, validateAnalysisResult } from '../extension/analysis.js';
 import { defaultState } from '../extension/state.js';
 
-const activeBeat = { id: 'tea-talk', objective: 'Let the tea conversation reveal a useful tension.', next_action: 'Have Mara answer plainly and expose one concrete concern.', completion: 'Mara has stated the concern and the other character can react.', lifecycle: 'replace', reason: 'The latest question opens this beat.' };
+const pathways = [{ id: 'tea-talk', direction: 'Let the tea conversation reveal a useful tension.', when: 'The user continues the conversation or asks Mara directly.', response_bias: 'Have Mara answer plainly and expose one concrete concern.', horizon: 'next few turns', status: 'foreground', conditions: [], change: 'replace', reason: 'The current exchange supports this route.' }];
 const planHorizons = {
     items: [
         { id: 'reply', direction: 'Answer the immediate question.', timeframe: 'this reply', stability: 'fluid', conditions: [], change: 'replace', reason: 'Immediate user action.' },
@@ -15,7 +15,7 @@ const planHorizons = {
     ],
     deviation: { level: 'none', reason: 'Initial plan.' },
 };
-const requiredPlanning = { story_frame: { frame: 'grounded', confidence: 'high', basis: 'ordinary scene' }, active_beat: activeBeat, plan_horizons: planHorizons, canon_constraints: [], note_resolution: null, ledger: 'Tea conversation is active.', narrative_events: [] };
+const requiredPlanning = { story_frame: { frame: 'grounded', confidence: 'high', basis: 'ordinary scene' }, pathways, plan_horizons: planHorizons, canon_constraints: [], note_resolution: null, ledger: 'Tea conversation is active.', narrative_events: [] };
 
 test('extractJson accepts fenced and wrapped JSON', () => {
     assert.deepEqual(extractJson('```json\n{"inject":false}\n```'), { inject: false });
@@ -50,7 +50,7 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /never rewrite the user's text/);
     assert.match(SYSTEM, /Lore is an active causal system/);
     assert.match(SYSTEM, /Player silence is not a veto/);
-    assert.match(SYSTEM, /six to ten additional concise plan_horizons\.items ordered from the next few turns to a distant story horizon/);
+    assert.match(SYSTEM, /six to ten concise plan_horizons\.items ordered from the next few turns to a distant story horizon/);
     assert.match(SYSTEM, /some later arc or meaningful future time/);
     assert.match(SYSTEM, /Everything in the plan remains changeable/);
     assert.match(SYSTEM, /Every horizon also retains some effect with a strict distance gradient/);
@@ -68,7 +68,9 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /Give no automatic plot armor/);
     assert.match(SYSTEM, /Do not force sympathy, vulnerability, redemption, reconciliation, banter, avoidance, or silent treatment/);
     assert.match(SYSTEM, /do not add cruelty, darkness, punishment, or conflict merely to appear bold/);
-    assert.match(SYSTEM, /Every scene can have a useful beat, including quiet scenes/);
+    assert.match(SYSTEM, /one to five compact conditional pathways/);
+    assert.match(SYSTEM, /empty response_bias is valid/);
+    assert.match(SYSTEM, /Re-evaluate the set after every completed assistant response/);
 });
 
 test('planner validates an automatically resolved AI-assisted note', () => {
@@ -229,7 +231,7 @@ test('analysis prompt retrieves a few relevant older user statements without con
     messages[69] = { mes: 'I already told you exactly what my message is.', is_user: true };
     const state = {
         ...defaultState(),
-        activeBeat: { ...activeBeat, objective: 'Resolve the Chancellor petition about peace and aid for affected families.' },
+        pathways: [{ ...pathways[0], direction: 'Resolve the Chancellor petition about peace and aid for affected families.' }],
         contextLedger: 'The current thread concerns Lucia’s message to the Chancellor about the war.',
     };
     const prompt = JSON.parse(buildAnalysisPrompt(messages, state, '', {}, { messageWindow: 6, maxPromptChars: 12000 }));
@@ -264,7 +266,7 @@ test('canon bootstrap retains labeled OOC turns outside ordinary sampling points
 
 test('analysis application keeps guidance bounded and records its injection decision', () => {
     const messages = [{ mes: 'I make tea', is_user: true }];
-    const next = applyAnalysis(defaultState(), { scene: { status: 'active', activity: 'tea', pace: 'slow', intent: 'rest', location: 'kitchen', time: 'evening', loop: false }, objectives: [], entities: [], possibilities: [], guidance: 'x'.repeat(2000), inject: true, reason: 'A gentle reminder will preserve the established pace.' }, messages);
+    const next = applyAnalysis(defaultState(), { scene: { status: 'active', activity: 'tea', pace: 'slow', intent: 'rest', location: 'kitchen', time: 'evening', loop: false }, objectives: [], entities: [], possibilities: [], pathways, guidance: 'x'.repeat(2000), inject: true, reason: 'A gentle reminder will preserve the established pace.' }, messages);
     assert.equal(next.guidance.length, 700);
     assert.equal(next.sourceMessageCount, 1);
     assert.equal(next.scene.activity, 'tea');
@@ -272,21 +274,20 @@ test('analysis application keeps guidance bounded and records its injection deci
     assert.match(next.lastReason, /established pace/);
 });
 
-test('active beat persists while supported horizons resist cosmetic churn but stale ones can retire', () => {
+test('conditional pathways persist while supported horizons resist cosmetic churn but stale ones can retire', () => {
     const messages = [{ mes: 'What does Mara say?', is_user: true }];
     const starting = {
         ...defaultState(),
         turnCount: 3,
-        activeBeat: { id: 'tea-talk', objective: 'Surface Mara’s concern.', nextAction: 'Let Mara begin answering.', completion: 'The concern is stated.', lifecycle: 'replace', reason: 'A direct question.', startedAtTurn: 3, updatedAtTurn: 3 },
+        pathways: [{ ...pathways[0], direction: 'Surface Mara’s concern.', change: 'keep' }],
         planHorizons: { items: planHorizons.items.map(item => ({ ...item, change: 'keep' })), deviation: { level: 'none', reason: 'On plan.' } },
     };
     const attemptedHorizons = planHorizons.items.map((item, index) => index === planHorizons.items.length - 1
         ? { ...item, direction: 'Cosmetically reword the same distant obligation.', change: 'adjust' }
         : { ...item, change: 'keep' });
-    const kept = applyAnalysis(starting, { active_beat: { ...activeBeat, lifecycle: 'keep' }, plan_horizons: { items: attemptedHorizons, deviation: { level: 'none', reason: 'The wording changed, not the direction.' } } }, messages);
-    assert.equal(kept.activeBeat.id, 'tea-talk');
-    assert.equal(kept.activeBeat.startedAtTurn, 3);
-    assert.equal(kept.beatHistory.length, 0);
+    const kept = applyAnalysis(starting, { pathways: [{ ...pathways[0], direction: 'Cosmetic rewrite that should not replace the route.', change: 'keep' }], plan_horizons: { items: attemptedHorizons, deviation: { level: 'none', reason: 'The wording changed, not the direction.' } } }, messages);
+    assert.equal(kept.pathways[0].id, 'tea-talk');
+    assert.equal(kept.pathways[0].direction, 'Surface Mara’s concern.');
     assert.equal(kept.planHorizons.items.at(-1).direction, 'Keep the obligation available as one evolving long-term pressure.');
 
     const replacementHorizons = planHorizons.items.map((item, index) => index === planHorizons.items.length - 1
@@ -296,10 +297,8 @@ test('active beat persists while supported horizons resist cosmetic churn but st
     assert.equal(retired.planHorizons.items.at(-1).id, 'fresh-future');
     assert.doesNotMatch(retired.planHorizons.items.at(-1).direction, /obligation/i);
 
-    const advanced = applyAnalysis(kept, { active_beat: { ...activeBeat, id: 'reaction', objective: 'Let the answer change the relationship.', lifecycle: 'advance' } }, [...messages, { mes: 'Mara explains the concern.', is_user: false }]);
-    assert.equal(advanced.activeBeat.id, 'reaction');
-    assert.equal(advanced.beatHistory.at(-1).id, 'tea-talk');
-    assert.equal(advanced.beatHistory.at(-1).lifecycle, 'advance');
+    const switched = applyAnalysis(kept, { pathways: [{ ...pathways[0], id: 'reaction', direction: 'Let the answer change the relationship.', change: 'replace' }] }, [...messages, { mes: 'Mara explains the concern.', is_user: false }]);
+    assert.equal(switched.pathways[0].id, 'reaction');
 });
 
 test('narrative events are stored internally but guidance remains the only injected output', () => {
@@ -344,7 +343,7 @@ test('latest turn stays complete by compacting redundant state and older excerpt
         objectives: Array.from({ length: 8 }, (_, index) => ({ title: `thread-${index}`, detail: 'detail '.repeat(60), status: 'open' })),
         entities: Array.from({ length: 6 }, (_, index) => ({ name: `entity-${index}`, state: 'state '.repeat(40), location: 'somewhere', relevance: 'relevant' })),
         possibilities: Array.from({ length: 6 }, () => ({ description: 'possibility '.repeat(30), conditions: ['condition '.repeat(20)], force: 'moderate' })),
-        activeBeat,
+        pathways,
         planHorizons,
         contextLedger: 'ledger '.repeat(400),
     };
@@ -369,7 +368,7 @@ test('hard budget also compacts a fully populated long-running planner state', (
         objectives: Array.from({ length: 10 }, (_, index) => ({ title: `thread-${index}`, detail: long, status: 'open', source: long })),
         entities: Array.from({ length: 8 }, (_, index) => ({ name: `entity-${index}`, state: long, location: long, relevance: long, confidence: 'high', window: long })),
         possibilities: Array.from({ length: 6 }, () => ({ description: long, conditions: [long, long, long], force: 'moderate' })),
-        activeBeat: { id: 'active', objective: long, nextAction: long, completion: long, lifecycle: 'keep', reason: long },
+        pathways: [{ id: 'active', direction: long, when: long, responseBias: long, horizon: 'near', status: 'foreground', conditions: [long], change: 'keep', reason: long }],
         planHorizons: { items: Array.from({ length: 10 }, (_, index) => ({ id: `horizon-${index}`, direction: long, timeframe: long, stability: index === 9 ? 'slow' : 'adaptive', conditions: [long], change: 'adjust', reason: long })), deviation: { level: 'minor', reason: long } },
         canonConstraints: Array.from({ length: 12 }, () => long),
         userNotes: Array.from({ length: 12 }, () => ({ kind: 'establish', text: long, at: 1 })),

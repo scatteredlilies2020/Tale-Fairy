@@ -9,18 +9,18 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.3.9');
-    assert.equal(manifest.js, 'extension/index.js?v=0.3.9');
-    assert.equal(manifest.css, 'extension/style.css?v=0.3.9');
+    assert.equal(manifest.version, '0.4.0');
+    assert.equal(manifest.js, 'extension/index.js?v=0.4.0');
+    assert.equal(manifest.css, 'extension/style.css?v=0.4.0');
 });
 
-test('injected guidance carries an adaptive beat and compact horizon ladder', () => {
-    assert.match(stateSource, /This plan was revised after the latest user turn/);
-    assert.match(stateSource, /ACTIVE DIRECTION/);
-    assert.match(stateSource, /NEXT BEAT — DO THIS IN THE CURRENT REPLY/);
-    assert.match(stateSource, /COMPLETE OR REASSESS THIS BEAT WHEN/);
+test('injected guidance carries conditional pathways and a compact horizon ladder', () => {
+    assert.match(stateSource, /conditional pathways prepared after the last completed turn/);
+    assert.match(stateSource, /PATHWAYS/);
+    assert.match(stateSource, /USE WHEN/);
+    assert.match(stateSource, /IF CHOSEN/);
     assert.match(stateSource, /planHorizons\.items/);
-    assert.match(stateSource, /The latest user action wins any conflict/);
+    assert.match(stateSource, /latest user action now/);
 });
 
 test('extension UI and interceptor use SillyTavern third-party-compatible registration', () => {
@@ -93,12 +93,10 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /scratchpad-ledger/);
     assert.match(source, /configurePromptManagerInjection\(promptManager, s, payload\)/);
     assert.match(source, /injectionPosition: 'at-depth', injectionDepth: 2, injectionRole: 'user'/);
-    assert.match(source, /context\.chat\?\.length \? context\.chat : chat/);
     assert.match(source, /export async function livingWorldGuideGenerateInterceptor/);
-    assert.match(source, /livingWorldGuideGenerateInterceptor[\s\S]{0,2200}await analyzeNow\(\{ messages/);
-    assert.match(source, /isGuidanceUsable\(next, messages, chatId\)/);
-    assert.match(source, /Planner retrying in/);
-    assert.match(source, /abort\(true\)/);
+    assert.doesNotMatch(source, /livingWorldGuideGenerateInterceptor[\s\S]{0,1200}await analyzeNow/);
+    assert.match(source, /Planning never blocks generation/);
+    assert.doesNotMatch(source, /Planner retrying in|guidanceGateActive|guidanceGateStopSequence|abort\(true\)/);
     assert.match(source, /function randomVariationNonce/);
     assert.match(source, /function isolatePlannerGenerationData/);
     assert.match(source, /generateData\.temperature = 1/);
@@ -108,7 +106,8 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /generateData\.custom_prompt_post_processing = ''/);
     assert.match(source, /'stop', 'stopping_strings', 'logit_bias', 'tools', 'tool_choice'/);
     assert.match(source, /generateRaw\(\{[\s\S]{0,320}instructOverride: true/);
-    assert.match(source, /MESSAGE_SENT[\s\S]{0,900}void analyzeNow\(\{ messages \}\)/);
+    assert.doesNotMatch(source, /MESSAGE_SENT[\s\S]{0,500}analyzeNow/);
+    assert.match(source, /MESSAGE_RECEIVED[\s\S]{0,900}void analyzeNow\(\{ messages \}\)/);
     assert.doesNotMatch(source, /waitForBackgroundPlanner/);
     assert.doesNotMatch(source, /function backgroundRetryDelay/);
     assert.doesNotMatch(source, /scheduleBackgroundAnalysis/);
@@ -122,15 +121,12 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /analyzeNow\(\{ messages, force: true, rebuild: true \}\)/);
     assert.match(source, /void upgradeLegacyPlanIfNeeded\(\)/);
     assert.doesNotMatch(source, /setTimeout\(\(\) => \{ renderBoard\(\); scheduleBackgroundAnalysis\(300\); \}, 0\)/);
-    assert.match(source, /guidanceGateStopSequence/);
-    assert.match(source, /guidanceGateActive/);
     assert.match(source, /CHAT_COMPLETION_PROMPT_READY, ensureChatCompletionRequestGuidance/);
     assert.match(source, /CHAT_COMPLETION_SETTINGS_READY, ensureProviderChatRequestGuidance/);
     assert.match(source, /GENERATE_AFTER_COMBINE_PROMPTS, ensureTextCompletionRequestGuidance/);
     assert.match(source, /Guidance inserted into request/);
     assert.match(source, /Guidance verified in provider request/);
     assert.match(source, /Guidance confirmed in returned reply/);
-    assert.match(source, /Planner unavailable · \$\{detail\}/);
     assert.match(source, /CONFIRMED — the provider returned an assistant reply from a request containing this exact guide/);
     assert.doesNotMatch(template, /data-setting="wait-first"/);
     assert.doesNotMatch(source, /firstAnalysisWaitMs|waitForFirstAnalysis/);
@@ -155,7 +151,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(template, /Use Continuity context when available/);
     assert.match(template, /data-role="scratchpad-continuity"/);
     assert.match(template, /data-role="scratchpad-scene"/);
-    assert.match(template, /data-role="scratchpad-active-beat"/);
+    assert.match(template, /data-role="scratchpad-pathways"/);
     assert.match(template, /data-role="scratchpad-horizons"/);
     assert.match(template, /data-role="scratchpad-guidance"/);
     assert.match(template, /data-role="scratchpad-request-verification"/);
