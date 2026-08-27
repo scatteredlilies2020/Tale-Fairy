@@ -196,19 +196,22 @@ export function stateForPrompt(state) {
     const s = normalizeState(state);
     return {
         mode: s.mode,
-        scene: s.scene,
-        objectives: s.objectives.slice(-10),
-        entities: s.entities.filter(e => e && e.relevance !== 'ambient').slice(-6),
-        possibilities: s.possibilities.slice(-6),
-        activeBeat: s.activeBeat,
-        beatHistory: s.beatHistory.slice(-2),
-        planHorizons: s.planHorizons,
-        canonConstraints: s.canonConstraints,
+        scene: Object.fromEntries(Object.entries(s.scene).map(([key, value]) => [key, typeof value === 'string' ? value.slice(0, 100) : value])),
+        objectives: s.objectives.slice(-8).map(item => ({ title: item.title, detail: item.detail.slice(0, 180), status: item.status })),
+        entities: s.entities.filter(e => e && e.relevance !== 'ambient').slice(-3).map(item => ({ name: item.name, state: item.state.slice(0, 120), location: item.location.slice(0, 80), relevance: item.relevance.slice(0, 80) })),
+        possibilities: s.possibilities.slice(-3).map(item => ({ description: item.description.slice(0, 160), conditions: item.conditions.slice(0, 1).map(condition => condition.slice(0, 100)), force: item.force })),
+        activeBeat: { id: s.activeBeat.id, objective: s.activeBeat.objective, nextAction: s.activeBeat.nextAction, completion: s.activeBeat.completion, lifecycle: s.activeBeat.lifecycle },
+        beatHistory: s.beatHistory.slice(-1).map(beat => ({ id: beat.id, objective: beat.objective, completion: beat.completion, lifecycle: beat.lifecycle })),
+        planHorizons: {
+            items: s.planHorizons.items.map(item => ({ id: item.id, direction: item.direction.slice(0, 240), timeframe: item.timeframe, stability: item.stability, conditions: item.conditions.slice(0, 1), change: item.change })),
+            deviation: s.planHorizons.deviation,
+        },
+        canonConstraints: s.canonConstraints.slice(-8).map(item => item.slice(0, 360)),
         userNotes: s.userNotes.slice(-4),
-        lastReason: s.lastReason,
-        contextLedger: s.contextLedger,
-        storyFrame: s.storyFrame,
-        narrativeEvents: s.narrativeEvents.slice(-4),
+        lastReason: s.lastReason.slice(0, 180),
+        contextLedger: s.contextLedger.slice(0, 1400),
+        storyFrame: { frame: s.storyFrame.frame, confidence: s.storyFrame.confidence, basis: s.storyFrame.basis.slice(0, 180) },
+        narrativeEvents: s.narrativeEvents.slice(-1).map(event => ({ title: event.title, summary: event.summary.slice(0, 160), status: event.status, relevance: event.relevance })),
     };
 }
 

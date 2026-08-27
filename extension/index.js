@@ -520,6 +520,17 @@ function completionText(value) {
     return String(content ?? '');
 }
 
+function analysisErrorMessage(error) {
+    const messages = [];
+    let current = error;
+    for (let depth = 0; current && depth < 4; depth++) {
+        const message = String(current?.message || current).replace(/\s+/g, ' ').trim();
+        if (message && !messages.includes(message)) messages.push(message);
+        current = current?.cause;
+    }
+    return (messages.join(' → ') || 'Unknown planner failure').slice(0, 220);
+}
+
 function renderAnalysisActivity(message, running = false) {
     const root = document.querySelector(`#${EXTENSION_ID}-settings`);
     if (!root) return;
@@ -857,7 +868,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         return next;
     })().catch(error => {
         const stopped = error?.name === 'AbortError';
-        if (!stopped) lastAnalysisError = String(error?.message || error || 'Unknown planner failure').replace(/\s+/g, ' ').trim().slice(0, 180);
+        if (!stopped) lastAnalysisError = analysisErrorMessage(error);
         finalStatus = stopped ? 'Stopped' : `Analysis failed · ${lastAnalysisError}`;
         if (!stopped) console.warn(`[${EXTENSION_ID}] analysis skipped`, error);
         return loadState(context.chatMetadata);

@@ -9,7 +9,7 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.3.2');
+    assert.equal(manifest.version, '0.3.3');
 });
 
 test('injected guidance carries an adaptive beat and compact horizon ladder', () => {
@@ -60,6 +60,8 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /\['description', 'personality', 'scenario', 'persona'\]/);
     assert.match(source, /result\.cardSystemReference = String\(fields\.system\)/);
     assert.match(source, /function parseAnalysisResponse/);
+    assert.match(source, /function analysisErrorMessage/);
+    assert.match(source, /messages\.join\('\s*→\s*'\)/);
     assert.match(source, /active model structured request failed; retrying with a JSON-only prompt/);
     assert.match(source, /direct model structured request failed; retrying with a JSON-only prompt/);
     assert.match(source, /JSON\.stringify\(ANALYSIS_SCHEMA\.value\)/);

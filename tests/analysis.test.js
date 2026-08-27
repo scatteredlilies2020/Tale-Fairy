@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, AnalysisValidationError, EXTREME_CANON_INSTRUCTION, MODE_INSTRUCTIONS, PACING_INSTRUCTION, applyAnalysis, buildAnalysisPrompt, extractJson, requireValidAnalysisResult, SYSTEM, validateAnalysisResult } from '../extension/analysis.js';
+import { ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, AnalysisValidationError, MODE_INSTRUCTIONS, applyAnalysis, buildAnalysisPrompt, extractJson, requireValidAnalysisResult, SYSTEM, validateAnalysisResult } from '../extension/analysis.js';
 import { defaultState } from '../extension/state.js';
 
 const activeBeat = { id: 'tea-talk', objective: 'Let the tea conversation reveal a useful tension.', next_action: 'Have Mara answer plainly and expose one concrete concern.', completion: 'Mara has stated the concern and the other character can react.', lifecycle: 'replace', reason: 'The latest question opens this beat.' };
@@ -106,14 +106,10 @@ test('analysis prompt includes bootstrap context and current state', () => {
 
 test('planner preserves explicit extreme canon without normalizing it to setting averages', () => {
     const prompt = JSON.parse(buildAnalysisPrompt([{ mes: '[OOC: Lucia has a Midichlorian count off the charts, among the highest in history.]', is_user: true }], defaultState()));
-    assert.equal(prompt.extreme_canon_instruction, EXTREME_CANON_INSTRUCTION);
-    assert.match(prompt.extreme_canon_instruction, /Return canon_constraints as the complete current list/);
-    assert.match(prompt.extreme_canon_instruction, /statistically extreme, unprecedented, off-scale/);
-    assert.match(prompt.extreme_canon_instruction, /Setting averages and records provide contrast, not a ceiling/);
-    assert.match(prompt.extreme_canon_instruction, /Unspecified details are open creative space, not prohibited unknowns/);
-    assert.match(prompt.extreme_canon_instruction, /may freely invent one or leave it relational according to what best fits the narrative/);
-    assert.match(prompt.extreme_canon_instruction, /Never turn missing specificity into a refusal, hedge, delay, or demand for verification/);
-    assert.doesNotMatch(prompt.extreme_canon_instruction, /fabricating precision|invent a conservative exact number/);
+    assert.match(prompt.extreme_canon_instruction, /facts remain authoritative even when extreme, unique, unprecedented/);
+    assert.match(prompt.extreme_canon_instruction, /averages are context, not ceilings/);
+    assert.match(prompt.extreme_canon_instruction, /Unspecified details remain creative space/);
+    assert.match(prompt.extreme_canon_instruction, /complete current durable constraints until the user explicitly corrects them/);
     const next = applyAnalysis(defaultState(), { canon_constraints: ['Lucia is among the highest in history; exact count is unspecified.'] }, []);
     assert.deepEqual(next.canonConstraints, ['Lucia is among the highest in history; exact count is unspecified.']);
 });
@@ -162,16 +158,12 @@ test('planner modes provide materially distinct intervention policies', () => {
 test('every planner mode leaves narrative pacing under user control', () => {
     for (const mode of ['light', 'balanced', 'fun']) {
         const prompt = JSON.parse(buildAnalysisPrompt([{ mes: 'I keep watching for a while.', is_user: true }], { ...defaultState(), mode }));
-        assert.equal(prompt.pacing_instruction, PACING_INSTRUCTION);
-        assert.match(prompt.pacing_instruction, /Match that pacing/);
-        assert.match(prompt.pacing_instruction, /mode changes narrative pressure, boldness, and breadth of possibilities—not narrative speed/);
-        assert.match(prompt.pacing_instruction, /never means fragmenting one action across several replies/);
-        assert.match(prompt.pacing_instruction, /treat that as even more explicit binding minimum progress/);
-        assert.match(prompt.pacing_instruction, /Every declared action, direct question, and choice authorizes procedural follow-through/);
-        assert.match(prompt.pacing_instruction, /no pacing keyword is required/);
-        assert.match(prompt.pacing_instruction, /does not preselect the most obvious outcome or guarantee success/);
-        assert.match(prompt.pacing_instruction, /Prefer a fresh, specific development over the blandest predictable continuation/);
-        assert.match(prompt.pacing_instruction, /prepared from the complete current user turn/);
+        assert.match(prompt.pacing_instruction, /Match the user’s demonstrated speed and granularity/);
+        assert.match(prompt.pacing_instruction, /Complete declared actions, direct questions, and routine implied mechanics/);
+        assert.match(prompt.pacing_instruction, /mode changes narrative pressure, not speed/);
+        assert.match(prompt.pacing_instruction, /Explicit requests to advance or reach a milestone are binding minimum progress/);
+        assert.match(prompt.pacing_instruction, /without inventing the player’s choices/);
+        assert.match(prompt.pacing_instruction, /complete latest user turn/);
     }
     assert.match(MODE_INSTRUCTIONS.light, /must not artificially prolong a beat or slow a user/);
     assert.match(MODE_INSTRUCTIONS.balanced, /does not mean changing the user's narrative speed/);
@@ -213,7 +205,7 @@ test('canon bootstrap retains labeled OOC turns outside ordinary sampling points
     const messages = Array.from({ length: 60 }, (_, i) => ({ mes: `message-${i}`, is_user: i % 2 === 0 }));
     messages[22] = { mes: 'OOC: Lucia is off the charts and among the highest in history.', is_user: true };
     const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { messageWindow: 4, bootstrapScan: true }));
-    assert.ok(prompt.messages.some(item => item.index === 22 && /off the charts/.test(item.content)));
+    assert.ok(prompt.messages.some(item => item.index === 22 && item.kind === 'directive' && /off the charts/.test(item.content)));
 });
 
 test('analysis application keeps guidance bounded and records its injection decision', () => {
@@ -275,15 +267,35 @@ test('jokes, wishes, and unsupported absurdities are not retained as events', ()
     assert.deepEqual(next.narrativeEvents.map(event => event.id), ['real']);
 });
 
-test('planner prompt uses a soft budget and retains selected context', () => {
+test('planner prompt enforces its hard budget while retaining priority context', () => {
     const messages = Array.from({ length: 40 }, (_, i) => ({ mes: 'x'.repeat(2000) + i, is_user: i % 2 === 0 }));
     const prompt = buildAnalysisPrompt(messages, { ...defaultState(), contextLedger: 'y'.repeat(4000) }, 'z'.repeat(2000), { description: 'd'.repeat(3500) }, { messageWindow: 24, maxPromptChars: 10000, continuityContext: 'c'.repeat(6000), hostContext: 'h'.repeat(8000), bootstrapScan: true });
     const parsed = JSON.parse(prompt);
-    assert.ok(prompt.length > 10000);
-    assert.ok(parsed.messages.length >= 24);
+    assert.ok(prompt.length <= 10000);
+    assert.ok(parsed.messages.filter(item => item.kind === 'recent').length >= 6);
     assert.ok(parsed.messages.some(item => item.kind === 'recent' && item.index === 39));
     assert.ok(parsed.messages.some(item => item.kind === 'anchor' && item.index === 0));
-    assert.equal(parsed.messages.find(item => item.index === 39).content.length, 1400);
+    assert.ok(parsed.messages.find(item => item.index === 39).content.length <= 900);
+    assert.ok(parsed.messages.find(item => item.index === 39).content.length >= 400);
+});
+
+test('hard budget also compacts a fully populated long-running planner state', () => {
+    const long = 'x'.repeat(1000);
+    const state = {
+        ...defaultState(),
+        objectives: Array.from({ length: 10 }, (_, index) => ({ title: `thread-${index}`, detail: long, status: 'open', source: long })),
+        entities: Array.from({ length: 8 }, (_, index) => ({ name: `entity-${index}`, state: long, location: long, relevance: long, confidence: 'high', window: long })),
+        possibilities: Array.from({ length: 6 }, () => ({ description: long, conditions: [long, long, long], force: 'moderate' })),
+        activeBeat: { id: 'active', objective: long, nextAction: long, completion: long, lifecycle: 'keep', reason: long },
+        planHorizons: { items: Array.from({ length: 10 }, (_, index) => ({ id: `horizon-${index}`, direction: long, timeframe: long, stability: index === 9 ? 'slow' : 'adaptive', conditions: [long], change: 'adjust', reason: long })), deviation: { level: 'minor', reason: long } },
+        canonConstraints: Array.from({ length: 12 }, () => long),
+        userNotes: Array.from({ length: 12 }, () => ({ kind: 'establish', text: long, at: 1 })),
+        contextLedger: long.repeat(3),
+    };
+    const messages = Array.from({ length: 80 }, (_, index) => ({ mes: long.repeat(4) + index, is_user: index % 2 === 0 }));
+    const prompt = buildAnalysisPrompt(messages, state, long, { scenario: long }, { messageWindow: 80, messageCharLimit: 4000, maxPromptChars: 8000, continuityContext: long.repeat(6), hostContext: long.repeat(8), bootstrapScan: true });
+    assert.ok(prompt.length <= 8000);
+    assert.equal(JSON.parse(prompt).messages.at(-1).index, 79);
 });
 
 test('planner excerpts remove generated scaffolding and preserve both ends of long prose', () => {
