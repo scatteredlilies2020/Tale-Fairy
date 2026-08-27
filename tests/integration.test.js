@@ -8,8 +8,8 @@ const template = await readFile(new URL('../extension/settings.html', import.met
 const styles = await readFile(new URL('../extension/style.css', import.meta.url), 'utf8');
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
-test('manifest identifies the complete guide-state reset release', () => {
-    assert.equal(manifest.version, '0.2.2');
+test('manifest identifies the profile reasoning release', () => {
+    assert.equal(manifest.version, '0.2.3');
 });
 
 test('injected guidance is authoritative context while preserving user pacing', () => {
@@ -44,6 +44,8 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(template, /data-action="fetch-models"/);
     assert.match(template, /data-setting="model-list"/);
     assert.match(template, /Model ID \(manual or selected\)/);
+    assert.match(template, /data-setting="reasoning"/);
+    assert.match(template, /Auto inherits the selected Connection Manager profile or its preset/);
     assert.doesNotMatch(template, /data-setting="source"|data-setting="profile"|data-setting="provider"/);
     assert.match(source, /function applyAnalysisConnectionChoice/);
     assert.match(source, /function rememberDirectSettings/);
@@ -72,7 +74,12 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /PLANNER_RESPONSE_TOKENS = 3000/);
     assert.match(source, /suppressErrorToasts: true/);
     assert.match(source, /activeSource === 'openrouter'/);
-    assert.match(source, /model\.provider === 'openrouter'\) return await send\(false\)/);
+    assert.match(source, /const structured = model\.provider !== 'openrouter'/);
+    assert.match(source, /analysisReasoningMode: 'auto'/);
+    assert.match(source, /function plannerReasoningMode/);
+    assert.match(source, /openai_setting_names,[\s\S]*openai_settings,[\s\S]*oai_settings\?\.reasoning_effort/);
+    assert.match(source, /\.\.\.reasoningPayload/);
+    assert.match(source, /isolatePlannerGenerationData\(generateData, variationSeed, activeReasoningMode\)/);
     assert.match(source, /isGuidanceUsable\(state, messages/);
     assert.match(source, /buildPromptPayload\(state/);
     assert.match(source, /function renderBoard/);

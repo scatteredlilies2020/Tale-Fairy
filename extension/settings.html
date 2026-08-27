@@ -85,6 +85,18 @@
           </select>
         </label>
         <small>Choose the active model, a Connection Manager profile, or a direct provider. Connection profiles supply the endpoint, model, and authentication.</small>
+        <label>Reasoning / thinking
+          <select class="text_pole" data-setting="reasoning">
+            <option value="auto">Auto (selected profile)</option>
+            <option value="off">Off</option>
+            <option value="minimum">Minimum</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="max">Maximum</option>
+          </select>
+        </label>
+        <small>Auto inherits the selected Connection Manager profile or its preset, then SillyTavern's active reasoning effort. Choose a level to override it for Tale Fairy only. Provider-specific controls are translated automatically.</small>
 
         <div class="living-world-guide-card-inset" data-source-panel="direct" hidden>
           <b data-role="direct-title">Direct planner API</b>

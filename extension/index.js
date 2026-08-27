@@ -3,20 +3,21 @@ import { getContext } from '/scripts/st-context.js';
 import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
-import { promptManager } from '/scripts/openai.js';
+import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
 import { AnalysisValidationError, applyAnalysis, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, requireValidAnalysisResult, SYSTEM } from './analysis.js';
 import { buildPromptPayload, clearState, defaultState, fingerprintMessages, isGuidanceUsable, loadState, saveState } from './state.js';
 import { resolveInjectionPlacement } from './injection-placement.js';
 import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js';
 import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, textHasCurrentGuidance } from './request-injection.js';
 import { normalizeModelListResponse } from './models.js';
+import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
 const INJECTION_POSITIONS = new Set(['before-main', 'after-main', 'before-character-definitions', 'after-character-definitions', 'before-example-messages', 'after-example-messages', 'before-an', 'after-an', 'before-chat-history', 'after-chat-history', 'before-jailbreak', 'after-jailbreak', 'at-depth']);
-const DEFAULT_SETTINGS = { enabled: true, mode: 'balanced', analysisProfileId: '', analysisSource: 'active', analysisProvider: 'custom', analysisModel: '', analysisUrl: '', analysisSecretId: '', directSettingsMigrated: false, directCustomModel: '', directCustomUrl: '', directCustomSecretId: '', directOpenRouterModel: '', directOpenRouterUrl: '', directOpenRouterSecretId: '', injectionPosition: 'at-depth', injectionDepth: 2, injectionRole: 'user', includeWorldInfo: false, showDirectorNotes: false, backgroundDelay: 1200, messageWindow: 24, messageCharLimit: 1200, maxPromptChars: 18000, continuityIntegration: true, continuityContextLimit: 5000 };
+const DEFAULT_SETTINGS = { enabled: true, mode: 'balanced', analysisProfileId: '', analysisSource: 'active', analysisProvider: 'custom', analysisModel: '', analysisUrl: '', analysisSecretId: '', analysisReasoningMode: 'auto', directSettingsMigrated: false, directCustomModel: '', directCustomUrl: '', directCustomSecretId: '', directOpenRouterModel: '', directOpenRouterUrl: '', directOpenRouterSecretId: '', injectionPosition: 'at-depth', injectionDepth: 2, injectionRole: 'user', includeWorldInfo: false, showDirectorNotes: false, backgroundDelay: 1200, messageWindow: 24, messageCharLimit: 1200, maxPromptChars: 18000, continuityIntegration: true, continuityContextLimit: 5000 };
 let settings = null;
 let analysisPromise = null;
 let analysisAbortController = null;
@@ -66,6 +67,8 @@ function getSettings() {
     if (!INJECTION_POSITIONS.has(settings.injectionPosition)) settings.injectionPosition = 'at-depth';
     settings.injectionDepth = Math.min(100, Math.max(0, Number(settings.injectionDepth) || 0));
     if (!['user', 'system', 'assistant'].includes(settings.injectionRole)) settings.injectionRole = 'user';
+    settings.analysisReasoningMode = normalizeReasoningMode(settings.analysisReasoningMode);
+    if (settings.analysisReasoningMode === 'default') settings.analysisReasoningMode = 'auto';
     return settings;
 }
 
@@ -498,6 +501,16 @@ function analysisModelOptions() {
     return { active: true };
 }
 
+function plannerReasoningMode(profile = null) {
+    return resolveReasoningMode(
+        getSettings().analysisReasoningMode,
+        profile,
+        openai_setting_names,
+        openai_settings,
+        oai_settings?.reasoning_effort,
+    );
+}
+
 function completionText(value) {
     const content = value?.choices?.[0]?.message?.content ?? value?.choices?.[0]?.text ?? value?.content ?? value?.text ?? value;
     if (Array.isArray(content)) return content.map(item => item?.text || item?.content || '').join('');
@@ -560,7 +573,7 @@ function waitForAbortable(promise, signal) {
     ]);
 }
 
-function isolatePlannerGenerationData(generateData, variationSeed) {
+function isolatePlannerGenerationData(generateData, variationSeed, reasoningMode) {
     if (!generateData || typeof generateData !== 'object') return;
     generateData.seed = variationSeed;
     if (Object.hasOwn(generateData, 'sampler_seed')) generateData.sampler_seed = variationSeed;
@@ -572,6 +585,13 @@ function isolatePlannerGenerationData(generateData, variationSeed) {
     generateData.presence_penalty = 0;
     generateData.repetition_penalty = 1;
     generateData.custom_prompt_post_processing = '';
+    const reasoning = buildReasoningRequest({
+        mode: reasoningMode,
+        source: generateData.chat_completion_source,
+        model: generateData.model,
+        url: generateData.custom_url || generateData.reverse_proxy,
+    });
+    Object.assign(generateData, reasoning.payload);
     for (const key of ['stop', 'stopping_strings', 'logit_bias', 'tools', 'tool_choice', 'enable_web_search', 'request_images', 'request_image_resolution', 'request_image_aspect_ratio']) {
         delete generateData[key];
     }
@@ -636,27 +656,58 @@ async function requestAnalysis(prompt, externalSignal, variationSeed) {
         const model = analysisModelOptions();
         if (model.profileId) {
             const profile = ConnectionManagerRequestService.getProfile(model.profileId);
-            ConnectionManagerRequestService.validateProfile(profile);
-            const messages = [{ role: 'system', content: SYSTEM }, { role: 'user', content: prompt }];
+            const apiMap = ConnectionManagerRequestService.validateProfile(profile);
+            const reasoningMode = plannerReasoningMode(profile);
+            const reasoning = buildReasoningRequest({
+                mode: reasoningMode,
+                source: apiMap.source,
+                model: profile.model,
+                url: profile['api-url'],
+                profileName: profile.name,
+            });
+            let reasoningPayload = reasoning.payload;
+            const sendProfile = (structured, systemPrompt = SYSTEM) => ConnectionManagerRequestService.sendRequest(
+                model.profileId,
+                [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }],
+                PLANNER_RESPONSE_TOKENS,
+                { stream: false, extractData: false, includePreset: false, includeInstruct: false, signal: controller.signal },
+                {
+                    ...(structured ? { json_schema: ANALYSIS_SCHEMA } : {}),
+                    custom_prompt_post_processing: '',
+                    seed: variationSeed,
+                    ...reasoningPayload,
+                },
+            );
             try {
-                const response = await ConnectionManagerRequestService.sendRequest(model.profileId, messages, PLANNER_RESPONSE_TOKENS, { stream: false, extractData: false, includePreset: false, includeInstruct: false, signal: controller.signal }, { json_schema: ANALYSIS_SCHEMA, custom_prompt_post_processing: '', seed: variationSeed });
+                const response = await sendProfile(true);
                 controller.signal.throwIfAborted();
                 return parseAnalysisResponse(response);
             } catch (error) {
                 controller.signal.throwIfAborted();
+                if (isReasoningControlError(error) && (reasoning.controlled || isMandatoryReasoningError(error))) {
+                    reasoningPayload = reasoningFallbackPayload(error, reasoningPayload);
+                }
                 const fallbackSystem = fallbackSystemPrompt();
-                const response = await ConnectionManagerRequestService.sendRequest(model.profileId, [{ role: 'system', content: fallbackSystem }, { role: 'user', content: prompt }], PLANNER_RESPONSE_TOKENS, { stream: false, extractData: false, includePreset: false, includeInstruct: false, signal: controller.signal }, { custom_prompt_post_processing: '', seed: variationSeed });
+                let response;
+                try {
+                    response = await sendProfile(false, fallbackSystem);
+                } catch (fallbackError) {
+                    if (!isReasoningControlError(fallbackError) || (!reasoning.controlled && !isMandatoryReasoningError(fallbackError))) throw fallbackError;
+                    reasoningPayload = reasoningFallbackPayload(fallbackError, reasoningPayload);
+                    response = await sendProfile(false, fallbackSystem);
+                }
                 controller.signal.throwIfAborted();
                 return parseAnalysisResponse(response);
             }
         }
         if (model.active) {
             internalAnalysisRequests++;
+            let activeReasoningMode = plannerReasoningMode();
             const runActive = structured => {
                 const mainApi = currentContext().mainApi;
                 const seedEvent = mainApi === 'openai' ? event_types.CHAT_COMPLETION_SETTINGS_READY : event_types.GENERATE_AFTER_DATA;
                 const applySeed = generateData => {
-                    isolatePlannerGenerationData(generateData, variationSeed);
+                    isolatePlannerGenerationData(generateData, variationSeed, activeReasoningMode);
                 };
                 eventSource.once(seedEvent, applySeed);
                 return waitForAbortable(generateRaw({
@@ -683,6 +734,18 @@ async function requestAnalysis(prompt, externalSignal, variationSeed) {
                 return parseAnalysisResponse(raw);
             } catch (error) {
                 controller.signal.throwIfAborted();
+                if (isReasoningControlError(error)) {
+                    activeReasoningMode = isMandatoryReasoningError(error) ? 'minimum' : 'default';
+                    try {
+                        const activeSource = String(currentContext().chatCompletionSettings?.chat_completion_source || '');
+                        const raw = await runActive(activeSource !== 'openrouter');
+                        controller.signal.throwIfAborted();
+                        return parseAnalysisResponse(raw);
+                    } catch (retryError) {
+                        controller.signal.throwIfAborted();
+                        error = retryError;
+                    }
+                }
                 console.warn(`[${EXTENSION_ID}] active model structured request failed; retrying with a JSON-only prompt`, error);
                 const raw = await runActive(false);
                 controller.signal.throwIfAborted();
@@ -691,9 +754,17 @@ async function requestAnalysis(prompt, externalSignal, variationSeed) {
                 internalAnalysisRequests = Math.max(0, internalAnalysisRequests - 1);
             }
         }
+        const reasoningMode = plannerReasoningMode();
+        const reasoning = buildReasoningRequest({
+            mode: reasoningMode,
+            source: model.provider === 'openrouter' ? 'openrouter' : 'custom',
+            model: model.model,
+            url: model.url,
+        });
+        let reasoningPayload = reasoning.payload;
         const send = async structured => {
             const systemPrompt = structured ? SYSTEM : fallbackSystemPrompt();
-            const body = { chat_completion_source: model.provider, model: model.model, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }], max_tokens: PLANNER_RESPONSE_TOKENS, stream: false, seed: variationSeed, ...(structured ? { response_format: { type: 'json_object' } } : {}), ...(model.provider === 'openrouter' ? { api_url: model.url.replace(/\/$/, '') } : { custom_url: model.url.replace(/\/$/, '') }) };
+            const body = { chat_completion_source: model.provider, model: model.model, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }], max_tokens: PLANNER_RESPONSE_TOKENS, stream: false, seed: variationSeed, ...reasoningPayload, ...(structured ? { response_format: { type: 'json_object' } } : {}), ...(model.provider === 'openrouter' ? { api_url: model.url.replace(/\/$/, '') } : { custom_url: model.url.replace(/\/$/, '') }) };
             if (model.secretId) body.secret_id = model.secretId;
             const response = await fetch('/api/backends/chat-completions/generate', { method: 'POST', headers: currentContext().getRequestHeaders?.() || getRequestHeaders?.() || { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
             const payload = await response.json();
@@ -701,13 +772,29 @@ async function requestAnalysis(prompt, externalSignal, variationSeed) {
             controller.signal.throwIfAborted();
             return parseAnalysisResponse(payload);
         };
-        if (model.provider === 'openrouter') return await send(false);
+        const structured = model.provider !== 'openrouter';
         try {
-            return await send(true);
+            return await send(structured);
         } catch (error) {
             controller.signal.throwIfAborted();
+            if (isReasoningControlError(error) && (reasoning.controlled || isMandatoryReasoningError(error))) {
+                reasoningPayload = reasoningFallbackPayload(error, reasoningPayload);
+                try {
+                    return await send(structured);
+                } catch (retryError) {
+                    controller.signal.throwIfAborted();
+                    error = retryError;
+                }
+            }
+            if (!structured) throw error;
             console.warn(`[${EXTENSION_ID}] direct model structured request failed; retrying with a JSON-only prompt`, error);
-            return await send(false);
+            try {
+                return await send(false);
+            } catch (fallbackError) {
+                if (!isReasoningControlError(fallbackError) || (!reasoning.controlled && !isMandatoryReasoningError(fallbackError))) throw fallbackError;
+                reasoningPayload = reasoningFallbackPayload(fallbackError, reasoningPayload);
+                return await send(false);
+            }
         }
     } finally {
         clearTimeout(timer);
@@ -967,6 +1054,7 @@ async function mountUI() {
     const root = document.querySelector(`#${EXTENSION_ID}-settings`);
     root.querySelector('[data-setting="enabled"]').checked = s.enabled;
     root.querySelector('[data-setting="mode"]').value = s.mode;
+    root.querySelector('[data-setting="reasoning"]').value = s.analysisReasoningMode;
     root.querySelector('[data-setting="model"]').value = s.analysisModel;
     root.querySelector('[data-setting="url"]').value = s.analysisUrl;
     root.querySelector('[data-setting="continuity"]').checked = Boolean(s.continuityIntegration);
@@ -988,6 +1076,7 @@ async function mountUI() {
     });
     root.querySelector('[data-setting="mode"]').addEventListener('change', e => { invalidatePlanner(); s.mode = e.target.value; save(); });
     root.querySelector('[data-setting="connection"]').addEventListener('change', e => { invalidatePlanner(); applyAnalysisConnectionChoice(e.target.value, s); save(); });
+    root.querySelector('[data-setting="reasoning"]').addEventListener('change', e => { invalidatePlanner(); s.analysisReasoningMode = normalizeReasoningMode(e.target.value); save(); });
     root.querySelector('[data-setting="model"]').addEventListener('change', e => { invalidatePlanner(); s.analysisModel = e.target.value.trim(); rememberDirectSettings(s); save(); });
     root.querySelector('[data-setting="model-list"]').addEventListener('change', e => {
         const model = String(e.target.value || '').trim();
