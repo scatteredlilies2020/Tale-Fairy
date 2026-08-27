@@ -9,7 +9,7 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.3.5');
+    assert.equal(manifest.version, '0.3.6');
 });
 
 test('injected guidance carries an adaptive beat and compact horizon ladder', () => {
@@ -112,6 +112,9 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.doesNotMatch(source, /MESSAGE_RECEIVED[\s\S]{0,500}scheduleBackgroundAnalysis/);
     assert.match(source, /async function upgradeLegacyPlanIfNeeded/);
     assert.match(source, /rawVersion >= STATE_VERSION/);
+    assert.match(source, /LEGACY_UPGRADE_MAX_ATTEMPTS = 3/);
+    assert.match(source, /persistedVersion >= STATE_VERSION/);
+    assert.match(source, /if \(!completed\) legacyUpgradeAttempts\.delete\(attemptKey\)/);
     assert.match(source, /analyzeNow\(\{ messages, force: true, rebuild: true \}\)/);
     assert.match(source, /void upgradeLegacyPlanIfNeeded\(\)/);
     assert.doesNotMatch(source, /setTimeout\(\(\) => \{ renderBoard\(\); scheduleBackgroundAnalysis\(300\); \}, 0\)/);

@@ -27,6 +27,7 @@ let generationRevision = 0;
 let internalAnalysisRequests = 0;
 let guidanceGateActive = 0;
 let guidanceGateStopSequence = 0;
+let analysisStopSequence = 0;
 let lastAnalysisError = '';
 let pendingRequestVerification = null;
 let uiMountPromise = null;
@@ -37,6 +38,7 @@ const directModelCache = new Map();
 const ANALYSIS_TIMEOUT_MS = 90000;
 const PLANNER_RESPONSE_TOKENS = 4096;
 const UI_MOUNT_TIMEOUT_MS = 30000;
+const LEGACY_UPGRADE_MAX_ATTEMPTS = 3;
 
 function randomVariationNonce() {
     if (globalThis.crypto?.getRandomValues) {
@@ -553,6 +555,7 @@ function cancelRunningAnalysis(reason, status) {
 
 function stopAnalysis() {
     if (guidanceGateActive) guidanceGateStopSequence++;
+    analysisStopSequence++;
     generationRevision++;
     if (!cancelRunningAnalysis('Tale Fairy analysis stopped by the user.', 'Stopped')) {
         renderAnalysisActivity('Stopped', false);
@@ -1034,12 +1037,41 @@ async function upgradeLegacyPlanIfNeeded() {
     const rawVersion = Math.max(0, Number(rawState?.version) || 0);
     const chatId = String(context.getCurrentChatId?.() || '');
     const messages = messagesFromChat(context.chat || []);
+    const fingerprint = fingerprintMessages(messages);
     const attemptKey = `${chatId}:${rawVersion}:${messages.length}`;
     if (!getSettings().enabled || !chatId || !messages.length || !rawState || rawVersion >= STATE_VERSION || legacyUpgradeAttempts.has(attemptKey)) return;
     legacyUpgradeAttempts.add(attemptKey);
-    renderAnalysisActivity(`Upgrading legacy Tale Fairy plan v${rawVersion}…`, true);
-    const upgraded = await analyzeNow({ messages, force: true, rebuild: true });
-    renderBoard(upgraded);
+    const stopSequence = analysisStopSequence;
+    let upgraded = loadState(context.chatMetadata);
+    let completed = false;
+    try {
+        for (let attempt = 1; attempt <= LEGACY_UPGRADE_MAX_ATTEMPTS; attempt++) {
+            const activeContext = currentContext();
+            const activeMessages = messagesFromChat(activeContext.chat || []);
+            if (!getSettings().enabled
+                || analysisStopSequence !== stopSequence
+                || String(activeContext.getCurrentChatId?.() || '') !== chatId
+                || fingerprintMessages(activeMessages) !== fingerprint) return;
+            renderAnalysisActivity(`Upgrading legacy Tale Fairy plan v${rawVersion} · attempt ${attempt}/${LEGACY_UPGRADE_MAX_ATTEMPTS}…`, true);
+            upgraded = await analyzeNow({ messages, force: true, rebuild: true });
+            const persistedVersion = Math.max(0, Number(currentContext().chatMetadata?.[STATE_KEY]?.version) || 0);
+            if (persistedVersion >= STATE_VERSION) {
+                completed = true;
+                renderBoard(upgraded);
+                renderAnalysisActivity('Legacy plan upgraded', false);
+                return;
+            }
+            if (attempt < LEGACY_UPGRADE_MAX_ATTEMPTS && analysisStopSequence === stopSequence) {
+                const delay = 1500 * (2 ** (attempt - 1));
+                renderAnalysisActivity(`Upgrade retrying in ${Math.round(delay / 1000)}s · ${lastAnalysisError || 'planner returned no saved plan'}`, true);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            }
+        }
+        renderBoard(upgraded);
+        renderAnalysisActivity(`Upgrade pending · ${lastAnalysisError || 'planner returned no saved plan'}`, false);
+    } finally {
+        if (!completed) legacyUpgradeAttempts.delete(attemptKey);
+    }
 }
 
 async function mountUI() {
