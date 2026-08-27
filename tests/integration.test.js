@@ -8,9 +8,11 @@ const template = await readFile(new URL('../extension/settings.html', import.met
 const styles = await readFile(new URL('../extension/style.css', import.meta.url), 'utf8');
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
-test('injected guidance is authoritative context without forcing plot outcomes', () => {
+test('injected guidance is authoritative context while preserving user pacing', () => {
     assert.match(stateSource, /authoritative context guidance for the next roleplay reply/);
-    assert.match(stateSource, /not as a command to force a plot event/);
+    assert.match(stateSource, /Apply it at the user's demonstrated pace/);
+    assert.match(stateSource, /mode controls narrative pressure and boldness, not narrative speed/);
+    assert.match(stateSource, /without rushing the user's response or taking control of their timeline/);
     assert.match(stateSource, /Do not omit a supported influence merely because its outcome is uncertain/);
     assert.match(stateSource, /without declaring an unestablished result/);
     assert.match(stateSource, /do not freeze NPCs or the wider world until the user explicitly requests movement/);

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, AnalysisValidationError, MODE_INSTRUCTIONS, applyAnalysis, buildAnalysisPrompt, extractJson, requireValidAnalysisResult, SYSTEM, validateAnalysisResult } from '../extension/analysis.js';
+import { ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, AnalysisValidationError, MODE_INSTRUCTIONS, PACING_INSTRUCTION, applyAnalysis, buildAnalysisPrompt, extractJson, requireValidAnalysisResult, SYSTEM, validateAnalysisResult } from '../extension/analysis.js';
 import { defaultState } from '../extension/state.js';
 
 test('extractJson accepts fenced and wrapped JSON', () => {
@@ -119,13 +119,25 @@ test('planner modes provide materially distinct intervention policies', () => {
     assert.match(prompts.light.mode_instruction, /at most one active possibility/);
     assert.match(prompts.light.mode_instruction, /rather than redirect it/);
     assert.match(prompts.balanced.mode_instruction, /one to three distinct supported possibilities/);
-    assert.match(prompts.balanced.mode_instruction, /moderate intensity/);
+    assert.match(prompts.balanced.mode_instruction, /moderate intervention/);
     assert.match(prompts.fun.mode_instruction, /Be bold, energetic/);
     assert.match(prompts.fun.mode_instruction, /three to six genuinely distinct supported possibilities/);
     assert.match(prompts.fun.mode_instruction, /decisively bring the strongest one onstage/);
-    assert.match(prompts.fun.mode_instruction, /Do not merely hint, defer, or wait/);
+    assert.match(prompts.fun.mode_instruction, /Do not merely hint or wait/);
     assert.notEqual(prompts.light.mode_instruction, prompts.balanced.mode_instruction);
     assert.notEqual(prompts.balanced.mode_instruction, prompts.fun.mode_instruction);
+});
+
+test('every planner mode leaves narrative pacing under user control', () => {
+    for (const mode of ['light', 'balanced', 'fun']) {
+        const prompt = JSON.parse(buildAnalysisPrompt([{ mes: 'I keep watching for a while.', is_user: true }], { ...defaultState(), mode }));
+        assert.equal(prompt.pacing_instruction, PACING_INSTRUCTION);
+        assert.match(prompt.pacing_instruction, /Match that pacing/);
+        assert.match(prompt.pacing_instruction, /mode changes narrative pressure, boldness, and breadth of possibilities—not narrative speed/);
+    }
+    assert.match(MODE_INSTRUCTIONS.light, /must not artificially prolong a beat or slow a user/);
+    assert.match(MODE_INSTRUCTIONS.balanced, /does not mean changing the user's narrative speed/);
+    assert.match(MODE_INSTRUCTIONS.fun, /do not rush the user's timeline/);
 });
 
 test('analysis prompt maintains a lightweight world model', () => {

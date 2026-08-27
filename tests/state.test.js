@@ -76,6 +76,9 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(stale, /Do not force sympathy, vulnerability, redemption, reconciliation, banter, avoidance, or silent treatment/);
     const current = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
     assert.match(current, /Keep the scene grounded/);
+    assert.match(current, /Apply it at the user's demonstrated pace/);
+    assert.match(current, /do not speed up, slow down, time-skip, montage, compress, prolong, or resolve/);
+    assert.match(current, /mode controls narrative pressure and boldness, not narrative speed/);
     assert.match(current, /without sanitizing supported conflict, danger, flaws, rejection, loss, stakes, or consequences/);
     assert.match(current, /Do not substitute safer alternatives, plot armor, forced sympathy/);
     assert.equal(buildPromptPayload(state, { enabled: false, guidanceUsable: true }), '');

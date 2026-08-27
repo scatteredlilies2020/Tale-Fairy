@@ -13,7 +13,8 @@ Tale Fairy is a standalone SillyTavern extension that quietly supplies **narrati
 - Stores its compact state in chat metadata, so exported/copied chats carry it with them.
 - Keeps up to three optional objectives, relevant entities, possibilities, and concise Director Notes.
 - Treats user text and OOC corrections as higher priority than canon or inference.
-- Offers deliberately distinct **Light**, **Balanced**, and **Fun** modes: Light preserves and minimally deepens the current beat, Balanced advances supported threads moderately, and Fun actively brings a bold, consequential scenario onstage when the fiction supports one—without dictating the player character's response.
+- Keeps narrative pacing under the user's control in every mode, following whether the user lingers, advances, or requests a time skip rather than using mode to change story speed.
+- Offers deliberately distinct **Light**, **Balanced**, and **Fun** intervention modes: Light applies minimal pressure, Balanced intervenes moderately, and Fun actively brings a bold, consequential scenario onstage when supported—without rushing or slowing the user's timeline or dictating the player character's response.
 - Keeps one unified set of plausible narrative possibilities. Their nature is not predefined; what they become is determined by what the roleplay actually establishes. They are optional and never scheduled just because a scene is quiet.
 - Searches broadly across the causal world rather than a fixed event menu, so removing labels does not exclude unseen people, changing pressures, consequences, opportunities, or unexpected developments when they have a believable route into the story.
 - Includes manual **Guide now** (initializes or rebuilds from chat), **Delete guide state**, and one AI-assisted instruction field that can become a suggestion, correction, canon detail, or hard exclusion.
