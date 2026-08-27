@@ -13,6 +13,7 @@ import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
+const RUNTIME_VERSION = '0.3.7';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -39,6 +40,9 @@ const ANALYSIS_TIMEOUT_MS = 90000;
 const PLANNER_RESPONSE_TOKENS = 4096;
 const UI_MOUNT_TIMEOUT_MS = 30000;
 const LEGACY_UPGRADE_MAX_ATTEMPTS = 3;
+
+globalThis.taleFairyRuntime = Object.freeze({ version: RUNTIME_VERSION, loadedAt: Date.now() });
+console.info(`[${EXTENSION_ID}] Tale Fairy runtime ${RUNTIME_VERSION} loaded`);
 
 function randomVariationNonce() {
     if (globalThis.crypto?.getRandomValues) {
@@ -535,6 +539,8 @@ function analysisErrorMessage(error) {
 
 function renderAnalysisActivity(message, running = false) {
     const root = document.querySelector(`#${EXTENSION_ID}-settings`);
+    const runtimeVersion = root.querySelector('[data-role="runtime-version"]');
+    if (runtimeVersion) runtimeVersion.textContent = `runtime v${RUNTIME_VERSION}`;
     if (!root) return;
     const status = root.querySelector('[data-role="analysis-status"]');
     if (status) status.textContent = message;
@@ -1177,7 +1183,7 @@ async function mountUI() {
     root.querySelector('[data-action="board"]').addEventListener('click', () => { s.showDirectorNotes = !s.showDirectorNotes; root.classList.toggle('is-expanded', s.showDirectorNotes); saveSettingsDebounced(); });
     root.classList.toggle('is-expanded', Boolean(s.showDirectorNotes));
     refreshControls(root);
-    renderAnalysisActivity(analysisPromise ? 'Analyzing…' : 'Ready', Boolean(analysisPromise));
+    renderAnalysisActivity(analysisPromise ? 'Analyzing…' : `Ready · v${RUNTIME_VERSION}`, Boolean(analysisPromise));
     renderBoard();
     void upgradeLegacyPlanIfNeeded();
     return true;
