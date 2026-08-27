@@ -9,9 +9,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.3.8');
-    assert.equal(manifest.js, 'extension/index.js?v=0.3.8');
-    assert.equal(manifest.css, 'extension/style.css?v=0.3.8');
+    assert.equal(manifest.version, '0.3.9');
+    assert.equal(manifest.js, 'extension/index.js?v=0.3.9');
+    assert.equal(manifest.css, 'extension/style.css?v=0.3.9');
 });
 
 test('injected guidance carries an adaptive beat and compact horizon ladder', () => {
@@ -146,7 +146,8 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /Object\.assign\(s, \{ \.\.\.DEFAULT_SETTINGS \}\)/);
     assert.match(source, /Settings reset to defaults/);
     assert.match(template, /data-role="analysis-status"/);
-    assert.match(template, /data-role="runtime-version">runtime pending/);
+    assert.doesNotMatch(template, /runtime-version|runtime pending/);
+    assert.doesNotMatch(template, /You control pacing in every mode|Tale Fairy keeps six to ten planning horizons/);
     assert.match(template, /data-setting="injection-position"/);
     assert.match(template, /data-setting="injection-depth"[^>]*value="2"/);
     assert.match(template, /data-setting="injection-role"/);
