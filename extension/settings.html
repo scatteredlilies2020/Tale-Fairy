@@ -8,7 +8,7 @@
       <div class="living-world-guide-master-row">
         <label class="checkbox_label">
           <input type="checkbox" data-setting="enabled">
-          <span>Enable quiet narrative guidance</span>
+          <span>Enable adaptive narrative planning</span>
         </label>
         <span class="living-world-guide-status" data-role="analysis-status">Ready</span>
       </div>
@@ -24,15 +24,16 @@
             </select>
           </label>
           <label>Recent messages sent to planner
-            <input class="text_pole" type="number" data-setting="window" min="1" max="80" step="1" value="24">
+            <input class="text_pole" type="number" data-setting="window" min="1" max="80" step="1" value="12">
           </label>
           <label>Planner context budget
-            <input class="text_pole" type="number" data-setting="budget" min="8000" max="30000" step="1000" value="18000">
+            <input class="text_pole" type="number" data-setting="budget" min="8000" max="30000" step="1000" value="12000">
           </label>
         </div>
         <small>You control pacing in every mode. Declared actions proceed without special “advance” wording, but their outcomes can still be surprising when causally supported; slow pacing develops meaningful beats instead of artificial waits. Light uses minimal pressure, Balanced intervenes moderately, and Fun favors bold supported developments without rushing your timeline.</small>
-        <small>The planner combines the recent raw window with its portable narrative ledger. The context budget is a soft character target, not the roleplay model's context size.</small>
-        <small>Tale Fairy waits for current guidance before every roleplay reply. Temporary connection failures retry automatically; Stop cancels the pending analysis and reply.</small>
+        <small>Tale Fairy keeps six to ten planning horizons, then turns the nearest direction into one concrete live beat for the current reply. Every horizon has an effect, but that influence fades with distance: near plans shape replies while distant plans remain a subtle background pull. The highest horizon can point to a later arc or distant time, but never assumes a final resolution. Everything remains changeable.</small>
+        <small>The planner combines the latest user turn, recent raw window, and portable narrative ledger. The context budget is a soft character target, not the roleplay model's context size.</small>
+        <small>Tale Fairy waits for a live beat made from the current turn before sending the roleplay request. It retries brief failures and safely continues without a beat after three failed attempts; Stop cancels the pending analysis and reply.</small>
         <label class="checkbox_label">
           <input type="checkbox" data-setting="continuity">
           <span>Use Continuity context when available</span>
@@ -157,7 +158,15 @@
             <div data-role="scratchpad-frame">Story frame is still uncertain.</div>
           </section>
           <section>
-            <h5>Guidance decision</h5>
+            <h5>Active live beat</h5>
+            <div data-role="scratchpad-active-beat">No active beat yet.</div>
+          </section>
+          <section>
+            <h5>Plan horizons</h5>
+            <div data-role="scratchpad-horizons">No plan horizons yet.</div>
+          </section>
+          <section>
+            <h5>Supporting guidance</h5>
             <div data-role="scratchpad-guidance">No guidance decision yet.</div>
           </section>
           <section>
@@ -165,7 +174,7 @@
             <div data-role="scratchpad-request-verification">No provider request has been verified yet.</div>
           </section>
           <section>
-            <h5>Objectives</h5>
+            <h5>Narrative plan</h5>
             <div data-role="scratchpad-objectives">No active objectives.</div>
           </section>
           <section>

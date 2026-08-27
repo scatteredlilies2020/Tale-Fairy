@@ -8,19 +8,17 @@ const template = await readFile(new URL('../extension/settings.html', import.met
 const styles = await readFile(new URL('../extension/style.css', import.meta.url), 'utf8');
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
-test('manifest identifies the profile reasoning release', () => {
-    assert.equal(manifest.version, '0.2.3');
+test('manifest identifies the adaptive planning release', () => {
+    assert.equal(manifest.version, '0.3.0');
 });
 
-test('injected guidance is authoritative context while preserving user pacing', () => {
-    assert.match(stateSource, /authoritative context guidance for the next roleplay reply/);
-    assert.match(stateSource, /Apply it at the user's demonstrated pace/);
-    assert.match(stateSource, /mode controls narrative pressure and boldness, not narrative speed/);
-    assert.match(stateSource, /without rushing the user's response or taking control of their timeline/);
-    assert.match(stateSource, /Do not omit a supported influence merely because its outcome is uncertain/);
-    assert.match(stateSource, /without declaring an unestablished result/);
-    assert.match(stateSource, /do not freeze NPCs or the wider world until the user explicitly requests movement/);
-    assert.match(stateSource, /current focus or silence is not a veto on supported external developments/);
+test('injected guidance carries an adaptive beat and compact horizon ladder', () => {
+    assert.match(stateSource, /This plan was revised after the latest user turn/);
+    assert.match(stateSource, /ACTIVE DIRECTION/);
+    assert.match(stateSource, /NEXT BEAT — DO THIS IN THE CURRENT REPLY/);
+    assert.match(stateSource, /COMPLETE OR REASSESS THIS BEAT WHEN/);
+    assert.match(stateSource, /planHorizons\.items/);
+    assert.match(stateSource, /The latest user action wins any conflict/);
 });
 
 test('extension UI and interceptor use SillyTavern third-party-compatible registration', () => {
@@ -51,8 +49,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /function rememberDirectSettings/);
     assert.match(source, /function restoreDirectSettings/);
     assert.match(source, /function refreshConnectionProfiles/);
-    assert.match(source, /latestUserMessage = messages\.at\(-1\)\?\.is_user/);
-    assert.match(source, /buildPromptPayload\(state, \{ enabled: getSettings\(\)\.enabled, guidanceUsable: usable, latestUserMessage \}\)/);
+    assert.match(source, /buildPromptPayload\(state, \{ enabled: getSettings\(\)\.enabled, guidanceUsable: usable \}\)/);
     assert.match(source, /async function fetchDirectModels/);
     assert.match(source, /chat_completion_source: openRouter \? 'openrouter' : 'custom'/);
     assert.match(source, /secret_id: s.analysisSecretId/);
@@ -71,7 +68,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /function stopAnalysis\(\)/);
     assert.match(source, /analysisAbortController\.abort/);
     assert.match(source, /waitForAbortable\(generateRaw/);
-    assert.match(source, /PLANNER_RESPONSE_TOKENS = 3000/);
+    assert.match(source, /PLANNER_RESPONSE_TOKENS = 2200/);
     assert.match(source, /suppressErrorToasts: true/);
     assert.match(source, /activeSource === 'openrouter'/);
     assert.match(source, /const structured = model\.provider !== 'openrouter'/);
@@ -91,10 +88,11 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /configurePromptManagerInjection\(promptManager, s, payload\)/);
     assert.match(source, /injectionPosition: 'at-depth', injectionDepth: 2, injectionRole: 'user'/);
     assert.match(source, /context\.chat\?\.length \? context\.chat : chat/);
-    assert.match(source, /Planning is performed between turns, after assistant replies/);
-    assert.doesNotMatch(source, /livingWorldGuideGenerateInterceptor[\s\S]{0,900}analyzeNow/);
-    assert.doesNotMatch(source, /Guidance unavailable; retrying in/);
-    assert.doesNotMatch(source, /abort\(true\)/);
+    assert.match(source, /export async function livingWorldGuideGenerateInterceptor/);
+    assert.match(source, /livingWorldGuideGenerateInterceptor[\s\S]{0,2200}await analyzeNow\(\{ messages/);
+    assert.match(source, /isGuidanceUsable\(next, messages, chatId\)/);
+    assert.match(source, /Planner retrying in/);
+    assert.match(source, /abort\(true\)/);
     assert.match(source, /function randomPlannerSeed/);
     assert.match(source, /function isolatePlannerGenerationData/);
     assert.match(source, /generateData\.seed = variationSeed/);
@@ -102,22 +100,16 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /generateData\.custom_prompt_post_processing = ''/);
     assert.match(source, /'stop', 'stopping_strings', 'logit_bias', 'tools', 'tool_choice'/);
     assert.match(source, /generateRaw\(\{[\s\S]{0,320}instructOverride: true/);
-    assert.doesNotMatch(source, /MESSAGE_SENT[\s\S]{0,500}void analyzeNow/);
-    assert.doesNotMatch(source, /MESSAGE_SENT[\s\S]{0,180}generationRevision\+\+/);
+    assert.match(source, /MESSAGE_SENT[\s\S]{0,900}void analyzeNow\(\{ messages \}\)/);
     assert.doesNotMatch(source, /waitForBackgroundPlanner/);
-    assert.match(source, /function backgroundRetryDelay/);
-    assert.match(source, /Background planner retrying in/);
-    assert.match(source, /scheduleBackgroundAnalysis\(retryDelay, backgroundRetryAttempt\)/);
-    assert.match(source, /if \(roleplayGenerationActive\)/);
-    assert.match(source, /roleplayGenerationActive = true/);
-    assert.match(source, /roleplayGenerationActive = false/);
-    assert.match(source, /event_types\.GENERATION_ENDED/);
-    assert.match(source, /allowNextUserMessage: true/);
-    assert.match(source, /const matchesPlannedTurn = guard\.allowNextUserMessage/);
-    assert.match(source, /MESSAGE_RECEIVED[\s\S]{0,500}scheduleBackgroundAnalysis\(250\)/);
+    assert.doesNotMatch(source, /function backgroundRetryDelay/);
+    assert.doesNotMatch(source, /scheduleBackgroundAnalysis/);
+    assert.doesNotMatch(source, /roleplayGenerationActive|backgroundTimer|backgroundDelay|allowNextUserMessage/);
+    assert.doesNotMatch(source, /MESSAGE_RECEIVED[\s\S]{0,500}scheduleBackgroundAnalysis/);
     assert.match(source, /Do not contact the planner merely because SillyTavern started or the user switched chats/);
     assert.doesNotMatch(source, /setTimeout\(\(\) => \{ renderBoard\(\); scheduleBackgroundAnalysis\(300\); \}, 0\)/);
-    assert.doesNotMatch(source, /guidanceGateStopSequence|guidanceGateActive/);
+    assert.match(source, /guidanceGateStopSequence/);
+    assert.match(source, /guidanceGateActive/);
     assert.match(source, /CHAT_COMPLETION_PROMPT_READY, ensureChatCompletionRequestGuidance/);
     assert.match(source, /CHAT_COMPLETION_SETTINGS_READY, ensureProviderChatRequestGuidance/);
     assert.match(source, /GENERATE_AFTER_COMBINE_PROMPTS, ensureTextCompletionRequestGuidance/);
@@ -146,6 +138,8 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(template, /Use Continuity context when available/);
     assert.match(template, /data-role="scratchpad-continuity"/);
     assert.match(template, /data-role="scratchpad-scene"/);
+    assert.match(template, /data-role="scratchpad-active-beat"/);
+    assert.match(template, /data-role="scratchpad-horizons"/);
     assert.match(template, /data-role="scratchpad-guidance"/);
     assert.match(template, /data-role="scratchpad-request-verification"/);
     assert.match(template, /data-role="scratchpad-objectives"/);

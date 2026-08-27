@@ -3,6 +3,20 @@ import assert from 'node:assert/strict';
 import { ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, AnalysisValidationError, EXTREME_CANON_INSTRUCTION, MODE_INSTRUCTIONS, PACING_INSTRUCTION, applyAnalysis, buildAnalysisPrompt, extractJson, requireValidAnalysisResult, SYSTEM, validateAnalysisResult } from '../extension/analysis.js';
 import { defaultState } from '../extension/state.js';
 
+const activeBeat = { id: 'tea-talk', objective: 'Let the tea conversation reveal a useful tension.', next_action: 'Have Mara answer plainly and expose one concrete concern.', completion: 'Mara has stated the concern and the other character can react.', lifecycle: 'replace', reason: 'The latest question opens this beat.' };
+const planHorizons = {
+    items: [
+        { id: 'reply', direction: 'Answer the immediate question.', timeframe: 'this reply', stability: 'fluid', conditions: [], change: 'replace', reason: 'Immediate user action.' },
+        { id: 'turns', direction: 'Let the concern affect the conversation.', timeframe: 'next 2–4 turns', stability: 'adaptive', conditions: ['The conversation continues.'], change: 'replace', reason: 'Natural follow-through.' },
+        { id: 'scene', direction: 'End the tea scene with a changed understanding.', timeframe: 'current scene', stability: 'adaptive', conditions: [], change: 'replace', reason: 'Scene direction.' },
+        { id: 'arc', direction: 'Revisit the underlying obligation later.', timeframe: 'current arc', stability: 'stable', conditions: ['The obligation remains unresolved.'], change: 'replace', reason: 'Longer consequence.' },
+        { id: 'later-arcs', direction: 'Let changing loyalties reshape how the obligation matters.', timeframe: 'later or multiple arcs', stability: 'stable', conditions: ['The relationship continues.'], change: 'replace', reason: 'Distant relationship direction.' },
+        { id: 'distant-arc', direction: 'Keep the obligation available as one evolving long-term pressure.', timeframe: 'later arcs / open-ended', stability: 'slow', conditions: ['It has not become irrelevant.'], change: 'replace', reason: 'Provisional distant trajectory.' },
+    ],
+    deviation: { level: 'none', reason: 'Initial plan.' },
+};
+const requiredPlanning = { story_frame: { frame: 'grounded', confidence: 'high', basis: 'ordinary scene' }, active_beat: activeBeat, plan_horizons: planHorizons, canon_constraints: [], note_resolution: null, ledger: 'Tea conversation is active.', narrative_events: [] };
+
 test('extractJson accepts fenced and wrapped JSON', () => {
     assert.deepEqual(extractJson('```json\n{"inject":false}\n```'), { inject: false });
     assert.deepEqual(extractJson('prefix {"inject":true} suffix'), { inject: true });
@@ -16,51 +30,43 @@ test('planner validation rejects empty or incomplete structured output', () => {
         objectives: [], entities: [], possibilities: [], guidance: '', inject: false, reason: '',
     }).valid, false);
     assert.equal(validateAnalysisResult({
+        ...requiredPlanning,
         scene: { status: 'active', activity: '', pace: 'slow', intent: '', location: '', time: '', loop: false },
         objectives: [], entities: [], possibilities: [], guidance: '', inject: false, reason: 'No intervention needed.',
     }).valid, false);
     assert.equal(validateAnalysisResult({
+        ...requiredPlanning,
         scene: { status: 'active', activity: '', pace: 'slow', intent: '', location: '', time: '', loop: false },
         objectives: [], entities: [], possibilities: [], guidance: 'Preserve the slow pace and deepen the next supported reaction.', inject: true, reason: 'Even a quiet scene benefits from focused guidance.',
     }).valid, true);
 });
 
-test('planner keeps one unified possibility pool without predefined event types', () => {
-    assert.match(SYSTEM, /one unified list of optional narrative possibilities/);
-    assert.match(SYSTEM, /Do not require predefined event types/);
-    assert.match(SYSTEM, /Removing type labels must not narrow the search/);
-    assert.match(SYSTEM, /established and not-yet-seen people/);
-    assert.match(SYSTEM, /nature of a development be understood from what actually becomes established/);
-    assert.match(SYSTEM, /infer its intent in this same planner call/);
-    assert.match(SYSTEM, /If clear, return note_resolution/);
-    assert.match(SYSTEM, /note_resolution as null when there is no AI-assisted note or its intent is genuinely ambiguous/);
-    assert.match(SYSTEM, /preserves the user's exact instruction text/);
-    assert.match(SYSTEM, /Choose developments from the evidence and established tone/);
-    assert.match(SYSTEM, /Treat setting lore as an active causal system rather than background decoration/);
-    assert.match(SYSTEM, /metaphysical rules, powers, technologies, cultures, laws, institutions, factions/);
-    assert.match(SYSTEM, /State the causal mechanism and bridge/);
-    assert.match(SYSTEM, /what can perceive or transmit it/);
-    assert.match(SYSTEM, /never invoke it merely because it is iconic to the franchise/);
-    assert.match(SYSTEM, /Distinguish established lore mechanisms from character belief and speculative interpretation/);
-    assert.match(SYSTEM, /Player silence, mundane focus, or lack of explicit pursuit is not a veto/);
-    assert.match(SYSTEM, /supported NPC decisions, institutional processes, off-screen activity/);
-    assert.match(SYSTEM, /must wait for the player character to initiate it unless the established mechanism literally requires/);
-    assert.match(SYSTEM, /allow supported external processes and actors to take concrete steps/);
-    assert.match(SYSTEM, /leave room for uncertainty and natural friction/);
-    assert.match(SYSTEM, /Warmth, relief, cooperation, and happy outcomes are equally valid when the scene earns them/);
-    assert.match(SYSTEM, /Never add darkness merely for variety/);
-    assert.match(SYSTEM, /never soften danger or suffering that the context supports/);
+test('planner keeps a causal possibility pool and adaptive multi-horizon plan', () => {
+    assert.match(SYSTEM, /one unified possibility pool rather than categories/);
+    assert.match(SYSTEM, /source, route into the scene, timing, and reason/);
+    assert.match(SYSTEM, /iconic franchise elements, and unsupported speculation are not scheduled events/);
+    assert.match(SYSTEM, /classify it in this call as suggest, correct, establish, or forbid/);
+    assert.match(SYSTEM, /return null only when genuinely ambiguous/);
+    assert.match(SYSTEM, /never rewrite the user's text/);
+    assert.match(SYSTEM, /Lore is an active causal system/);
+    assert.match(SYSTEM, /Player silence is not a veto/);
+    assert.match(SYSTEM, /six to ten additional concise plan_horizons\.items ordered from the next few turns to a distant story horizon/);
+    assert.match(SYSTEM, /some later arc or meaningful future time/);
+    assert.match(SYSTEM, /Everything in the plan remains changeable/);
+    assert.match(SYSTEM, /Every horizon also retains some effect with a strict distance gradient/);
+    assert.match(SYSTEM, /distant directions provide only a subtle background pull/);
+    assert.match(SYSTEM, /stable and slow directions can adjust after accumulated minor deviation/);
+    assert.match(SYSTEM, /not a story ending, final resolution, or predetermined outcome/);
     assert.match(SYSTEM, /Do not replace a supported development with a safer, softer/);
     assert.match(SYSTEM, /Give no automatic plot armor/);
     assert.match(SYSTEM, /Do not force sympathy, vulnerability, redemption, reconciliation, banter, avoidance, or silent treatment/);
     assert.match(SYSTEM, /do not add cruelty, darkness, punishment, or conflict merely to appear bold/);
-    assert.match(SYSTEM, /Always return inject true and one non-empty concise guidance note/);
-    assert.match(SYSTEM, /There is no scene too small or quiet to guide/);
-    assert.match(SYSTEM, /never decide that guidance adds nothing/);
+    assert.match(SYSTEM, /Every scene can have a useful beat, including quiet scenes/);
 });
 
 test('planner validates an automatically resolved AI-assisted note', () => {
     const result = {
+        ...requiredPlanning,
         scene: { status: 'active', activity: 'working', pace: 'slow', intent: 'finish an assignment', location: 'home', time: 'evening', loop: false },
         objectives: [], entities: [], possibilities: [], guidance: 'Keep the work scene focused and let progress emerge through concrete action.', inject: true, reason: 'The quiet task still benefits from a small focus.',
         note_resolution: { kind: 'forbid' },
@@ -68,6 +74,19 @@ test('planner validates an automatically resolved AI-assisted note', () => {
     assert.equal(validateAnalysisResult(result).valid, true);
     assert.equal(validateAnalysisResult({ ...result, note_resolution: { kind: 'maybe', text: 'Anything' } }).valid, false);
     assert.equal(validateAnalysisResult({ ...result, note_resolution: null }).valid, true);
+});
+
+test('planner requires a distant but open-ended highest horizon', () => {
+    const result = {
+        ...requiredPlanning,
+        scene: { status: 'active', activity: 'talking', pace: 'slow', intent: 'understand', location: 'home', time: 'evening', loop: false },
+        objectives: [], entities: [], possibilities: [], guidance: 'Keep the present conversation specific.', inject: true, reason: 'A live direction is useful.',
+    };
+    const tooNear = { ...result, plan_horizons: { ...planHorizons, items: planHorizons.items.map((item, index) => index === planHorizons.items.length - 1 ? { ...item, timeframe: 'current arc' } : item) } };
+    const fixedLike = { ...result, plan_horizons: { ...planHorizons, items: planHorizons.items.map((item, index) => index === planHorizons.items.length - 1 ? { ...item, stability: 'stable' } : item) } };
+    assert.equal(validateAnalysisResult(result).valid, true);
+    assert.equal(validateAnalysisResult(tooNear).valid, false);
+    assert.equal(validateAnalysisResult(fixedLike).valid, false);
 });
 
 test('planner schema uses SillyTavern structured-output packaging', () => {
@@ -90,7 +109,7 @@ test('analysis prompt includes bootstrap context and current state', () => {
 test('planner preserves explicit extreme canon without normalizing it to setting averages', () => {
     const prompt = JSON.parse(buildAnalysisPrompt([{ mes: '[OOC: Lucia has a Midichlorian count off the charts, among the highest in history.]', is_user: true }], defaultState()));
     assert.equal(prompt.extreme_canon_instruction, EXTREME_CANON_INSTRUCTION);
-    assert.match(SYSTEM, /Return canon_constraints as the complete current list/);
+    assert.match(prompt.extreme_canon_instruction, /Return canon_constraints as the complete current list/);
     assert.match(prompt.extreme_canon_instruction, /statistically extreme, unprecedented, off-scale/);
     assert.match(prompt.extreme_canon_instruction, /Setting averages and records provide contrast, not a ceiling/);
     assert.match(prompt.extreme_canon_instruction, /Unspecified details are open creative space, not prohibited unknowns/);
@@ -119,9 +138,9 @@ test('analysis prompt carries a per-run variation seed', () => {
 
 test('analysis prompt asks for novelty without forcing player action', () => {
     const prompt = JSON.parse(buildAnalysisPrompt([{ mes: 'We visit the art gallery again', is_user: true }], defaultState()));
-    assert.match(prompt.novelty_instruction, /Avoid recency fixation/);
-    assert.match(prompt.novelty_instruction, /Rotate among supported threads/);
-    assert.match(prompt.novelty_instruction, /never invent player-character action/);
+    assert.equal(prompt.messages.at(-1).content, 'We visit the art gallery again');
+    assert.match(SYSTEM, /Avoid recency loops and arbitrary escalation/);
+    assert.match(SYSTEM, /never invent the player's choices/);
 });
 
 test('planner modes provide materially distinct intervention policies', () => {
@@ -154,7 +173,7 @@ test('every planner mode leaves narrative pacing under user control', () => {
         assert.match(prompt.pacing_instruction, /no pacing keyword is required/);
         assert.match(prompt.pacing_instruction, /does not preselect the most obvious outcome or guarantee success/);
         assert.match(prompt.pacing_instruction, /Prefer a fresh, specific development over the blandest predictable continuation/);
-        assert.match(prompt.pacing_instruction, /must remain subordinate to whatever that newer turn does, asks, or requests/);
+        assert.match(prompt.pacing_instruction, /prepared from the complete current user turn/);
     }
     assert.match(MODE_INSTRUCTIONS.light, /must not artificially prolong a beat or slow a user/);
     assert.match(MODE_INSTRUCTIONS.balanced, /does not mean changing the user's narrative speed/);
@@ -163,10 +182,9 @@ test('every planner mode leaves narrative pacing under user control', () => {
 
 test('analysis prompt maintains a lightweight world model', () => {
     const prompt = JSON.parse(buildAnalysisPrompt([{ mes: 'We are inside the Jedi Temple.', is_user: true }], defaultState()));
-    assert.match(SYSTEM, /Maintain a lightweight world model across turns/);
-    assert.match(prompt.world_model_instruction, /relevant people and factions, likely locations, knowledge, motives/);
-    assert.match(prompt.world_model_instruction, /outside the user\'s immediate focus/);
-    assert.match(prompt.world_model_instruction, /without inventing unsupported specifics/);
+    assert.match(SYSTEM, /Maintain a compact causal world model from established evidence/);
+    assert.match(SYSTEM, /relevant people, factions, locations, knowledge, motives/);
+    assert.equal('world_model_instruction' in prompt, false);
 });
 
 test('analysis prompt limits sent messages and accepts optional continuity context', () => {
@@ -203,11 +221,37 @@ test('canon bootstrap retains labeled OOC turns outside ordinary sampling points
 test('analysis application keeps guidance bounded and records its injection decision', () => {
     const messages = [{ mes: 'I make tea', is_user: true }];
     const next = applyAnalysis(defaultState(), { scene: { status: 'active', activity: 'tea', pace: 'slow', intent: 'rest', location: 'kitchen', time: 'evening', loop: false }, objectives: [], entities: [], possibilities: [], guidance: 'x'.repeat(2000), inject: true, reason: 'A gentle reminder will preserve the established pace.' }, messages);
-    assert.equal(next.guidance.length, 1200);
+    assert.equal(next.guidance.length, 700);
     assert.equal(next.sourceMessageCount, 1);
     assert.equal(next.scene.activity, 'tea');
     assert.equal(next.lastInject, true);
     assert.match(next.lastReason, /established pace/);
+});
+
+test('active beat persists, adapts, and advances without rewriting distant horizons', () => {
+    const messages = [{ mes: 'What does Mara say?', is_user: true }];
+    const starting = {
+        ...defaultState(),
+        turnCount: 3,
+        activeBeat: { id: 'tea-talk', objective: 'Surface Mara’s concern.', nextAction: 'Let Mara begin answering.', completion: 'The concern is stated.', lifecycle: 'replace', reason: 'A direct question.', startedAtTurn: 3, updatedAtTurn: 3 },
+        planHorizons: { items: planHorizons.items.map(item => ({ ...item, change: 'keep' })), deviation: { level: 'none', reason: 'On plan.' } },
+    };
+    const attemptedHorizons = planHorizons.items.map((item, index) => index === planHorizons.items.length - 1
+        ? { ...item, direction: 'Remove the obligation from every future direction.', change: 'replace' }
+        : { ...item, change: 'keep' });
+    const kept = applyAnalysis(starting, { active_beat: { ...activeBeat, lifecycle: 'keep' }, plan_horizons: { items: attemptedHorizons, deviation: { level: 'minor', reason: 'The wording changed, not the direction.' } } }, messages);
+    assert.equal(kept.activeBeat.id, 'tea-talk');
+    assert.equal(kept.activeBeat.startedAtTurn, 3);
+    assert.equal(kept.beatHistory.length, 0);
+    assert.equal(kept.planHorizons.items.at(-1).direction, 'Keep the obligation available as one evolving long-term pressure.');
+
+    const majorPivot = applyAnalysis(kept, { plan_horizons: { items: attemptedHorizons, deviation: { level: 'major', reason: 'The user explicitly rejected the obligation.' } } }, messages);
+    assert.equal(majorPivot.planHorizons.items.at(-1).direction, 'Remove the obligation from every future direction.');
+
+    const advanced = applyAnalysis(kept, { active_beat: { ...activeBeat, id: 'reaction', objective: 'Let the answer change the relationship.', lifecycle: 'advance' } }, [...messages, { mes: 'Mara explains the concern.', is_user: false }]);
+    assert.equal(advanced.activeBeat.id, 'reaction');
+    assert.equal(advanced.beatHistory.at(-1).id, 'tea-talk');
+    assert.equal(advanced.beatHistory.at(-1).lifecycle, 'advance');
 });
 
 test('narrative events are stored internally but guidance remains the only injected output', () => {
@@ -241,7 +285,15 @@ test('planner prompt uses a soft budget and retains selected context', () => {
     assert.ok(parsed.messages.length >= 24);
     assert.ok(parsed.messages.some(item => item.kind === 'recent' && item.index === 39));
     assert.ok(parsed.messages.some(item => item.kind === 'anchor' && item.index === 0));
-    assert.equal(parsed.messages.find(item => item.index === 39).content.length, 1600);
+    assert.equal(parsed.messages.find(item => item.index === 39).content.length, 1400);
+});
+
+test('planner excerpts remove generated scaffolding and preserve both ends of long prose', () => {
+    const long = `<stat>\`\`\`private tracker\`\`\`</stat>${'A'.repeat(2000)} crucial ending`;
+    const prompt = JSON.parse(buildAnalysisPrompt([{ mes: long, is_user: false }], defaultState(), '', {}, { messageCharLimit: 300 }));
+    assert.doesNotMatch(prompt.messages[0].content, /private tracker|<stat>/);
+    assert.match(prompt.messages[0].content, /^A+/);
+    assert.match(prompt.messages[0].content, /crucial ending$/);
 });
 
 test('empty optional context is omitted from the planner payload', () => {

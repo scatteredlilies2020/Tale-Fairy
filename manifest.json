@@ -7,8 +7,8 @@
   "css": "extension/style.css",
   "generate_interceptor": "livingWorldGuideGenerateInterceptor",
   "author": "ScatteredLilies2020",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "homePage": "https://github.com/scatteredlilies2020/Tale-Fairy",
   "auto_update": true,
-  "description": "A quiet story companion that preserves scene pace and gently guides a living roleplay world."
+  "description": "An adaptive multi-horizon story planner that turns current user actions into a concrete live beat."
 }
