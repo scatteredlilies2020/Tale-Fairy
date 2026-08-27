@@ -111,6 +111,34 @@ test('analysis prompt includes bootstrap context and current state', () => {
     assert.match(prompt, /update_narrative_context/);
 });
 
+test('planner receives and consistently uses the named player character identity', () => {
+    const messages = [
+        { mes: 'Welcome.', is_user: false, name: 'Narrator' },
+        { mes: 'I ask Vekk about the war.', is_user: true, name: 'Lucia' },
+    ];
+    const state = {
+        ...defaultState(),
+        scene: { ...defaultState().scene, activity: 'The protagonist asks a question.' },
+        objectives: [{ title: 'Help the protagonist', detail: 'Lucia waits for an answer.', status: 'active' }],
+    };
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, state));
+    assert.deepEqual(prompt.player_character, { name: 'Lucia' });
+    assert.equal(prompt.messages.at(-1).name, 'Lucia');
+    assert.match(prompt.player_identity_instruction, /same person, never separate entities/);
+    assert.equal(prompt.current.scene.activity, 'Lucia asks a question.');
+    assert.equal(prompt.current.objectives[0].title, 'Help Lucia');
+
+    const next = applyAnalysis(state, {
+        scene: { activity: 'Lucia and the protagonist wait together.' },
+        objectives: [{ title: "Protect the protagonist's choice", detail: 'Lucia decides.', status: 'active' }],
+        guidance: 'Let the protagonist answer.',
+    }, messages);
+    assert.equal(next.scene.activity, 'Lucia wait together.');
+    assert.equal(next.objectives[0].title, "Protect Lucia's choice");
+    assert.equal(next.guidance, 'Let Lucia answer.');
+    assert.doesNotMatch(JSON.stringify(next), /protagonist/i);
+});
+
 test('planner preserves explicit extreme canon without normalizing it to setting averages', () => {
     const prompt = JSON.parse(buildAnalysisPrompt([{ mes: '[OOC: Lucia has a Midichlorian count off the charts, among the highest in history.]', is_user: true }], defaultState()));
     assert.match(prompt.extreme_canon_instruction, /facts remain authoritative even when extreme, unique, unprecedented/);

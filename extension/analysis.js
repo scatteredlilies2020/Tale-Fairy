@@ -177,6 +177,37 @@ function compactOptionalObject(value, limit = 900) {
     return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, compactText(item, limit)]).filter(([, item]) => item));
 }
 
+function playerCharacterName(messages = []) {
+    const genericNames = new Set(['', 'user', 'you', 'unused', 'anonymous']);
+    for (let index = messages.length - 1; index >= 0; index--) {
+        const message = messages[index];
+        if (!message?.is_user) continue;
+        const name = compactText(message.name, 120);
+        if (!genericNames.has(name.toLocaleLowerCase())) return name;
+    }
+    return '';
+}
+
+function escapeRegExp(value) {
+    return String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function useSpecificPlayerName(value, name) {
+    if (!name || value == null) return value;
+    if (typeof value === 'string') {
+        const escapedName = escapeRegExp(name);
+        return value
+            .replace(new RegExp(`\\b${escapedName}\\s+(?:and|&)\\s+(?:the\\s+)?protagonist\\b`, 'giu'), name)
+            .replace(new RegExp(`\\b(?:the\\s+)?protagonist\\s+(?:and|&)\\s+${escapedName}\\b`, 'giu'), name)
+            .replace(/\b(?:the\s+)?protagonist['’]s\b/giu, `${name}'s`)
+            .replace(/\bthe\s+protagonist\b/giu, name)
+            .replace(/\bprotagonist\b/giu, name);
+    }
+    if (Array.isArray(value)) return value.map(item => useSpecificPlayerName(item, name));
+    if (typeof value === 'object') return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, useSpecificPlayerName(item, name)]));
+    return value;
+}
+
 function compactPromptStateForPriority(current = {}) {
     const horizons = current.planHorizons || {};
     return {
@@ -343,19 +374,25 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     const budget = Math.max(8000, Math.min(30000, Number(options.maxPromptChars) || DEFAULT_PROMPT_BUDGET));
     const latestLimit = Math.max(1400, Math.min(6000, budget - 5000));
     const selected = selectMessages(messages, windowSize, Boolean(options.bootstrapScan));
+    const playerName = playerCharacterName(messages);
     const compact = selected.map(({ index, kind, message: m }) => ({
         index,
         kind,
         role: m?.is_user ? 'user' : 'assistant',
+        name: compactText(m?.name, 120),
         content: compactMessageContent(m?.mes, index === messages.length - 1 ? latestLimit : kind === 'recent' ? charLimit : Math.min(450, charLimit), { latest: index === messages.length - 1 }),
     }));
     const recentStart = Math.max(0, messages.length - windowSize);
     const retrievedUserEvidence = retrieveOlderUserEvidence(messages, state, recentStart, new Set(selected.map(item => item.index)));
     const payload = {
         task: 'update_narrative_context',
-        current: stateForPrompt(state),
+        current: useSpecificPlayerName(stateForPrompt(state), playerName),
         messages: compact,
     };
+    if (playerName) {
+        payload.player_character = { name: playerName };
+        payload.player_identity_instruction = `The user-controlled player character is ${playerName}. In every returned field, call this character ${playerName}, never "protagonist", "the protagonist", "player character", or another generic role label. ${playerName} in existing state and ${playerName} in user messages are the same person, never separate entities.`;
+    }
     if (retrievedUserEvidence.length) {
         payload.retrieved_user_evidence = retrievedUserEvidence;
         payload.retrieval_instruction = 'These are a few relevance-selected older raw user turns, not a full transcript. Treat explicit user statements as primary evidence even when distant; use them to audit summaries and current planner claims. Distance does not erase a stated intent or fact, but a wish remains a wish rather than a completed event.';
@@ -498,8 +535,9 @@ function mergePlanHorizons(previous, proposed) {
 }
 
 export function applyAnalysis(state, result, messages) {
-    const next = normalizeState(state);
-    const value = result && typeof result === 'object' ? result : {};
+    const playerName = playerCharacterName(messages);
+    const next = normalizeState(useSpecificPlayerName(state, playerName));
+    const value = result && typeof result === 'object' ? useSpecificPlayerName(result, playerName) : {};
     if (value.story_frame && typeof value.story_frame === 'object') next.storyFrame = { ...next.storyFrame, frame: String(value.story_frame.frame || 'unknown').slice(0, 40), confidence: String(value.story_frame.confidence || 'low').slice(0, 40), basis: String(value.story_frame.basis || '').slice(0, 240) };
     next.scene = { ...next.scene, ...(value.scene || {}) };
     next.objectives = Array.isArray(value.objectives) ? value.objectives.slice(0, 10) : next.objectives;
