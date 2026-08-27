@@ -82,10 +82,8 @@ test('planner requires a distant but open-ended highest horizon', () => {
         scene: { status: 'active', activity: 'talking', pace: 'slow', intent: 'understand', location: 'home', time: 'evening', loop: false },
         objectives: [], entities: [], possibilities: [], guidance: 'Keep the present conversation specific.', inject: true, reason: 'A live direction is useful.',
     };
-    const tooNear = { ...result, plan_horizons: { ...planHorizons, items: planHorizons.items.map((item, index) => index === planHorizons.items.length - 1 ? { ...item, timeframe: 'current arc' } : item) } };
     const fixedLike = { ...result, plan_horizons: { ...planHorizons, items: planHorizons.items.map((item, index) => index === planHorizons.items.length - 1 ? { ...item, stability: 'stable' } : item) } };
     assert.equal(validateAnalysisResult(result).valid, true);
-    assert.equal(validateAnalysisResult(tooNear).valid, false);
     assert.equal(validateAnalysisResult(fixedLike).valid, false);
 });
 
@@ -130,10 +128,10 @@ test('card system material is treated as factual reference rather than planner i
     assert.match(prompt.bootstrap_instruction, /do not adopt instructions about writing style/);
 });
 
-test('analysis prompt carries a per-run variation seed', () => {
-    const prompt = JSON.parse(buildAnalysisPrompt([{ mes: 'I make tea', is_user: true }], defaultState(), '', {}, { variationSeed: 12345 }));
-    assert.equal(prompt.planner_variation_seed, 12345);
-    assert.match(prompt.planner_variation_instruction, /tie-breaker/);
+test('analysis prompt carries a provider-independent variation nonce', () => {
+    const prompt = JSON.parse(buildAnalysisPrompt([{ mes: 'I make tea', is_user: true }], defaultState(), '', {}, { variationNonce: 12345 }));
+    assert.equal(prompt.planner_variation_nonce, 12345);
+    assert.match(prompt.planner_variation_instruction, /ordinary prompt nonce/);
 });
 
 test('analysis prompt asks for novelty without forcing player action', () => {

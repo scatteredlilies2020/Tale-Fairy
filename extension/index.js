@@ -27,16 +27,17 @@ let generationRevision = 0;
 let internalAnalysisRequests = 0;
 let guidanceGateActive = 0;
 let guidanceGateStopSequence = 0;
+let lastAnalysisError = '';
 let pendingRequestVerification = null;
 let uiMountPromise = null;
 let uiMountObserver = null;
 let uiMountTimeout = null;
 const directModelCache = new Map();
 const ANALYSIS_TIMEOUT_MS = 90000;
-const PLANNER_RESPONSE_TOKENS = 2200;
+const PLANNER_RESPONSE_TOKENS = 4096;
 const UI_MOUNT_TIMEOUT_MS = 30000;
 
-function randomPlannerSeed() {
+function randomVariationNonce() {
     if (globalThis.crypto?.getRandomValues) {
         const values = new Uint32Array(1);
         globalThis.crypto.getRandomValues(values);
@@ -570,13 +571,11 @@ function waitForAbortable(promise, signal) {
     ]);
 }
 
-function isolatePlannerGenerationData(generateData, variationSeed, reasoningMode) {
+function isolatePlannerGenerationData(generateData, reasoningMode) {
     if (!generateData || typeof generateData !== 'object') return;
-    generateData.seed = variationSeed;
-    if (Object.hasOwn(generateData, 'sampler_seed')) generateData.sampler_seed = variationSeed;
     generateData.stream = false;
     generateData.n = 1;
-    generateData.temperature = 0.7;
+    generateData.temperature = 1;
     generateData.top_p = 1;
     generateData.frequency_penalty = 0;
     generateData.presence_penalty = 0;
@@ -642,7 +641,7 @@ function rebuildState() {
     return defaultState();
 }
 
-async function requestAnalysis(prompt, externalSignal, variationSeed) {
+async function requestAnalysis(prompt, externalSignal) {
     const controller = new AbortController();
     const forwardAbort = () => controller.abort(externalSignal?.reason || new DOMException('Tale Fairy analysis stopped.', 'AbortError'));
     if (externalSignal?.aborted) forwardAbort();
@@ -671,7 +670,7 @@ async function requestAnalysis(prompt, externalSignal, variationSeed) {
                 {
                     ...(structured ? { json_schema: ANALYSIS_SCHEMA } : {}),
                     custom_prompt_post_processing: '',
-                    seed: variationSeed,
+                    temperature: 1,
                     ...reasoningPayload,
                 },
             );
@@ -703,10 +702,10 @@ async function requestAnalysis(prompt, externalSignal, variationSeed) {
             const runActive = structured => {
                 const mainApi = currentContext().mainApi;
                 const seedEvent = mainApi === 'openai' ? event_types.CHAT_COMPLETION_SETTINGS_READY : event_types.GENERATE_AFTER_DATA;
-                const applySeed = generateData => {
-                    isolatePlannerGenerationData(generateData, variationSeed, activeReasoningMode);
+                const configurePlanner = generateData => {
+                    isolatePlannerGenerationData(generateData, activeReasoningMode);
                 };
-                eventSource.once(seedEvent, applySeed);
+                eventSource.once(seedEvent, configurePlanner);
                 return waitForAbortable(generateRaw({
                     prompt,
                     // The planner must not inherit the user's text-completion
@@ -717,7 +716,7 @@ async function requestAnalysis(prompt, externalSignal, variationSeed) {
                     suppressErrorToasts: true,
                     ...(structured ? { jsonSchema: ANALYSIS_SCHEMA } : {}),
                     trimNames: false,
-                }), controller.signal).finally(() => eventSource.removeListener(seedEvent, applySeed));
+                }), controller.signal).finally(() => eventSource.removeListener(seedEvent, configurePlanner));
             };
             try {
                 const activeSource = String(currentContext().chatCompletionSettings?.chat_completion_source || '');
@@ -761,7 +760,7 @@ async function requestAnalysis(prompt, externalSignal, variationSeed) {
         let reasoningPayload = reasoning.payload;
         const send = async structured => {
             const systemPrompt = structured ? SYSTEM : fallbackSystemPrompt();
-            const body = { chat_completion_source: model.provider, model: model.model, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }], max_tokens: PLANNER_RESPONSE_TOKENS, stream: false, seed: variationSeed, ...reasoningPayload, ...(structured ? { response_format: { type: 'json_object' } } : {}), ...(model.provider === 'openrouter' ? { api_url: model.url.replace(/\/$/, '') } : { custom_url: model.url.replace(/\/$/, '') }) };
+            const body = { chat_completion_source: model.provider, model: model.model, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }], max_tokens: PLANNER_RESPONSE_TOKENS, stream: false, temperature: 1, ...reasoningPayload, ...(structured ? { response_format: { type: 'json_object' } } : {}), ...(model.provider === 'openrouter' ? { api_url: model.url.replace(/\/$/, '') } : { custom_url: model.url.replace(/\/$/, '') }) };
             if (model.secretId) body.secret_id = model.secretId;
             const response = await fetch('/api/backends/chat-completions/generate', { method: 'POST', headers: currentContext().getRequestHeaders?.() || getRequestHeaders?.() || { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
             const payload = await response.json();
@@ -816,7 +815,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
     }
     const revision = ++generationRevision;
     const runId = ++analysisRunId;
-    const variationSeed = randomPlannerSeed();
+    const variationNonce = randomVariationNonce();
     const controller = new AbortController();
     analysisAbortController = controller;
     analysisRequestFingerprint = fingerprint;
@@ -834,8 +833,8 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         };
         const hostContext = await collectHostContext(context, chat);
         controller.signal.throwIfAborted();
-        const plannerPrompt = buildAnalysisPrompt(chat, current, noteInstruction(userNote), bootstrapContext(context), { messageWindow: s.messageWindow, messageCharLimit: s.messageCharLimit, continuityContext: optionalContinuityContext(context), hostContext, bootstrapScan: rebuild || current.canonBootstrapPending || current.scene.status === 'uninitialized' || !current.contextLedger, maxPromptChars: s.maxPromptChars, variationSeed });
-        const result = await requestAnalysis(plannerPrompt, controller.signal, variationSeed);
+        const plannerPrompt = buildAnalysisPrompt(chat, current, noteInstruction(userNote), bootstrapContext(context), { messageWindow: s.messageWindow, messageCharLimit: s.messageCharLimit, continuityContext: optionalContinuityContext(context), hostContext, bootstrapScan: rebuild || current.canonBootstrapPending || current.scene.status === 'uninitialized' || !current.contextLedger, maxPromptChars: s.maxPromptChars, variationNonce });
+        const result = await requestAnalysis(plannerPrompt, controller.signal);
         controller.signal.throwIfAborted();
         const resolvedNote = resolveUserNote(result, userNote);
         if (revision !== generationRevision) {
@@ -843,12 +842,13 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
             return current;
         }
         const next = applyAnalysis(current, result, chat);
-        next.plannerSeed = variationSeed;
+        next.plannerSeed = variationNonce;
         next.sourceChatId = chatId;
         next.analysisModel = analysisSelection;
         if (resolvedNote) next.userNotes = [...next.userNotes, { ...resolvedNote, at: Date.now() }].slice(-12);
         next.noteNeedsClarification = Boolean(userNote && !resolvedNote);
         await persist(next, { chatId, fingerprint });
+        lastAnalysisError = '';
         finalStatus = userNote && !resolvedNote
             ? 'Note not applied · try again'
             : 'Guidance ready';
@@ -856,7 +856,8 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         return next;
     })().catch(error => {
         const stopped = error?.name === 'AbortError';
-        finalStatus = stopped ? 'Stopped' : 'Analysis failed';
+        if (!stopped) lastAnalysisError = String(error?.message || error || 'Unknown planner failure').replace(/\s+/g, ' ').trim().slice(0, 180);
+        finalStatus = stopped ? 'Stopped' : `Analysis failed · ${lastAnalysisError}`;
         if (!stopped) console.warn(`[${EXTENSION_ID}] analysis skipped`, error);
         return loadState(context.chatMetadata);
     }).finally(() => {
@@ -1215,7 +1216,8 @@ export async function livingWorldGuideGenerateInterceptor(chat, _contextSize, ab
         // A broken planner must not strand the chat indefinitely. Continue
         // with persistent canon/notes and clearly report the missing live beat.
         updatePrompt(loadState(context.chatMetadata));
-        renderAnalysisActivity('Planner unavailable · reply continued without a live beat', false);
+        const detail = lastAnalysisError || 'reply continued without a live beat';
+        renderAnalysisActivity(`Planner unavailable · ${detail}`, false);
     } finally {
         guidanceGateActive = Math.max(0, guidanceGateActive - 1);
     }

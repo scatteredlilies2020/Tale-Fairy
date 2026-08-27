@@ -9,7 +9,7 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.3.0');
+    assert.equal(manifest.version, '0.3.1');
 });
 
 test('injected guidance carries an adaptive beat and compact horizon ladder', () => {
@@ -68,7 +68,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /function stopAnalysis\(\)/);
     assert.match(source, /analysisAbortController\.abort/);
     assert.match(source, /waitForAbortable\(generateRaw/);
-    assert.match(source, /PLANNER_RESPONSE_TOKENS = 2200/);
+    assert.match(source, /PLANNER_RESPONSE_TOKENS = 4096/);
     assert.match(source, /suppressErrorToasts: true/);
     assert.match(source, /activeSource === 'openrouter'/);
     assert.match(source, /const structured = model\.provider !== 'openrouter'/);
@@ -76,7 +76,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /function plannerReasoningMode/);
     assert.match(source, /openai_setting_names,[\s\S]*openai_settings,[\s\S]*oai_settings\?\.reasoning_effort/);
     assert.match(source, /\.\.\.reasoningPayload/);
-    assert.match(source, /isolatePlannerGenerationData\(generateData, variationSeed, activeReasoningMode\)/);
+    assert.match(source, /isolatePlannerGenerationData\(generateData, activeReasoningMode\)/);
     assert.match(source, /isGuidanceUsable\(state, messages/);
     assert.match(source, /buildPromptPayload\(state/);
     assert.match(source, /function renderBoard/);
@@ -93,10 +93,12 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /isGuidanceUsable\(next, messages, chatId\)/);
     assert.match(source, /Planner retrying in/);
     assert.match(source, /abort\(true\)/);
-    assert.match(source, /function randomPlannerSeed/);
+    assert.match(source, /function randomVariationNonce/);
     assert.match(source, /function isolatePlannerGenerationData/);
-    assert.match(source, /generateData\.seed = variationSeed/);
-    assert.match(source, /generateData\.sampler_seed = variationSeed/);
+    assert.match(source, /generateData\.temperature = 1/);
+    assert.match(source, /custom_prompt_post_processing: '',\s*temperature: 1/);
+    assert.match(source, /max_tokens: PLANNER_RESPONSE_TOKENS, stream: false, temperature: 1/);
+    assert.doesNotMatch(source, /generateData\.seed\s*=|generateData\.sampler_seed\s*=|seed:\s*variation/);
     assert.match(source, /generateData\.custom_prompt_post_processing = ''/);
     assert.match(source, /'stop', 'stopping_strings', 'logit_bias', 'tools', 'tool_choice'/);
     assert.match(source, /generateRaw\(\{[\s\S]{0,320}instructOverride: true/);
@@ -116,6 +118,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /Guidance inserted into request/);
     assert.match(source, /Guidance verified in provider request/);
     assert.match(source, /Guidance confirmed in returned reply/);
+    assert.match(source, /Planner unavailable · \$\{detail\}/);
     assert.match(source, /CONFIRMED — the provider returned an assistant reply from a request containing this exact guide/);
     assert.doesNotMatch(template, /data-setting="wait-first"/);
     assert.doesNotMatch(source, /firstAnalysisWaitMs|waitForFirstAnalysis/);

@@ -7,7 +7,7 @@
   "css": "extension/style.css",
   "generate_interceptor": "livingWorldGuideGenerateInterceptor",
   "author": "ScatteredLilies2020",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "homePage": "https://github.com/scatteredlilies2020/Tale-Fairy",
   "auto_update": true,
   "description": "An adaptive multi-horizon story planner that turns current user actions into a concrete live beat."
