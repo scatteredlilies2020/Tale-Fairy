@@ -9,7 +9,7 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.3.1');
+    assert.equal(manifest.version, '0.3.2');
 });
 
 test('injected guidance carries an adaptive beat and compact horizon ladder', () => {
@@ -108,7 +108,10 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.doesNotMatch(source, /scheduleBackgroundAnalysis/);
     assert.doesNotMatch(source, /roleplayGenerationActive|backgroundTimer|backgroundDelay|allowNextUserMessage/);
     assert.doesNotMatch(source, /MESSAGE_RECEIVED[\s\S]{0,500}scheduleBackgroundAnalysis/);
-    assert.match(source, /Do not contact the planner merely because SillyTavern started or the user switched chats/);
+    assert.match(source, /async function upgradeLegacyPlanIfNeeded/);
+    assert.match(source, /rawVersion >= STATE_VERSION/);
+    assert.match(source, /analyzeNow\(\{ messages, force: true, rebuild: true \}\)/);
+    assert.match(source, /void upgradeLegacyPlanIfNeeded\(\)/);
     assert.doesNotMatch(source, /setTimeout\(\(\) => \{ renderBoard\(\); scheduleBackgroundAnalysis\(300\); \}, 0\)/);
     assert.match(source, /guidanceGateStopSequence/);
     assert.match(source, /guidanceGateActive/);

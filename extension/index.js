@@ -5,7 +5,7 @@ import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
 import { AnalysisValidationError, applyAnalysis, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, requireValidAnalysisResult, SYSTEM } from './analysis.js';
-import { buildPromptPayload, clearState, defaultState, fingerprintMessages, horizonInfluence, isGuidanceUsable, loadState, saveState } from './state.js';
+import { buildPromptPayload, clearState, defaultState, fingerprintMessages, horizonInfluence, isGuidanceUsable, loadState, saveState, STATE_KEY, STATE_VERSION } from './state.js';
 import { resolveInjectionPlacement } from './injection-placement.js';
 import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js';
 import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, textHasCurrentGuidance } from './request-injection.js';
@@ -32,6 +32,7 @@ let pendingRequestVerification = null;
 let uiMountPromise = null;
 let uiMountObserver = null;
 let uiMountTimeout = null;
+const legacyUpgradeAttempts = new Set();
 const directModelCache = new Map();
 const ANALYSIS_TIMEOUT_MS = 90000;
 const PLANNER_RESPONSE_TOKENS = 4096;
@@ -1016,6 +1017,20 @@ function resetSettingsToDefaults(root = document.querySelector(`#${EXTENSION_ID}
     renderAnalysisActivity('Settings reset to defaults', false);
 }
 
+async function upgradeLegacyPlanIfNeeded() {
+    const context = currentContext();
+    const rawState = context.chatMetadata?.[STATE_KEY];
+    const rawVersion = Math.max(0, Number(rawState?.version) || 0);
+    const chatId = String(context.getCurrentChatId?.() || '');
+    const messages = messagesFromChat(context.chat || []);
+    const attemptKey = `${chatId}:${rawVersion}:${messages.length}`;
+    if (!getSettings().enabled || !chatId || !messages.length || !rawState || rawVersion >= STATE_VERSION || legacyUpgradeAttempts.has(attemptKey)) return;
+    legacyUpgradeAttempts.add(attemptKey);
+    renderAnalysisActivity(`Upgrading legacy Tale Fairy plan v${rawVersion}…`, true);
+    const upgraded = await analyzeNow({ messages, force: true, rebuild: true });
+    renderBoard(upgraded);
+}
+
 async function mountUI() {
     const s = getSettings();
     const target = document.querySelector('#extensions_settings2')
@@ -1121,6 +1136,7 @@ async function mountUI() {
     refreshControls(root);
     renderAnalysisActivity(analysisPromise ? 'Analyzing…' : 'Ready', Boolean(analysisPromise));
     renderBoard();
+    void upgradeLegacyPlanIfNeeded();
     return true;
     })().finally(() => { uiMountPromise = null; });
     return uiMountPromise;
@@ -1276,9 +1292,12 @@ eventSource.on(event_types.CHAT_CHANGED, () => {
     generationRevision++;
     cancelRunningAnalysis('The active chat changed while Tale Fairy was analyzing.', 'Ready');
     updatePrompt(loadState(currentContext().chatMetadata));
-    // Do not contact the planner merely because SillyTavern started or the user switched chats.
-    // Planning begins with a user generation or inside the generation interceptor.
-    setTimeout(() => { renderBoard(); }, 0);
+    // New-format chats plan on demand. Legacy chats receive one bounded
+    // migration attempt so an old guide cannot look permanently inactive.
+    setTimeout(() => {
+        renderBoard();
+        void upgradeLegacyPlanIfNeeded();
+    }, 0);
 });
 for (const event of [event_types.CONNECTION_PROFILE_CREATED, event_types.CONNECTION_PROFILE_UPDATED, event_types.CONNECTION_PROFILE_DELETED]) {
     if (event) eventSource.on(event, () => refreshConnectionProfiles());

@@ -15,6 +15,7 @@ Tale Fairy is a standalone SillyTavern extension that supplies an **adaptive nar
 - Direct OpenAI-compatible and OpenRouter configurations can securely fetch available models through SillyTavern and select them from a dropdown, with manual model IDs retained as a fallback.
 - Uses ordinary temperature-1 sampling for every planner path. A fresh variation nonce is included as normal prompt text rather than relying on provider seed support; regenerate and swipe still force a new planner pass when chat text is unchanged.
 - Stores its compact state in chat metadata, so exported/copied chats carry it with them.
+- Automatically performs one bounded planner pass when the active chat still contains legacy Tale Fairy state without live beats or horizons.
 - Keeps relevant entities, possibilities, compact Director Notes, and recent beat history alongside the multi-horizon plan.
 - Treats user text and OOC corrections as higher priority than canon or inference.
 - Keeps narrative pacing under the user's control in every mode. Declared actions, direct questions, and choices receive procedural follow-through without special “advance” wording, while their outcomes may still be surprising, difficult, funny, or bold when causally supported; slow pacing develops meaningful beats instead of artificial waits.
