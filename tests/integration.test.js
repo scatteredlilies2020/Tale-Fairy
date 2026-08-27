@@ -9,7 +9,7 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the complete guide-state reset release', () => {
-    assert.equal(manifest.version, '0.2.1');
+    assert.equal(manifest.version, '0.2.2');
 });
 
 test('injected guidance is authoritative context while preserving user pacing', () => {

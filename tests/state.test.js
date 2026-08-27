@@ -126,7 +126,10 @@ test('user-established extremes remain persistent canon rather than lore-capped 
     assert.match(payload, /off the charts and among the highest in history/);
     assert.match(payload, /averages and prior records are comparison points, not ceilings/);
     assert.match(payload, /Never regress it toward the mean, cap it at a familiar lore value, weaken it to merely high/);
-    assert.match(payload, /If no exact number was established, preserve the relational constraint/);
+    assert.match(payload, /Everything the user did not establish remains open creative space/);
+    assert.match(payload, /Freely invent an exact number or any other unstated detail when it fits the narrative/);
+    assert.match(payload, /Do not refuse, hedge, delay, or demand verification merely because a detail was unspecified/);
+    assert.doesNotMatch(payload, /fabricating false precision|invent a conservative exact number/);
 });
 
 test('an ordinary declared action proceeds without forcing the most obvious outcome', () => {

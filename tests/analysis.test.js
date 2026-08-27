@@ -93,6 +93,10 @@ test('planner preserves explicit extreme canon without normalizing it to setting
     assert.match(SYSTEM, /Return canon_constraints as the complete current list/);
     assert.match(prompt.extreme_canon_instruction, /statistically extreme, unprecedented, off-scale/);
     assert.match(prompt.extreme_canon_instruction, /Setting averages and records provide contrast, not a ceiling/);
+    assert.match(prompt.extreme_canon_instruction, /Unspecified details are open creative space, not prohibited unknowns/);
+    assert.match(prompt.extreme_canon_instruction, /may freely invent one or leave it relational according to what best fits the narrative/);
+    assert.match(prompt.extreme_canon_instruction, /Never turn missing specificity into a refusal, hedge, delay, or demand for verification/);
+    assert.doesNotMatch(prompt.extreme_canon_instruction, /fabricating precision|invent a conservative exact number/);
     const next = applyAnalysis(defaultState(), { canon_constraints: ['Lucia is among the highest in history; exact count is unspecified.'] }, []);
     assert.deepEqual(next.canonConstraints, ['Lucia is among the highest in history; exact count is unspecified.']);
 });
