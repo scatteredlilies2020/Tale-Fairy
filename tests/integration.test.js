@@ -8,6 +8,10 @@ const template = await readFile(new URL('../extension/settings.html', import.met
 const styles = await readFile(new URL('../extension/style.css', import.meta.url), 'utf8');
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
+test('manifest identifies the complete guide-state reset release', () => {
+    assert.equal(manifest.version, '0.2.1');
+});
+
 test('injected guidance is authoritative context while preserving user pacing', () => {
     assert.match(stateSource, /authoritative context guidance for the next roleplay reply/);
     assert.match(stateSource, /Apply it at the user's demonstrated pace/);
@@ -116,7 +120,11 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /CONFIRMED — the provider returned an assistant reply from a request containing this exact guide/);
     assert.doesNotMatch(template, /data-setting="wait-first"/);
     assert.doesNotMatch(source, /firstAnalysisWaitMs|waitForFirstAnalysis/);
-    assert.match(source, /analyzeNow\(\{ force: true, rebuild: existing\.scene\.status !== 'uninitialized' \}\)/);
+    assert.match(source, /function rebuildState\(\) \{\s*return defaultState\(\);\s*\}/);
+    assert.doesNotMatch(source, /rebuilt\.userNotes = previous\.userNotes|rebuilt\.lastRequestVerification = previous\.lastRequestVerification/);
+    assert.match(source, /async function rebuildGuideState\(\)[\s\S]{0,500}pendingRequestVerification = null[\s\S]{0,500}clearState\(context\.chatMetadata\)[\s\S]{0,500}analyzeNow\(\{ force: true, rebuild: true \}\)/);
+    assert.match(source, /async function resetState\(\)[\s\S]{0,350}pendingRequestVerification = null[\s\S]{0,350}renderBoard\(defaultState\(\)\)/);
+    assert.match(source, /\[data-action="guide"\][\s\S]{0,180}rebuildGuideState\(\)/);
     assert.doesNotMatch(source, /MESSAGE_SENT[\s\S]{0,250}scheduleBackgroundAnalysis/);
     assert.match(template, /data-action="stop"[^>]*disabled/);
     assert.match(template, /data-action="reset-settings"/);

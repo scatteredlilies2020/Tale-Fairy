@@ -621,12 +621,8 @@ async function persistClarifiedNote(text, kind) {
     return state;
 }
 
-function rebuildState(previous) {
-    const rebuilt = defaultState();
-    rebuilt.mode = previous.mode;
-    rebuilt.userNotes = previous.userNotes;
-    rebuilt.lastRequestVerification = previous.lastRequestVerification;
-    return rebuilt;
+function rebuildState() {
+    return defaultState();
 }
 
 async function requestAnalysis(prompt, externalSignal, variationSeed) {
@@ -807,7 +803,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const analyzed = state.scene.status !== 'uninitialized';
     const analyzedAt = state.lastAnalyzedAt ? new Date(state.lastAnalyzedAt).toLocaleString() : '';
     scratchpadText(board, 'scratchpad-meta', analyzed ? `${state.mode} mode · updated ${analyzedAt || 'recently'}${state.plannerSeed ? ` · seed ${state.plannerSeed}` : ''}` : '', 'Not analyzed yet. Use Guide now or continue the chat.');
-    const continuityStatus = continuityContextState(currentContext()).status;
+    const continuityStatus = analyzed ? continuityContextState(currentContext()).status : 'unavailable';
     scratchpadText(board, 'scratchpad-continuity', `Continuity: ${continuityStatus}`, 'Continuity: unavailable');
 
     const scene = [
@@ -910,12 +906,25 @@ function scheduleBackgroundAnalysis(delay = Number(getSettings().backgroundDelay
 async function resetState() {
     const context = currentContext();
     stopAnalysis();
+    pendingRequestVerification = null;
     context.updateChatMetadata(clearState(context.chatMetadata));
     clearPromptManagerInjection(promptManager);
     setExtensionPrompt(PROMPT_KEY, '', 0, 0);
     await context.saveMetadata?.();
     renderAnalysisActivity('Guide state deleted', false);
-    renderBoard();
+    renderBoard(defaultState());
+}
+
+async function rebuildGuideState() {
+    const context = currentContext();
+    stopAnalysis();
+    pendingRequestVerification = null;
+    context.updateChatMetadata(clearState(context.chatMetadata));
+    clearPromptManagerInjection(promptManager);
+    setExtensionPrompt(PROMPT_KEY, '', 0, 0);
+    await context.saveMetadata?.();
+    renderBoard(defaultState());
+    return analyzeNow({ force: true, rebuild: true });
 }
 
 function resetSettingsToDefaults(root = document.querySelector(`#${EXTENSION_ID}-settings`)) {
@@ -1013,8 +1022,7 @@ async function mountUI() {
     root.querySelector('[data-action="fetch-models"]').addEventListener('click', () => void fetchDirectModels(root));
     refreshConnectionProfiles(root);
     root.querySelector('[data-action="guide"]').addEventListener('click', async () => {
-        const existing = loadState(currentContext().chatMetadata);
-        await analyzeNow({ force: true, rebuild: existing.scene.status !== 'uninitialized' });
+        await rebuildGuideState();
         renderBoard();
     });
     root.querySelector('[data-action="stop"]').addEventListener('click', stopAnalysis);
