@@ -275,8 +275,25 @@ test('planner prompt enforces its hard budget while retaining priority context',
     assert.ok(parsed.messages.filter(item => item.kind === 'recent').length >= 6);
     assert.ok(parsed.messages.some(item => item.kind === 'recent' && item.index === 39));
     assert.ok(parsed.messages.some(item => item.kind === 'anchor' && item.index === 0));
-    assert.ok(parsed.messages.find(item => item.index === 39).content.length <= 900);
-    assert.ok(parsed.messages.find(item => item.index === 39).content.length >= 400);
+    assert.equal(parsed.messages.find(item => item.index === 39).content, messages[39].mes);
+});
+
+test('latest turn stays complete by compacting redundant state and older excerpts first', () => {
+    const latest = 'latest-action '.repeat(210);
+    const messages = [...Array.from({ length: 12 }, (_, index) => ({ mes: `older-${index} ${'x'.repeat(1200)}`, is_user: index % 2 === 0 })), { mes: latest, is_user: true }];
+    const state = {
+        ...defaultState(),
+        objectives: Array.from({ length: 8 }, (_, index) => ({ title: `thread-${index}`, detail: 'detail '.repeat(60), status: 'open' })),
+        entities: Array.from({ length: 6 }, (_, index) => ({ name: `entity-${index}`, state: 'state '.repeat(40), location: 'somewhere', relevance: 'relevant' })),
+        possibilities: Array.from({ length: 6 }, () => ({ description: 'possibility '.repeat(30), conditions: ['condition '.repeat(20)], force: 'moderate' })),
+        activeBeat,
+        planHorizons,
+        contextLedger: 'ledger '.repeat(400),
+    };
+    const prompt = buildAnalysisPrompt(messages, state, '', {}, { messageWindow: 12, messageCharLimit: 700, maxPromptChars: 12000, bootstrapScan: true });
+    const parsed = JSON.parse(prompt);
+    assert.ok(prompt.length <= 12000);
+    assert.equal(parsed.messages.at(-1).content, latest.trim());
 });
 
 test('hard budget also compacts a fully populated long-running planner state', () => {

@@ -9,7 +9,7 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.3.3');
+    assert.equal(manifest.version, '0.3.4');
 });
 
 test('injected guidance carries an adaptive beat and compact horizon ladder', () => {
