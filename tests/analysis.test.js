@@ -135,8 +135,10 @@ test('every planner mode leaves narrative pacing under user control', () => {
         assert.match(prompt.pacing_instruction, /Match that pacing/);
         assert.match(prompt.pacing_instruction, /mode changes narrative pressure, boldness, and breadth of possibilities—not narrative speed/);
         assert.match(prompt.pacing_instruction, /never means fragmenting one obvious action across several replies/);
-        assert.match(prompt.pacing_instruction, /treat that as binding minimum progress/);
-        assert.match(prompt.pacing_instruction, /must remain subordinate to whatever that newer turn explicitly does or requests/);
+        assert.match(prompt.pacing_instruction, /treat that as even more explicit binding minimum progress/);
+        assert.match(prompt.pacing_instruction, /Every declared action, direct question, and choice authorizes its ordinary continuation/);
+        assert.match(prompt.pacing_instruction, /no pacing keyword is required/);
+        assert.match(prompt.pacing_instruction, /must remain subordinate to whatever that newer turn does, asks, or requests/);
     }
     assert.match(MODE_INSTRUCTIONS.light, /must not artificially prolong a beat or slow a user/);
     assert.match(MODE_INSTRUCTIONS.balanced, /does not mean changing the user's narrative speed/);

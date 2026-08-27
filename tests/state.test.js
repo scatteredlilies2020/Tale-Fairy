@@ -100,8 +100,27 @@ test('latest explicit progress overrides a preplanned Tale Fairy stall', () => {
         guidanceUsable: true,
         latestUserMessage: 'I want the results now. Advance to my turn. I proceed.',
     });
-    assert.match(payload, /latest user turn explicitly commands forward progress/);
-    assert.match(payload, /Complete the requested transition or reach its stated milestone in this reply/);
+    assert.match(payload, /latest turn also explicitly commands forward progress/);
+    assert.match(payload, /Complete its requested transition or reach its stated milestone in this reply/);
     assert.match(payload, /Any earlier Tale Fairy sentence that says not this turn[\s\S]*is void/);
     assert.ok(payload.indexOf('Do NOT deliver the actual results') < payload.indexOf('<latest-user-action-override>'));
+});
+
+test('an ordinary declared action gets its obvious continuation without pacing keywords', () => {
+    const state = {
+        ...defaultState(),
+        guidance: 'Add another waiting-room beat and end before the consultation begins.',
+        lastInject: true,
+    };
+    const payload = buildPromptPayload(state, {
+        enabled: true,
+        guidanceUsable: true,
+        latestUserMessage: 'I open the consultation door and walk inside to receive my results.',
+    });
+    assert.equal(hasExplicitProgressDirective('I open the consultation door and walk inside to receive my results.'), false);
+    assert.match(payload, /Every action, direct question, or choice the user declares is binding authorization/);
+    assert.match(payload, /no words such as "advance" or "proceed" are required/);
+    assert.match(payload, /Infer routine implied steps instead of making the user micromanage/);
+    assert.match(payload, /receiving an available result/);
+    assert.match(payload, /If any earlier Tale Fairy sentence conflicts with the latest user action or pacing, ignore that sentence/);
 });
