@@ -106,7 +106,7 @@ test('latest explicit progress overrides a preplanned Tale Fairy stall', () => {
     assert.ok(payload.indexOf('Do NOT deliver the actual results') < payload.indexOf('<latest-user-action-override>'));
 });
 
-test('an ordinary declared action gets its obvious continuation without pacing keywords', () => {
+test('an ordinary declared action proceeds without forcing the most obvious outcome', () => {
     const state = {
         ...defaultState(),
         guidance: 'Add another waiting-room beat and end before the consultation begins.',
@@ -118,9 +118,11 @@ test('an ordinary declared action gets its obvious continuation without pacing k
         latestUserMessage: 'I open the consultation door and walk inside to receive my results.',
     });
     assert.equal(hasExplicitProgressDirective('I open the consultation door and walk inside to receive my results.'), false);
-    assert.match(payload, /Every action, direct question, or choice the user declares is binding authorization/);
+    assert.match(payload, /binding authorization to carry out its routine mechanics/);
     assert.match(payload, /no words such as "advance" or "proceed" are required/);
+    assert.match(payload, /does not require the most obvious outcome and does not guarantee success/);
     assert.match(payload, /Infer routine implied steps instead of making the user micromanage/);
     assert.match(payload, /receiving an available result/);
+    assert.match(payload, /may create a surprising, difficult, funny, dramatic, or otherwise fresh consequence/);
     assert.match(payload, /If any earlier Tale Fairy sentence conflicts with the latest user action or pacing, ignore that sentence/);
 });
