@@ -24,6 +24,49 @@ test('reasoning choices translate for native and custom providers', () => {
     assert.equal(buildReasoningRequest({ mode: 'minimum', source: 'openai', model: 'gpt-5.6' }).payload.reasoning_effort, 'low');
 });
 
+test('Google and Gemini variants receive model-compatible thinking levels', () => {
+    assert.deepEqual(
+        buildReasoningRequest({ mode: 'off', source: 'google', model: 'gemini-3.1-pro-preview' }).payload,
+        { include_reasoning: false, reasoning_effort: 'low' },
+    );
+    assert.deepEqual(
+        buildReasoningRequest({ mode: 'off', source: 'google', model: 'gemini-3.5-flash' }).payload,
+        { include_reasoning: false, reasoning_effort: 'min' },
+    );
+    assert.deepEqual(
+        buildReasoningRequest({ mode: 'off', source: 'google', model: 'gemini-2.5-flash' }).payload,
+        { include_reasoning: false, reasoning_effort: 'none' },
+    );
+    assert.deepEqual(buildReasoningRequest({ mode: 'high', source: 'google', model: 'gemini-1.5-pro' }).payload, {});
+    const compatible = buildReasoningRequest({
+        mode: 'minimum',
+        source: 'custom',
+        model: 'gemini-3.1-pro-preview',
+        url: 'https://generativelanguage.googleapis.com/v1beta/openai',
+    });
+    assert.equal(compatible.payload.reasoning_effort, 'low');
+    assert.deepEqual(JSON.parse(compatible.payload.custom_include_body), { reasoning_effort: 'low' });
+});
+
+test('GLM and other native SillyTavern sources use normalized reasoning controls', () => {
+    assert.deepEqual(
+        buildReasoningRequest({ mode: 'low', source: 'zai', model: 'glm-5.3' }).payload,
+        { include_reasoning: true, reasoning_effort: 'low' },
+    );
+    assert.deepEqual(
+        buildReasoningRequest({ mode: 'off', source: 'deepseek', model: 'deepseek-v4-pro' }).payload,
+        { include_reasoning: false, reasoning_effort: 'none' },
+    );
+    assert.deepEqual(
+        JSON.parse(buildReasoningRequest({ mode: 'off', source: 'custom', model: 'qwen3.5-plus' }).payload.custom_include_body),
+        { enable_thinking: false },
+    );
+    assert.deepEqual(
+        buildReasoningRequest({ mode: 'default', source: 'openrouter', model: 'stealth/ox-alpha' }).payload,
+        { include_reasoning: true },
+    );
+});
+
 test('mandatory reasoning fallback enables a provider-safe minimum', () => {
     const result = reasoningFallbackPayload(new Error('Reasoning is mandatory and cannot be disabled.'), { include_reasoning: false, reasoning_effort: 'none' });
     assert.deepEqual(result, { include_reasoning: true, reasoning_effort: 'low' });
