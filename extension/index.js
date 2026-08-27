@@ -728,7 +728,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
     const state = rebuild ? rebuildState(savedState) : savedState;
     const userNote = normalizeUserNote(note);
     const fingerprint = fingerprintMessages(chat);
-    if (!force && !userNote && state.lastAnalysisFingerprint === fingerprint && state.scene.status !== 'uninitialized') { updatePrompt(state); return state; }
+    if (!force && !userNote && !state.canonBootstrapPending && state.lastAnalysisFingerprint === fingerprint && state.scene.status !== 'uninitialized') { updatePrompt(state); return state; }
     if (analysisPromise) {
         if (!force && !userNote && !rebuild && analysisRequestFingerprint === fingerprint) return analysisPromise;
         cancelRunningAnalysis('A newer Tale Fairy analysis replaced this request.', 'Restarting…');
@@ -754,7 +754,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         };
         const hostContext = await collectHostContext(context, chat);
         controller.signal.throwIfAborted();
-        const plannerPrompt = buildAnalysisPrompt(chat, current, noteInstruction(userNote), bootstrapContext(context), { messageWindow: s.messageWindow, messageCharLimit: s.messageCharLimit, continuityContext: optionalContinuityContext(context), hostContext, bootstrapScan: rebuild || current.scene.status === 'uninitialized' || !current.contextLedger, maxPromptChars: s.maxPromptChars, variationSeed });
+        const plannerPrompt = buildAnalysisPrompt(chat, current, noteInstruction(userNote), bootstrapContext(context), { messageWindow: s.messageWindow, messageCharLimit: s.messageCharLimit, continuityContext: optionalContinuityContext(context), hostContext, bootstrapScan: rebuild || current.canonBootstrapPending || current.scene.status === 'uninitialized' || !current.contextLedger, maxPromptChars: s.maxPromptChars, variationSeed });
         const result = await requestAnalysis(plannerPrompt, controller.signal, variationSeed);
         controller.signal.throwIfAborted();
         const resolvedNote = resolveUserNote(result, userNote);

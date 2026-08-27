@@ -7,7 +7,7 @@ test('state normalizes caps and invalid mode', () => {
     assert.equal(state.mode, 'balanced');
     assert.equal(state.enabled, false);
     assert.equal(state.objectives.length, 3);
-    assert.equal(state.version, 5);
+    assert.equal(state.version, 6);
 });
 
 test('state round trips through portable metadata', () => {
@@ -57,6 +57,13 @@ test('legacy tagged notes migrate to explicit note kinds', () => {
     assert.deepEqual(state.userNotes, [{ kind: 'forbid', text: 'No time travel', at: 5 }]);
 });
 
+test('pre-canon-ledger state requests one bounded bootstrap rescan', () => {
+    const migrated = normalizeState({ version: 5, scene: { status: 'active' }, contextLedger: 'Old ledger.' });
+    assert.equal(migrated.canonBootstrapPending, true);
+    assert.equal(normalizeState(migrated).canonBootstrapPending, true);
+    assert.equal(defaultState().canonBootstrapPending, false);
+});
+
 test('prompt payload keeps user directives active and only includes usable guidance', () => {
     const state = {
         ...defaultState(),
@@ -103,7 +110,23 @@ test('latest explicit progress overrides a preplanned Tale Fairy stall', () => {
     assert.match(payload, /latest turn also explicitly commands forward progress/);
     assert.match(payload, /Complete its requested transition or reach its stated milestone in this reply/);
     assert.match(payload, /Any earlier Tale Fairy sentence that says not this turn[\s\S]*is void/);
-    assert.ok(payload.indexOf('Do NOT deliver the actual results') < payload.indexOf('<latest-user-action-override>'));
+    assert.doesNotMatch(payload, /Do NOT deliver the actual results/);
+    assert.match(payload, /supersedes any preplanned stopping point/);
+});
+
+test('user-established extremes remain persistent canon rather than lore-capped suggestions', () => {
+    const state = {
+        ...defaultState(),
+        canonConstraints: ['Lucia has a Midichlorian count off the charts and among the highest in history; no exact count is established.'],
+        guidance: 'Reveal the completed blood-test result.',
+        lastInject: true,
+    };
+    const payload = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
+    assert.match(payload, /<user-established-canon>/);
+    assert.match(payload, /off the charts and among the highest in history/);
+    assert.match(payload, /averages and prior records are comparison points, not ceilings/);
+    assert.match(payload, /Never regress it toward the mean, cap it at a familiar lore value, weaken it to merely high/);
+    assert.match(payload, /If no exact number was established, preserve the relational constraint/);
 });
 
 test('an ordinary declared action proceeds without forcing the most obvious outcome', () => {

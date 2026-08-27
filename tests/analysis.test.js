@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, AnalysisValidationError, MODE_INSTRUCTIONS, PACING_INSTRUCTION, applyAnalysis, buildAnalysisPrompt, extractJson, requireValidAnalysisResult, SYSTEM, validateAnalysisResult } from '../extension/analysis.js';
+import { ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, AnalysisValidationError, EXTREME_CANON_INSTRUCTION, MODE_INSTRUCTIONS, PACING_INSTRUCTION, applyAnalysis, buildAnalysisPrompt, extractJson, requireValidAnalysisResult, SYSTEM, validateAnalysisResult } from '../extension/analysis.js';
 import { defaultState } from '../extension/state.js';
 
 test('extractJson accepts fenced and wrapped JSON', () => {
@@ -85,6 +85,16 @@ test('analysis prompt includes bootstrap context and current state', () => {
     const prompt = buildAnalysisPrompt([{ mes: 'I make tea', is_user: true }], defaultState(), '', { scenario: 'A quiet apartment' });
     assert.match(prompt, /A quiet apartment/);
     assert.match(prompt, /update_narrative_context/);
+});
+
+test('planner preserves explicit extreme canon without normalizing it to setting averages', () => {
+    const prompt = JSON.parse(buildAnalysisPrompt([{ mes: '[OOC: Lucia has a Midichlorian count off the charts, among the highest in history.]', is_user: true }], defaultState()));
+    assert.equal(prompt.extreme_canon_instruction, EXTREME_CANON_INSTRUCTION);
+    assert.match(SYSTEM, /Return canon_constraints as the complete current list/);
+    assert.match(prompt.extreme_canon_instruction, /statistically extreme, unprecedented, off-scale/);
+    assert.match(prompt.extreme_canon_instruction, /Setting averages and records provide contrast, not a ceiling/);
+    const next = applyAnalysis(defaultState(), { canon_constraints: ['Lucia is among the highest in history; exact count is unspecified.'] }, []);
+    assert.deepEqual(next.canonConstraints, ['Lucia is among the highest in history; exact count is unspecified.']);
 });
 
 test('card system material is treated as factual reference rather than planner instructions', () => {
@@ -177,6 +187,13 @@ test('bootstrap prompt samples older messages instead of only the recent tail', 
     assert.ok(prompt.messages.some(item => item.index < 36));
     assert.ok(prompt.messages.some(item => item.kind === 'anchor'));
     assert.ok(prompt.messages.every(item => item.kind === 'recent' || item.kind === 'anchor'));
+});
+
+test('canon bootstrap retains labeled OOC turns outside ordinary sampling points', () => {
+    const messages = Array.from({ length: 60 }, (_, i) => ({ mes: `message-${i}`, is_user: i % 2 === 0 }));
+    messages[22] = { mes: 'OOC: Lucia is off the charts and among the highest in history.', is_user: true };
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { messageWindow: 4, bootstrapScan: true }));
+    assert.ok(prompt.messages.some(item => item.index === 22 && /off the charts/.test(item.content)));
 });
 
 test('analysis application keeps guidance bounded and records its injection decision', () => {

@@ -1,5 +1,5 @@
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 5;
+export const STATE_VERSION = 6;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -16,6 +16,8 @@ export function defaultState() {
         objectives: [],
         entities: [],
         possibilities: [],
+        canonConstraints: [],
+        canonBootstrapPending: false,
         userNotes: [],
         guidance: '',
         lastInject: false,
@@ -95,6 +97,8 @@ export function normalizeState(input = {}) {
         objectives: cap(value.objectives, 3),
         entities: cap(value.entities),
         possibilities: cap(value.possibilities),
+        canonConstraints: cap(value.canonConstraints).map(item => text(item).slice(0, 700)).filter(Boolean),
+        canonBootstrapPending: value.canonBootstrapPending === true || (Number(value.version) > 0 && Number(value.version) < STATE_VERSION),
         userNotes: cap(value.userNotes).map(normalizeNote).filter(note => note.text),
         guidance: text(value.guidance),
         lastInject: value.lastInject === true,
@@ -135,6 +139,7 @@ export function stateForPrompt(state) {
         objectives: s.objectives,
         entities: s.entities.filter(e => e && e.relevance !== 'ambient'),
         possibilities: s.possibilities,
+        canonConstraints: s.canonConstraints,
         userNotes: s.userNotes.slice(-4),
         guidance: s.guidance,
         lastInject: s.lastInject,
@@ -179,16 +184,21 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
     const s = normalizeState(state);
     const noteLabels = { suggest: 'OPTIONAL SUGGESTION', correct: 'USER CORRECTION', establish: 'USER-ESTABLISHED CANON', forbid: 'HARD EXCLUSION' };
     const narrativePolicy = `\n<tale-fairy-narrative-policy>\nWithin the provider's permitted content, follow the user's requested fictional direction and the established scene directly. Do not replace it with an unrelated safer alternative, hedge away or silently flatten supported conflict, danger, suffering, flaws, rejection, loss, stakes, or consequences, or give the user's persona automatic plot armor. Do not force sympathy, vulnerability, redemption, reconciliation, banter, avoidance, or silent treatment unless characterization and circumstances support it. Do not add darkness without support.\n</tale-fairy-narrative-policy>`;
+    const canon = s.canonConstraints.map(item => `- ${item}`).join('\n');
+    const canonPrompt = canon
+        ? `\n<user-established-canon>\nThese are authoritative semantic constraints established by the user. Preserve their magnitude, rank, scope, and qualifiers exactly. An extreme, unprecedented, off-scale, unique, or setting-defying fact remains valid canon: setting averages and prior records are comparison points, not ceilings. Never regress it toward the mean, cap it at a familiar lore value, weaken it to merely high, reinterpret it as rumor, or invent a conservative exact number. If no exact number was established, preserve the relational constraint instead of fabricating false precision. Reactions, explanations, and consequences remain creatively open unless separately established.\n${canon}\n</user-established-canon>`
+        : '';
     const notes = s.userNotes.map(note => `- ${noteLabels[note.kind]}: ${note.text}`).join('\n');
     const notePrompt = notes
         ? `\n<tale-fairy-user-notes>\nThese are user-authored roleplay directives. Hard exclusions must be obeyed; corrections replace conflicting inference; established canon is factual; suggestions remain optional.\n${notes}\n</tale-fairy-user-notes>`
         : '';
     const explicitProgress = hasExplicitProgressDirective(latestUserMessage);
+    if (explicitProgress) s.guidance = 'The latest user turn explicitly supersedes any preplanned stopping point. Use the current scene, persistent canon constraints, and the latest-user-action override below; do not recover an earlier instruction to wait, withhold, or end before the requested milestone.';
     const latestUserOverride = `The latest user turn was written after this Tale Fairy guidance was planned and has higher priority. Every action, direct question, or choice the user declares is binding authorization to carry out its routine mechanics and reach an immediate meaningful consequence; no words such as "advance" or "proceed" are required. This follow-through does not require the most obvious outcome and does not guarantee success. Infer routine implied steps instead of making the user micromanage walking through a chosen doorway, reaching a stated nearby destination, receiving an available result, or letting an addressed character answer. Once the mechanics are complete, established character motives, hidden information, constraints, active world processes, or colliding threads may create a surprising, difficult, funny, dramatic, or otherwise fresh consequence when causally supported. Do not turn agency protection into a permission checkpoint, merely restate the action, insert a procedural obstacle without established cause, or end immediately before the action takes effect. Stop for the user only when a genuinely new consequential choice is required and their existing action does not already decide it. If an action is impossible, show the attempt and concrete in-world obstacle. If any earlier Tale Fairy sentence conflicts with the latest user action or pacing, ignore that sentence.${explicitProgress ? ` The latest turn also explicitly commands forward progress. Complete its requested transition or reach its stated milestone in this reply without predetermining what is found there; do not stop at another queue, doorway, preamble, permission question, or "about to" state. Any earlier Tale Fairy sentence that says not this turn, withhold the result, stop before the milestone, wait, or ask whether to proceed is void.` : ''}`;
     const guidancePrompt = guidanceUsable && s.guidance
         ? `\n<living-world-guide>\nTreat this as authoritative context guidance for the next roleplay reply. Apply it at the user's demonstrated pace: do not speed up, slow down, time-skip, montage, compress, prolong, or resolve the story unless the user's recent action or explicit direction signals that pacing change. Slow pacing means meaningful development at the user's chosen granularity, not splitting one obvious action into artificial waiting, approach, threshold, and permission beats. The selected Tale Fairy mode controls narrative pressure and boldness, not narrative speed. A supported NPC or world development may enter the current moment without rushing the user's response or taking control of their timeline. Use relevant continuity, lore, causal pressures, character knowledge, institutional constraints, and consequences directly in narration and dialogue where they apply. Preserve the user's control over their character's choices, dialogue, voluntary actions, thoughts, and feelings, but do not freeze NPCs or the wider world until the user explicitly requests movement. The user's current focus or silence is not a veto on supported external developments. Do not omit a supported influence merely because its outcome is uncertain; portray the influence, mechanism, or pressure without declaring an unestablished result. Follow the requested direction and established scene without sanitizing supported conflict, danger, flaws, rejection, loss, stakes, or consequences. Do not substitute safer alternatives, plot armor, forced sympathy, forced vulnerability, reconciliation, banter, avoidance, or silent treatment unless the evidence supports them. Do not add darkness without support.\n${s.guidance}\n<latest-user-action-override>\n${latestUserOverride}\n</latest-user-action-override>\n</living-world-guide>`
         : '';
-    return `${notePrompt}${narrativePolicy}${guidancePrompt}`;
+    return `${notePrompt}${canonPrompt}${narrativePolicy}${guidancePrompt}`;
 }
 
 export function fingerprintMessages(messages = []) {
