@@ -1,5 +1,5 @@
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 12;
+export const STATE_VERSION = 13;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -181,6 +181,8 @@ function normalizeRequestVerification(value) {
 export function normalizeState(input = {}) {
     const base = defaultState();
     const value = input && typeof input === 'object' ? input : {};
+    const inputVersion = Math.max(0, Number(value.version) || 0);
+    const plannerUpgradePending = inputVersion > 0 && inputVersion < STATE_VERSION;
     const state = {
         ...base,
         ...value,
@@ -194,12 +196,12 @@ export function normalizeState(input = {}) {
         entities: cap(value.entities).map(normalizeEntity).filter(item => item.name),
         possibilities: cap(value.possibilities, 6).map(normalizePossibility).filter(item => item.description),
         pathways: cap(value.pathways, MAX_PATHWAYS).map(normalizePathway).filter(item => item.id && item.direction && item.when),
-        nextGuides: (Array.isArray(value.nextGuides) ? value.nextGuides.slice(0, 3) : []).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen && item.worldDelta && item.basis),
+        nextGuides: plannerUpgradePending ? [] : (Array.isArray(value.nextGuides) ? value.nextGuides.slice(0, 3) : []).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen && item.worldDelta && item.basis),
         activeBeat: normalizeBeat(value.activeBeat),
         beatHistory: cap(value.beatHistory, 6).map(normalizeBeat).filter(beat => beat.objective),
         planHorizons: normalizePlanHorizons(value.planHorizons),
         canonConstraints: cap(value.canonConstraints).map(item => text(item).slice(0, 500)).filter(Boolean),
-        canonBootstrapPending: value.canonBootstrapPending === true || (Number(value.version) > 0 && Number(value.version) < STATE_VERSION),
+        canonBootstrapPending: value.canonBootstrapPending === true || plannerUpgradePending,
         userNotes: cap(value.userNotes).map(normalizeNote).filter(note => note.text),
         guidance: text(value.guidance).slice(0, 700),
         lastInject: value.lastInject === true,
@@ -214,7 +216,7 @@ export function normalizeState(input = {}) {
         lastAnalyzedAt: Number(value.lastAnalyzedAt) || 0,
         turnCount: Math.max(0, Number(value.turnCount) || 0),
         plannerSeed: Number.isInteger(value.plannerSeed) ? value.plannerSeed : 0,
-        lastRequestVerification: normalizeRequestVerification(value.lastRequestVerification),
+        lastRequestVerification: plannerUpgradePending ? null : normalizeRequestVerification(value.lastRequestVerification),
     };
     return state;
 }

@@ -60,6 +60,11 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /every swipe alternative must honor or materially address it/);
     assert.match(SYSTEM, /promised, agreed, deferred, owed, revealed, decided, or established only when raw conversation/);
     assert.match(SYSTEM, /Planner-created ideas may shape the future but must never be backfilled/);
+    assert.match(SYSTEM, /previous planner hypotheses, not evidence/);
+    assert.match(SYSTEM, /A prior planner's assertion cannot verify itself/);
+    assert.match(SYSTEM, /A situational limitation does not create a future commitment/);
+    assert.match(SYSTEM, /A world_delta must matter after its sentence/);
+    assert.match(SYSTEM, /not low-stakes procedural noise used to avoid a stronger supported thread/);
     assert.match(SYSTEM, /six to ten concise plan_horizons\.items ordered from the next few turns to a distant story horizon/);
     assert.match(SYSTEM, /some later arc or meaningful future time/);
     assert.match(SYSTEM, /Everything in the plan remains changeable/);

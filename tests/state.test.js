@@ -19,7 +19,7 @@ test('state normalizes caps and invalid mode', () => {
     assert.equal(state.enabled, false);
     assert.equal(state.objectives.length, 9);
     assert.deepEqual(state.nextGuides.map(item => item.id), ['guide-0', 'guide-1', 'guide-2']);
-    assert.equal(state.version, 12);
+    assert.equal(state.version, 13);
 });
 
 test('state round trips through portable metadata', () => {
@@ -110,12 +110,12 @@ test('pre-canon-ledger state requests one bounded bootstrap rescan', () => {
     assert.equal(defaultState().canonBootstrapPending, false);
 });
 
-test('pre-momentum guides cannot remain injectable after the v12 upgrade', () => {
-    const legacyGuides = stateNextGuides.map(({ worldDelta, origin, basis, ...guide }) => guide);
-    const migrated = normalizeState({ version: 11, ...currentPlan, nextGuides: legacyGuides, lastInject: true });
-    assert.equal(migrated.version, 12);
+test('pre-momentum guides and request verification cannot remain injectable after an upgrade', () => {
+    const migrated = normalizeState({ version: 12, ...currentPlan, nextGuides: stateNextGuides, lastInject: true, lastRequestVerification: { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides } });
+    assert.equal(migrated.version, 13);
     assert.equal(migrated.canonBootstrapPending, true);
     assert.deepEqual(migrated.nextGuides, []);
+    assert.equal(migrated.lastRequestVerification, null);
     assert.equal(isGuidanceUsable(migrated, [], ''), false);
 });
 
