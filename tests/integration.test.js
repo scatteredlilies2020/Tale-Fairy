@@ -9,24 +9,27 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.6.2');
-    assert.equal(manifest.js, 'extension/index.js?v=0.6.2');
-    assert.equal(manifest.css, 'extension/style.css?v=0.6.2');
+    assert.equal(manifest.version, '0.7.0');
+    assert.equal(manifest.js, 'extension/index.js?v=0.7.0');
+    assert.equal(manifest.css, 'extension/style.css?v=0.7.0');
 });
 
-test('injection exposes one immediate guide while private planning stays private', () => {
-    assert.match(stateSource, /selected one immediate creative lean/);
-    assert.match(stateSource, /NEXT LEAN/);
+test('injection routes among immediate guides while private long-range planning stays private', () => {
+    assert.match(stateSource, /Choose one immediate route/);
+    assert.match(stateSource, /PREFERRED ROUTE/);
+    assert.match(stateSource, /ALTERNATIVE ROUTE/);
+    assert.match(stateSource, /discard all routes and make your own causally supported move/);
+    assert.match(stateSource, /<tale-fairy-context>/);
     assert.match(stateSource, /USE IF/);
     assert.match(stateSource, /DROP IF/);
     assert.match(stateSource, /VISIBLE CHANGE/);
     assert.match(stateSource, /GROUNDING/);
-    assert.match(stateSource, /do not become inert/);
-    assert.match(stateSource, /Routine transit and logistics are scaffolding/);
+    assert.match(stateSource, /No aligned route is available/);
+    assert.match(stateSource, /Routine logistics are scaffolding/);
     assert.match(stateSource, /planHorizons\.items/);
     assert.match(stateSource, /latest user action/);
     assert.doesNotMatch(stateSource, /TIME HORIZONS/);
-    assert.match(stateSource, /guideCandidates = null, guideIndex = 0/);
+    assert.match(stateSource, /guideCandidates = null, guideIndex = 0, regeneration = false/);
 });
 
 test('extension UI and interceptor use SillyTavern third-party-compatible registration', () => {
@@ -34,6 +37,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /new URL\('\.\/settings\.html', import\.meta\.url\)/);
     assert.match(source, /globalThis\.taleFairyRuntime = Object\.freeze/);
     assert.match(source, /Tale Fairy runtime \$\{RUNTIME_VERSION\} loaded/);
+    assert.doesNotMatch(source, / · seed \$\{state\.plannerSeed\}/);
     assert.match(source, /#extensions_settings2[\s\S]*#extensions_settings/);
     assert.match(source, /globalThis\.livingWorldGuideGenerateInterceptor\s*=\s*livingWorldGuideGenerateInterceptor/);
     assert.match(source, /new MutationObserver\(attemptMount\)/);
@@ -100,7 +104,14 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /type === 'swipe' \|\| type === 'regenerate'/);
     assert.match(source, /\(previousIndex \+ 1\) % candidates\.length/);
     assert.match(source, /state\.lastRequestVerification\?\.guideCandidates/);
-    assert.match(source, /guideCandidates: generationGuideSelection\?\.candidates/);
+    assert.match(source, /generationGuideSelection\.usable \? generationGuideSelection\.candidates : \[\]/);
+    assert.match(source, /regeneration: generationGuideSelection\.regeneration/);
+    assert.match(source, /const candidates = swipe \? \(archivedUsable \? archived : \[\]\) : state\.nextGuides/);
+    assert.match(source, /could not place current guidance in the provider request/);
+    assert.match(source, /containsPlannerMarker\(eventData\?\.chat\)/);
+    assert.match(source, /containsPlannerMarker\(generateData\)/);
+    assert.match(source, /cancelRunningAnalysis\('The user continued before background planning finished\.'/);
+    assert.doesNotMatch(source, /internalAnalysisRequests/);
     assert.match(source, /globalThis\.continuityMemoryBridge/);
     assert.match(source, /snapshot\?\.status === 'current'/);
     assert.match(source, /scratchpad-possibilities/);
@@ -119,6 +130,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /max_tokens: PLANNER_RESPONSE_TOKENS, stream: false, temperature: 1/);
     assert.doesNotMatch(source, /generateData\.seed\s*=|generateData\.sampler_seed\s*=|seed:\s*variation/);
     assert.match(source, /generateData\.custom_prompt_post_processing = ''/);
+    assert.match(source, /generateData\[key\] = PLANNER_RESPONSE_TOKENS/);
     assert.match(source, /'stop', 'stopping_strings', 'logit_bias', 'tools', 'tool_choice'/);
     assert.match(source, /generateRaw\(\{[\s\S]{0,320}instructOverride: true/);
     assert.doesNotMatch(source, /MESSAGE_SENT[\s\S]{0,500}analyzeNow/);
@@ -143,7 +155,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /Guidance inserted into request/);
     assert.match(source, /Guidance verified in provider request/);
     assert.match(source, /Guidance confirmed in returned reply/);
-    assert.match(source, /CONFIRMED — the provider returned an assistant reply from a request containing this exact guide/);
+    assert.match(source, /CONFIRMED — the provider returned an assistant reply from a request containing this exact Tale Fairy block/);
     assert.doesNotMatch(template, /data-setting="wait-first"/);
     assert.doesNotMatch(source, /firstAnalysisWaitMs|waitForFirstAnalysis/);
     assert.match(source, /function rebuildState\(\) \{\s*return defaultState\(\);\s*\}/);

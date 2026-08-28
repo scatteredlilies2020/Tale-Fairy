@@ -19,7 +19,7 @@ test('state normalizes caps and invalid mode', () => {
     assert.equal(state.enabled, false);
     assert.equal(state.objectives.length, 9);
     assert.deepEqual(state.nextGuides.map(item => item.id), ['guide-0', 'guide-1', 'guide-2']);
-    assert.equal(state.version, 14);
+    assert.equal(state.version, 15);
 });
 
 test('state round trips through portable metadata', () => {
@@ -111,8 +111,8 @@ test('pre-canon-ledger state requests one bounded bootstrap rescan', () => {
 });
 
 test('pre-momentum guides and request verification cannot remain injectable after an upgrade', () => {
-    const migrated = normalizeState({ version: 13, ...currentPlan, nextGuides: stateNextGuides, lastInject: true, lastRequestVerification: { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides } });
-    assert.equal(migrated.version, 14);
+    const migrated = normalizeState({ version: 14, ...currentPlan, nextGuides: stateNextGuides, lastInject: true, lastRequestVerification: { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides } });
+    assert.equal(migrated.version, 15);
     assert.equal(migrated.canonBootstrapPending, true);
     assert.deepEqual(migrated.nextGuides, []);
     assert.equal(migrated.lastRequestVerification, null);
@@ -144,22 +144,51 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.doesNotMatch(stale, /Keep the scene grounded/);
     assert.match(stale, /The latest user turn is authoritative/);
     assert.match(stale, /without inventing the player's next voluntary action/);
+    assert.match(stale, /No aligned route is available/);
+    assert.doesNotMatch(stale, /Let Mara answer plainly|meaningful deflection/);
     const current = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
+    assert.match(current, /^<tale-fairy-context>/);
+    assert.match(current, /<\/tale-fairy-context>$/);
     assert.doesNotMatch(current, /Keep the scene grounded/);
-    assert.match(current, /NEXT LEAN \[strong\]/);
+    assert.match(current, /PREFERRED ROUTE 1 \[strong · inferred\]/);
+    assert.match(current, /ALTERNATIVE ROUTE 2 \[moderate · original\]/);
     assert.match(current, /Let Mara answer plainly/);
     assert.match(current, /VISIBLE CHANGE: Mara reveals a concern/);
-    assert.match(current, /GROUNDING \[inferred\]: Mara is present/);
+    assert.match(current, /GROUNDING: Mara is present/);
     assert.match(current, /USE IF: The user continues or asks Mara/);
     assert.match(current, /DROP IF: The user leaves or changes subject/);
-    assert.doesNotMatch(current, /PATHWAYS|TIME HORIZONS|Revisit the obligation|telling-deflection/);
+    assert.match(current, /telling-deflection|meaningful deflection/);
+    assert.doesNotMatch(current, /PATHWAYS|TIME HORIZONS|Revisit the obligation/);
 
-    const swipe = buildPromptPayload(state, { enabled: true, guidanceUsable: true, guideCandidates: stateNextGuides, guideIndex: 1 });
-    assert.match(swipe, /NEXT LEAN \[moderate\]/);
+    const swipe = buildPromptPayload(state, { enabled: true, guidanceUsable: true, guideCandidates: stateNextGuides, guideIndex: 1, regeneration: true });
+    assert.match(swipe, /ALTERNATIVE ROUTE 1 \[strong · inferred\]/);
+    assert.match(swipe, /PREFERRED ROUTE 2 \[moderate · original\]/);
+    assert.match(swipe, /favor the preferred applicable route/);
+    assert.match(swipe, /If none fits, discard all routes/);
     assert.match(swipe, /meaningful deflection/);
-    assert.match(swipe, /GROUNDING \[original\]/);
-    assert.doesNotMatch(swipe, /Let Mara answer plainly/);
+    assert.match(swipe, /Let Mara answer plainly/);
+
+    const regenerationFallback = buildPromptPayload(state, { enabled: true, guidanceUsable: false, guideCandidates: [], regeneration: true });
+    assert.match(regenerationFallback, /materially different from the prior attempt, not a surface rewrite/);
+    assert.doesNotMatch(regenerationFallback, /Let Mara answer plainly|meaningful deflection/);
     assert.equal(buildPromptPayload(state, { enabled: false, guidanceUsable: true }), '');
+});
+
+test('roleplay injection stays bounded with maximum notes, canon, and route fields', () => {
+    const long = 'constraint '.repeat(100);
+    const route = { id: 'route', direction: long, use_when: long, drop_when: long, response_bias: long, world_delta: long, origin: 'original', basis: long, strength: 'moderate', source_pathways: ['path'] };
+    const state = {
+        ...defaultState(),
+        canonConstraints: Array.from({ length: 12 }, (_, index) => `canon-${index} ${long}`),
+        userNotes: Array.from({ length: 12 }, (_, index) => ({ kind: index % 2 ? 'forbid' : 'establish', text: `note-${index} ${long}`, at: index })),
+        nextGuides: Array.from({ length: 3 }, (_, index) => ({ ...route, id: `route-${index}` })),
+    };
+    const payload = buildPromptPayload(state, { guidanceUsable: true });
+    assert.ok(payload.length < 10500, `expected bounded injection, got ${payload.length} characters`);
+    for (let index = 0; index < 12; index++) {
+        assert.match(payload, new RegExp(`canon-${index}`));
+        assert.match(payload, new RegExp(`note-${index}`));
+    }
 });
 
 test('private planning state cannot bias the response without a selected next guide', () => {
@@ -170,7 +199,8 @@ test('private planning state cannot bias the response without a selected next gu
         lastInject: true,
     };
     const payload = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
-    assert.doesNotMatch(payload, /closed-route|Use the sealed passage|<living-world-guide>/);
+    assert.doesNotMatch(payload, /closed-route|Use the sealed passage/);
+    assert.match(payload, /<living-world-guide>[\s\S]*No aligned route is available/);
 });
 
 test('explicit progress detection distinguishes commands from negation', () => {
@@ -207,7 +237,7 @@ test('the compact policy advances declared actions while preserving player agenc
     };
     const payload = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
     assert.equal(hasExplicitProgressDirective('I open the consultation door and walk inside to receive my results.'), false);
-    assert.match(payload, /Carry declared actions, questions, and choices through their immediate meaningful consequence/);
+    assert.match(payload, /Carry its declared actions and questions through their meaningful consequence/);
     assert.match(payload, /without inventing the player's next voluntary action/);
     assert.match(payload, /The latest user turn is authoritative/);
 });

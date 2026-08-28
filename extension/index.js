@@ -8,12 +8,12 @@ import { AnalysisValidationError, applyAnalysis, ANALYSIS_SCHEMA, buildAnalysisP
 import { buildPromptPayload, clearState, defaultState, fingerprintMessages, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, saveState, STATE_KEY, STATE_VERSION } from './state.js';
 import { resolveInjectionPlacement } from './injection-placement.js';
 import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, textHasCurrentGuidance } from './request-injection.js';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js';
 import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.6.2';
+const RUNTIME_VERSION = '0.7.0';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -25,7 +25,6 @@ let analysisAbortController = null;
 let analysisRequestFingerprint = '';
 let analysisRunId = 0;
 let generationRevision = 0;
-let internalAnalysisRequests = 0;
 let analysisStopSequence = 0;
 let lastAnalysisError = '';
 let pendingRequestVerification = null;
@@ -40,6 +39,7 @@ const ANALYSIS_TIMEOUT_MS = 90000;
 const PLANNER_RESPONSE_TOKENS = 4096;
 const UI_MOUNT_TIMEOUT_MS = 30000;
 const LEGACY_UPGRADE_MAX_ATTEMPTS = 3;
+const INTERNAL_PLANNER_MARKER = 'You are Tale Fairy, a narrative planning layer for SillyTavern roleplay.';
 
 globalThis.taleFairyRuntime = Object.freeze({ version: RUNTIME_VERSION, loadedAt: Date.now() });
 console.info(`[${EXTENSION_ID}] Tale Fairy runtime ${RUNTIME_VERSION} loaded`);
@@ -365,11 +365,12 @@ function bootstrapContext(context) {
 
 function guideSelectionOptions(state, context = currentContext()) {
     const chatId = String(context.getCurrentChatId?.() || '');
-    if (generationGuideSelection?.chatId === chatId && generationGuideSelection.candidates.length) {
+    if (generationGuideSelection?.chatId === chatId) {
         return {
             guidanceUsable: generationGuideSelection.usable,
             guideCandidates: generationGuideSelection.candidates,
             guideIndex: generationGuideSelection.index,
+            regeneration: generationGuideSelection.regeneration,
         };
     }
     const chat = messagesFromChat(context.chat || []);
@@ -377,6 +378,7 @@ function guideSelectionOptions(state, context = currentContext()) {
         guidanceUsable: isGuidanceUsable(state, chat, chatId),
         guideCandidates: null,
         guideIndex: 0,
+        regeneration: false,
     };
 }
 
@@ -391,7 +393,8 @@ function prepareGenerationGuide(state, type) {
     const chatId = String(context.getCurrentChatId?.() || '');
     const swipe = type === 'swipe' || type === 'regenerate';
     const archived = state.lastRequestVerification?.guideCandidates || [];
-    const candidates = swipe && archived.length > 1 ? archived : state.nextGuides;
+    const archivedUsable = swipe && archived.length > 1;
+    const candidates = swipe ? (archivedUsable ? archived : []) : state.nextGuides;
     const turnKey = guideTurnKey(context);
     const archivedIndex = Number(state.lastRequestVerification?.selectedGuideIndex) || 0;
     const previousIndex = swipe ? (swipeGuideCursors.get(turnKey) ?? archivedIndex) : -1;
@@ -403,9 +406,8 @@ function prepareGenerationGuide(state, type) {
         chatId,
         candidates,
         index,
-        usable: swipe && archived.length > 1
-            ? true
-            : isGuidanceUsable(state, messages, chatId),
+        usable: archivedUsable || (!swipe && isGuidanceUsable(state, messages, chatId)),
+        regeneration: swipe,
     };
 }
 
@@ -441,6 +443,10 @@ function requestInjectionOptions() {
     };
 }
 
+function containsPlannerMarker(value) {
+    return requestContainsMarker(value, INTERNAL_PLANNER_MARKER);
+}
+
 function rememberVerifiedRequest(payload, { provider = '', model = '' } = {}) {
     const guidanceBlock = String(payload).match(/<living-world-guide>[\s\S]*?<\/living-world-guide>/iu)?.[0] || '';
     if (!guidanceBlock) return;
@@ -460,14 +466,16 @@ function rememberVerifiedRequest(payload, { provider = '', model = '' } = {}) {
         position: s.injectionPosition,
         role: s.injectionRole,
         depth: s.injectionPosition === 'at-depth' ? s.injectionDepth : 0,
-        guideCandidates: generationGuideSelection?.candidates || loadState(context.chatMetadata).nextGuides,
+        guideCandidates: generationGuideSelection
+            ? (generationGuideSelection.usable ? generationGuideSelection.candidates : [])
+            : loadState(context.chatMetadata).nextGuides,
         selectedGuideIndex: generationGuideSelection?.index || 0,
     };
     renderBoard();
 }
 
 function ensureChatCompletionRequestGuidance(eventData) {
-    if (eventData?.dryRun || internalAnalysisRequests > 0 || !getSettings().enabled || !Array.isArray(eventData?.chat)) return;
+    if (eventData?.dryRun || containsPlannerMarker(eventData?.chat) || !getSettings().enabled || !Array.isArray(eventData?.chat)) return;
     const payload = currentGuidancePayload();
     if (!payload.includes('<living-world-guide>')) return;
     const repaired = ensureGuidanceInChat(eventData.chat, payload, requestInjectionOptions());
@@ -476,7 +484,7 @@ function ensureChatCompletionRequestGuidance(eventData) {
 }
 
 function ensureTextCompletionRequestGuidance(eventData) {
-    if (eventData?.dryRun || internalAnalysisRequests > 0 || !getSettings().enabled || typeof eventData?.prompt !== 'string') return;
+    if (eventData?.dryRun || containsPlannerMarker(eventData?.prompt) || !getSettings().enabled || typeof eventData?.prompt !== 'string') return;
     const payload = currentGuidancePayload();
     if (!payload.includes('<living-world-guide>')) return;
     eventData.prompt = ensureGuidanceInText(eventData.prompt, payload);
@@ -485,14 +493,13 @@ function ensureTextCompletionRequestGuidance(eventData) {
 }
 
 function ensureProviderChatRequestGuidance(generateData) {
-    if (internalAnalysisRequests > 0 || generateData?.type === 'quiet' || !getSettings().enabled || !Array.isArray(generateData?.messages)) return;
+    if (containsPlannerMarker(generateData) || generateData?.type === 'quiet' || !getSettings().enabled || !Array.isArray(generateData?.messages)) return;
     const payload = currentGuidancePayload();
     if (!payload.includes('<living-world-guide>')) return;
     ensureGuidanceInChat(generateData.messages, payload, requestInjectionOptions());
-    if (chatHasCurrentGuidance(generateData.messages, payload)) {
-        rememberVerifiedRequest(payload, { provider: generateData.chat_completion_source, model: generateData.model });
-        renderAnalysisActivity('Guidance verified in provider request', false);
-    }
+    if (!chatHasCurrentGuidance(generateData.messages, payload)) throw new Error('Tale Fairy could not place current guidance in the provider request.');
+    rememberVerifiedRequest(payload, { provider: generateData.chat_completion_source, model: generateData.model });
+    renderAnalysisActivity('Guidance verified in provider request', false);
 }
 
 async function confirmReturnedReplyUsedGuidance() {
@@ -645,6 +652,14 @@ function isolatePlannerGenerationData(generateData, reasoningMode) {
     generateData.presence_penalty = 0;
     generateData.repetition_penalty = 1;
     generateData.custom_prompt_post_processing = '';
+    const responseLengthKeys = ['max_tokens', 'max_completion_tokens', 'max_length', 'max_new_tokens', 'max_output_tokens', 'n_predict'];
+    let responseLengthSet = false;
+    for (const key of responseLengthKeys) {
+        if (!Object.hasOwn(generateData, key)) continue;
+        generateData[key] = PLANNER_RESPONSE_TOKENS;
+        responseLengthSet = true;
+    }
+    if (!responseLengthSet && Array.isArray(generateData.messages)) generateData.max_tokens = PLANNER_RESPONSE_TOKENS;
     const reasoning = buildReasoningRequest({
         mode: reasoningMode,
         source: generateData.chat_completion_source,
@@ -762,22 +777,21 @@ async function requestAnalysis(prompt, externalSignal) {
             }
         }
         if (model.active) {
-            internalAnalysisRequests++;
             let activeReasoningMode = plannerReasoningMode();
             const runActive = structured => {
                 const mainApi = currentContext().mainApi;
                 const seedEvent = mainApi === 'openai' ? event_types.CHAT_COMPLETION_SETTINGS_READY : event_types.GENERATE_AFTER_DATA;
                 const configurePlanner = generateData => {
+                    if (!containsPlannerMarker(generateData)) return;
                     isolatePlannerGenerationData(generateData, activeReasoningMode);
                 };
-                eventSource.once(seedEvent, configurePlanner);
+                eventSource.on(seedEvent, configurePlanner);
                 return waitForAbortable(generateRaw({
                     prompt,
                     // The planner must not inherit the user's text-completion
                     // instruct template or preset formatting.
                     instructOverride: true,
                     systemPrompt: structured ? SYSTEM : fallbackSystemPrompt(),
-                    responseLength: PLANNER_RESPONSE_TOKENS,
                     suppressErrorToasts: true,
                     ...(structured ? { jsonSchema: ANALYSIS_SCHEMA } : {}),
                     trimNames: false,
@@ -811,8 +825,6 @@ async function requestAnalysis(prompt, externalSignal) {
                 const raw = await runActive(false);
                 controller.signal.throwIfAborted();
                 return parseAnalysisResponse(raw);
-            } finally {
-                internalAnalysisRequests = Math.max(0, internalAnalysisRequests - 1);
             }
         }
         const reasoningMode = plannerReasoningMode();
@@ -951,7 +963,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     if (!board) return;
     const analyzed = state.scene.status !== 'uninitialized';
     const analyzedAt = state.lastAnalyzedAt ? new Date(state.lastAnalyzedAt).toLocaleString() : '';
-    scratchpadText(board, 'scratchpad-meta', analyzed ? `${state.mode} mode · updated ${analyzedAt || 'recently'}${state.plannerSeed ? ` · seed ${state.plannerSeed}` : ''}` : '', 'Not analyzed yet. Use Guide now or continue the chat.');
+    scratchpadText(board, 'scratchpad-meta', analyzed ? `${state.mode} mode · updated ${analyzedAt || 'recently'}` : '', 'Not analyzed yet. Use Guide now or continue the chat.');
     const continuityStatus = analyzed ? continuityContextState(currentContext()).status : 'unavailable';
     scratchpadText(board, 'scratchpad-continuity', `Continuity: ${continuityStatus}`, 'Continuity: unavailable');
 
@@ -1008,8 +1020,8 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const verificationText = verification
         ? [
             verification.status === 'confirmed'
-                ? 'CONFIRMED — the provider returned an assistant reply from a request containing this exact guide.'
-                : 'INCLUDED — this exact guide is in the outgoing provider request; waiting for its reply.',
+                ? 'CONFIRMED — the provider returned an assistant reply from a request containing this exact Tale Fairy block.'
+                : 'INCLUDED — this exact Tale Fairy block is in the outgoing provider request; waiting for its reply.',
             verification.requestedAt ? `Request: ${new Date(verification.requestedAt).toLocaleString()}` : '',
             verification.confirmedAt ? `Reply confirmed: ${new Date(verification.confirmedAt).toLocaleString()}` : '',
             [verification.provider, verification.model].filter(Boolean).length ? `Provider: ${[verification.provider, verification.model].filter(Boolean).join(' · ')}` : '',
@@ -1294,7 +1306,7 @@ function refreshControls(root = document.querySelector(`#${EXTENSION_ID}-setting
 }
 
 export async function livingWorldGuideGenerateInterceptor(_chat, _contextSize, _abort, type) {
-    if (internalAnalysisRequests > 0 || type === 'quiet' || !getSettings().enabled) return;
+    if (type === 'quiet' || !getSettings().enabled) return;
     const context = currentContext();
     const state = loadState(context.chatMetadata);
     // Planning never blocks generation. The completed-turn guide is already
@@ -1332,6 +1344,8 @@ eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
     if (getSettings().enabled) void analyzeNow({ messages, allowOneUserAppend: true });
 });
 if (event_types.MESSAGE_SENT) eventSource.on(event_types.MESSAGE_SENT, () => {
+    generationRevision++;
+    cancelRunningAnalysis('The user continued before background planning finished.', 'Using available guidance…');
     generationGuideSelection = null;
     const context = currentContext();
     const state = loadState(context.chatMetadata);

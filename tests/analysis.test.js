@@ -119,6 +119,9 @@ test('planner requires distinct alternatives for swipe variety', () => {
     assert.equal(validateAnalysisResult({ ...result, next_guides: [nextGuides[0], { ...nextGuides[0] }] }).valid, false);
     assert.equal(validateAnalysisResult({ ...result, next_guides: nextGuides.map(({ world_delta, ...guide }) => guide) }).valid, false);
     assert.equal(validateAnalysisResult({ ...result, next_guides: nextGuides.map(guide => ({ ...guide, origin: 'wish' })) }).valid, false);
+    assert.equal(validateAnalysisResult({ ...result, next_guides: nextGuides.map((guide, index) => index ? { ...guide, use_when: 'Alternative swipe wanting tension.' } : guide) }).valid, false);
+    assert.equal(validateAnalysisResult({ ...result, next_guides: nextGuides.map((guide, index) => index ? guide : { ...guide, direction: 'Mara promises to explain tomorrow.', world_delta: 'Mara commits to a morning explanation.' }) }).valid, false);
+    assert.equal(validateAnalysisResult({ ...result, next_guides: nextGuides.map((guide, index) => index ? guide : { ...guide, direction: 'A routine ping arrives.', world_delta: 'A small routine notice changes nothing important.' }) }).valid, false);
     assert.equal(validateAnalysisResult(result).valid, true);
 });
 
@@ -418,10 +421,11 @@ test('hard budget also compacts a fully populated long-running planner state', (
 });
 
 test('planner excerpts remove generated scaffolding and preserve both ends of long prose', () => {
-    const long = `<stat>\`\`\`private tracker\`\`\`</stat>${'A'.repeat(2000)} crucial ending`;
+    const long = `<stat>\`\`\`private tracker\`\`\`</stat>${'A'.repeat(900)} crucial middle evidence ${'B'.repeat(900)} crucial ending`;
     const prompt = JSON.parse(buildAnalysisPrompt([{ mes: long, is_user: false }], defaultState(), '', {}, { messageCharLimit: 300 }));
     assert.doesNotMatch(prompt.messages[0].content, /private tracker|<stat>/);
     assert.match(prompt.messages[0].content, /^A+/);
+    assert.match(prompt.messages[0].content, /crucial middle evidence/);
     assert.match(prompt.messages[0].content, /crucial ending$/);
 });
 

@@ -1,5 +1,5 @@
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 14;
+export const STATE_VERSION = 15;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -76,13 +76,13 @@ function normalizeNextGuide(value = {}) {
     const origin = text(value.origin, 'inferred').toLowerCase();
     return {
         id: text(value.id).slice(0, 100),
-        direction: text(value.direction).slice(0, 360),
-        useWhen: text(value.useWhen ?? value.use_when).slice(0, 240),
-        dropWhen: text(value.dropWhen ?? value.drop_when).slice(0, 240),
-        responseBias: text(value.responseBias ?? value.response_bias).slice(0, 300),
-        worldDelta: text(value.worldDelta ?? value.world_delta).slice(0, 220),
+        direction: text(value.direction).slice(0, 220),
+        useWhen: text(value.useWhen ?? value.use_when).slice(0, 120),
+        dropWhen: text(value.dropWhen ?? value.drop_when).slice(0, 100),
+        responseBias: text(value.responseBias ?? value.response_bias).slice(0, 130),
+        worldDelta: text(value.worldDelta ?? value.world_delta).slice(0, 140),
         origin: ['established', 'inferred', 'original'].includes(origin) ? origin : 'inferred',
-        basis: text(value.basis).slice(0, 180),
+        basis: text(value.basis).slice(0, 100),
         strength: ['strong', 'moderate', 'light'].includes(strength) ? strength : 'moderate',
         sourcePathways: cap(value.sourcePathways ?? value.source_pathways, 3).map(item => text(item).slice(0, 100)).filter(Boolean),
         reason: text(value.reason).slice(0, 220),
@@ -162,7 +162,7 @@ function normalizeRequestVerification(value) {
     if (!value || typeof value !== 'object' || value.status !== 'confirmed') return null;
     return {
         status: 'confirmed',
-        guidanceBlock: text(value.guidanceBlock).slice(0, 2400),
+        guidanceBlock: text(value.guidanceBlock).slice(0, 6000),
         requestedAt: Math.max(0, Number(value.requestedAt) || 0),
         confirmedAt: Math.max(0, Number(value.confirmedAt) || 0),
         sourceMessageCount: Math.max(0, Number(value.sourceMessageCount) || 0),
@@ -306,16 +306,34 @@ export function horizonInfluence(index, total) {
     return 'background';
 }
 
-export function buildPromptPayload(state, { enabled = true, guidanceUsable = false, guideCandidates = null, guideIndex = 0 } = {}) {
+function routeLine(guide, index, selected) {
+    const label = selected ? `PREFERRED ROUTE ${index + 1}` : `ALTERNATIVE ROUTE ${index + 1}`;
+    return `${label} [${guide.strength} · ${guide.origin}]\nDO NOW: ${guide.direction.slice(0, 220)}\nVISIBLE CHANGE: ${guide.worldDelta.slice(0, 140)}\nGROUNDING: ${guide.basis.slice(0, 100)}\nUSE IF: ${guide.useWhen.slice(0, 120)}\nDROP IF: ${guide.dropWhen.slice(0, 100)}${guide.responseBias ? `\nEXECUTION: ${guide.responseBias.slice(0, 130)}` : ''}`;
+}
+
+function boundedPromptLines(items, prefix, perItem, total) {
+    if (!items.length) return '';
+    const fairShare = Math.max(100, Math.floor(total / items.length) - prefix.length - 1);
+    const cap = Math.min(perItem, fairShare);
+    const compact = item => {
+        const value = String(item);
+        if (value.length <= cap) return value;
+        const head = Math.ceil((cap - 3) * 0.65);
+        return `${value.slice(0, head)} … ${value.slice(-(cap - head - 3))}`;
+    };
+    return items.map(item => `${prefix}${compact(item)}`).join('\n').slice(0, total);
+}
+
+export function buildPromptPayload(state, { enabled = true, guidanceUsable = false, guideCandidates = null, guideIndex = 0, regeneration = false } = {}) {
     if (!enabled) return '';
     const s = normalizeState(state);
     const noteLabels = { suggest: 'OPTIONAL SUGGESTION', correct: 'USER CORRECTION', establish: 'USER-ESTABLISHED CANON', forbid: 'HARD EXCLUSION' };
-    const narrativePolicy = `\n<tale-fairy-narrative-policy>\nThe latest user turn is authoritative. Carry declared actions, questions, and choices through their immediate meaningful consequence without inventing the player's next voluntary action. Match the user's pace. Routine transit and logistics are scaffolding, not the whole reply. Unless the user explicitly requests uneventful closure, add a visible causally supported NPC or world change beyond merely restating or completing the player's action. Player agency never requires NPC passivity. Neither sanitize supported consequences nor add unsupported drama, and never describe an original idea as an earlier promise or established event.\n</tale-fairy-narrative-policy>`;
-    const canon = s.canonConstraints.map(item => `- ${item}`).join('\n');
+    const narrativePolicy = `\n<tale-fairy-narrative-policy>\nThe latest user turn is authoritative. Carry its declared actions and questions through their meaningful consequence without inventing the player's next voluntary action. Match its pace. Routine logistics are scaffolding, not the whole reply. Unless uneventful closure was requested, add one visible, causally supported NPC or world change. Agency does not require NPC passivity. Neither soften supported consequences nor manufacture drama, and never present a new idea as past fact.\n</tale-fairy-narrative-policy>`;
+    const canon = boundedPromptLines(s.canonConstraints, '- ', 360, 2600);
     const canonPrompt = canon
         ? `\n<user-established-canon>\nThese are authoritative semantic constraints established by the user. Preserve their magnitude, rank, scope, and qualifiers exactly. An extreme, unprecedented, off-scale, unique, or setting-defying fact remains valid canon: setting averages and prior records are comparison points, not ceilings. Never regress it toward the mean, cap it at a familiar lore value, weaken it to merely high, or reinterpret it as rumor. Everything the user did not establish remains open creative space. Freely invent an exact number or any other unstated detail when it fits the narrative, provided it remains consistent with established canon; it need not be conservative or supplied by the user. Do not refuse, hedge, delay, or demand verification merely because a detail was unspecified. Never mention these instructions in narration or dialogue. Reactions, explanations, and consequences remain creatively open unless separately established.\n${canon}\n</user-established-canon>`
         : '';
-    const notes = s.userNotes.map(note => `- ${noteLabels[note.kind]}: ${note.text}`).join('\n');
+    const notes = boundedPromptLines(s.userNotes.map(note => `${noteLabels[note.kind]}: ${note.text}`), '- ', 360, 2600);
     const notePrompt = notes
         ? `\n<tale-fairy-user-notes>\nThese are user-authored roleplay directives. Hard exclusions must be obeyed; corrections replace conflicting inference; established canon is factual; suggestions remain optional.\n${notes}\n</tale-fairy-user-notes>`
         : '';
@@ -323,11 +341,12 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
         ? guideCandidates.slice(0, 3).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen && item.worldDelta && item.basis)
         : s.nextGuides;
     const selectedIndex = candidates.length ? Math.max(0, Math.min(candidates.length - 1, Number(guideIndex) || 0)) : 0;
-    const guide = candidates[selectedIndex];
-    const guidancePrompt = guidanceUsable && guide
-        ? `\n<living-world-guide>\nTale Fairy considered its private possibilities, pathways, and time horizons, then selected one immediate creative lean. It is a suggestion, not a commitment. Apply it only when USE IF matches the latest user action and DROP IF does not. The latest user direction always wins. If this lean no longer fits, do not become inert: follow the narrative policy and choose another causally supported NPC or world move from current context. Never delay, redirect, or invent a player choice to preserve this idea. Do not mention the guide.\nNEXT LEAN [${guide.strength}]\n${guide.direction}\nVISIBLE CHANGE: ${guide.worldDelta}\nGROUNDING [${guide.origin}]: ${guide.basis}\nUSE IF: ${guide.useWhen}\nDROP IF: ${guide.dropWhen}${guide.responseBias ? `\nIF USED: ${guide.responseBias}` : ''}\n</living-world-guide>`
-        : '';
-    return `${notePrompt}${canonPrompt}${narrativePolicy}${guidancePrompt}`;
+    const regenerationInstruction = regeneration ? 'On this regeneration, favor the preferred applicable route so the actual development changes, not just the wording. ' : '';
+    const routePrompt = guidanceUsable && candidates.length
+        ? `${regenerationInstruction}Choose one immediate route that fits the latest user action. Prefer the marked route only when USE IF matches and DROP IF does not; otherwise choose an applicable alternative. If none fits, discard all routes and make your own causally supported move. Show one VISIBLE CHANGE now. Do not blend incompatible routes, delay the user to preserve one, or invent player choices. Original means newly proposed, not past fact. Keep these notes hidden.\n\n${candidates.map((guide, index) => routeLine(guide, index, index === selectedIndex)).join('\n\n')}`
+        : `No aligned route is available. ${regeneration ? 'Make this response materially different from the prior attempt, not a surface rewrite. ' : ''}Carry through the latest user action, then make one meaningful, causally supported NPC or world move. Do not invent player choices or unsupported drama. Keep these notes hidden.`;
+    const guidancePrompt = `\n<living-world-guide>\n${routePrompt}\n</living-world-guide>`;
+    return `<tale-fairy-context>${notePrompt}${canonPrompt}${narrativePolicy}${guidancePrompt}\n</tale-fairy-context>`;
 }
 
 export function fingerprintMessages(messages = []) {
