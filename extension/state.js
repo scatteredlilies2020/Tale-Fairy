@@ -51,7 +51,7 @@ function text(value, fallback = '') { return String(value ?? fallback).trim(); }
 function cap(list, limit = MAX_ITEMS) { return Array.isArray(list) ? list.slice(-limit) : []; }
 function clippedText(value, limit) {
     const source = text(value);
-    if (source.length < limit) return source;
+    if (source.length <= limit) return source;
     const candidate = source.slice(0, Math.max(0, limit - 1));
     const boundary = Math.max(candidate.lastIndexOf('.'), candidate.lastIndexOf(';'), candidate.lastIndexOf(','), candidate.lastIndexOf(' '));
     const clean = (boundary >= limit * 0.65 ? candidate.slice(0, boundary) : candidate)
@@ -289,7 +289,11 @@ export function clearState(metadata) {
 
 export function stateForPrompt(state) {
     const s = normalizeState(state);
-    const offeredCues = s.lastRequestVerification?.guideCandidates || [];
+    const verified = s.lastRequestVerification;
+    const archivedCues = verified?.guideCandidates || [];
+    const offeredCues = archivedCues.length
+        ? [archivedCues[Math.max(0, Math.min(archivedCues.length - 1, Number(verified?.selectedGuideIndex) || 0))]]
+        : [];
     return {
         mode: s.mode,
         scene: Object.fromEntries(Object.entries(s.scene).map(([key, value]) => [key, typeof value === 'string' ? value.slice(0, 100) : value])),
@@ -407,7 +411,7 @@ function backgroundCue(guide, emphasized = false) {
         'reveal-cause': 'The cause may become known only through an in-world reveal supported by this route.',
     };
     const boundary = boundaries[guide.disclosure];
-    return `MOVEMENT${emphasized ? ' [EMPHASIS]' : ''}: ${guide.direction.slice(0, 180)}\nIF: ${guide.useWhen.slice(0, 90)}\nUNLESS: ${guide.dropWhen.slice(0, 80)}\nDRAMATIC SCORE: ${guide.responseBias.slice(0, 110)}\nDESIRED AFTEREFFECT: ${guide.worldDelta.slice(0, 110)}${boundary ? `\nINFORMATION BOUNDARY: ${boundary}` : ''}`;
+    return `MOVEMENT${emphasized ? ' [EMPHASIS]' : ''}: ${clippedText(guide.direction, 180)}\nIF: ${clippedText(guide.useWhen, 90)}\nUNLESS: ${clippedText(guide.dropWhen, 80)}\nDRAMATIC SCORE: ${clippedText(guide.responseBias, 110)}\nDESIRED AFTEREFFECT: ${clippedText(guide.worldDelta, 110)}${boundary ? `\nINFORMATION BOUNDARY: ${boundary}` : ''}`;
 }
 
 function boundedPromptLines(items, prefix, perItem, total) {
@@ -440,12 +444,10 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
         ? guideCandidates.slice(0, MAX_GUIDES).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen && item.responseBias && item.worldDelta && item.basis)
         : s.nextGuides;
     const selectedIndex = candidates.length ? Math.max(0, Math.min(candidates.length - 1, Number(guideIndex) || 0)) : 0;
-    const orderedCandidates = candidates.length
-        ? [candidates[selectedIndex], ...candidates.filter((_, index) => index !== selectedIndex)]
-        : [];
+    const selectedCandidate = candidates[selectedIndex] || null;
     const pacingBoundary = 'PACING BOUNDARY: Match the latest user action\'s exact scope. Heading, going, or walking to a destination permits travel and arrival only—not doing or finishing the activity there, advancing to the next task, or skipping additional time unless the user asks.';
-    const routePrompt = guidanceUsable && candidates.length
-        ? `Adaptive narrative movements${regeneration ? ' for a different regeneration' : ''} (use zero or one):\n${orderedCandidates.map((guide, index) => backgroundCue(guide, index === 0)).join('\n\n')}\nJudge the narrative type, scene function, character dynamics, and current dramatic state from the complete latest turn. Use zero or one fitting movement. It is a trajectory, not a screenplay or required event: choose the concrete dialogue, action, image, consequence, or grounded surprise yourself from established character and world causality. Interpret the score as a potentially changing blend of mood, energy, tempo, tension, focus, and surprise latitude. The aftereffect is the desired change, not its prescribed mechanism. Emphasis is optional.${regeneration ? ' Do not reuse the discarded reply\'s concrete realization.' : ''} Preserve due processes, established meanings, pacing, and player agency.\n${pacingBoundary}`
+    const routePrompt = guidanceUsable && selectedCandidate
+        ? `Adaptive narrative movement${regeneration ? ' for a different regeneration' : ''} (optional):\n${backgroundCue(selectedCandidate, true)}\nJudge the narrative type, scene function, character dynamics, and current dramatic state from the complete latest turn. Use this movement only if its IF condition holds and its UNLESS condition does not; otherwise ignore it. It is a trajectory, not a screenplay or required event: choose the concrete dialogue, action, image, consequence, or grounded surprise yourself from established character and world causality. Interpret the score as a potentially changing blend of mood, energy, tempo, tension, focus, and surprise latitude. The aftereffect is the desired change, not its prescribed mechanism. Emphasis is optional.${regeneration ? ' Do not reuse the discarded reply\'s concrete realization.' : ''} Preserve due processes, established meanings, pacing, and player agency.\n${pacingBoundary}`
         : regeneration
             ? `Background variation ${Math.max(1, Number(variationCue) || 1)}: if a supported NPC or world development naturally fits this beat, it may differ from the discarded reply's concrete event. Do not force one. Do not repeat a completed event, reinterpret established names or codes, invent an unsupported crisis, or decide player action.\n${pacingBoundary}`
             : `Background continuity only: allow supported NPC, schedule, or world processes to continue when they naturally fit this beat; do not force an event solely because this guide exists. Do not repeat a completed event, reinterpret established names or codes, or decide player action.\n${pacingBoundary}`;

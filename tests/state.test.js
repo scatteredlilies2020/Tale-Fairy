@@ -82,7 +82,7 @@ test('request verification accepts an in-place swipe replacement', () => {
     assert.equal(returnedReplyMatchesVerification({ ...base, replacementGeneration: true }, messages, 'other-chat'), false);
 });
 
-test('planner sees every offered cue for neutral post-response audit', () => {
+test('planner audits only the movement actually sent while alternatives remain archived', () => {
     const state = {
         ...defaultState(),
         lastRequestVerification: {
@@ -91,8 +91,8 @@ test('planner sees every offered cue for neutral post-response audit', () => {
         },
     };
     const promptState = stateForPrompt(state);
-    assert.deepEqual(promptState.lastOfferedCues.map(item => item.id), ['direct-answer', 'telling-deflection']);
-    assert.equal(promptState.lastOfferedCues[1].worldDelta, stateNextGuides[1].worldDelta);
+    assert.deepEqual(promptState.lastOfferedCues.map(item => item.id), ['telling-deflection']);
+    assert.equal(promptState.lastOfferedCues[0].worldDelta, stateNextGuides[1].worldDelta);
     assert.equal(promptState.lastOfferedCues[0].requestConfirmed, true);
     assert.equal(Object.hasOwn(promptState, 'lastDelivery'), false);
 });
@@ -240,7 +240,7 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(current, /^<tale-fairy-context>/);
     assert.match(current, /<\/tale-fairy-context>$/);
     assert.doesNotMatch(current, /Keep the scene grounded/);
-    assert.match(current, /Adaptive narrative movements \(use zero or one\)/);
+    assert.match(current, /Adaptive narrative movement \(optional\)/);
     assert.match(current, /MOVEMENT \[EMPHASIS\]: Let Mara answer plainly/);
     assert.match(current, /IF: The user continues or asks Mara/);
     assert.match(current, /UNLESS: The user leaves or changes subject/);
@@ -256,17 +256,23 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.doesNotMatch(current, /discarded reply/);
     assert.doesNotMatch(current, /GROUNDING:|EXECUTION:|response is incomplete|failure/);
     assert.doesNotMatch(current, /Mara is present/);
-    assert.match(current, /telling-deflection|meaningful deflection/);
+    assert.doesNotMatch(current, /telling-deflection|meaningful deflection/);
     assert.doesNotMatch(current, /PATHWAYS|TIME HORIZONS|Revisit the obligation/);
 
     const swipe = buildPromptPayload(state, { enabled: true, guidanceUsable: true, guideCandidates: stateNextGuides, guideIndex: 1, regeneration: true });
-    assert.match(swipe, /Adaptive narrative movements for a different regeneration/);
+    assert.match(swipe, /Adaptive narrative movement for a different regeneration/);
     assert.match(swipe, /MOVEMENT \[EMPHASIS\]: Let Mara reveal a different pressure/);
     assert.match(swipe, /meaningful deflection/);
-    assert.match(swipe, /Let Mara answer plainly/);
+    assert.doesNotMatch(swipe, /Let Mara answer plainly/);
     assert.match(swipe, /Do not reuse the discarded reply's concrete realization/);
-    assert.match(swipe, /Use zero or one fitting movement/);
+    assert.match(swipe, /Use this movement only if its IF condition holds/);
     assert.doesNotMatch(swipe, /moderate|original|GROUNDING:|EXECUTION:/);
+
+    const longMovement = { ...stateNextGuides[0], direction: `${'measured '.repeat(22)}extraordinary consequence` };
+    const clipped = buildPromptPayload(state, { enabled: true, guidanceUsable: true, guideCandidates: [longMovement] });
+    const movementLine = clipped.match(/^MOVEMENT \[EMPHASIS\]: (.+)$/m)?.[1] || '';
+    assert.match(movementLine, /…$/);
+    assert.doesNotMatch(movementLine, /\bextra?$/);
 
     const regenerationFallback = buildPromptPayload(state, { enabled: true, guidanceUsable: false, guideCandidates: [], regeneration: true, variationCue: 8472 });
     assert.match(regenerationFallback, /Background variation 8472/);

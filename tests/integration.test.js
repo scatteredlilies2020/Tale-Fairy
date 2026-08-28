@@ -9,19 +9,19 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.8.1');
-    assert.equal(manifest.js, 'extension/index.js?v=0.8.1');
-    assert.equal(manifest.css, 'extension/style.css?v=0.8.1');
+    assert.equal(manifest.version, '0.8.2');
+    assert.equal(manifest.js, 'extension/index.js?v=0.8.2');
+    assert.equal(manifest.css, 'extension/style.css?v=0.8.2');
 });
 
 test('injection sends optional narrative movements while long-range planning stays private', () => {
-    assert.match(stateSource, /Adaptive narrative movements/);
+    assert.match(stateSource, /Adaptive narrative movement/);
     assert.match(stateSource, /MOVEMENT/);
     assert.match(stateSource, /IF:/);
     assert.match(stateSource, /UNLESS:/);
     assert.match(stateSource, /DRAMATIC SCORE:/);
     assert.match(stateSource, /DESIRED AFTEREFFECT:/);
-    assert.match(stateSource, /Use zero or one fitting movement/);
+    assert.match(stateSource, /Use this movement only if its IF condition holds/);
     assert.match(stateSource, /choose the concrete dialogue, action, image, consequence, or grounded surprise yourself/);
     assert.match(stateSource, /Preserve due processes/);
     assert.match(stateSource, /PACING BOUNDARY:/);
