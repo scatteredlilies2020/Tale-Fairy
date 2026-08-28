@@ -5,7 +5,7 @@ import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
 import { AnalysisValidationError, applyAnalysis, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, requireValidAnalysisResult, SYSTEM } from './analysis.js';
-import { buildPromptPayload, clearState, defaultState, fingerprintMessages, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js';
+import { buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js';
 import { resolveInjectionPlacement } from './injection-placement.js';
 import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js';
 import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js';
@@ -13,12 +13,12 @@ import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.7.4';
+const RUNTIME_VERSION = '0.7.5';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
 const INJECTION_POSITIONS = new Set(['before-main', 'after-main', 'before-character-definitions', 'after-character-definitions', 'before-example-messages', 'after-example-messages', 'before-an', 'after-an', 'before-chat-history', 'after-chat-history', 'before-jailbreak', 'after-jailbreak', 'at-depth']);
-const DEFAULT_SETTINGS = { enabled: true, mode: 'balanced', analysisProfileId: '', analysisSource: 'active', analysisProvider: 'custom', analysisModel: '', analysisUrl: '', analysisSecretId: '', analysisReasoningMode: 'auto', directSettingsMigrated: false, directCustomModel: '', directCustomUrl: '', directCustomSecretId: '', directOpenRouterModel: '', directOpenRouterUrl: '', directOpenRouterSecretId: '', injectionPosition: 'at-depth', injectionDepth: 0, injectionRole: 'system', includeWorldInfo: false, showDirectorNotes: false, messageWindow: 12, messageCharLimit: 700, maxPromptChars: 12000, continuityIntegration: true, continuityContextLimit: 3500, contextSettingsVersion: 5 };
+const DEFAULT_SETTINGS = { enabled: true, mode: 'balanced', analysisProfileId: '', analysisSource: 'active', analysisProvider: 'custom', analysisModel: '', analysisUrl: '', analysisSecretId: '', analysisReasoningMode: 'auto', directSettingsMigrated: false, directCustomModel: '', directCustomUrl: '', directCustomSecretId: '', directOpenRouterModel: '', directOpenRouterUrl: '', directOpenRouterSecretId: '', injectionPosition: 'at-depth', injectionDepth: 1, injectionRole: 'user', includeWorldInfo: false, showDirectorNotes: false, messageWindow: 12, messageCharLimit: 700, maxPromptChars: 12000, continuityIntegration: true, continuityContextLimit: 3500, contextSettingsVersion: 6 };
 let settings = null;
 let analysisPromise = null;
 let analysisAbortController = null;
@@ -68,14 +68,22 @@ function getSettings() {
         if ([4000, 5000].includes(Number(settings.continuityContextLimit))) settings.continuityContextLimit = 3500;
         settings.contextSettingsVersion = 3;
     }
-    if (previousContextVersion < 4) {
+    if (previousContextVersion > 0 && previousContextVersion < 4) {
         if (settings.injectionRole === 'user') settings.injectionRole = 'system';
         settings.contextSettingsVersion = 4;
     }
-    if (previousContextVersion < 5) {
+    if (previousContextVersion > 0 && previousContextVersion < 5) {
         if (settings.injectionPosition === 'at-depth' && Number(settings.injectionDepth) === 2) settings.injectionDepth = 0;
         settings.contextSettingsVersion = 5;
     }
+    if (previousContextVersion > 0 && previousContextVersion < 6) {
+        if (settings.injectionPosition === 'at-depth' && settings.injectionRole === 'system' && Number(settings.injectionDepth) === 0) {
+            settings.injectionRole = 'user';
+            settings.injectionDepth = 1;
+        }
+        settings.contextSettingsVersion = 6;
+    }
+    settings.contextSettingsVersion = DEFAULT_SETTINGS.contextSettingsVersion;
     if (!settings.directSettingsMigrated) {
         const legacySource = settings.analysisSource === 'openrouter' || settings.analysisProvider === 'openrouter' ? 'openrouter' : 'direct';
         const keys = directSettingKeys(legacySource);
@@ -88,7 +96,7 @@ function getSettings() {
     }
     if (!INJECTION_POSITIONS.has(settings.injectionPosition)) settings.injectionPosition = 'at-depth';
     settings.injectionDepth = Math.min(100, Math.max(0, Number(settings.injectionDepth) || 0));
-    if (!['user', 'system', 'assistant'].includes(settings.injectionRole)) settings.injectionRole = 'system';
+    if (!['user', 'system', 'assistant'].includes(settings.injectionRole)) settings.injectionRole = 'user';
     settings.analysisReasoningMode = normalizeReasoningMode(settings.analysisReasoningMode);
     if (settings.analysisReasoningMode === 'default') settings.analysisReasoningMode = 'auto';
     return settings;
@@ -405,7 +413,11 @@ function prepareGenerationGuide(state, type) {
     const archived = state.lastRequestVerification?.guideCandidates || [];
     const archivedUsable = swipe && archived.length > 1;
     const messages = messagesFromChat(context.chat || []);
-    const retryCandidates = swipe && !archivedUsable ? guidesForDiscardedAssistant(state, messages, chatId) : [];
+    // GENERATION_STARTED fires before SillyTavern removes the assistant turn
+    // being regenerated. Evaluate archive-less retry routes against the
+    // provider-bound trajectory, which ends on the preceding user turn.
+    const retrySource = generationRetrySource(messages, swipe);
+    const retryCandidates = swipe && !archivedUsable ? guidesForDiscardedAssistant(state, retrySource, chatId) : [];
     const retryUsable = retryCandidates.length > 1;
     const candidates = swipe ? (archivedUsable ? archived : retryCandidates) : state.nextGuides;
     const turnKey = guideTurnKey(context);
@@ -453,6 +465,7 @@ function requestInjectionOptions() {
     return {
         role: s.injectionRole,
         depth: s.injectionPosition === 'at-depth' ? s.injectionDepth : 0,
+        inlineLatestUser: s.injectionPosition === 'at-depth' && s.injectionRole === 'user' && s.injectionDepth === 1,
     };
 }
 
@@ -1372,15 +1385,21 @@ for (const event of [event_types.MESSAGE_EDITED, event_types.MESSAGE_UPDATED, ev
         updatePrompt(loadState(currentContext().chatMetadata));
     });
 }
-eventSource.on(event_types.MESSAGE_SWIPED, () => {
+eventSource.on(event_types.MESSAGE_SWIPED, messageId => {
     generationRevision++;
     cancelRunningAnalysis('The selected swipe changed while Tale Fairy was analyzing.', 'Refreshing…');
     const context = currentContext();
     const messages = messagesFromChat(context.chat || []);
     updatePrompt(loadState(context.chatMetadata));
-    // Replan privately for the newly selected outcome. If SillyTavern also
-    // emits MESSAGE_RECEIVED, analyzeNow deduplicates the same fingerprint.
-    if (getSettings().enabled && messages.length && !messages.at(-1).is_user) {
+    const selected = context.chat?.[Number(messageId)];
+    const existingSwipeSelected = Array.isArray(selected?.swipes)
+        && Number(selected.swipe_id) >= 0
+        && Number(selected.swipe_id) < selected.swipes.length;
+    // Selecting an existing result changes the active trajectory and needs a
+    // replan. An overswipe points one slot past swipes while it generates; do
+    // not spend a planner call on the discarded/empty slot. MESSAGE_RECEIVED
+    // plans once from the completed new result instead.
+    if (existingSwipeSelected && getSettings().enabled && messages.length && !messages.at(-1).is_user) {
         void analyzeNow({ messages, allowOneUserAppend: true });
     }
 });

@@ -9,9 +9,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.7.4');
-    assert.equal(manifest.js, 'extension/index.js?v=0.7.4');
-    assert.equal(manifest.css, 'extension/style.css?v=0.7.4');
+    assert.equal(manifest.version, '0.7.5');
+    assert.equal(manifest.js, 'extension/index.js?v=0.7.5');
+    assert.equal(manifest.css, 'extension/style.css?v=0.7.5');
 });
 
 test('injection sends one immediate guide while alternatives and long-range planning stay private', () => {
@@ -102,7 +102,8 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /function guideTurnKey/);
     assert.match(source, /swipeGuideCursors\.get\(turnKey\)/);
     assert.match(source, /swipeGuideCursors\.set\(turnKey, index\)/);
-    assert.match(source, /MESSAGE_SWIPED[\s\S]{0,700}void analyzeNow\(\{ messages, allowOneUserAppend: true \}\)/);
+    assert.match(source, /MESSAGE_SWIPED[\s\S]{0,900}existingSwipeSelected[\s\S]{0,500}void analyzeNow\(\{ messages, allowOneUserAppend: true \}\)/);
+    assert.match(source, /Number\(selected\.swipe_id\) < selected\.swipes\.length/);
     assert.match(source, /type === 'swipe' \|\| type === 'regenerate'/);
     assert.match(source, /\(previousIndex \+ 1\) % candidates\.length/);
     assert.match(source, /state\.lastRequestVerification\?\.guideCandidates/);
@@ -110,7 +111,8 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /regeneration: generationGuideSelection\.regeneration/);
     assert.match(source, /variationCue: generationGuideSelection\.variationCue/);
     assert.match(source, /variationCue: swipe \? randomVariationNonce\(\) : 0/);
-    assert.match(source, /guidesForDiscardedAssistant\(state, messages, chatId\)/);
+    assert.match(source, /const retrySource = generationRetrySource\(messages, swipe\)/);
+    assert.match(source, /guidesForDiscardedAssistant\(state, retrySource, chatId\)/);
     assert.match(source, /const candidates = swipe \? \(archivedUsable \? archived : retryCandidates\) : state\.nextGuides/);
     assert.match(source, /could not place current guidance in the provider request/);
     assert.match(source, /containsPlannerMarker\(eventData\?\.chat\)/);
@@ -123,10 +125,13 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /scratchpad-continuity/);
     assert.match(source, /scratchpad-ledger/);
     assert.match(source, /configurePromptManagerInjection\(promptManager, s, payload\)/);
-    assert.match(source, /injectionPosition: 'at-depth', injectionDepth: 0, injectionRole: 'system'/);
-    assert.match(source, /previousContextVersion < 4/);
-    assert.match(source, /previousContextVersion < 5/);
-    assert.match(template, /<option value="system">System \(default\)<\/option>/);
+    assert.match(source, /injectionPosition: 'at-depth', injectionDepth: 1, injectionRole: 'user'/);
+    assert.match(source, /previousContextVersion > 0 && previousContextVersion < 4/);
+    assert.match(source, /previousContextVersion > 0 && previousContextVersion < 5/);
+    assert.match(source, /previousContextVersion > 0 && previousContextVersion < 6/);
+    assert.match(source, /settings\.contextSettingsVersion = DEFAULT_SETTINGS\.contextSettingsVersion/);
+    assert.match(source, /inlineLatestUser: s\.injectionPosition === 'at-depth'/);
+    assert.match(template, /<option value="user">User \(default\)<\/option>/);
     assert.match(source, /export async function livingWorldGuideGenerateInterceptor/);
     assert.doesNotMatch(source, /livingWorldGuideGenerateInterceptor[\s\S]{0,1200}await analyzeNow/);
     assert.match(source, /Planning never blocks generation/);
@@ -181,7 +186,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.doesNotMatch(template, /runtime-version|runtime pending/);
     assert.doesNotMatch(template, /You control pacing in every mode|Tale Fairy keeps six to ten planning horizons/);
     assert.match(template, /data-setting="injection-position"/);
-    assert.match(template, /data-setting="injection-depth"[^>]*value="0"/);
+    assert.match(template, /data-setting="injection-depth"[^>]*value="1"/);
     assert.match(template, /data-setting="injection-role"/);
     assert.match(template, /Planner Scratchpad/);
     assert.match(template, /Use Continuity context when available/);

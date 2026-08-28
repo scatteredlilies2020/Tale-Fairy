@@ -48,12 +48,59 @@ test('removes duplicate legacy fragments even when the current context is alread
     assert.equal(ensureGuidanceInChat(chat, payload, { role: 'system', depth: 1 }), false);
 });
 
+test('moves guidance inside the latest user content before the actual turn', () => {
+    const chat = [
+        { role: 'system', content: payload },
+        { role: 'assistant', content: 'Are you ready?' },
+        { role: 'user', content: 'I open the door.' },
+    ];
+    assert.equal(ensureGuidanceInChat(chat, payload, { role: 'user', depth: 1, inlineLatestUser: true }), true);
+    assert.equal(chat.length, 2);
+    assert.equal(chat.at(-1).role, 'user');
+    assert.equal(chat.at(-1).content, `${payload}\nI open the door.`);
+    assert.equal(chat.filter(message => message.role === 'system').length, 0);
+    assert.equal(ensureGuidanceInChat(chat, payload, { role: 'user', depth: 1, inlineLatestUser: true }), false);
+    assert.equal(chat.at(-1).content.match(/<tale-fairy-context>/g)?.length, 1);
+});
+
+test('keeps an already embedded guide with its real user turn through later request hooks', () => {
+    const chat = [
+        { role: 'user', content: `${payload}\nI open the door.` },
+        { role: 'user', content: 'Synthetic provider suffix.' },
+    ];
+    assert.equal(ensureGuidanceInChat(chat, payload, { inlineLatestUser: true }), false);
+    assert.equal(chat[0].content, `${payload}\nI open the door.`);
+    assert.equal(chat[1].content, 'Synthetic provider suffix.');
+});
+
+test('prepends guidance to multimodal user content without changing its blocks', () => {
+    const image = { type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } };
+    const chat = [{ role: 'user', content: [{ type: 'text', text: 'Look at this.' }, image] }];
+    ensureGuidanceInChat(chat, payload, { inlineLatestUser: true });
+    assert.equal(chat.length, 1);
+    assert.deepEqual(chat[0].content.slice(1), [{ type: 'text', text: 'Look at this.' }, image]);
+    assert.equal(chat[0].content[0].text, payload);
+});
+
+test('does not normalize unrelated provider message content while relocating guidance', () => {
+    const formatted = '\n  Preserve exact card formatting.  \n';
+    const chat = [
+        { role: 'system', content: formatted },
+        { role: 'user', content: payload },
+        { role: 'user', content: 'Act now.' },
+    ];
+    ensureGuidanceInChat(chat, payload, { inlineLatestUser: true });
+    assert.equal(chat[0].content, formatted);
+    assert.equal(chat.at(-1).content, `${payload}\nAct now.`);
+});
+
 test('repairs text-completion prompts and recognizes the current guide', () => {
     const repaired = ensureGuidanceInText(`story\n${policy}\n${oldGuide}`, payload);
     assert.equal(textHasCurrentGuidance(repaired, payload), true);
     assert.doesNotMatch(repaired, /Old direction/);
     assert.equal(repaired.match(/<tale-fairy-context>/g)?.length, 1);
     assert.equal(repaired.match(/<tale-fairy-narrative-policy>/g)?.length, 1);
+    assert.equal(repaired.startsWith(payload), true);
     assert.equal(ensureGuidanceInText(repaired, payload), repaired);
 });
 
@@ -65,9 +112,12 @@ test('provider-bound request receives only the selected route while alternatives
     const prompt = buildPromptPayload({ ...defaultState(), nextGuides: routes }, { guidanceUsable: true, guideCandidates: routes, guideIndex: 1, regeneration: true });
     const chat = [{ role: 'user', content: 'Tell me what happened.' }];
 
-    assert.equal(ensureGuidanceInChat(chat, prompt, { role: 'system', depth: 0 }), true);
+    assert.equal(ensureGuidanceInChat(chat, prompt, { role: 'user', depth: 1, inlineLatestUser: true }), true);
     assert.equal(chatHasCurrentGuidance(chat, prompt), true);
+    assert.equal(chat.length, 1);
+    assert.equal(chat.at(-1).role, 'user');
     assert.match(chat.at(-1).content, /SELECTED IMMEDIATE ROUTE 2/);
+    assert.match(chat.at(-1).content, /Tell me what happened\.$/);
     assert.doesNotMatch(chat.at(-1).content, /ALTERNATIVE ROUTE 1|Vekk gives the concrete war update now/);
     assert.equal(chat.map(message => String(message.content)).join('\n').match(/<tale-fairy-context>/g)?.length, 1);
     assert.ok(prompt.length < 4800, `expected compact payload, got ${prompt.length} characters`);

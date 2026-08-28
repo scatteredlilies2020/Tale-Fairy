@@ -311,6 +311,11 @@ export function guidesForDiscardedAssistant(state, messages = [], chatId = '') {
     return candidates.length >= 2 ? candidates : [];
 }
 
+export function generationRetrySource(messages = [], replacementGeneration = false) {
+    if (!replacementGeneration || !messages.length || messages.at(-1)?.is_user) return messages;
+    return messages.slice(0, -1);
+}
+
 export function isAnalysisSourceCurrent(fingerprint, messageCount, messages = [], { allowOneUserAppend = false } = {}) {
     const count = Math.max(0, Number(messageCount) || 0);
     if (messages.length === count && fingerprintMessages(messages) === fingerprint) return true;
@@ -374,8 +379,8 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
     const selectedGuide = candidates[selectedIndex];
     const regenerationInstruction = regeneration ? 'This route was selected specifically to make this regeneration develop differently from the discarded attempt. ' : '';
     const routePrompt = guidanceUsable && candidates.length
-        ? `${regenerationInstruction}After carrying through the latest user action, realize the selected route within this response when USE IF fits and DROP IF does not. Do not merely promise, foreshadow, or defer it. If the latest user action makes it incompatible, discard it and create an equally concrete, causally supported immediate move instead. Before ending, show the VISIBLE CHANGE: alter knowledge, stakes, relationships, options, resources, or a live process. Routine logistics, repeated information, banter, and minor gestures do not count. Do not invent player choices. Original means newly proposed, not past fact. Keep this note hidden.\n\n${routeLine(selectedGuide, selectedIndex, true)}`
-        : `No aligned route is available. ${regeneration ? `Variation cue ${Math.max(1, Number(variationCue) || 1)}: make the actual development different from the prior attempt, not merely its wording. ` : ''}After carrying through the latest user action, an NPC or world process must initiate one new, causally supported beat before the response ends. It must alter knowledge, stakes, relationships, options, resources, or a live process. Routine logistics, repeated information, banter, physical strain, and minor gestures do not count. Do not invent player choices or unsupported drama. Keep these notes hidden.`;
+        ? `${regenerationInstruction}After carrying through the latest user action, realize the selected route within this response when USE IF fits and DROP IF does not. Do not merely promise, foreshadow, or defer it. If the latest user action makes it incompatible, discard it and create an equally concrete, causally supported immediate move instead. If the user explicitly requests uneventful closure, no new event, or a quiet time skip, honor that and drop the route without replacement. Otherwise, before ending, show the VISIBLE CHANGE: alter knowledge, stakes, relationships, options, resources, or a live process. Routine logistics, repeated information, banter, and minor gestures do not count. Do not invent player choices. Original means newly proposed, not past fact. Keep this note hidden.\n\n${routeLine(selectedGuide, selectedIndex, true)}`
+        : `No aligned route is available. ${regeneration ? `Variation cue ${Math.max(1, Number(variationCue) || 1)}: make the actual development different from the prior attempt, not merely its wording. ` : ''}Unless the user explicitly requests uneventful closure, no new event, or a quiet time skip, carry through the latest user action and have an NPC or world process initiate one new, causally supported beat before the response ends. It must alter knowledge, stakes, relationships, options, resources, or a live process. Routine logistics, repeated information, banter, physical strain, and minor gestures do not count. Do not invent player choices or unsupported drama. Keep these notes hidden.`;
     const guidancePrompt = `\n<living-world-guide>\n${routePrompt}\n</living-world-guide>`;
     return `<tale-fairy-context>${notePrompt}${canonPrompt}${narrativePolicy}${guidancePrompt}\n</tale-fairy-context>`;
 }

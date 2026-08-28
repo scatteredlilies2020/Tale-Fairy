@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPromptPayload, clearState, defaultState, fingerprintMessages, guidesForDiscardedAssistant, hasExplicitProgressDirective, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, isStateAligned, loadState, normalizeState, returnedReplyMatchesVerification, saveState, STATE_KEY } from '../extension/state.js';
+import { buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, hasExplicitProgressDirective, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, isStateAligned, loadState, normalizeState, returnedReplyMatchesVerification, saveState, STATE_KEY } from '../extension/state.js';
 
 const stateNextGuides = [
     { id: 'direct-answer', direction: 'Let Mara answer plainly and reveal one concrete concern.', useWhen: 'The user continues or asks Mara.', dropWhen: 'The user leaves or changes subject.', responseBias: 'Answer directly and show its immediate effect.', worldDelta: 'Mara reveals a concern that changes the shared understanding.', origin: 'inferred', basis: 'Mara is present and engaged in the live conversation.', strength: 'strong', sourcePathways: ['answer'], reason: 'Direct continuation.' },
@@ -92,6 +92,13 @@ test('a discarded assistant attempt can supply non-established retry routes', ()
     assert.deepEqual(guidesForDiscardedAssistant({ ...state, nextGuides: stateNextGuides.map(item => ({ ...item, origin: 'established' })) }, messages, 'a'), []);
 });
 
+test('replacement generation evaluates routes without the discarded assistant turn', () => {
+    const messages = [{ mes: 'question', is_user: true }, { mes: 'discard me', is_user: false }];
+    assert.deepEqual(generationRetrySource(messages, true), messages.slice(0, -1));
+    assert.equal(generationRetrySource(messages, false), messages);
+    assert.deepEqual(generationRetrySource(messages.slice(0, -1), true), messages.slice(0, -1));
+});
+
 test('completed-turn analysis may save across one new user action but not later changes', () => {
     const analyzed = [{ mes: 'The room settles.', is_user: false }];
     const fingerprint = fingerprintMessages(analyzed);
@@ -177,6 +184,7 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(current, /GROUNDING: Mara is present/);
     assert.match(current, /USE IF: The user continues or asks Mara/);
     assert.match(current, /DROP IF: The user leaves or changes subject/);
+    assert.match(current, /explicitly requests uneventful closure/);
     assert.doesNotMatch(current, /telling-deflection|meaningful deflection/);
     assert.doesNotMatch(current, /PATHWAYS|TIME HORIZONS|Revisit the obligation/);
 
@@ -190,7 +198,8 @@ test('prompt payload keeps user directives active and only includes usable guida
     const regenerationFallback = buildPromptPayload(state, { enabled: true, guidanceUsable: false, guideCandidates: [], regeneration: true, variationCue: 8472 });
     assert.match(regenerationFallback, /Variation cue 8472/);
     assert.match(regenerationFallback, /actual development different from the prior attempt, not merely its wording/);
-    assert.match(regenerationFallback, /must initiate one new, causally supported beat/);
+    assert.match(regenerationFallback, /initiate one new, causally supported beat/);
+    assert.match(regenerationFallback, /Unless the user explicitly requests uneventful closure/);
     assert.doesNotMatch(regenerationFallback, /Let Mara answer plainly|meaningful deflection/);
     assert.equal(buildPromptPayload(state, { enabled: false, guidanceUsable: true }), '');
 });

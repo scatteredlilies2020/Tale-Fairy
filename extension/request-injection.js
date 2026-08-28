@@ -64,6 +64,16 @@ function removeStaleGuidance(value) {
     return value;
 }
 
+function contentHasTaleFairyGuidance(value) {
+    return TALE_FAIRY_TAG_PATTERN.test(contentStrings(value).join('\n'));
+}
+
+function prependContext(value, context) {
+    if (typeof value === 'string') return `${context}\n${value}`;
+    if (Array.isArray(value)) return [{ type: 'text', text: context }, ...value];
+    return `${context}\n${contentStrings(value).join('\n')}`.trim();
+}
+
 export function chatHasCurrentGuidance(chat, payload) {
     const context = contextSegment(payload);
     return hasExactlyCurrentContext(chatText(chat), context);
@@ -74,13 +84,38 @@ export function textHasCurrentGuidance(prompt, payload) {
     return hasExactlyCurrentContext(prompt, context);
 }
 
-export function ensureGuidanceInChat(chat, payload, { role = 'user', depth = 2 } = {}) {
+export function ensureGuidanceInChat(chat, payload, { role = 'user', depth = 1, inlineLatestUser = false } = {}) {
     const context = contextSegment(payload);
     if (!Array.isArray(chat) || !context) return false;
-    if (hasExactlyCurrentContext(chatText(chat), context)) return false;
+    if (!inlineLatestUser && hasExactlyCurrentContext(chatText(chat), context)) return false;
+    if (inlineLatestUser && hasExactlyCurrentContext(chatText(chat), context)) {
+        const alreadyEmbedded = chat.some(message => message?.role === 'user'
+            && contentStrings(message.content).join('\n').includes(context)
+            && contentStrings(removeStaleGuidance(message.content)).join('').trim());
+        if (alreadyEmbedded) return false;
+    }
 
-    for (const message of chat) {
-        if (message && Object.hasOwn(message, 'content')) message.content = removeStaleGuidance(message.content);
+    for (let index = chat.length - 1; index >= 0; index--) {
+        const message = chat[index];
+        if (!message || !Object.hasOwn(message, 'content')) continue;
+        const hadGuidance = contentHasTaleFairyGuidance(message.content);
+        if (!hadGuidance) continue;
+        message.content = removeStaleGuidance(message.content);
+        if (hadGuidance && !contentStrings(message.content).join('').trim()) chat.splice(index, 1);
+    }
+
+    if (inlineLatestUser) {
+        let latestUser = null;
+        for (let index = chat.length - 1; index >= 0; index--) {
+            if (chat[index]?.role === 'user') {
+                latestUser = chat[index];
+                break;
+            }
+        }
+        if (latestUser) {
+            latestUser.content = prependContext(latestUser.content, context);
+            return true;
+        }
     }
 
     const safeDepth = Math.max(0, Math.min(chat.length, Number(depth) || 0));
@@ -96,8 +131,9 @@ export function ensureGuidanceInChat(chat, payload, { role = 'user', depth = 2 }
 export function ensureGuidanceInText(prompt, payload) {
     const context = contextSegment(payload);
     const source = String(prompt || '');
-    if (!context || hasExactlyCurrentContext(source, context)) return source;
+    if (!context) return source;
+    if (hasExactlyCurrentContext(source, context) && source.trimStart().startsWith(context)) return source;
 
-    const withoutStale = removeStaleGuidance(source).trimEnd();
-    return `${withoutStale}\n${context}`.trimStart();
+    const withoutStale = removeStaleGuidance(source).trimStart();
+    return `${context}\n${withoutStale}`.trimEnd();
 }
