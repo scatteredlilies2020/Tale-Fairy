@@ -22,6 +22,9 @@ export const ANALYSIS_SCHEMA_VALUE = {
         pathways: { type: 'array', minItems: 1, maxItems: 5, items: { type: 'object', additionalProperties: false, properties: {
             id: { type: 'string', maxLength: 100 }, direction: { type: 'string', maxLength: 320 }, when: { type: 'string', maxLength: 240 }, response_bias: { type: 'string', maxLength: 300 }, horizon: { type: 'string', maxLength: 80 }, status: { type: 'string', enum: ['foreground','available','latent','blocked'] }, conditions: { type: 'array', maxItems: 3, items: { type: 'string', maxLength: 140 } }, change: { type: 'string', enum: ['keep','adjust','activate','deactivate','replace','retire'] }, reason: { type: 'string', maxLength: 220 },
         }, required: ['id','direction','when','response_bias','horizon','status','conditions','change','reason'] } },
+        next_guides: { type: 'array', minItems: 2, maxItems: 3, items: { type: 'object', additionalProperties: false, properties: {
+            id: { type: 'string', maxLength: 100 }, direction: { type: 'string', maxLength: 360 }, use_when: { type: 'string', maxLength: 240 }, drop_when: { type: 'string', maxLength: 240 }, response_bias: { type: 'string', maxLength: 300 }, strength: { type: 'string', enum: ['strong','moderate','light'] }, source_pathways: { type: 'array', maxItems: 3, items: { type: 'string', maxLength: 100 } }, reason: { type: 'string', maxLength: 220 },
+        }, required: ['id','direction','use_when','drop_when','response_bias','strength','source_pathways','reason'] } },
         plan_horizons: { type: 'object', additionalProperties: false, properties: {
             items: { type: 'array', minItems: 6, maxItems: 10, items: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', maxLength: 100 }, direction: { type: 'string', maxLength: 360 }, timeframe: { type: 'string', maxLength: 120 }, stability: { type: 'string', enum: ['fluid','adaptive','stable','slow'] }, conditions: { type: 'array', maxItems: 3, items: { type: 'string', maxLength: 140 } }, change: { type: 'string', enum: ['keep','adjust','replace'] }, reason: { type: 'string', maxLength: 220 } }, required: ['id','direction','timeframe','stability','conditions','change','reason'] } },
             deviation: { type: 'object', additionalProperties: false, properties: { level: { type: 'string', enum: ['none','minor','major'] }, reason: { type: 'string' } }, required: ['level','reason'] },
@@ -34,7 +37,7 @@ export const ANALYSIS_SCHEMA_VALUE = {
         ledger: { type: 'string', maxLength: 3000 },
         narrative_events: { type: 'array', maxItems: 6, items: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', maxLength: 80 }, title: { type: 'string', maxLength: 120 }, summary: { type: 'string', maxLength: 300 }, status: { type: 'string', maxLength: 40 }, relevance: { type: 'string', maxLength: 40 }, confidence: { type: 'string', maxLength: 40 }, feasibility: { type: 'string', maxLength: 40 }, basis: { type: 'string', maxLength: 160 }, requirements: { type: 'array', maxItems: 4, items: { type: 'string', maxLength: 120 } }, interpretation: { type: 'string', maxLength: 40 }, source_hint: { type: 'string', maxLength: 120 } }, required: ['id','title','summary','status','relevance','confidence','feasibility','basis','requirements','interpretation','source_hint'] } },
         guidance: { type: 'string', maxLength: 700 }, inject: { type: 'boolean', const: true }, reason: { type: 'string', maxLength: 300 },
-    }, required: ['story_frame','scene','objectives','entities','possibilities','pathways','plan_horizons','canon_constraints','note_resolution','ledger','narrative_events','guidance','inject','reason'],
+    }, required: ['story_frame','scene','objectives','entities','possibilities','pathways','next_guides','plan_horizons','canon_constraints','note_resolution','ledger','narrative_events','guidance','inject','reason'],
 };
 
 export const ANALYSIS_SCHEMA = Object.freeze({
@@ -98,6 +101,22 @@ export function validateAnalysisResult(result) {
         if (!Array.isArray(pathway?.conditions)) errors.push(`pathways[${index}].conditions must be an array`);
         if (!['foreground', 'available', 'latent', 'blocked'].includes(pathway?.status)) errors.push(`pathways[${index}].status is invalid`);
         if (!['keep', 'adjust', 'activate', 'deactivate', 'replace', 'retire'].includes(pathway?.change)) errors.push(`pathways[${index}].change is invalid`);
+    }
+    if (!Array.isArray(result.next_guides) || result.next_guides.length < 2 || result.next_guides.length > 3) {
+        errors.push('next_guides must contain 2 to 3 ranked contrasting candidates');
+    }
+    for (const [index, guide] of (Array.isArray(result.next_guides) ? result.next_guides : []).entries()) {
+        for (const key of ['id', 'direction', 'use_when', 'drop_when', 'response_bias', 'reason']) {
+            if (typeof guide?.[key] !== 'string') errors.push(`next_guides[${index}].${key} must be a string`);
+        }
+        if (!guide?.id?.trim() || !guide?.direction?.trim() || !guide?.use_when?.trim() || !guide?.drop_when?.trim()) errors.push(`next_guides[${index}] must be a usable conditional guide`);
+        if (!Array.isArray(guide?.source_pathways)) errors.push(`next_guides[${index}].source_pathways must be an array`);
+        if (!['strong', 'moderate', 'light'].includes(guide?.strength)) errors.push(`next_guides[${index}].strength is invalid`);
+    }
+    const guideIds = (Array.isArray(result.next_guides) ? result.next_guides : []).map(guide => String(guide?.id || '').trim().toLowerCase());
+    const guideDirections = (Array.isArray(result.next_guides) ? result.next_guides : []).map(guide => String(guide?.direction || '').trim().toLowerCase());
+    if (new Set(guideIds).size !== guideIds.length || new Set(guideDirections).size !== guideDirections.length) {
+        errors.push('next_guides must use distinct ids and contrasting directions');
     }
     const horizons = result.plan_horizons;
     if (!horizons || typeof horizons !== 'object' || Array.isArray(horizons)) {
@@ -220,6 +239,7 @@ function compactPromptStateForPriority(current = {}) {
         entities: (current.entities || []).slice(-1).map(item => ({ name: compactText(item.name, 80), state: compactText(item.state, 100), location: compactText(item.location, 60), relevance: compactText(item.relevance, 60) })),
         possibilities: (current.possibilities || []).slice(-1).map(item => ({ description: compactText(item.description, 120), conditions: (item.conditions || []).slice(0, 1).map(value => compactText(value, 80)), force: compactText(item.force, 30) })),
         pathways: (current.pathways || []).slice(0, 5).map(item => ({ id: compactText(item.id, 60), direction: compactText(item.direction, 140), when: compactText(item.when, 100), responseBias: compactText(item.responseBias, 120), horizon: compactText(item.horizon, 40), status: item.status, change: item.change })),
+        nextGuides: (current.nextGuides || []).slice(0, 3).map(item => ({ id: compactText(item.id, 60), direction: compactText(item.direction, 140), useWhen: compactText(item.useWhen, 100), dropWhen: compactText(item.dropWhen, 100), responseBias: compactText(item.responseBias, 100), strength: item.strength })),
         activeBeat: current.pathways?.length ? undefined : current.activeBeat,
         planHorizons: {
             items: (horizons.items || []).map(item => ({ id: compactText(item.id, 80), direction: compactText(item.direction, 140), timeframe: compactText(item.timeframe, 80), stability: item.stability, change: item.change })),
@@ -242,6 +262,7 @@ function compactPromptStateForBudget(current = {}) {
         entities: (current.entities || []).slice(-1).map(item => ({ name: compactText(item.name, 80), state: compactText(item.state, 80), location: compactText(item.location, 60), relevance: compactText(item.relevance, 60) })),
         possibilities: (current.possibilities || []).slice(-1).map(item => ({ description: compactText(item.description, 100), conditions: (item.conditions || []).slice(0, 1).map(value => compactText(value, 70)), force: compactText(item.force, 30) })),
         pathways: (current.pathways || []).slice(0, 4).map(item => ({ id: compactText(item.id, 50), direction: compactText(item.direction, 100), when: compactText(item.when, 80), responseBias: compactText(item.responseBias, 90), horizon: compactText(item.horizon, 30), status: item.status })),
+        nextGuides: (current.nextGuides || []).slice(0, 2).map(item => ({ id: compactText(item.id, 50), direction: compactText(item.direction, 100), useWhen: compactText(item.useWhen, 70), dropWhen: compactText(item.dropWhen, 70), strength: item.strength })),
         activeBeat: current.pathways?.length ? undefined : { id: compactText(beat.id, 80), objective: compactText(beat.objective, 180), nextAction: compactText(beat.nextAction, 260), completion: compactText(beat.completion, 180), lifecycle: beat.lifecycle },
         planHorizons: {
             items: (horizons.items || []).map(item => ({ id: compactText(item.id, 50), direction: compactText(item.direction, 60), timeframe: compactText(item.timeframe, 50), stability: item.stability })),
@@ -299,6 +320,7 @@ function retrievalQueryTerms(state, recentMessages) {
         current.activeBeat?.objective,
         current.activeBeat?.nextAction,
         (current.pathways || []).flatMap(item => [item.direction, item.when, item.responseBias]),
+        (current.nextGuides || []).flatMap(item => [item.direction, item.useWhen, item.responseBias]),
     ], 2);
     return weighted;
 }
@@ -562,6 +584,9 @@ export function applyAnalysis(state, result, messages) {
         const proposed = normalizeState({ pathways: value.pathways }).pathways;
         next.pathways = mergePathways(next.pathways, proposed);
     }
+    if (Array.isArray(value.next_guides)) {
+        next.nextGuides = normalizeState({ nextGuides: value.next_guides }).nextGuides;
+    }
     if (value.plan_horizons && typeof value.plan_horizons === 'object') {
         const proposed = normalizeState({ planHorizons: {
             items: value.plan_horizons.items,
@@ -573,7 +598,7 @@ export function applyAnalysis(state, result, messages) {
         ? value.canon_constraints.slice(-12).map(item => String(item || '').trim().slice(0, 500)).filter(Boolean)
         : next.canonConstraints;
     next.guidance = String(value.guidance || '').trim().slice(0, 700);
-    next.lastInject = next.pathways.some(item => item.status !== 'blocked');
+    next.lastInject = Boolean(next.nextGuides.length);
     next.lastReason = String(value.reason || '').trim().slice(0, 500);
     if (typeof value.ledger === 'string' && value.ledger.trim()) next.contextLedger = value.ledger.trim().slice(0, 3000);
     if (Array.isArray(value.narrative_events)) {
@@ -623,7 +648,9 @@ ${HORIZON_POLICY}
 
 Return one to five compact conditional pathways for what may follow the completed turn. A pathway is an editable route, not an event that must happen. Give every pathway a stable id, a specific direction, a clear when condition based on a possible user action or causal development, an optional response_bias, a horizon, a status, remaining conditions, a change operation, and a reason. Use foreground only for the most natural continuation, but it remains conditional. Use available for credible alternatives, latent for routes needing setup, and blocked when a known condition prevents entry. Keep preserves a route, adjust edits it, activate/deactivate switches availability, replace changes direction, and retire removes it. Re-evaluate the set after every completed assistant response. Do not manufacture immediate business merely to fill response_bias; an empty response_bias is valid when the next user action should decide the response. Never require the player to take a route.
 
-Always return inject=true, one to five pathways, six to ten plan horizons, and a guidance string containing only optional supporting detail not already represented by the pathways. Guidance may be empty. Keep the ledger compact.`;
+After juggling the scene, world model, possibilities, pathways, objectives, and every time horizon privately, return two or three ranked next_guides. The first is the single idea you judge most appropriate to lean toward in the next response. The others are mandatory contrasting alternatives reserved for generated swipes. They must differ in actual development, source of pressure, character choice, revelation, consequence, tone, or approach—not merely wording—while all preserving established facts, characterization, causal continuity, pacing, and player agency. Contrast never licenses randomness or contradiction; find another honest possibility inside the same continuity. Each guide needs a specific creative direction, use_when, drop_when, optional response_bias, lean strength, source pathway ids, and a concise reason. The guide is not a prediction or commitment: the latest user action may activate it, reshape it, or make the main model discard it entirely. A guide may propose an original NPC move, consequence, discovery, sensory or social turn, world development, or fresh continuation, but it must arise from the current trajectory rather than a stale past reference.
+
+Pathways, possibilities, objectives, entities, plan horizons, and the general guidance field are private planning material and are never copied wholesale into the roleplay prompt. Put any candidate-specific execution detail in that next guide's response_bias. Always return inject=true, two to three contrasting next guides, one to five pathways, six to ten plan horizons, and a compact guidance string for the private scratchpad; guidance may be empty. Keep the ledger compact.`;
 const PLANNER_SYSTEM = `${CORE_PLANNER_POLICY}\n${EVIDENCE_FIRST_POLICY}`;
 
 export { PLANNER_SYSTEM as SYSTEM, extractJson };

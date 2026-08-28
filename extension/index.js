@@ -13,7 +13,7 @@ import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.4.1';
+const RUNTIME_VERSION = '0.5.0';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -29,6 +29,8 @@ let internalAnalysisRequests = 0;
 let analysisStopSequence = 0;
 let lastAnalysisError = '';
 let pendingRequestVerification = null;
+let generationGuideSelection = null;
+const swipeGuideCursors = new Map();
 let uiMountPromise = null;
 let uiMountObserver = null;
 let uiMountTimeout = null;
@@ -361,12 +363,57 @@ function bootstrapContext(context) {
     return result;
 }
 
+function guideSelectionOptions(state, context = currentContext()) {
+    const chatId = String(context.getCurrentChatId?.() || '');
+    if (generationGuideSelection?.chatId === chatId && generationGuideSelection.candidates.length) {
+        return {
+            guidanceUsable: generationGuideSelection.usable,
+            guideCandidates: generationGuideSelection.candidates,
+            guideIndex: generationGuideSelection.index,
+        };
+    }
+    const chat = messagesFromChat(context.chat || []);
+    return {
+        guidanceUsable: isGuidanceUsable(state, chat, chatId),
+        guideCandidates: null,
+        guideIndex: 0,
+    };
+}
+
+function guideTurnKey(context = currentContext()) {
+    const messages = messagesFromChat(context.chat || []);
+    if (messages.length && !messages.at(-1).is_user) messages.pop();
+    return `${String(context.getCurrentChatId?.() || '')}:${fingerprintMessages(messages)}`;
+}
+
+function prepareGenerationGuide(state, type) {
+    const context = currentContext();
+    const chatId = String(context.getCurrentChatId?.() || '');
+    const swipe = type === 'swipe' || type === 'regenerate';
+    const archived = state.lastRequestVerification?.guideCandidates || [];
+    const candidates = swipe && archived.length > 1 ? archived : state.nextGuides;
+    const turnKey = guideTurnKey(context);
+    const archivedIndex = Number(state.lastRequestVerification?.selectedGuideIndex) || 0;
+    const previousIndex = swipe ? (swipeGuideCursors.get(turnKey) ?? archivedIndex) : -1;
+    const index = swipe && candidates.length > 1 ? (previousIndex + 1) % candidates.length : 0;
+    swipeGuideCursors.set(turnKey, index);
+    while (swipeGuideCursors.size > 20) swipeGuideCursors.delete(swipeGuideCursors.keys().next().value);
+    const messages = messagesFromChat(context.chat || []);
+    generationGuideSelection = {
+        chatId,
+        candidates,
+        index,
+        usable: swipe && archived.length > 1
+            ? true
+            : isGuidanceUsable(state, messages, chatId),
+    };
+}
+
 function updatePrompt(state) {
     const context = currentContext();
     const s = getSettings();
-    const chat = messagesFromChat(context.chat || []);
-    const usable = isGuidanceUsable(state, chat, String(context.getCurrentChatId?.() || ''));
-    const payload = buildPromptPayload(state, { enabled: s.enabled, guidanceUsable: usable });
+    const selection = guideSelectionOptions(state, context);
+    const payload = buildPromptPayload(state, { enabled: s.enabled, ...selection });
     const placement = resolveInjectionPlacement(s, extension_prompt_types, extension_prompt_roles);
     const managerApplied = context.mainApi === 'openai' && configurePromptManagerInjection(promptManager, s, payload);
     if (!managerApplied) clearPromptManagerInjection(promptManager);
@@ -383,9 +430,7 @@ function updatePrompt(state) {
 function currentGuidancePayload() {
     const context = currentContext();
     const state = loadState(context.chatMetadata);
-    const messages = messagesFromChat(context.chat || []);
-    const usable = isGuidanceUsable(state, messages, String(context.getCurrentChatId?.() || ''));
-    return buildPromptPayload(state, { enabled: getSettings().enabled, guidanceUsable: usable });
+    return buildPromptPayload(state, { enabled: getSettings().enabled, ...guideSelectionOptions(state, context) });
 }
 
 function requestInjectionOptions() {
@@ -415,6 +460,8 @@ function rememberVerifiedRequest(payload, { provider = '', model = '' } = {}) {
         position: s.injectionPosition,
         role: s.injectionRole,
         depth: s.injectionPosition === 'at-depth' ? s.injectionDepth : 0,
+        guideCandidates: generationGuideSelection?.candidates || loadState(context.chatMetadata).nextGuides,
+        selectedGuideIndex: generationGuideSelection?.index || 0,
     };
     renderBoard();
 }
@@ -556,6 +603,7 @@ function cancelRunningAnalysis(reason, status) {
 }
 
 function stopAnalysis() {
+    generationGuideSelection = null;
     analysisStopSequence++;
     generationRevision++;
     if (!cancelRunningAnalysis('Tale Fairy analysis stopped by the user.', 'Stopped')) {
@@ -930,6 +978,14 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     ].filter(Boolean).join('\n'));
     scratchpadText(board, 'scratchpad-pathways', pathwayLines.join('\n\n'), 'No conditional pathways yet.');
 
+    const guideLines = (state.nextGuides || []).map((item, index) => [
+        `${index === 0 ? 'Primary' : `Swipe ${index}`} · ${item.id} [${item.strength}] — ${item.direction}`,
+        `Use if: ${item.useWhen}`,
+        `Drop if: ${item.dropWhen}`,
+        item.responseBias && `If used: ${item.responseBias}`,
+    ].filter(Boolean).join('\n'));
+    scratchpadText(board, 'scratchpad-next-guides', guideLines.join('\n\n'), 'No next-guide candidates yet.');
+
     const horizonLines = (state.planHorizons?.items || []).map((item, index, items) => {
         const change = item.change && item.change !== 'keep' ? ` · ${item.change}` : '';
         return `${item.timeframe || 'Future'} [${item.stability || 'adaptive'} · ${horizonInfluence(index, items.length)} influence${change}] — ${item.direction}`;
@@ -1239,8 +1295,9 @@ export async function livingWorldGuideGenerateInterceptor(_chat, _contextSize, _
     if (internalAnalysisRequests > 0 || type === 'quiet' || !getSettings().enabled) return;
     const context = currentContext();
     const state = loadState(context.chatMetadata);
-    // Planning never blocks generation. The completed-turn plan is already in
-    // metadata and the latest user action selects or overrides its routes now.
+    // Planning never blocks generation. The completed-turn guide is already
+    // in metadata; the latest user action may use, reshape, or discard it.
+    prepareGenerationGuide(state, type);
     updatePrompt(state);
 }
 
@@ -1258,11 +1315,13 @@ eventSource.on(event_types.GENERATE_AFTER_COMBINE_PROMPTS, ensureTextCompletionR
 
 if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPED, () => {
     pendingRequestVerification = null;
+    generationGuideSelection = null;
 });
 eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
     generationRevision++;
     cancelRunningAnalysis('The chat advanced while Tale Fairy was analyzing.', 'Refreshing…');
     await confirmReturnedReplyUsedGuidance();
+    generationGuideSelection = null;
     const context = currentContext();
     const messages = messagesFromChat(context.chat || []);
     updatePrompt(loadState(context.chatMetadata));
@@ -1271,6 +1330,7 @@ eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
     if (getSettings().enabled) void analyzeNow({ messages, allowOneUserAppend: true });
 });
 if (event_types.MESSAGE_SENT) eventSource.on(event_types.MESSAGE_SENT, () => {
+    generationGuideSelection = null;
     const context = currentContext();
     const state = loadState(context.chatMetadata);
     updatePrompt(state);
@@ -1285,10 +1345,19 @@ for (const event of [event_types.MESSAGE_EDITED, event_types.MESSAGE_UPDATED, ev
 eventSource.on(event_types.MESSAGE_SWIPED, () => {
     generationRevision++;
     cancelRunningAnalysis('The selected swipe changed while Tale Fairy was analyzing.', 'Refreshing…');
-    updatePrompt(loadState(currentContext().chatMetadata));
+    const context = currentContext();
+    const messages = messagesFromChat(context.chat || []);
+    updatePrompt(loadState(context.chatMetadata));
+    // Replan privately for the newly selected outcome. If SillyTavern also
+    // emits MESSAGE_RECEIVED, analyzeNow deduplicates the same fingerprint.
+    if (getSettings().enabled && messages.length && !messages.at(-1).is_user) {
+        void analyzeNow({ messages, allowOneUserAppend: true });
+    }
 });
 eventSource.on(event_types.CHAT_CHANGED, () => {
     pendingRequestVerification = null;
+    generationGuideSelection = null;
+    swipeGuideCursors.clear();
     generationRevision++;
     cancelRunningAnalysis('The active chat changed while Tale Fairy was analyzing.', 'Ready');
     updatePrompt(loadState(currentContext().chatMetadata));

@@ -9,21 +9,20 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.4.1');
-    assert.equal(manifest.js, 'extension/index.js?v=0.4.1');
-    assert.equal(manifest.css, 'extension/style.css?v=0.4.1');
+    assert.equal(manifest.version, '0.5.0');
+    assert.equal(manifest.js, 'extension/index.js?v=0.5.0');
+    assert.equal(manifest.css, 'extension/style.css?v=0.5.0');
 });
 
-test('injected guidance carries conditional pathways and a compact horizon ladder', () => {
-    assert.match(stateSource, /Conditional routes drafted after the previous completed turn/);
-    assert.match(stateSource, /PATHWAYS/);
-    assert.match(stateSource, /USE WHEN/);
-    assert.match(stateSource, /IF CHOSEN/);
+test('injection exposes one immediate guide while private planning stays private', () => {
+    assert.match(stateSource, /selected one immediate creative lean/);
+    assert.match(stateSource, /NEXT LEAN/);
+    assert.match(stateSource, /USE IF/);
+    assert.match(stateSource, /DROP IF/);
     assert.match(stateSource, /planHorizons\.items/);
     assert.match(stateSource, /latest user action/);
-    assert.match(stateSource, /an unmatched route has zero influence/);
-    assert.match(stateSource, /strong lean if matched/);
-    assert.match(stateSource, /filter\(item => item\.status !== 'blocked'\)/);
+    assert.doesNotMatch(stateSource, /TIME HORIZONS/);
+    assert.match(stateSource, /guideCandidates = null, guideIndex = 0/);
 });
 
 test('extension UI and interceptor use SillyTavern third-party-compatible registration', () => {
@@ -56,7 +55,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /function rememberDirectSettings/);
     assert.match(source, /function restoreDirectSettings/);
     assert.match(source, /function refreshConnectionProfiles/);
-    assert.match(source, /buildPromptPayload\(state, \{ enabled: getSettings\(\)\.enabled, guidanceUsable: usable \}\)/);
+    assert.match(source, /buildPromptPayload\(state, \{ enabled: getSettings\(\)\.enabled, \.\.\.guideSelectionOptions\(state, context\) \}\)/);
     assert.match(source, /async function fetchDirectModels/);
     assert.match(source, /chat_completion_source: openRouter \? 'openrouter' : 'custom'/);
     assert.match(source, /secret_id: s.analysisSecretId/);
@@ -89,6 +88,15 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /isGuidanceUsable\(state, messages/);
     assert.match(source, /buildPromptPayload\(state/);
     assert.match(source, /function renderBoard/);
+    assert.match(source, /function prepareGenerationGuide/);
+    assert.match(source, /function guideTurnKey/);
+    assert.match(source, /swipeGuideCursors\.get\(turnKey\)/);
+    assert.match(source, /swipeGuideCursors\.set\(turnKey, index\)/);
+    assert.match(source, /MESSAGE_SWIPED[\s\S]{0,700}void analyzeNow\(\{ messages, allowOneUserAppend: true \}\)/);
+    assert.match(source, /type === 'swipe' \|\| type === 'regenerate'/);
+    assert.match(source, /\(previousIndex \+ 1\) % candidates\.length/);
+    assert.match(source, /state\.lastRequestVerification\?\.guideCandidates/);
+    assert.match(source, /guideCandidates: generationGuideSelection\?\.candidates/);
     assert.match(source, /globalThis\.continuityMemoryBridge/);
     assert.match(source, /snapshot\?\.status === 'current'/);
     assert.match(source, /scratchpad-possibilities/);
@@ -155,6 +163,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(template, /Use Continuity context when available/);
     assert.match(template, /data-role="scratchpad-continuity"/);
     assert.match(template, /data-role="scratchpad-scene"/);
+    assert.match(template, /data-role="scratchpad-next-guides"/);
     assert.match(template, /data-role="scratchpad-pathways"/);
     assert.match(template, /data-role="scratchpad-horizons"/);
     assert.match(template, /data-role="scratchpad-guidance"/);

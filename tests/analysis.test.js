@@ -4,6 +4,10 @@ import { ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, AnalysisValidationError, MODE_I
 import { defaultState } from '../extension/state.js';
 
 const pathways = [{ id: 'tea-talk', direction: 'Let the tea conversation reveal a useful tension.', when: 'The user continues the conversation or asks Mara directly.', response_bias: 'Have Mara answer plainly and expose one concrete concern.', horizon: 'next few turns', status: 'foreground', conditions: [], change: 'replace', reason: 'The current exchange supports this route.' }];
+const nextGuides = [
+    { id: 'plain-concern', direction: 'Let Mara answer plainly while one concrete concern changes the exchange.', use_when: 'The user continues the conversation or addresses Mara.', drop_when: 'The user leaves, changes subject, or explicitly rejects the conversation.', response_bias: 'Deliver the answer and its immediate relational consequence.', strength: 'strong', source_pathways: ['tea-talk'], reason: 'The direct exchange makes this the strongest continuation.' },
+    { id: 'revealing-deflection', direction: 'Let Mara deflect in a way that reveals a different pressure through behavior.', use_when: 'The user remains present and Mara has reason not to answer plainly.', drop_when: 'The user establishes that Mara answers directly or the pressure is absent.', response_bias: 'Make the deflection materially informative rather than evasive filler.', strength: 'moderate', source_pathways: ['tea-talk'], reason: 'This contrasts with a plain answer while preserving the same continuity.' },
+];
 const planHorizons = {
     items: [
         { id: 'reply', direction: 'Answer the immediate question.', timeframe: 'this reply', stability: 'fluid', conditions: [], change: 'replace', reason: 'Immediate user action.' },
@@ -15,7 +19,7 @@ const planHorizons = {
     ],
     deviation: { level: 'none', reason: 'Initial plan.' },
 };
-const requiredPlanning = { story_frame: { frame: 'grounded', confidence: 'high', basis: 'ordinary scene' }, pathways, plan_horizons: planHorizons, canon_constraints: [], note_resolution: null, ledger: 'Tea conversation is active.', narrative_events: [] };
+const requiredPlanning = { story_frame: { frame: 'grounded', confidence: 'high', basis: 'ordinary scene' }, pathways, next_guides: nextGuides, plan_horizons: planHorizons, canon_constraints: [], note_resolution: null, ledger: 'Tea conversation is active.', narrative_events: [] };
 
 test('extractJson accepts fenced and wrapped JSON', () => {
     assert.deepEqual(extractJson('```json\n{"inject":false}\n```'), { inject: false });
@@ -71,6 +75,10 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /one to five compact conditional pathways/);
     assert.match(SYSTEM, /empty response_bias is valid/);
     assert.match(SYSTEM, /Re-evaluate the set after every completed assistant response/);
+    assert.match(SYSTEM, /two or three ranked next_guides/);
+    assert.match(SYSTEM, /mandatory contrasting alternatives reserved for generated swipes/);
+    assert.match(SYSTEM, /all preserving established facts, characterization, causal continuity/);
+    assert.match(SYSTEM, /private planning material and are never copied wholesale into the roleplay prompt/);
 });
 
 test('planner validates an automatically resolved AI-assisted note', () => {
@@ -83,6 +91,17 @@ test('planner validates an automatically resolved AI-assisted note', () => {
     assert.equal(validateAnalysisResult(result).valid, true);
     assert.equal(validateAnalysisResult({ ...result, note_resolution: { kind: 'maybe', text: 'Anything' } }).valid, false);
     assert.equal(validateAnalysisResult({ ...result, note_resolution: null }).valid, true);
+});
+
+test('planner requires distinct alternatives for swipe variety', () => {
+    const result = {
+        ...requiredPlanning,
+        scene: { status: 'active', activity: 'talking', pace: 'slow', intent: 'understand', location: 'home', time: 'evening', loop: false },
+        objectives: [], entities: [], possibilities: [], guidance: '', inject: true, reason: 'Prepare contrasting continuations.',
+    };
+    assert.equal(validateAnalysisResult({ ...result, next_guides: [nextGuides[0]] }).valid, false);
+    assert.equal(validateAnalysisResult({ ...result, next_guides: [nextGuides[0], { ...nextGuides[0] }] }).valid, false);
+    assert.equal(validateAnalysisResult(result).valid, true);
 });
 
 test('planner requires a distant but open-ended highest horizon', () => {
@@ -266,7 +285,7 @@ test('canon bootstrap retains labeled OOC turns outside ordinary sampling points
 
 test('analysis application keeps guidance bounded and records its injection decision', () => {
     const messages = [{ mes: 'I make tea', is_user: true }];
-    const next = applyAnalysis(defaultState(), { scene: { status: 'active', activity: 'tea', pace: 'slow', intent: 'rest', location: 'kitchen', time: 'evening', loop: false }, objectives: [], entities: [], possibilities: [], pathways, guidance: 'x'.repeat(2000), inject: true, reason: 'A gentle reminder will preserve the established pace.' }, messages);
+    const next = applyAnalysis(defaultState(), { scene: { status: 'active', activity: 'tea', pace: 'slow', intent: 'rest', location: 'kitchen', time: 'evening', loop: false }, objectives: [], entities: [], possibilities: [], pathways, next_guides: nextGuides, guidance: 'x'.repeat(2000), inject: true, reason: 'A gentle reminder will preserve the established pace.' }, messages);
     assert.equal(next.guidance.length, 700);
     assert.equal(next.sourceMessageCount, 1);
     assert.equal(next.scene.activity, 'tea');

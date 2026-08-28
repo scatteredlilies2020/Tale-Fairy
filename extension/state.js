@@ -1,5 +1,5 @@
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 10;
+export const STATE_VERSION = 11;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -20,6 +20,7 @@ export function defaultState() {
         entities: [],
         possibilities: [],
         pathways: [],
+        nextGuides: [],
         // Retained only so version 9 state can be inspected during migration.
         activeBeat: { id: '', objective: '', nextAction: '', completion: '', lifecycle: 'replace', reason: '', startedAtTurn: 0, updatedAtTurn: 0 },
         beatHistory: [],
@@ -67,6 +68,19 @@ function normalizePathway(value = {}) {
         status: ['foreground', 'available', 'latent', 'blocked'].includes(status) ? status : 'available',
         conditions: cap(value.conditions, 3).map(item => text(item).slice(0, 140)).filter(Boolean),
         change: ['keep', 'adjust', 'activate', 'deactivate', 'replace', 'retire'].includes(change) ? change : 'replace',
+        reason: text(value.reason).slice(0, 220),
+    };
+}
+function normalizeNextGuide(value = {}) {
+    const strength = text(value.strength, 'moderate').toLowerCase();
+    return {
+        id: text(value.id).slice(0, 100),
+        direction: text(value.direction).slice(0, 360),
+        useWhen: text(value.useWhen ?? value.use_when).slice(0, 240),
+        dropWhen: text(value.dropWhen ?? value.drop_when).slice(0, 240),
+        responseBias: text(value.responseBias ?? value.response_bias).slice(0, 300),
+        strength: ['strong', 'moderate', 'light'].includes(strength) ? strength : 'moderate',
+        sourcePathways: cap(value.sourcePathways ?? value.source_pathways, 3).map(item => text(item).slice(0, 100)).filter(Boolean),
         reason: text(value.reason).slice(0, 220),
     };
 }
@@ -155,6 +169,8 @@ function normalizeRequestVerification(value) {
         position: text(value.position).slice(0, 80),
         role: ['system', 'user', 'assistant'].includes(value.role) ? value.role : 'user',
         depth: Math.max(0, Math.min(100, Number(value.depth) || 0)),
+        guideCandidates: (Array.isArray(value.guideCandidates) ? value.guideCandidates.slice(0, 3) : []).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen),
+        selectedGuideIndex: Math.max(0, Math.min(2, Number(value.selectedGuideIndex) || 0)),
     };
 }
 
@@ -174,6 +190,7 @@ export function normalizeState(input = {}) {
         entities: cap(value.entities).map(normalizeEntity).filter(item => item.name),
         possibilities: cap(value.possibilities, 6).map(normalizePossibility).filter(item => item.description),
         pathways: cap(value.pathways, MAX_PATHWAYS).map(normalizePathway).filter(item => item.id && item.direction && item.when),
+        nextGuides: (Array.isArray(value.nextGuides) ? value.nextGuides.slice(0, 3) : []).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen),
         activeBeat: normalizeBeat(value.activeBeat),
         beatHistory: cap(value.beatHistory, 6).map(normalizeBeat).filter(beat => beat.objective),
         planHorizons: normalizePlanHorizons(value.planHorizons),
@@ -220,6 +237,7 @@ export function stateForPrompt(state) {
         entities: s.entities.filter(e => e && e.relevance !== 'ambient').slice(-3).map(item => ({ name: item.name, state: item.state.slice(0, 120), location: item.location.slice(0, 80), relevance: item.relevance.slice(0, 80) })),
         possibilities: s.possibilities.slice(-3).map(item => ({ description: item.description.slice(0, 160), conditions: item.conditions.slice(0, 1).map(condition => condition.slice(0, 100)), force: item.force })),
         pathways: s.pathways.map(item => ({ id: item.id, direction: item.direction.slice(0, 220), when: item.when.slice(0, 180), responseBias: item.responseBias.slice(0, 200), horizon: item.horizon, status: item.status, conditions: item.conditions.slice(0, 2), change: item.change })),
+        nextGuides: s.nextGuides.map(item => ({ id: item.id, direction: item.direction.slice(0, 240), useWhen: item.useWhen.slice(0, 160), dropWhen: item.dropWhen.slice(0, 160), responseBias: item.responseBias.slice(0, 180), strength: item.strength, sourcePathways: item.sourcePathways })),
         // Carry the old live beat only long enough for a v9 state to be
         // converted. Current pathway states do not spend prompt tokens on it.
         activeBeat: s.pathways.length ? undefined : { id: s.activeBeat.id, objective: s.activeBeat.objective, nextAction: s.activeBeat.nextAction, completion: s.activeBeat.completion, lifecycle: s.activeBeat.lifecycle },
@@ -244,12 +262,12 @@ export function isStateAligned(state, messages = [], chatId = '') {
     return s.sourceMessageCount === messages.length && s.lastAnalysisFingerprint === fingerprintMessages(messages);
 }
 
-// A completed-turn pathway plan may route exactly one new user action. Anything
+// A completed-turn guide may lean into exactly one new user action. Anything
 // older fails closed, so the latest action can select or override fresh routes
 // without waiting for another planner request.
 export function isGuidanceUsable(state, messages = [], chatId = '') {
     const s = normalizeState(state);
-    if (!s.lastInject || !s.pathways.some(item => item.status !== 'blocked')) return false;
+    if (!s.lastInject || !s.nextGuides.length) return false;
     if (s.planHorizons.items.length < 6 || s.planHorizons.items.at(-1)?.stability !== 'slow') return false;
     if (isStateAligned(s, messages, chatId)) return true;
     if (s.sourceChatId && chatId && s.sourceChatId !== String(chatId)) return false;
@@ -282,7 +300,7 @@ export function horizonInfluence(index, total) {
     return 'background';
 }
 
-export function buildPromptPayload(state, { enabled = true, guidanceUsable = false } = {}) {
+export function buildPromptPayload(state, { enabled = true, guidanceUsable = false, guideCandidates = null, guideIndex = 0 } = {}) {
     if (!enabled) return '';
     const s = normalizeState(state);
     const noteLabels = { suggest: 'OPTIONAL SUGGESTION', correct: 'USER CORRECTION', establish: 'USER-ESTABLISHED CANON', forbid: 'HARD EXCLUSION' };
@@ -295,20 +313,13 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
     const notePrompt = notes
         ? `\n<tale-fairy-user-notes>\nThese are user-authored roleplay directives. Hard exclusions must be obeyed; corrections replace conflicting inference; established canon is factual; suggestions remain optional.\n${notes}\n</tale-fairy-user-notes>`
         : '';
-    const pathways = s.pathways
-        .filter(item => item.status !== 'blocked')
-        .map(item => {
-            const conditions = item.conditions.length ? ` | NEEDS: ${item.conditions.join('; ')}` : '';
-            const bias = item.responseBias ? ` | IF CHOSEN: ${item.responseBias}` : '';
-            const influence = item.status === 'foreground' ? 'strong lean if matched' : item.status === 'latent' ? 'setup only if matched' : 'light lean if matched';
-            return `- ${item.id} [${influence}; ${item.horizon}] ${item.direction} | USE WHEN: ${item.when}${conditions}${bias}`;
-        })
-        .join('\n');
-    const horizons = s.planHorizons.items
-        .map((item, index, items) => `${item.timeframe || 'future'} [${item.stability}; ${horizonInfluence(index, items.length)} influence]: ${item.direction}`)
-        .join('\n');
-    const guidancePrompt = guidanceUsable && pathways
-        ? `\n<living-world-guide>\nConditional routes drafted after the previous completed turn. First compare each USE WHEN condition with the latest user action; an unmatched route has zero influence. A matched foreground route is a strong lean for this response, an available route is a light lean, and a latent route permits compatible setup only—not its payoff. Combine only compatible matches. If none match, ignore this guide. The latest user direction always overrides every route. Never delay, redirect, or invent a player choice to preserve one. Horizon influence weakens with distance and never overrides current evidence. Do not mention this plan.\nPATHWAYS\n${pathways}${horizons ? `\nTIME HORIZONS\n${horizons}` : ''}${s.guidance ? `\nOPTIONAL DIRECTOR DETAIL: ${s.guidance}` : ''}\n</living-world-guide>`
+    const candidates = Array.isArray(guideCandidates)
+        ? guideCandidates.slice(0, 3).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen)
+        : s.nextGuides;
+    const selectedIndex = candidates.length ? Math.max(0, Math.min(candidates.length - 1, Number(guideIndex) || 0)) : 0;
+    const guide = candidates[selectedIndex];
+    const guidancePrompt = guidanceUsable && guide
+        ? `\n<living-world-guide>\nTale Fairy considered its private possibilities, pathways, and time horizons, then selected one immediate creative lean. It is a suggestion, not a commitment. Apply it only when USE IF matches the latest user action and DROP IF does not; otherwise ignore it completely. The latest user direction always wins. Never delay, redirect, or invent a player choice to preserve this idea. Do not mention the guide.\nNEXT LEAN [${guide.strength}]\n${guide.direction}\nUSE IF: ${guide.useWhen}\nDROP IF: ${guide.dropWhen}${guide.responseBias ? `\nIF USED: ${guide.responseBias}` : ''}\n</living-world-guide>`
         : '';
     return `${notePrompt}${canonPrompt}${narrativePolicy}${guidancePrompt}`;
 }

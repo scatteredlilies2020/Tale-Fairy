@@ -2,25 +2,34 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildPromptPayload, clearState, defaultState, fingerprintMessages, hasExplicitProgressDirective, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, isStateAligned, loadState, normalizeState, saveState, STATE_KEY } from '../extension/state.js';
 
+const stateNextGuides = [
+    { id: 'direct-answer', direction: 'Let Mara answer plainly and reveal one concrete concern.', useWhen: 'The user continues or asks Mara.', dropWhen: 'The user leaves or changes subject.', responseBias: 'Answer directly and show its immediate effect.', strength: 'strong', sourcePathways: ['answer'], reason: 'Direct continuation.' },
+    { id: 'telling-deflection', direction: 'Let Mara reveal a different pressure through a meaningful deflection.', useWhen: 'The user remains with Mara and she has reason to hesitate.', dropWhen: 'The user establishes a direct answer or ends the exchange.', responseBias: 'Make the deflection consequential.', strength: 'moderate', sourcePathways: ['answer'], reason: 'Contrasting continuity-safe alternative.' },
+];
 const currentPlan = {
     pathways: [{ id: 'answer', direction: 'Continue the active exchange.', when: 'The user continues or asks Mara.', responseBias: 'Have Mara answer.', horizon: 'near', status: 'foreground', conditions: [], change: 'keep', reason: 'The exchange is current.' }],
+    nextGuides: stateNextGuides,
     planHorizons: { items: Array.from({ length: 6 }, (_, index) => ({ id: `h${index}`, direction: `Direction ${index}`, timeframe: index === 5 ? 'later arcs / open-ended' : `range ${index}`, stability: index < 2 ? 'adaptive' : index === 5 ? 'slow' : 'stable', conditions: [], change: 'keep', reason: 'Still relevant.' })), deviation: { level: 'none', reason: 'Aligned.' } },
 };
 
 test('state normalizes caps and invalid mode', () => {
-    const state = normalizeState({ mode: 'hard', objectives: Array.from({ length: 9 }, (_, i) => ({ title: String(i) })), enabled: false });
+    const guides = Array.from({ length: 4 }, (_, index) => ({ ...stateNextGuides[0], id: `guide-${index}`, direction: `Direction ${index}` }));
+    const state = normalizeState({ mode: 'hard', objectives: Array.from({ length: 9 }, (_, i) => ({ title: String(i) })), nextGuides: guides, enabled: false });
     assert.equal(state.mode, 'balanced');
     assert.equal(state.enabled, false);
     assert.equal(state.objectives.length, 9);
-    assert.equal(state.version, 10);
+    assert.deepEqual(state.nextGuides.map(item => item.id), ['guide-0', 'guide-1', 'guide-2']);
+    assert.equal(state.version, 11);
 });
 
 test('state round trips through portable metadata', () => {
-    const metadata = saveState({ title: 'chat' }, { ...defaultState(), guidance: 'take a breath', sourceChatId: 'chat-1', sourceMessageCount: 1, lastAnalysisFingerprint: fingerprintMessages([{ mes: 'hello', is_user: true }]), scene: { status: 'active' }, lastRequestVerification: { status: 'confirmed', guidanceBlock: '<living-world-guide>take a breath</living-world-guide>', requestedAt: 10, confirmedAt: 20, sourceMessageCount: 1, responseMessageCount: 2, chatId: 'chat-1', provider: 'custom', model: 'model', position: 'at-depth', role: 'user', depth: 3 } });
+    const metadata = saveState({ title: 'chat' }, { ...defaultState(), guidance: 'take a breath', sourceChatId: 'chat-1', sourceMessageCount: 1, lastAnalysisFingerprint: fingerprintMessages([{ mes: 'hello', is_user: true }]), scene: { status: 'active' }, lastRequestVerification: { status: 'confirmed', guidanceBlock: '<living-world-guide>take a breath</living-world-guide>', requestedAt: 10, confirmedAt: 20, sourceMessageCount: 1, responseMessageCount: 2, chatId: 'chat-1', provider: 'custom', model: 'model', position: 'at-depth', role: 'user', depth: 3, guideCandidates: stateNextGuides, selectedGuideIndex: 1 } });
     assert.equal(metadata.title, 'chat');
     assert.equal(loadState(metadata).guidance, 'take a breath');
     assert.equal(loadState(metadata).lastRequestVerification.guidanceBlock, '<living-world-guide>take a breath</living-world-guide>');
     assert.equal(loadState(metadata).lastRequestVerification.responseMessageCount, 2);
+    assert.equal(loadState(metadata).lastRequestVerification.guideCandidates.length, 2);
+    assert.equal(loadState(metadata).lastRequestVerification.selectedGuideIndex, 1);
     assert.equal(clearState(metadata)[STATE_KEY], undefined);
 });
 
@@ -106,6 +115,7 @@ test('prompt payload keeps user directives active and only includes usable guida
         ...defaultState(),
         guidance: 'Keep the scene grounded.',
         pathways: [{ id: 'answer', direction: 'Resolve the immediate question.', when: 'The user asks Mara or continues the exchange.', responseBias: 'Have Mara answer with the established facts.', horizon: 'this reply', status: 'foreground', conditions: [], change: 'replace', reason: 'The user may address her directly.' }],
+        nextGuides: stateNextGuides,
         planHorizons: { items: [
             { id: 'now', direction: 'Answer Mara.', timeframe: 'this reply', stability: 'fluid', conditions: [], change: 'replace', reason: 'Direct question.' },
             { id: 'soon', direction: 'Explore the reaction.', timeframe: 'next 2–4 turns', stability: 'adaptive', conditions: [], change: 'replace', reason: 'Follow-through.' },
@@ -126,21 +136,21 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(stale, /The latest user turn is authoritative/);
     assert.match(stale, /without inventing the player's next voluntary action/);
     const current = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
-    assert.match(current, /Keep the scene grounded/);
-    assert.match(current, /PATHWAYS/);
-    assert.match(current, /Resolve the immediate question/);
-    assert.match(current, /USE WHEN: The user asks Mara or continues the exchange/);
-    assert.match(current, /IF CHOSEN: Have Mara answer with the established facts/);
-    assert.match(current, /next 2–4 turns \[adaptive; moderate influence\]: Explore the reaction/);
-    assert.match(current, /current arc \[stable; background influence\]: Revisit the obligation/);
-    assert.match(current, /later arcs \/ open-ended \[slow; background influence\]: Let the obligation remain an evolving possibility/);
-    assert.match(current, /Horizon influence weakens with distance/);
-    assert.match(current, /an unmatched route has zero influence/);
-    assert.match(current, /strong lean for this response/);
+    assert.doesNotMatch(current, /Keep the scene grounded/);
+    assert.match(current, /NEXT LEAN \[strong\]/);
+    assert.match(current, /Let Mara answer plainly/);
+    assert.match(current, /USE IF: The user continues or asks Mara/);
+    assert.match(current, /DROP IF: The user leaves or changes subject/);
+    assert.doesNotMatch(current, /PATHWAYS|TIME HORIZONS|Revisit the obligation|telling-deflection/);
+
+    const swipe = buildPromptPayload(state, { enabled: true, guidanceUsable: true, guideCandidates: stateNextGuides, guideIndex: 1 });
+    assert.match(swipe, /NEXT LEAN \[moderate\]/);
+    assert.match(swipe, /meaningful deflection/);
+    assert.doesNotMatch(swipe, /Let Mara answer plainly/);
     assert.equal(buildPromptPayload(state, { enabled: false, guidanceUsable: true }), '');
 });
 
-test('blocked pathways stay internal and cannot bias the response', () => {
+test('private planning state cannot bias the response without a selected next guide', () => {
     const state = {
         ...defaultState(),
         pathways: [{ id: 'closed-route', direction: 'Use the sealed passage.', when: 'The user approaches it.', responseBias: 'Open it.', horizon: 'near', status: 'blocked', conditions: ['The seal must first be removed.'], change: 'keep', reason: 'It is sealed.' }],
