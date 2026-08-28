@@ -1,5 +1,5 @@
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 19;
+export const STATE_VERSION = 20;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -7,6 +7,7 @@ const MAX_EVENTS = 10;
 const MAX_OBJECTIVES = 10;
 const MAX_HORIZONS = 10;
 const MAX_PATHWAYS = 5;
+const MAX_GUIDES = 4;
 
 export function defaultState() {
     return {
@@ -138,7 +139,7 @@ function normalizeEvent(value = {}) {
 }
 
 function normalizeCueAudit(value = {}) {
-    const ids = key => cap(value[key] ?? value[key.replace(/[A-Z]/g, match => `_${match.toLowerCase()}`)], 3)
+    const ids = key => cap(value[key] ?? value[key.replace(/[A-Z]/g, match => `_${match.toLowerCase()}`)], MAX_GUIDES)
         .map(item => text(item).slice(0, 100)).filter(Boolean);
     const pacing = text(value.pacing, 'uncertain').toLowerCase();
     return {
@@ -210,9 +211,9 @@ function normalizeRequestVerification(value) {
         position: text(value.position).slice(0, 80),
         role: ['system', 'user', 'assistant'].includes(value.role) ? value.role : 'user',
         depth: Math.max(0, Math.min(100, Number(value.depth) || 0)),
-        guideCandidates: (Array.isArray(value.guideCandidates) ? value.guideCandidates.slice(0, 3) : []).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen && item.worldDelta && item.basis),
+        guideCandidates: (Array.isArray(value.guideCandidates) ? value.guideCandidates.slice(0, MAX_GUIDES) : []).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen && item.responseBias && item.worldDelta && item.basis),
         canonConstraints: cap(value.canonConstraints).map(item => text(item).slice(0, 500)).filter(Boolean),
-        selectedGuideIndex: Math.max(0, Math.min(2, Number(value.selectedGuideIndex) || 0)),
+        selectedGuideIndex: Math.max(0, Math.min(MAX_GUIDES - 1, Number(value.selectedGuideIndex) || 0)),
         replacementGeneration: value.replacementGeneration === true,
     };
 }
@@ -229,7 +230,7 @@ export function normalizeState(input = {}) {
     const inputVersion = Math.max(0, Number(value.version) || 0);
     const plannerUpgradePending = inputVersion > 0 && inputVersion < STATE_VERSION;
     // v18 already stores the current candidate/canon shapes. Keep that usable
-    // plan visible while v19 performs its background audit; older plans are not
+    // plan visible while v20 performs its background audit; older plans are not
     // safe to inject and still require a clean rebuild.
     const unsafePlannerUpgrade = inputVersion > 0 && inputVersion < 18;
     const state = {
@@ -245,7 +246,7 @@ export function normalizeState(input = {}) {
         entities: cap(value.entities).map(normalizeEntity).filter(item => item.name),
         possibilities: cap(value.possibilities, 6).map(normalizePossibility).filter(item => item.description),
         pathways: cap(value.pathways, MAX_PATHWAYS).map(normalizePathway).filter(item => item.id && item.direction && item.when),
-        nextGuides: unsafePlannerUpgrade ? [] : (Array.isArray(value.nextGuides) ? value.nextGuides.slice(0, 3) : []).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen && item.worldDelta && item.basis),
+        nextGuides: unsafePlannerUpgrade ? [] : (Array.isArray(value.nextGuides) ? value.nextGuides.slice(0, MAX_GUIDES) : []).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen && item.responseBias && item.worldDelta && item.basis),
         activeBeat: normalizeBeat(value.activeBeat),
         beatHistory: cap(value.beatHistory, 6).map(normalizeBeat).filter(beat => beat.objective),
         planHorizons: normalizePlanHorizons(value.planHorizons),
@@ -406,7 +407,7 @@ function backgroundCue(guide, emphasized = false) {
         'reveal-cause': 'The cause may become known only through an in-world reveal supported by this route.',
     };
     const boundary = boundaries[guide.disclosure];
-    return `CUE${emphasized ? ' [EMPHASIS]' : ''}: ${guide.direction.slice(0, 200)}\nIF: ${guide.useWhen.slice(0, 90)}\nUNLESS: ${guide.dropWhen.slice(0, 80)}\nPOSSIBLE EFFECT: ${guide.worldDelta.slice(0, 110)}${boundary ? `\nINFORMATION BOUNDARY: ${boundary}` : ''}`;
+    return `CUE${emphasized ? ' [EMPHASIS]' : ''}: ${guide.direction.slice(0, 180)}\nIF: ${guide.useWhen.slice(0, 90)}\nUNLESS: ${guide.dropWhen.slice(0, 80)}\nDELIVERY: ${guide.responseBias.slice(0, 90)}\nPOSSIBLE EFFECT: ${guide.worldDelta.slice(0, 100)}${boundary ? `\nINFORMATION BOUNDARY: ${boundary}` : ''}`;
 }
 
 function boundedPromptLines(items, prefix, perItem, total) {
@@ -436,7 +437,7 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
         ? `\n<tale-fairy-user-notes>\nUser directives: exclusions, corrections, and canon are binding; suggestions are optional.\n${notes}\n</tale-fairy-user-notes>`
         : '';
     const candidates = Array.isArray(guideCandidates)
-        ? guideCandidates.slice(0, 3).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen && item.worldDelta && item.basis)
+        ? guideCandidates.slice(0, MAX_GUIDES).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen && item.responseBias && item.worldDelta && item.basis)
         : s.nextGuides;
     const selectedIndex = candidates.length ? Math.max(0, Math.min(candidates.length - 1, Number(guideIndex) || 0)) : 0;
     const orderedCandidates = candidates.length

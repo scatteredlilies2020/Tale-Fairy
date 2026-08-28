@@ -5,7 +5,7 @@ Tale Fairy is a standalone SillyTavern extension that supplies an **adaptive nar
 ## What it does
 
 - Replans in the background after each completed assistant response. The next roleplay request never waits for the planner and never makes an extra AI call; sending a new turn cancels any unfinished background pass so the roleplay request takes priority.
-- Prepares two or three contrasting conditional routes, then lets the roleplay model match them against the latest user action in its normal generation call. If none fits, it may discard them and make its own grounded move.
+- Prepares three or four contrasting conditional routes with characterful delivery cues, then lets the roleplay model match them against the latest user action in its normal generation call. If none fits, it may discard them and make its own grounded move.
 - Privately archives and evaluates the full route set, but sends the roleplay model only a lean director cue: a suggested delivery and the outcome NPCs or the world must complete before ending. The delivery must work without moving or speaking for the player. Conditions, evidence, strength labels, execution notes, and alternatives stay inside Tale Fairy. Regenerates and swipes rotate to distinct visible developments, reuse only pre-response canon, and reject replaying the discarded response; if no aligned archive exists, a compact generic motion/variety fallback is still injected.
 - Places that route inside the provider-bound latest user content, before the user's actual turn. This avoids a late interleaved system message and keeps the default portable across chat-completion providers; the saved chat itself is never modified.
 - Maintains up to ten durable story threads plus six to ten ordered planning horizons, from the current reply through later arcs or meaningful distant timeframes—without assuming an ending.
@@ -33,7 +33,7 @@ Tale Fairy is a standalone SillyTavern extension that supplies an **adaptive nar
 - Keeps a small internal list of causal narrative events alongside the ledger. These are produced by the same planner request, retained with visibility and confidence, are not separately generated, and are never injected as a raw event list into the roleplay prompt.
 - Director Notes can show a compact event-status view on demand; this is for inspection only and is separate from the guidance injected into the main RP model.
 - The Planner Scratchpad records the exact dynamic guide found in the final provider payload. After the provider returns an assistant reply, it persists the request as **Confirmed**, along with its provider, model, placement, and timestamps.
-- Uses Continuity Memory context when available through a read-only bridge. It accepts only a current snapshot for the active chat, trims it before planning, and never triggers extraction or writes memory. The integration remains optional and can be disabled.
+- Functions independently using raw turns, relevance-selected history, lore, in-text recaps, injected summaries, host context, and its own compact causal state. An optional read-only Continuity snapshot can be consumed as just one unprivileged summary source; it is never required or treated as the continuity authority.
 
 ## Install
 
@@ -57,7 +57,7 @@ Before the provider request is sent, Tale Fairy atomically replaces stale Tale F
 
 ## Scope
 
-This is not a memory database and does not replace Continuity Memory. It is a lightweight, chat-local planning and causal world-direction layer that functions independently; the Continuity bridge is optional, one-way, and read-only.
+This is a lightweight, chat-local planning and causal world-direction layer with enough retained working continuity to function independently. It consumes available summaries and context regardless of their source. The optional Continuity bridge is merely one-way input compatibility, not a dependency or division of responsibility.
 
 ## License
 

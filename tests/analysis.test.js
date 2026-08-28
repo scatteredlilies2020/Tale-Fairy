@@ -7,6 +7,7 @@ const pathways = [{ id: 'tea-talk', direction: 'Let the tea conversation reveal 
 const nextGuides = [
     { id: 'plain-concern', direction: 'Let Mara answer plainly while one concrete concern changes the exchange.', use_when: 'The user continues the conversation or addresses Mara.', drop_when: 'The user leaves, changes subject, or explicitly rejects the conversation.', response_bias: 'Deliver the answer and its immediate relational consequence.', world_delta: 'Mara discloses a concern that changes what both characters understand.', origin: 'inferred', basis: 'Mara is present, engaged, and the current exchange supports a direct concern.', strength: 'strong', source_pathways: ['tea-talk'], causal_event_ids: [], disclosure: 'none', reason: 'The direct exchange makes this the strongest continuation.' },
     { id: 'revealing-deflection', direction: 'Let Mara deflect in a way that reveals a different pressure through behavior.', use_when: 'The user remains present and Mara has reason not to answer plainly.', drop_when: 'The user establishes that Mara answers directly or the pressure is absent.', response_bias: 'Make the deflection materially informative rather than evasive filler.', world_delta: 'Mara exposes a different pressure through behavior, changing the social stakes.', origin: 'original', basis: 'Her established hesitation can plausibly surface indirectly in this exchange.', strength: 'moderate', source_pathways: ['tea-talk'], causal_event_ids: [], disclosure: 'none', reason: 'This contrasts with a plain answer while preserving the same continuity.' },
+    { id: 'outside-pressure', direction: 'Let a concrete household consequence intrude on the conversation without ending it.', use_when: 'The conversation continues in the active home setting.', drop_when: 'The user establishes privacy or leaves the setting.', response_bias: 'Route the pressure through a familiar household object that Mara reacts to personally.', world_delta: 'A household demand creates a new practical choice while the concern remains live.', origin: 'original', basis: 'The active home setting can plausibly exert a small but consequential pressure.', strength: 'light', source_pathways: ['tea-talk'], causal_event_ids: [], disclosure: 'none', reason: 'This adds a world-driven option distinct from disclosure or deflection.' },
 ];
 const planHorizons = {
     items: [
@@ -103,9 +104,14 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /Do not force sympathy, vulnerability, redemption, reconciliation, banter, avoidance, or silent treatment/);
     assert.match(SYSTEM, /do not add cruelty, darkness, punishment, or conflict merely to appear bold/);
     assert.match(SYSTEM, /one to five compact conditional pathways/);
-    assert.match(SYSTEM, /empty response_bias is valid/);
+    assert.match(SYSTEM, /non-empty response_bias/);
     assert.match(SYSTEM, /Re-evaluate the set after every completed assistant response/);
-    assert.match(SYSTEM, /two or three ranked next_guides as a compact conditional background cue set/);
+    assert.match(SYSTEM, /three or four ranked next_guides as a compact conditional background cue set/);
+    assert.match(SYSTEM, /Tale Fairy must function independently/);
+    assert.match(SYSTEM, /in-text recaps, chat summaries, injected summaries/);
+    assert.match(SYSTEM, /No named memory extension is privileged or required/);
+    assert.match(SYSTEM, /If the referent remains unavailable, do not invent its name, identity, rules, prior result, or history/);
+    assert.match(SYSTEM, /characterful delivery channel grounded in an established habit/);
     assert.match(SYSTEM, /not a prediction, commitment, required outcome, or fact that already happened/);
     assert.match(SYSTEM, /private planning material and are never copied wholesale into the roleplay prompt/);
     assert.match(SYSTEM, /Use consequence-only when the scene should show an effect but keep its cause wholly offscreen/);
@@ -292,7 +298,7 @@ test('analysis prompt limits sent messages and accepts optional continuity conte
     const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { messageWindow: 2, messageCharLimit: 20, continuityContext: 'older context' }));
     assert.equal(prompt.messages.length, 2);
     assert.equal(prompt.optional_continuity_context, 'older context');
-    assert.match(prompt.continuity_instruction, /ground planner decisions/);
+    assert.match(prompt.continuity_instruction, /not a privileged memory authority or dependency/);
 });
 
 test('analysis prompt retrieves a few relevant older turns without continuity memory', () => {
@@ -428,11 +434,12 @@ test('planner validates a selected offscreen cause and its consequence-only guid
         next_guides: [
             { ...nextGuides[0], id: 'marked-return', direction: 'Eli returns with a black eye and offers no explanation.', world_delta: 'Eli arrives home with a visible black eye.', causal_event_ids: ['school-conflict'], disclosure: 'consequence-only' },
             nextGuides[1],
+            nextGuides[2],
         ],
         narrative_events: [event], guidance: '', inject: true, reason: 'A selected offscreen cause now has a relevant visible consequence.',
     };
     assert.equal(validateAnalysisResult(result).valid, true);
-    assert.equal(validateAnalysisResult({ ...result, next_guides: [{ ...result.next_guides[0], causal_event_ids: [] }, result.next_guides[1]] }).valid, false);
+    assert.equal(validateAnalysisResult({ ...result, next_guides: [{ ...result.next_guides[0], causal_event_ids: [] }, result.next_guides[1], result.next_guides[2]] }).valid, false);
     assert.equal(validateAnalysisResult({ ...result, narrative_events: [{ ...event, epistemic_status: 'possible' }] }).valid, false);
 });
 

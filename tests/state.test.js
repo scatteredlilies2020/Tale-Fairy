@@ -19,10 +19,10 @@ test('state normalizes caps and invalid mode', () => {
     assert.equal(state.mode, 'balanced');
     assert.equal(state.enabled, false);
     assert.equal(state.objectives.length, 9);
-    assert.deepEqual(state.nextGuides.map(item => item.id), ['guide-0', 'guide-1', 'guide-2']);
+    assert.deepEqual(state.nextGuides.map(item => item.id), ['guide-0', 'guide-1', 'guide-2', 'guide-3']);
     assert.ok(state.nextGuides[0].responseBias.length <= 130);
     assert.match(state.nextGuides[0].responseBias, /finished…$/);
-    assert.equal(state.version, 19);
+    assert.equal(state.version, 20);
 });
 
 test('offscreen causes persist privately while injection exposes only their consequence', () => {
@@ -192,7 +192,7 @@ test('pre-canon-ledger state requests one bounded bootstrap rescan', () => {
 
 test('pre-momentum guides and request verification cannot remain injectable after an upgrade', () => {
     const migrated = normalizeState({ version: 16, ...currentPlan, nextGuides: stateNextGuides, canonConstraints: ['Fact from a discarded response.'], lastInject: true, lastRequestVerification: { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides } });
-    assert.equal(migrated.version, 19);
+    assert.equal(migrated.version, 20);
     assert.equal(migrated.canonBootstrapPending, true);
     assert.deepEqual(migrated.nextGuides, []);
     assert.deepEqual(migrated.canonConstraints, []);
@@ -200,10 +200,10 @@ test('pre-momentum guides and request verification cannot remain injectable afte
     assert.equal(isGuidanceUsable(migrated, [], ''), false);
 });
 
-test('v18 candidates remain available while the v19 audit is pending', () => {
+test('v18 candidates remain available while the v20 audit is pending', () => {
     const verification = { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides };
     const migrated = normalizeState({ version: 18, ...currentPlan, nextGuides: stateNextGuides, canonConstraints: ['Established fact.'], lastRequestVerification: verification });
-    assert.equal(migrated.version, 19);
+    assert.equal(migrated.version, 20);
     assert.equal(migrated.canonBootstrapPending, true);
     assert.deepEqual(migrated.nextGuides.map(({ causalEventIds, disclosure, ...guide }) => guide), stateNextGuides);
     assert.deepEqual(migrated.canonConstraints, ['Established fact.']);
@@ -244,6 +244,7 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(current, /CUE \[EMPHASIS\]: Let Mara answer plainly/);
     assert.match(current, /IF: The user continues or asks Mara/);
     assert.match(current, /UNLESS: The user leaves or changes subject/);
+    assert.match(current, /DELIVERY: Answer directly and show its immediate effect/);
     assert.match(current, /POSSIBLE EFFECT: Mara reveals a concern/);
     assert.match(current, /Use at most one cue whose IF is true and UNLESS is false/);
     assert.match(current, /not required outcomes and not facts that already happened/);
