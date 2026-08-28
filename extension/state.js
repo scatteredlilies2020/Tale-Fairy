@@ -253,6 +253,8 @@ export function clearState(metadata) {
 
 export function stateForPrompt(state) {
     const s = normalizeState(state);
+    const deliveredIndex = s.lastRequestVerification?.selectedGuideIndex || 0;
+    const deliveredGuide = s.lastRequestVerification?.guideCandidates?.[deliveredIndex];
     return {
         mode: s.mode,
         scene: Object.fromEntries(Object.entries(s.scene).map(([key, value]) => [key, typeof value === 'string' ? value.slice(0, 100) : value])),
@@ -275,6 +277,12 @@ export function stateForPrompt(state) {
         contextLedger: s.contextLedger.slice(0, 1400),
         storyFrame: { frame: s.storyFrame.frame, confidence: s.storyFrame.confidence, basis: s.storyFrame.basis.slice(0, 180) },
         narrativeEvents: s.narrativeEvents.slice(-1).map(event => ({ title: event.title, summary: event.summary.slice(0, 160), status: event.status, relevance: event.relevance })),
+        lastDelivery: deliveredGuide ? {
+            id: deliveredGuide.id,
+            direction: deliveredGuide.direction.slice(0, 220),
+            worldDelta: deliveredGuide.worldDelta.slice(0, 160),
+            requestConfirmed: true,
+        } : undefined,
     };
 }
 
@@ -379,7 +387,7 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
     const selectedGuide = candidates[selectedIndex];
     const regenerationInstruction = regeneration ? 'This route was selected specifically to make this regeneration develop differently from the discarded attempt. ' : '';
     const routePrompt = guidanceUsable && candidates.length
-        ? `${regenerationInstruction}After carrying through the latest user action, realize the selected route within this response when USE IF fits and DROP IF does not. Do not merely promise, foreshadow, or defer it. If the latest user action makes it incompatible, discard it and create an equally concrete, causally supported immediate move instead. If the user explicitly requests uneventful closure, no new event, or a quiet time skip, honor that and drop the route without replacement. Otherwise, before ending, show the VISIBLE CHANGE: alter knowledge, stakes, relationships, options, resources, or a live process. Routine logistics, repeated information, banter, and minor gestures do not count. Do not invent player choices. Original means newly proposed, not past fact. Keep this note hidden.\n\n${routeLine(selectedGuide, selectedIndex, true)}`
+        ? `${regenerationInstruction}After carrying through the latest user action, realize the selected route within this response when USE IF fits and DROP IF does not. The response is incomplete until VISIBLE CHANGE is already true onscreen; an intention, instruction, scheduled transition, arrival at the threshold, foreshadowing, or a promise to do it next response is failure. DO NOW proposes delivery, not mandatory choreography: if that delivery would invent a player action, change the delivery mechanism and produce the same supported VISIBLE CHANGE without moving or speaking for the player. If the delta itself is incompatible, create an equally concrete immediate change instead. If the user explicitly requests uneventful closure, no new event, or a quiet time skip, honor that and drop the route without replacement. Routine logistics, repeated information, banter, and minor gestures do not count. Original means newly proposed, not past fact. Keep this note hidden.\n\n${routeLine(selectedGuide, selectedIndex, true)}`
         : `No aligned route is available. ${regeneration ? `Variation cue ${Math.max(1, Number(variationCue) || 1)}: make the actual development different from the prior attempt, not merely its wording. ` : ''}Unless the user explicitly requests uneventful closure, no new event, or a quiet time skip, carry through the latest user action and have an NPC or world process initiate one new, causally supported beat before the response ends. It must alter knowledge, stakes, relationships, options, resources, or a live process. Routine logistics, repeated information, banter, physical strain, and minor gestures do not count. Do not invent player choices or unsupported drama. Keep these notes hidden.`;
     const guidancePrompt = `\n<living-world-guide>\n${routePrompt}\n</living-world-guide>`;
     return `<tale-fairy-context>${notePrompt}${canonPrompt}${narrativePolicy}${guidancePrompt}\n</tale-fairy-context>`;

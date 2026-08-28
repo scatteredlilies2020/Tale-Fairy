@@ -9,16 +9,16 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.7.6');
-    assert.equal(manifest.js, 'extension/index.js?v=0.7.6');
-    assert.equal(manifest.css, 'extension/style.css?v=0.7.6');
+    assert.equal(manifest.version, '0.7.7');
+    assert.equal(manifest.js, 'extension/index.js?v=0.7.7');
+    assert.equal(manifest.css, 'extension/style.css?v=0.7.7');
 });
 
 test('injection sends one immediate guide while alternatives and long-range planning stay private', () => {
     assert.match(stateSource, /realize the selected route within this response/);
     assert.match(stateSource, /SELECTED IMMEDIATE ROUTE/);
     assert.match(stateSource, /ALTERNATIVE ROUTE/);
-    assert.match(stateSource, /discard it and create an equally concrete/);
+    assert.match(stateSource, /delta itself is incompatible, create an equally concrete/);
     assert.match(stateSource, /<tale-fairy-context>/);
     assert.match(stateSource, /USE IF/);
     assert.match(stateSource, /DROP IF/);

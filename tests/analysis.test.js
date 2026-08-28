@@ -69,6 +69,8 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /A world_delta must matter after its sentence/);
     assert.match(SYSTEM, /not low-stakes procedural noise used to avoid a stronger supported thread/);
     assert.match(SYSTEM, /Do not pay off a delayed or repeatedly raised development with another promise/);
+    assert.match(SYSTEM, /requestConfirmed proves prompt delivery only, never story compliance/);
+    assert.match(SYSTEM, /make a direct repair the primary next guide/);
     assert.match(SYSTEM, /deliver concrete substance now/);
     assert.match(SYSTEM, /six to ten concise plan_horizons\.items ordered from the next few turns to a distant story horizon/);
     assert.match(SYSTEM, /some later arc or meaningful future time/);

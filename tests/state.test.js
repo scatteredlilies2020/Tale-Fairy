@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, hasExplicitProgressDirective, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, isStateAligned, loadState, normalizeState, returnedReplyMatchesVerification, saveState, STATE_KEY } from '../extension/state.js';
+import { buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, hasExplicitProgressDirective, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, isStateAligned, loadState, normalizeState, returnedReplyMatchesVerification, saveState, STATE_KEY, stateForPrompt } from '../extension/state.js';
 
 const stateNextGuides = [
     { id: 'direct-answer', direction: 'Let Mara answer plainly and reveal one concrete concern.', useWhen: 'The user continues or asks Mara.', dropWhen: 'The user leaves or changes subject.', responseBias: 'Answer directly and show its immediate effect.', worldDelta: 'Mara reveals a concern that changes the shared understanding.', origin: 'inferred', basis: 'Mara is present and engaged in the live conversation.', strength: 'strong', sourcePathways: ['answer'], reason: 'Direct continuation.' },
@@ -42,6 +42,21 @@ test('request verification accepts an in-place swipe replacement', () => {
     assert.equal(returnedReplyMatchesVerification({ ...base, replacementGeneration: true }, messages, 'chat-1'), true);
     assert.equal(returnedReplyMatchesVerification({ ...base, replacementGeneration: false }, messages, 'chat-1'), false);
     assert.equal(returnedReplyMatchesVerification({ ...base, replacementGeneration: true }, messages, 'other-chat'), false);
+});
+
+test('planner sees only the selected delivered delta for compliance repair', () => {
+    const state = {
+        ...defaultState(),
+        lastRequestVerification: {
+            status: 'confirmed', guidanceBlock: 'guide', chatId: 'chat-1',
+            guideCandidates: stateNextGuides, selectedGuideIndex: 1,
+        },
+    };
+    const promptState = stateForPrompt(state);
+    assert.equal(promptState.lastDelivery.id, 'telling-deflection');
+    assert.equal(promptState.lastDelivery.worldDelta, stateNextGuides[1].worldDelta);
+    assert.equal(promptState.lastDelivery.requestConfirmed, true);
+    assert.equal(Object.hasOwn(promptState.lastDelivery, 'guideCandidates'), false);
 });
 
 test('state retains a bounded horizon ladder with increasing planning detail', () => {
@@ -185,6 +200,9 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(current, /USE IF: The user continues or asks Mara/);
     assert.match(current, /DROP IF: The user leaves or changes subject/);
     assert.match(current, /explicitly requests uneventful closure/);
+    assert.match(current, /response is incomplete until VISIBLE CHANGE is already true onscreen/);
+    assert.match(current, /change the delivery mechanism/);
+    assert.match(current, /arrival at the threshold/);
     assert.doesNotMatch(current, /telling-deflection|meaningful deflection/);
     assert.doesNotMatch(current, /PATHWAYS|TIME HORIZONS|Revisit the obligation/);
 
@@ -192,7 +210,7 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.doesNotMatch(swipe, /ALTERNATIVE ROUTE 1|Let Mara answer plainly/);
     assert.match(swipe, /SELECTED IMMEDIATE ROUTE 2 \[moderate · original\]/);
     assert.match(swipe, /selected specifically to make this regeneration develop differently/);
-    assert.match(swipe, /discard it and create an equally concrete/);
+    assert.match(swipe, /delta itself is incompatible, create an equally concrete/);
     assert.match(swipe, /meaningful deflection/);
 
     const regenerationFallback = buildPromptPayload(state, { enabled: true, guidanceUsable: false, guideCandidates: [], regeneration: true, variationCue: 8472 });
