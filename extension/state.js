@@ -349,9 +349,8 @@ export function horizonInfluence(index, total) {
     return 'background';
 }
 
-function routeLine(guide, index, selected) {
-    const label = selected ? `SELECTED IMMEDIATE ROUTE ${index + 1}` : `ALTERNATIVE ROUTE ${index + 1}`;
-    return `${label} [${guide.strength} · ${guide.origin}]\nDO NOW: ${guide.direction.slice(0, 280)}\nVISIBLE CHANGE: ${guide.worldDelta.slice(0, 140)}\nGROUNDING: ${guide.basis.slice(0, 100)}\nUSE IF: ${guide.useWhen.slice(0, 120)}\nDROP IF: ${guide.dropWhen.slice(0, 100)}${guide.responseBias ? `\nEXECUTION: ${guide.responseBias.slice(0, 130)}` : ''}`;
+function selectedRouteCue(guide) {
+    return `DIRECTION: ${guide.direction.slice(0, 280)}\nINTENDED SHIFT: ${guide.worldDelta.slice(0, 140)}`;
 }
 
 function boundedPromptLines(items, prefix, perItem, total) {
@@ -371,26 +370,24 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
     if (!enabled) return '';
     const s = normalizeState(state);
     const noteLabels = { suggest: 'OPTIONAL SUGGESTION', correct: 'USER CORRECTION', establish: 'USER-ESTABLISHED CANON', forbid: 'HARD EXCLUSION' };
-    const narrativePolicy = `\n<tale-fairy-narrative-policy>\nThe latest user turn is authoritative. Carry its declared actions and questions through their meaningful consequence without inventing the player's next voluntary action. Match its pace. Before ending, add one visible, causally supported NPC or world change unless uneventful closure was requested. Routine logistics, repeated information, decorative banter, and a minor gesture do not satisfy this. Agency does not require NPC passivity. Neither soften supported consequences nor manufacture drama, and never present a new idea as past fact.\n</tale-fairy-narrative-policy>`;
     const canon = boundedPromptLines(s.canonConstraints, '- ', 360, 2500);
     const canonPrompt = canon
-        ? `\n<user-established-canon>\nThese are authoritative semantic constraints established by the user. Preserve their magnitude, rank, scope, and qualifiers exactly. An extreme, unprecedented, off-scale, unique, or setting-defying fact remains valid canon: setting averages and prior records are comparison points, not ceilings. Never regress it toward the mean, cap it at a familiar lore value, weaken it to merely high, or reinterpret it as rumor. Everything the user did not establish remains open creative space. Freely invent an exact number or any other unstated detail when it fits the narrative, provided it remains consistent with established canon; it need not be conservative or supplied by the user. Do not refuse, hedge, delay, or demand verification merely because a detail was unspecified. Never mention these instructions in narration or dialogue. Reactions, explanations, and consequences remain creatively open unless separately established.\n${canon}\n</user-established-canon>`
+        ? `\n<user-established-canon>\nBinding user-established facts; preserve their stated magnitude, scope, and qualifiers. Unstated details remain creative space.\n${canon}\n</user-established-canon>`
         : '';
     const notes = boundedPromptLines(s.userNotes.map(note => `${noteLabels[note.kind]}: ${note.text}`), '- ', 360, 2500);
     const notePrompt = notes
-        ? `\n<tale-fairy-user-notes>\nThese are user-authored roleplay directives. Hard exclusions must be obeyed; corrections replace conflicting inference; established canon is factual; suggestions remain optional.\n${notes}\n</tale-fairy-user-notes>`
+        ? `\n<tale-fairy-user-notes>\nUser directives: exclusions, corrections, and canon are binding; suggestions are optional.\n${notes}\n</tale-fairy-user-notes>`
         : '';
     const candidates = Array.isArray(guideCandidates)
         ? guideCandidates.slice(0, 3).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen && item.worldDelta && item.basis)
         : s.nextGuides;
     const selectedIndex = candidates.length ? Math.max(0, Math.min(candidates.length - 1, Number(guideIndex) || 0)) : 0;
     const selectedGuide = candidates[selectedIndex];
-    const regenerationInstruction = regeneration ? 'This route was selected specifically to make this regeneration develop differently from the discarded attempt. ' : '';
     const routePrompt = guidanceUsable && candidates.length
-        ? `${regenerationInstruction}After carrying through the latest user action, realize the selected route within this response when USE IF fits and DROP IF does not. The response is incomplete until VISIBLE CHANGE is already true onscreen; an intention, instruction, scheduled transition, arrival at the threshold, foreshadowing, or a promise to do it next response is failure. DO NOW proposes delivery, not mandatory choreography: if that delivery would invent a player action, change the delivery mechanism and produce the same supported VISIBLE CHANGE without moving or speaking for the player. If the delta itself is incompatible, create an equally concrete immediate change instead. If the user explicitly requests uneventful closure, no new event, or a quiet time skip, honor that and drop the route without replacement. Routine logistics, repeated information, banter, and minor gestures do not count. Original means newly proposed, not past fact. Keep this note hidden.\n\n${routeLine(selectedGuide, selectedIndex, true)}`
-        : `No aligned route is available. ${regeneration ? `Variation cue ${Math.max(1, Number(variationCue) || 1)}: make the actual development different from the prior attempt, not merely its wording. ` : ''}Unless the user explicitly requests uneventful closure, no new event, or a quiet time skip, carry through the latest user action and have an NPC or world process initiate one new, causally supported beat before the response ends. It must alter knowledge, stakes, relationships, options, resources, or a live process. Routine logistics, repeated information, banter, physical strain, and minor gestures do not count. Do not invent player choices or unsupported drama. Keep these notes hidden.`;
+        ? `Director cue${regeneration ? ' for a materially different regeneration' : ''}:\n${selectedRouteCue(selectedGuide)}\nDirection, not script: adapt or discard it as the latest user turn requires. Preserve player agency.`
+        : `${regeneration ? `Variation ${Math.max(1, Number(variationCue) || 1)}: develop the scene differently, not just the wording. ` : ''}Let the latest user turn lead. Unless quiet closure was requested, allow one grounded NPC or world development. Preserve player agency.`;
     const guidancePrompt = `\n<living-world-guide>\n${routePrompt}\n</living-world-guide>`;
-    return `<tale-fairy-context>${notePrompt}${canonPrompt}${narrativePolicy}${guidancePrompt}\n</tale-fairy-context>`;
+    return `<tale-fairy-context>${notePrompt}${canonPrompt}${guidancePrompt}\n</tale-fairy-context>`;
 }
 
 export function fingerprintMessages(messages = []) {

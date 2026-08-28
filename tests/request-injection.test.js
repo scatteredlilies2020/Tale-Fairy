@@ -116,9 +116,11 @@ test('provider-bound request receives only the selected route while alternatives
     assert.equal(chatHasCurrentGuidance(chat, prompt), true);
     assert.equal(chat.length, 1);
     assert.equal(chat.at(-1).role, 'user');
-    assert.match(chat.at(-1).content, /SELECTED IMMEDIATE ROUTE 2/);
+    assert.match(chat.at(-1).content, /Director cue for a materially different regeneration/);
+    assert.match(chat.at(-1).content, /DIRECTION: An urgent contradiction reaches Vekk/);
+    assert.match(chat.at(-1).content, /INTENDED SHIFT: New evidence forces Vekk/);
     assert.match(chat.at(-1).content, /Tell me what happened\.$/);
-    assert.doesNotMatch(chat.at(-1).content, /ALTERNATIVE ROUTE 1|Vekk gives the concrete war update now/);
+    assert.doesNotMatch(chat.at(-1).content, /Vekk gives the concrete war update now|USE IF:|DROP IF:|GROUNDING:|EXECUTION:/);
     assert.equal(chat.map(message => String(message.content)).join('\n').match(/<tale-fairy-context>/g)?.length, 1);
-    assert.ok(prompt.length < 4800, `expected compact payload, got ${prompt.length} characters`);
+    assert.ok(prompt.length < 650, `expected lean payload, got ${prompt.length} characters`);
 });

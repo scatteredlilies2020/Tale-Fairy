@@ -184,40 +184,34 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(stale, /OPTIONAL SUGGESTION: A quiet meal could happen/);
     assert.match(stale, /HARD EXCLUSION: No time travel/);
     assert.doesNotMatch(stale, /Keep the scene grounded/);
-    assert.match(stale, /The latest user turn is authoritative/);
-    assert.match(stale, /without inventing the player's next voluntary action/);
-    assert.match(stale, /No aligned route is available/);
+    assert.match(stale, /Let the latest user turn lead/);
+    assert.match(stale, /Preserve player agency/);
     assert.doesNotMatch(stale, /Let Mara answer plainly|meaningful deflection/);
     const current = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
     assert.match(current, /^<tale-fairy-context>/);
     assert.match(current, /<\/tale-fairy-context>$/);
     assert.doesNotMatch(current, /Keep the scene grounded/);
-    assert.match(current, /SELECTED IMMEDIATE ROUTE 1 \[strong · inferred\]/);
-    assert.doesNotMatch(current, /ALTERNATIVE ROUTE 2|Wait for pressure/);
-    assert.match(current, /Let Mara answer plainly/);
-    assert.match(current, /VISIBLE CHANGE: Mara reveals a concern/);
-    assert.match(current, /GROUNDING: Mara is present/);
-    assert.match(current, /USE IF: The user continues or asks Mara/);
-    assert.match(current, /DROP IF: The user leaves or changes subject/);
-    assert.match(current, /explicitly requests uneventful closure/);
-    assert.match(current, /response is incomplete until VISIBLE CHANGE is already true onscreen/);
-    assert.match(current, /change the delivery mechanism/);
-    assert.match(current, /arrival at the threshold/);
+    assert.match(current, /Director cue:/);
+    assert.match(current, /DIRECTION: Let Mara answer plainly/);
+    assert.match(current, /INTENDED SHIFT: Mara reveals a concern/);
+    assert.match(current, /Direction, not script: adapt or discard it as the latest user turn requires/);
+    assert.doesNotMatch(current, /USE IF:|DROP IF:|GROUNDING:|EXECUTION:|response is incomplete|failure/);
+    assert.doesNotMatch(current, /Mara is present|The user continues or asks Mara|The user leaves or changes subject/);
     assert.doesNotMatch(current, /telling-deflection|meaningful deflection/);
     assert.doesNotMatch(current, /PATHWAYS|TIME HORIZONS|Revisit the obligation/);
 
     const swipe = buildPromptPayload(state, { enabled: true, guidanceUsable: true, guideCandidates: stateNextGuides, guideIndex: 1, regeneration: true });
     assert.doesNotMatch(swipe, /ALTERNATIVE ROUTE 1|Let Mara answer plainly/);
-    assert.match(swipe, /SELECTED IMMEDIATE ROUTE 2 \[moderate · original\]/);
-    assert.match(swipe, /selected specifically to make this regeneration develop differently/);
-    assert.match(swipe, /delta itself is incompatible, create an equally concrete/);
+    assert.match(swipe, /Director cue for a materially different regeneration/);
+    assert.match(swipe, /DIRECTION: Let Mara reveal a different pressure/);
     assert.match(swipe, /meaningful deflection/);
+    assert.doesNotMatch(swipe, /moderate|original|USE IF:|DROP IF:|GROUNDING:|EXECUTION:/);
 
     const regenerationFallback = buildPromptPayload(state, { enabled: true, guidanceUsable: false, guideCandidates: [], regeneration: true, variationCue: 8472 });
-    assert.match(regenerationFallback, /Variation cue 8472/);
-    assert.match(regenerationFallback, /actual development different from the prior attempt, not merely its wording/);
-    assert.match(regenerationFallback, /initiate one new, causally supported beat/);
-    assert.match(regenerationFallback, /Unless the user explicitly requests uneventful closure/);
+    assert.match(regenerationFallback, /Variation 8472/);
+    assert.match(regenerationFallback, /develop the scene differently, not just the wording/);
+    assert.match(regenerationFallback, /allow one grounded NPC or world development/);
+    assert.match(regenerationFallback, /Unless quiet closure was requested/);
     assert.doesNotMatch(regenerationFallback, /Let Mara answer plainly|meaningful deflection/);
     assert.equal(buildPromptPayload(state, { enabled: false, guidanceUsable: true }), '');
 });
@@ -232,7 +226,7 @@ test('roleplay injection stays bounded with maximum notes, canon, and route fiel
         nextGuides: Array.from({ length: 3 }, (_, index) => ({ ...route, id: `route-${index}` })),
     };
     const payload = buildPromptPayload(state, { guidanceUsable: true });
-    assert.ok(payload.length < 10500, `expected bounded injection, got ${payload.length} characters`);
+    assert.ok(payload.length < 7000, `expected bounded injection, got ${payload.length} characters`);
     for (let index = 0; index < 12; index++) {
         assert.match(payload, new RegExp(`canon-${index}`));
         assert.match(payload, new RegExp(`note-${index}`));
@@ -248,7 +242,7 @@ test('private planning state cannot bias the response without a selected next gu
     };
     const payload = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
     assert.doesNotMatch(payload, /closed-route|Use the sealed passage/);
-    assert.match(payload, /<living-world-guide>[\s\S]*No aligned route is available/);
+    assert.match(payload, /<living-world-guide>[\s\S]*Let the latest user turn lead/);
 });
 
 test('explicit progress detection distinguishes commands from negation', () => {
@@ -269,15 +263,12 @@ test('user-established extremes remain persistent canon rather than lore-capped 
     const payload = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
     assert.match(payload, /<user-established-canon>/);
     assert.match(payload, /off the charts and among the highest in history/);
-    assert.match(payload, /averages and prior records are comparison points, not ceilings/);
-    assert.match(payload, /Never regress it toward the mean, cap it at a familiar lore value, weaken it to merely high/);
-    assert.match(payload, /Everything the user did not establish remains open creative space/);
-    assert.match(payload, /Freely invent an exact number or any other unstated detail when it fits the narrative/);
-    assert.match(payload, /Do not refuse, hedge, delay, or demand verification merely because a detail was unspecified/);
+    assert.match(payload, /preserve their stated magnitude, scope, and qualifiers/);
+    assert.match(payload, /Unstated details remain creative space/);
     assert.doesNotMatch(payload, /fabricating false precision|invent a conservative exact number/);
 });
 
-test('the compact policy advances declared actions while preserving player agency', () => {
+test('the lean guide preserves player agency without a general narrative-policy lecture', () => {
     const state = {
         ...defaultState(),
         guidance: 'Add another waiting-room beat and end before the consultation begins.',
@@ -285,7 +276,6 @@ test('the compact policy advances declared actions while preserving player agenc
     };
     const payload = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
     assert.equal(hasExplicitProgressDirective('I open the consultation door and walk inside to receive my results.'), false);
-    assert.match(payload, /Carry its declared actions and questions through their meaningful consequence/);
-    assert.match(payload, /without inventing the player's next voluntary action/);
-    assert.match(payload, /The latest user turn is authoritative/);
+    assert.match(payload, /Preserve player agency/);
+    assert.doesNotMatch(payload, /<tale-fairy-narrative-policy>|Carry its declared actions|Before ending|Routine logistics/);
 });

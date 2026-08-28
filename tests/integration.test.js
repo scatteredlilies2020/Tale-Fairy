@@ -9,25 +9,20 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.7.7');
-    assert.equal(manifest.js, 'extension/index.js?v=0.7.7');
-    assert.equal(manifest.css, 'extension/style.css?v=0.7.7');
+    assert.equal(manifest.version, '0.7.8');
+    assert.equal(manifest.js, 'extension/index.js?v=0.7.8');
+    assert.equal(manifest.css, 'extension/style.css?v=0.7.8');
 });
 
 test('injection sends one immediate guide while alternatives and long-range planning stay private', () => {
-    assert.match(stateSource, /realize the selected route within this response/);
-    assert.match(stateSource, /SELECTED IMMEDIATE ROUTE/);
-    assert.match(stateSource, /ALTERNATIVE ROUTE/);
-    assert.match(stateSource, /delta itself is incompatible, create an equally concrete/);
+    assert.match(stateSource, /Director cue/);
+    assert.match(stateSource, /DIRECTION:/);
+    assert.match(stateSource, /INTENDED SHIFT:/);
+    assert.match(stateSource, /Direction, not script: adapt or discard it/);
     assert.match(stateSource, /<tale-fairy-context>/);
-    assert.match(stateSource, /USE IF/);
-    assert.match(stateSource, /DROP IF/);
-    assert.match(stateSource, /VISIBLE CHANGE/);
-    assert.match(stateSource, /GROUNDING/);
-    assert.match(stateSource, /No aligned route is available/);
-    assert.match(stateSource, /Routine logistics, repeated information, decorative banter/);
+    assert.doesNotMatch(stateSource, /SELECTED IMMEDIATE ROUTE|ALTERNATIVE ROUTE/);
+    assert.doesNotMatch(stateSource, /USE IF:|DROP IF:|VISIBLE CHANGE:|GROUNDING:|EXECUTION:/);
     assert.match(stateSource, /planHorizons\.items/);
-    assert.match(stateSource, /latest user action/);
     assert.doesNotMatch(stateSource, /TIME HORIZONS/);
     assert.match(stateSource, /guideCandidates = null, guideIndex = 0, regeneration = false/);
 });
