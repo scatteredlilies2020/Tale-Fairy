@@ -330,7 +330,7 @@ export function horizonInfluence(index, total) {
 }
 
 function routeLine(guide, index, selected) {
-    const label = selected ? `PREFERRED ROUTE ${index + 1}` : `ALTERNATIVE ROUTE ${index + 1}`;
+    const label = selected ? `SELECTED IMMEDIATE ROUTE ${index + 1}` : `ALTERNATIVE ROUTE ${index + 1}`;
     return `${label} [${guide.strength} · ${guide.origin}]\nDO NOW: ${guide.direction.slice(0, 280)}\nVISIBLE CHANGE: ${guide.worldDelta.slice(0, 140)}\nGROUNDING: ${guide.basis.slice(0, 100)}\nUSE IF: ${guide.useWhen.slice(0, 120)}\nDROP IF: ${guide.dropWhen.slice(0, 100)}${guide.responseBias ? `\nEXECUTION: ${guide.responseBias.slice(0, 130)}` : ''}`;
 }
 
@@ -364,9 +364,10 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
         ? guideCandidates.slice(0, 3).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen && item.worldDelta && item.basis)
         : s.nextGuides;
     const selectedIndex = candidates.length ? Math.max(0, Math.min(candidates.length - 1, Number(guideIndex) || 0)) : 0;
-    const regenerationInstruction = regeneration ? 'On this regeneration, favor the preferred applicable route so the actual development changes, not just the wording. ' : '';
+    const selectedGuide = candidates[selectedIndex];
+    const regenerationInstruction = regeneration ? 'This route was selected specifically to make this regeneration develop differently from the discarded attempt. ' : '';
     const routePrompt = guidanceUsable && candidates.length
-        ? `${regenerationInstruction}Choose one immediate route that fits the latest user action. Prefer the marked route only when USE IF matches and DROP IF does not; otherwise choose an applicable alternative. If none fits, discard all routes and make your own causally supported move. Before ending, show one VISIBLE CHANGE that alters knowledge, stakes, relationships, options, resources, or a live process. Routine logistics, repeated information, banter, and minor gestures do not count. Do not blend incompatible routes, delay the user to preserve one, or invent player choices. Original means newly proposed, not past fact. Keep these notes hidden.\n\n${candidates.map((guide, index) => routeLine(guide, index, index === selectedIndex)).join('\n\n')}`
+        ? `${regenerationInstruction}After carrying through the latest user action, realize the selected route within this response when USE IF fits and DROP IF does not. Do not merely promise, foreshadow, or defer it. If the latest user action makes it incompatible, discard it and create an equally concrete, causally supported immediate move instead. Before ending, show the VISIBLE CHANGE: alter knowledge, stakes, relationships, options, resources, or a live process. Routine logistics, repeated information, banter, and minor gestures do not count. Do not invent player choices. Original means newly proposed, not past fact. Keep this note hidden.\n\n${routeLine(selectedGuide, selectedIndex, true)}`
         : `No aligned route is available. ${regeneration ? `Variation cue ${Math.max(1, Number(variationCue) || 1)}: make the actual development different from the prior attempt, not merely its wording. ` : ''}After carrying through the latest user action, an NPC or world process must initiate one new, causally supported beat before the response ends. It must alter knowledge, stakes, relationships, options, resources, or a live process. Routine logistics, repeated information, banter, physical strain, and minor gestures do not count. Do not invent player choices or unsupported drama. Keep these notes hidden.`;
     const guidancePrompt = `\n<living-world-guide>\n${routePrompt}\n</living-world-guide>`;
     return `<tale-fairy-context>${notePrompt}${canonPrompt}${narrativePolicy}${guidancePrompt}\n</tale-fairy-context>`;

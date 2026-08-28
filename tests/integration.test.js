@@ -9,16 +9,16 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.7.2');
-    assert.equal(manifest.js, 'extension/index.js?v=0.7.2');
-    assert.equal(manifest.css, 'extension/style.css?v=0.7.2');
+    assert.equal(manifest.version, '0.7.3');
+    assert.equal(manifest.js, 'extension/index.js?v=0.7.3');
+    assert.equal(manifest.css, 'extension/style.css?v=0.7.3');
 });
 
-test('injection routes among immediate guides while private long-range planning stays private', () => {
-    assert.match(stateSource, /Choose one immediate route/);
-    assert.match(stateSource, /PREFERRED ROUTE/);
+test('injection sends one immediate guide while alternatives and long-range planning stay private', () => {
+    assert.match(stateSource, /realize the selected route within this response/);
+    assert.match(stateSource, /SELECTED IMMEDIATE ROUTE/);
     assert.match(stateSource, /ALTERNATIVE ROUTE/);
-    assert.match(stateSource, /discard all routes and make your own causally supported move/);
+    assert.match(stateSource, /discard it and create an equally concrete/);
     assert.match(stateSource, /<tale-fairy-context>/);
     assert.match(stateSource, /USE IF/);
     assert.match(stateSource, /DROP IF/);
@@ -121,8 +121,9 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /scratchpad-continuity/);
     assert.match(source, /scratchpad-ledger/);
     assert.match(source, /configurePromptManagerInjection\(promptManager, s, payload\)/);
-    assert.match(source, /injectionPosition: 'at-depth', injectionDepth: 2, injectionRole: 'system'/);
+    assert.match(source, /injectionPosition: 'at-depth', injectionDepth: 0, injectionRole: 'system'/);
     assert.match(source, /previousContextVersion < 4/);
+    assert.match(source, /previousContextVersion < 5/);
     assert.match(template, /<option value="system">System \(default\)<\/option>/);
     assert.match(source, /export async function livingWorldGuideGenerateInterceptor/);
     assert.doesNotMatch(source, /livingWorldGuideGenerateInterceptor[\s\S]{0,1200}await analyzeNow/);
@@ -178,7 +179,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.doesNotMatch(template, /runtime-version|runtime pending/);
     assert.doesNotMatch(template, /You control pacing in every mode|Tale Fairy keeps six to ten planning horizons/);
     assert.match(template, /data-setting="injection-position"/);
-    assert.match(template, /data-setting="injection-depth"[^>]*value="2"/);
+    assert.match(template, /data-setting="injection-depth"[^>]*value="0"/);
     assert.match(template, /data-setting="injection-role"/);
     assert.match(template, /Planner Scratchpad/);
     assert.match(template, /Use Continuity context when available/);

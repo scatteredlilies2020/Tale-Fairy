@@ -162,23 +162,22 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(current, /^<tale-fairy-context>/);
     assert.match(current, /<\/tale-fairy-context>$/);
     assert.doesNotMatch(current, /Keep the scene grounded/);
-    assert.match(current, /PREFERRED ROUTE 1 \[strong · inferred\]/);
-    assert.match(current, /ALTERNATIVE ROUTE 2 \[moderate · original\]/);
+    assert.match(current, /SELECTED IMMEDIATE ROUTE 1 \[strong · inferred\]/);
+    assert.doesNotMatch(current, /ALTERNATIVE ROUTE 2|Wait for pressure/);
     assert.match(current, /Let Mara answer plainly/);
     assert.match(current, /VISIBLE CHANGE: Mara reveals a concern/);
     assert.match(current, /GROUNDING: Mara is present/);
     assert.match(current, /USE IF: The user continues or asks Mara/);
     assert.match(current, /DROP IF: The user leaves or changes subject/);
-    assert.match(current, /telling-deflection|meaningful deflection/);
+    assert.doesNotMatch(current, /telling-deflection|meaningful deflection/);
     assert.doesNotMatch(current, /PATHWAYS|TIME HORIZONS|Revisit the obligation/);
 
     const swipe = buildPromptPayload(state, { enabled: true, guidanceUsable: true, guideCandidates: stateNextGuides, guideIndex: 1, regeneration: true });
-    assert.match(swipe, /ALTERNATIVE ROUTE 1 \[strong · inferred\]/);
-    assert.match(swipe, /PREFERRED ROUTE 2 \[moderate · original\]/);
-    assert.match(swipe, /favor the preferred applicable route/);
-    assert.match(swipe, /If none fits, discard all routes/);
+    assert.doesNotMatch(swipe, /ALTERNATIVE ROUTE 1|Let Mara answer plainly/);
+    assert.match(swipe, /SELECTED IMMEDIATE ROUTE 2 \[moderate · original\]/);
+    assert.match(swipe, /selected specifically to make this regeneration develop differently/);
+    assert.match(swipe, /discard it and create an equally concrete/);
     assert.match(swipe, /meaningful deflection/);
-    assert.match(swipe, /Let Mara answer plainly/);
 
     const regenerationFallback = buildPromptPayload(state, { enabled: true, guidanceUsable: false, guideCandidates: [], regeneration: true, variationCue: 8472 });
     assert.match(regenerationFallback, /Variation cue 8472/);

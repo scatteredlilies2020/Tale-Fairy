@@ -57,7 +57,7 @@ test('repairs text-completion prompts and recognizes the current guide', () => {
     assert.equal(ensureGuidanceInText(repaired, payload), repaired);
 });
 
-test('provider-bound request receives one compact multi-route block end to end', () => {
+test('provider-bound request receives only the selected route while alternatives remain private', () => {
     const routes = [
         { id: 'reveal', direction: 'Vekk gives the concrete war update now.', use_when: 'The user remains present or asks about the war.', drop_when: 'The user leaves or forbids the topic.', response_bias: 'State the news through dialogue and let it alter the room.', world_delta: 'The actual military situation becomes known.', origin: 'inferred', basis: 'Vekk has the report and intended to speak privately.', strength: 'strong', source_pathways: ['war-news'] },
         { id: 'interruption', direction: 'An urgent contradiction reaches Vekk before he can finish.', use_when: 'The channel remains open and outside contact is possible.', drop_when: 'The user isolates the room or time advances past it.', response_bias: 'Use a specific interruption with an immediate consequence.', world_delta: 'New evidence forces Vekk to revise part of the report.', origin: 'original', basis: 'The war is active and information remains unstable.', strength: 'moderate', source_pathways: ['war-news'] },
@@ -67,8 +67,8 @@ test('provider-bound request receives one compact multi-route block end to end',
 
     assert.equal(ensureGuidanceInChat(chat, prompt, { role: 'system', depth: 0 }), true);
     assert.equal(chatHasCurrentGuidance(chat, prompt), true);
-    assert.match(chat.at(-1).content, /PREFERRED ROUTE 2/);
-    assert.match(chat.at(-1).content, /ALTERNATIVE ROUTE 1/);
+    assert.match(chat.at(-1).content, /SELECTED IMMEDIATE ROUTE 2/);
+    assert.doesNotMatch(chat.at(-1).content, /ALTERNATIVE ROUTE 1|Vekk gives the concrete war update now/);
     assert.equal(chat.map(message => String(message.content)).join('\n').match(/<tale-fairy-context>/g)?.length, 1);
     assert.ok(prompt.length < 4800, `expected compact payload, got ${prompt.length} characters`);
 });

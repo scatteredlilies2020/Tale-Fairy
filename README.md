@@ -6,7 +6,7 @@ Tale Fairy is a standalone SillyTavern extension that supplies an **adaptive nar
 
 - Replans in the background after each completed assistant response. The next roleplay request never waits for the planner and never makes an extra AI call; sending a new turn cancels any unfinished background pass so the roleplay request takes priority.
 - Prepares two or three contrasting conditional routes, then lets the roleplay model match them against the latest user action in its normal generation call. If none fits, it may discard them and make its own grounded move.
-- Archives the route set actually sent to the provider. Regenerates and swipes rotate the preferred route for materially different developments while retaining continuity; if no aligned archive exists, a compact generic motion/variety fallback is still injected.
+- Privately archives the full route set, but sends the roleplay model only one selected immediate route. Regenerates and swipes rotate that route for materially different developments while retaining continuity; if no aligned archive exists, a compact generic motion/variety fallback is still injected.
 - Maintains up to ten durable story threads plus six to ten ordered planning horizons, from the current reply through later arcs or meaningful distant timeframes—without assuming an ending.
 - Everything remains changeable. Short horizons move freely; increasingly distant horizons change more gradually as deviations accumulate, while explicit user pivots always win.
 - Gives every horizon a nonzero but decreasing influence: near directions can shape the reply, middle directions bias setup, and distant directions remain a subtle background pull until events bring them closer.
