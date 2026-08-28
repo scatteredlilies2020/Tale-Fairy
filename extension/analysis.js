@@ -105,8 +105,8 @@ export function validateAnalysisResult(result) {
         if (!['foreground', 'available', 'latent', 'blocked'].includes(pathway?.status)) errors.push(`pathways[${index}].status is invalid`);
         if (!['keep', 'adjust', 'activate', 'deactivate', 'replace', 'retire'].includes(pathway?.change)) errors.push(`pathways[${index}].change is invalid`);
     }
-    if (!Array.isArray(result.next_guides) || result.next_guides.length < 3 || result.next_guides.length > 4) {
-        errors.push('next_guides must contain 3 to 4 ranked contrasting candidates');
+    if (!Array.isArray(result.next_guides) || result.next_guides.length < 1 || result.next_guides.length > 4) {
+        errors.push('next_guides must contain 1 to 4 usable ranked candidates');
     }
     for (const [index, guide] of (Array.isArray(result.next_guides) ? result.next_guides : []).entries()) {
         for (const key of ['id', 'direction', 'use_when', 'drop_when', 'response_bias', 'world_delta', 'basis', 'reason']) {
@@ -232,11 +232,166 @@ export function validateAnalysisResult(result) {
 }
 
 export function requireValidAnalysisResult(result) {
-    const validation = validateAnalysisResult(result);
+    const repaired = repairAnalysisResult(result);
+    const validation = validateAnalysisResult(repaired);
     if (!validation.valid) {
         throw new AnalysisValidationError(`Planner returned unusable JSON: ${validation.errors.join('; ')}.`);
     }
-    return result;
+    return repaired;
+}
+
+const asString = (value, fallback = '') => typeof value === 'string' ? value : fallback;
+const asArray = value => Array.isArray(value) ? value : [];
+const oneOf = (value, allowed, fallback) => allowed.includes(value) ? value : fallback;
+const uniqueStrings = values => [...new Set(asArray(values).map(value => asString(value).trim()).filter(Boolean))];
+
+/**
+ * Salvage provider output before using the generic fallback. Structured-output
+ * support varies between providers, so harmless schema drift must not discard
+ * otherwise useful narrative movements. This deliberately repairs bookkeeping
+ * while dropping individual candidates that violate narrative safety rules.
+ */
+export function repairAnalysisResult(result) {
+    if (!result || typeof result !== 'object' || Array.isArray(result)) return result;
+
+    const sceneSource = result.scene && typeof result.scene === 'object' && !Array.isArray(result.scene) ? result.scene : {};
+    const storySource = result.story_frame && typeof result.story_frame === 'object' && !Array.isArray(result.story_frame) ? result.story_frame : {};
+    const repaired = {
+        ...result,
+        story_frame: {
+            frame: asString(storySource.frame, 'unknown'),
+            confidence: asString(storySource.confidence, 'low'),
+            basis: asString(storySource.basis, 'Planner classification was incomplete.'),
+        },
+        scene: {
+            status: asString(sceneSource.status, 'active') || 'active',
+            activity: asString(sceneSource.activity, 'Current scene'),
+            pace: asString(sceneSource.pace, 'adaptive'),
+            intent: asString(sceneSource.intent, 'Continue the current interaction'),
+            location: asString(sceneSource.location, 'current location'),
+            time: asString(sceneSource.time, 'current moment'),
+            loop: typeof sceneSource.loop === 'boolean' ? sceneSource.loop : false,
+        },
+        objectives: asArray(result.objectives),
+        entities: asArray(result.entities),
+        possibilities: asArray(result.possibilities),
+        canon_constraints: uniqueStrings(result.canon_constraints),
+        ledger: asString(result.ledger),
+        guidance: asString(result.guidance),
+        inject: true,
+        reason: asString(result.reason, 'Recovered usable narrative guidance from incomplete planner output.') || 'Recovered usable narrative guidance from incomplete planner output.',
+        note_resolution: result.note_resolution && ['suggest', 'correct', 'establish', 'forbid'].includes(result.note_resolution.kind)
+            ? { kind: result.note_resolution.kind }
+            : null,
+    };
+
+    const rawGuides = asArray(result.next_guides);
+    const unsafeCondition = /\b(?:swipe|alternative|preferred|primary guide|next response|next reply|writing the|write the)\b/iu;
+    const delayedSubstance = /\b(?:promise|promises|commit|commits|schedule|schedules|plan|plans|agree|agrees)\b[\s\S]{0,140}\b(?:later|tomorrow|morning|next day|next scene|after breakfast|eventually)\b/iu;
+    const trivialDelta = /\b(?:routine|harmless|minor|small)\b[\s\S]{0,80}\b(?:notice|ping|item|gesture|symptom|detail|update)\b/iu;
+    const seenIds = new Set();
+    const seenDirections = new Set();
+    const seenDeltas = new Set();
+    repaired.next_guides = rawGuides.flatMap((guide, index) => {
+        if (!guide || typeof guide !== 'object' || Array.isArray(guide)) return [];
+        const direction = asString(guide.direction).trim();
+        const worldDelta = asString(guide.world_delta).trim();
+        if (!direction || !worldDelta || delayedSubstance.test(`${direction} ${worldDelta}`) || trivialDelta.test(`${direction} ${worldDelta}`)) return [];
+        let useWhen = asString(guide.use_when, 'Use when it remains compatible with the latest user action and established scene.').trim() || 'Use when it remains compatible with the latest user action and established scene.';
+        let dropWhen = asString(guide.drop_when, 'Drop when new story evidence contradicts or supersedes this movement.').trim() || 'Drop when new story evidence contradicts or supersedes this movement.';
+        if (unsafeCondition.test(`${useWhen} ${dropWhen}`)) {
+            useWhen = 'Use when it remains compatible with the latest user action and established scene.';
+            dropWhen = 'Drop when new story evidence contradicts or supersedes this movement.';
+        }
+        let id = asString(guide.id, `recovered-guide-${index + 1}`).trim() || `recovered-guide-${index + 1}`;
+        const idKey = id.toLowerCase();
+        const directionKey = direction.toLowerCase();
+        const deltaKey = worldDelta.toLowerCase();
+        if (seenIds.has(idKey) || seenDirections.has(directionKey) || seenDeltas.has(deltaKey)) return [];
+        seenIds.add(idKey); seenDirections.add(directionKey); seenDeltas.add(deltaKey);
+        return [{
+            id, direction, use_when: useWhen, drop_when: dropWhen,
+            response_bias: asString(guide.response_bias, 'Match the scene’s dramatic state while leaving the concrete realization to the roleplay model.').trim() || 'Match the scene’s dramatic state while leaving the concrete realization to the roleplay model.',
+            world_delta: worldDelta,
+            origin: oneOf(guide.origin, ['established', 'inferred', 'original'], 'inferred'),
+            basis: asString(guide.basis, 'Supported by the current scene and its active trajectory.').trim() || 'Supported by the current scene and its active trajectory.',
+            strength: oneOf(guide.strength, ['strong', 'moderate', 'light'], 'moderate'),
+            source_pathways: uniqueStrings(guide.source_pathways).slice(0, 3),
+            causal_event_ids: uniqueStrings(guide.causal_event_ids).slice(0, 2),
+            disclosure: oneOf(guide.disclosure, ['none', 'consequence-only', 'partial-clue', 'reveal-cause'], 'none'),
+            reason: asString(guide.reason, 'This is a usable conditional movement for the current scene.'),
+        }];
+    }).slice(0, 4);
+
+    const rawPathways = asArray(result.pathways);
+    repaired.pathways = rawPathways.flatMap((pathway, index) => {
+        if (!pathway || typeof pathway !== 'object' || Array.isArray(pathway) || !asString(pathway.direction).trim()) return [];
+        return [{
+            id: asString(pathway.id, `recovered-path-${index + 1}`).trim() || `recovered-path-${index + 1}`,
+            direction: asString(pathway.direction).trim(),
+            when: asString(pathway.when, 'When current story conditions continue to support it.') || 'When current story conditions continue to support it.',
+            response_bias: asString(pathway.response_bias, 'Adjust mood, energy, tempo, tension, focus, and surprise to the scene.'),
+            horizon: asString(pathway.horizon, 'next few turns'),
+            status: oneOf(pathway.status, ['foreground', 'available', 'latent', 'blocked'], 'available'),
+            conditions: uniqueStrings(pathway.conditions).slice(0, 3),
+            change: oneOf(pathway.change, ['keep', 'adjust', 'activate', 'deactivate', 'replace', 'retire'], 'adjust'),
+            reason: asString(pathway.reason, 'Recovered from an incomplete planner route.'),
+        }];
+    }).slice(0, 5);
+    if (!repaired.pathways.length && repaired.next_guides.length) {
+        const guide = repaired.next_guides[0];
+        repaired.pathways = [{ id: 'recovered-path-1', direction: guide.direction, when: guide.use_when, response_bias: guide.response_bias, horizon: 'next few turns', status: 'foreground', conditions: [], change: 'adjust', reason: guide.basis }];
+        if (!guide.source_pathways.length) guide.source_pathways = ['recovered-path-1'];
+    }
+
+    const rawEvents = asArray(result.narrative_events);
+    repaired.narrative_events = rawEvents.flatMap((event, index) => {
+        if (!event || typeof event !== 'object' || !asString(event.title).trim() || !asString(event.summary).trim()) return [];
+        const scope = oneOf(event.scope, ['onscreen', 'offscreen'], 'offscreen');
+        let epistemic = oneOf(event.epistemic_status, ['established', 'simulated', 'inferred', 'possible', 'disproved'], 'possible');
+        const consequences = uniqueStrings(event.consequences).slice(0, 3);
+        const cause = asString(event.cause);
+        if (epistemic === 'simulated' && (!cause.trim() || !consequences.length)) epistemic = 'possible';
+        return [{ id: asString(event.id, `recovered-event-${index + 1}`).trim() || `recovered-event-${index + 1}`, title: asString(event.title), summary: asString(event.summary), scope, epistemic_status: epistemic, disclosure: scope === 'onscreen' ? oneOf(event.disclosure, ['signaled', 'revealed'], 'revealed') : oneOf(event.disclosure, ['hidden', 'signaled', 'revealed'], 'hidden'), status: oneOf(event.status, ['active', 'latent', 'manifested', 'resolved', 'retired'], 'latent'), confidence: oneOf(event.confidence, ['low', 'moderate', 'high'], 'low'), timing: asString(event.timing, 'unscheduled'), due_state: oneOf(event.due_state, ['unscheduled', 'pending', 'due', 'overdue'], 'unscheduled'), cause, consequences, basis: asString(event.basis), requirements: uniqueStrings(event.requirements).slice(0, 4), interpretation: asString(event.interpretation, 'conditional') }];
+    }).filter((event, index, events) => events.findIndex(other => other.id === event.id) === index).slice(0, 6);
+    const eventsById = new Map(repaired.narrative_events.map(event => [event.id, event]));
+    for (const guide of repaired.next_guides) {
+        const linked = guide.causal_event_ids.map(id => eventsById.get(id)).filter(Boolean);
+        const validDisclosure = linked.length && linked.every(event => !['possible', 'disproved'].includes(event.epistemic_status)
+            && (guide.disclosure === 'reveal-cause' || (event.scope === 'offscreen' && event.disclosure !== 'revealed')));
+        if (guide.disclosure !== 'none' && !validDisclosure) {
+            guide.disclosure = 'none';
+            guide.causal_event_ids = [];
+        }
+    }
+
+    const horizonSource = result.plan_horizons && typeof result.plan_horizons === 'object' ? result.plan_horizons : {};
+    const items = asArray(horizonSource.items).slice(0, 10).map((item, index) => ({
+        id: asString(item?.id, `recovered-horizon-${index + 1}`) || `recovered-horizon-${index + 1}`,
+        direction: asString(item?.direction, 'Keep the current trajectory revisable as events develop.') || 'Keep the current trajectory revisable as events develop.',
+        timeframe: asString(item?.timeframe, 'open-ended future') || 'open-ended future',
+        stability: oneOf(item?.stability, ['fluid', 'adaptive', 'stable', 'slow'], index < 1 ? 'fluid' : index < 3 ? 'adaptive' : 'stable'),
+        conditions: uniqueStrings(item?.conditions).slice(0, 3),
+        change: oneOf(item?.change, ['keep', 'adjust', 'replace'], 'adjust'),
+        reason: asString(item?.reason, 'Recovered while preserving the usable narrative direction.') || 'Recovered while preserving the usable narrative direction.',
+    }));
+    const timeframeDefaults = ['next few turns', 'current scene', 'next scene', 'several scenes', 'current arc', 'later arcs / open-ended'];
+    while (items.length < 6) {
+        const index = items.length;
+        items.push({ id: `recovered-horizon-${index + 1}`, direction: items.at(-1)?.direction || repaired.pathways[0]?.direction || 'Keep the current trajectory revisable as events develop.', timeframe: timeframeDefaults[index], stability: index < 1 ? 'fluid' : index < 3 ? 'adaptive' : index < 5 ? 'stable' : 'slow', conditions: [], change: 'adjust', reason: 'Added as a flexible planning horizon rather than discarding the usable movement.' });
+    }
+    items.at(-1).stability = 'slow';
+    repaired.plan_horizons = { items, deviation: { level: oneOf(horizonSource.deviation?.level, ['none', 'minor', 'major'], 'minor'), reason: asString(horizonSource.deviation?.reason, 'Minor planner structure was normalized without changing its usable narrative direction.') } };
+
+    const auditSource = result.cue_audit && typeof result.cue_audit === 'object' ? result.cue_audit : {};
+    const offered = uniqueStrings(auditSource.offered_ids).slice(0, 4);
+    const classified = new Set();
+    const auditGroup = key => uniqueStrings(auditSource[key]).filter(id => offered.includes(id) && !classified.has(id)).filter(id => (classified.add(id), true));
+    const manifested = auditGroup('manifested_ids');
+    const contradicted = auditGroup('contradicted_ids');
+    const unused = [...auditGroup('unused_ids'), ...offered.filter(id => !classified.has(id))];
+    repaired.cue_audit = { offered_ids: offered, manifested_ids: manifested, unused_ids: unused, contradicted_ids: contradicted, pacing: oneOf(auditSource.pacing, ['respected', 'exceeded', 'uncertain'], 'uncertain'), reason: asString(auditSource.reason, 'Incomplete cue audit was normalized.') };
+    return repaired;
 }
 
 function selectMessages(messages, windowSize, bootstrapScan = false) {

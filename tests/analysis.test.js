@@ -139,7 +139,7 @@ test('planner requires distinct alternatives for swipe variety', () => {
         scene: { status: 'active', activity: 'talking', pace: 'slow', intent: 'understand', location: 'home', time: 'evening', loop: false },
         objectives: [], entities: [], possibilities: [], guidance: '', inject: true, reason: 'Prepare contrasting continuations.',
     };
-    assert.equal(validateAnalysisResult({ ...result, next_guides: [nextGuides[0]] }).valid, false);
+    assert.equal(validateAnalysisResult({ ...result, next_guides: [nextGuides[0]] }).valid, true);
     assert.equal(validateAnalysisResult({ ...result, next_guides: [nextGuides[0], { ...nextGuides[0] }] }).valid, false);
     assert.equal(validateAnalysisResult({ ...result, next_guides: nextGuides.map((guide, index) => index ? { ...guide, world_delta: nextGuides[0].world_delta } : guide) }).valid, false);
     assert.equal(validateAnalysisResult({ ...result, next_guides: nextGuides.map(({ world_delta, ...guide }) => guide) }).valid, false);
@@ -173,6 +173,38 @@ test('planner requires a distant but open-ended highest horizon', () => {
     const fixedLike = { ...result, plan_horizons: { ...planHorizons, items: planHorizons.items.map((item, index) => index === planHorizons.items.length - 1 ? { ...item, stability: 'stable' } : item) } };
     assert.equal(validateAnalysisResult(result).valid, true);
     assert.equal(validateAnalysisResult(fixedLike).valid, false);
+    const repaired = requireValidAnalysisResult(fixedLike);
+    assert.equal(repaired.plan_horizons.items.at(-1).stability, 'slow');
+    assert.equal(validateAnalysisResult(repaired).valid, true);
+});
+
+test('planner salvages incomplete structured output before using fallback', () => {
+    const partial = {
+        scene: { status: 'active', activity: 'talking' },
+        next_guides: [
+            { ...nextGuides[0], use_when: 'Use for the preferred next response.', origin: 'uncertain', strength: 'high' },
+            { ...nextGuides[1], direction: 'Mara promises to explain tomorrow.', world_delta: 'Mara schedules the explanation for later.' },
+        ],
+        plan_horizons: { items: [{ id: 'near', direction: 'Let the answer change the exchange.', timeframe: 'now', stability: 'fluid' }] },
+    };
+    const repaired = requireValidAnalysisResult(partial);
+    assert.equal(repaired.next_guides.length, 1, 'one safe movement is retained instead of losing the whole plan');
+    assert.doesNotMatch(repaired.next_guides[0].use_when, /preferred|next response/i);
+    assert.equal(repaired.next_guides[0].origin, 'inferred');
+    assert.equal(repaired.next_guides[0].strength, 'moderate');
+    assert.equal(repaired.pathways.length, 1, 'a missing route is recovered from the usable movement');
+    assert.equal(repaired.plan_horizons.items.length, 6);
+    assert.equal(repaired.plan_horizons.items.at(-1).stability, 'slow');
+    assert.equal(repaired.inject, true);
+    assert.equal(validateAnalysisResult(repaired).valid, true);
+});
+
+test('planner still falls back when no usable narrative movement survives', () => {
+    assert.throws(() => requireValidAnalysisResult({ scene: {}, next_guides: [] }), AnalysisValidationError);
+    assert.throws(() => requireValidAnalysisResult({
+        scene: {},
+        next_guides: [{ ...nextGuides[0], direction: 'Mara promises to explain tomorrow.', world_delta: 'Mara schedules the explanation for later.' }],
+    }), AnalysisValidationError);
 });
 
 test('planner schema uses SillyTavern structured-output packaging', () => {
