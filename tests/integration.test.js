@@ -9,18 +9,21 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.4.0');
-    assert.equal(manifest.js, 'extension/index.js?v=0.4.0');
-    assert.equal(manifest.css, 'extension/style.css?v=0.4.0');
+    assert.equal(manifest.version, '0.4.1');
+    assert.equal(manifest.js, 'extension/index.js?v=0.4.1');
+    assert.equal(manifest.css, 'extension/style.css?v=0.4.1');
 });
 
 test('injected guidance carries conditional pathways and a compact horizon ladder', () => {
-    assert.match(stateSource, /conditional pathways prepared after the last completed turn/);
+    assert.match(stateSource, /Conditional routes drafted after the previous completed turn/);
     assert.match(stateSource, /PATHWAYS/);
     assert.match(stateSource, /USE WHEN/);
     assert.match(stateSource, /IF CHOSEN/);
     assert.match(stateSource, /planHorizons\.items/);
-    assert.match(stateSource, /latest user action now/);
+    assert.match(stateSource, /latest user action/);
+    assert.match(stateSource, /an unmatched route has zero influence/);
+    assert.match(stateSource, /strong lean if matched/);
+    assert.match(stateSource, /filter\(item => item\.status !== 'blocked'\)/);
 });
 
 test('extension UI and interceptor use SillyTavern third-party-compatible registration', () => {
@@ -107,7 +110,8 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /'stop', 'stopping_strings', 'logit_bias', 'tools', 'tool_choice'/);
     assert.match(source, /generateRaw\(\{[\s\S]{0,320}instructOverride: true/);
     assert.doesNotMatch(source, /MESSAGE_SENT[\s\S]{0,500}analyzeNow/);
-    assert.match(source, /MESSAGE_RECEIVED[\s\S]{0,900}void analyzeNow\(\{ messages \}\)/);
+    assert.match(source, /MESSAGE_RECEIVED[\s\S]{0,900}void analyzeNow\(\{ messages, allowOneUserAppend: true \}\)/);
+    assert.match(source, /isAnalysisSourceCurrent\(guard\.fingerprint, guard\.messageCount, chat/);
     assert.doesNotMatch(source, /waitForBackgroundPlanner/);
     assert.doesNotMatch(source, /function backgroundRetryDelay/);
     assert.doesNotMatch(source, /scheduleBackgroundAnalysis/);

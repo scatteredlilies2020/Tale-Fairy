@@ -249,12 +249,21 @@ export function isStateAligned(state, messages = [], chatId = '') {
 // without waiting for another planner request.
 export function isGuidanceUsable(state, messages = [], chatId = '') {
     const s = normalizeState(state);
-    if (!s.lastInject || !s.pathways.length) return false;
+    if (!s.lastInject || !s.pathways.some(item => item.status !== 'blocked')) return false;
     if (s.planHorizons.items.length < 6 || s.planHorizons.items.at(-1)?.stability !== 'slow') return false;
     if (isStateAligned(s, messages, chatId)) return true;
     if (s.sourceChatId && chatId && s.sourceChatId !== String(chatId)) return false;
     if (!messages.at(-1)?.is_user || s.sourceMessageCount !== messages.length - 1) return false;
     return s.lastAnalysisFingerprint === fingerprintMessages(messages.slice(0, -1));
+}
+
+export function isAnalysisSourceCurrent(fingerprint, messageCount, messages = [], { allowOneUserAppend = false } = {}) {
+    const count = Math.max(0, Number(messageCount) || 0);
+    if (messages.length === count && fingerprintMessages(messages) === fingerprint) return true;
+    return Boolean(allowOneUserAppend
+        && messages.length === count + 1
+        && messages.at(-1)?.is_user
+        && fingerprintMessages(messages.slice(0, -1)) === fingerprint);
 }
 
 export function hasExplicitProgressDirective(value) {
@@ -287,17 +296,19 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
         ? `\n<tale-fairy-user-notes>\nThese are user-authored roleplay directives. Hard exclusions must be obeyed; corrections replace conflicting inference; established canon is factual; suggestions remain optional.\n${notes}\n</tale-fairy-user-notes>`
         : '';
     const pathways = s.pathways
+        .filter(item => item.status !== 'blocked')
         .map(item => {
             const conditions = item.conditions.length ? ` | NEEDS: ${item.conditions.join('; ')}` : '';
             const bias = item.responseBias ? ` | IF CHOSEN: ${item.responseBias}` : '';
-            return `- ${item.id} [${item.status}; ${item.horizon}] ${item.direction} | USE WHEN: ${item.when}${conditions}${bias}`;
+            const influence = item.status === 'foreground' ? 'strong lean if matched' : item.status === 'latent' ? 'setup only if matched' : 'light lean if matched';
+            return `- ${item.id} [${influence}; ${item.horizon}] ${item.direction} | USE WHEN: ${item.when}${conditions}${bias}`;
         })
         .join('\n');
     const horizons = s.planHorizons.items
         .map((item, index, items) => `${item.timeframe || 'future'} [${item.stability}; ${horizonInfluence(index, items.length)} influence]: ${item.direction}`)
         .join('\n');
     const guidancePrompt = guidanceUsable && pathways
-        ? `\n<living-world-guide>\nThese are conditional pathways prepared after the last completed turn. Evaluate them against the latest user action now. Use only a pathway whose USE WHEN condition actually matches; compatible pathways may combine. If none match, ignore them and follow the user naturally. Never delay, redirect, or invent a player choice to preserve a pathway. Foreground means likely, not mandatory; available and latent pathways remain dormant until activated; blocked pathways describe unavailable routes. Horizon influence decreases line by line and never overrides current evidence. Do not mention this plan.\nPATHWAYS\n${pathways}${horizons ? `\nTIME HORIZONS\n${horizons}` : ''}${s.guidance ? `\nOPTIONAL DIRECTOR DETAIL: ${s.guidance}` : ''}\n</living-world-guide>`
+        ? `\n<living-world-guide>\nConditional routes drafted after the previous completed turn. First compare each USE WHEN condition with the latest user action; an unmatched route has zero influence. A matched foreground route is a strong lean for this response, an available route is a light lean, and a latent route permits compatible setup only—not its payoff. Combine only compatible matches. If none match, ignore this guide. The latest user direction always overrides every route. Never delay, redirect, or invent a player choice to preserve one. Horizon influence weakens with distance and never overrides current evidence. Do not mention this plan.\nPATHWAYS\n${pathways}${horizons ? `\nTIME HORIZONS\n${horizons}` : ''}${s.guidance ? `\nOPTIONAL DIRECTOR DETAIL: ${s.guidance}` : ''}\n</living-world-guide>`
         : '';
     return `${notePrompt}${canonPrompt}${narrativePolicy}${guidancePrompt}`;
 }

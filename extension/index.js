@@ -5,7 +5,7 @@ import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
 import { AnalysisValidationError, applyAnalysis, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, requireValidAnalysisResult, SYSTEM } from './analysis.js';
-import { buildPromptPayload, clearState, defaultState, fingerprintMessages, horizonInfluence, isGuidanceUsable, loadState, saveState, STATE_KEY, STATE_VERSION } from './state.js';
+import { buildPromptPayload, clearState, defaultState, fingerprintMessages, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, saveState, STATE_KEY, STATE_VERSION } from './state.js';
 import { resolveInjectionPlacement } from './injection-placement.js';
 import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js';
 import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, textHasCurrentGuidance } from './request-injection.js';
@@ -13,7 +13,7 @@ import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.4.0';
+const RUNTIME_VERSION = '0.4.1';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -482,7 +482,7 @@ async function persist(state, guard = {}) {
     const chat = messagesFromChat(context.chat || []);
     const chatId = String(context.getCurrentChatId?.() || '');
     if ((guard.chatId && chatId !== guard.chatId)
-        || (guard.fingerprint && fingerprintMessages(chat) !== guard.fingerprint)
+        || (guard.fingerprint && !isAnalysisSourceCurrent(guard.fingerprint, guard.messageCount, chat, { allowOneUserAppend: guard.allowOneUserAppend }))
         || chat.length === 0) {
         throw new DOMException('The chat changed before Tale Fairy could save its analysis.', 'AbortError');
     }
@@ -647,6 +647,7 @@ async function persistClarifiedNote(text, kind) {
     await persist(state, {
         chatId: String(context.getCurrentChatId?.() || ''),
         fingerprint: fingerprintMessages(chat),
+        messageCount: chat.length,
     });
     renderBoard(state);
     renderAnalysisActivity('Instruction saved', false);
@@ -814,7 +815,7 @@ async function requestAnalysis(prompt, externalSignal) {
     }
 }
 
-export async function analyzeNow({ note = null, force = false, messages = null, rebuild = false } = {}) {
+export async function analyzeNow({ note = null, force = false, messages = null, rebuild = false, allowOneUserAppend = false } = {}) {
     const context = currentContext();
     const s = getSettings();
     if (!s.enabled) return loadState(context.chatMetadata);
@@ -863,7 +864,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         next.analysisModel = analysisSelection;
         if (resolvedNote) next.userNotes = [...next.userNotes, { ...resolvedNote, at: Date.now() }].slice(-12);
         next.noteNeedsClarification = Boolean(userNote && !resolvedNote);
-        await persist(next, { chatId, fingerprint });
+        await persist(next, { chatId, fingerprint, messageCount: chat.length, allowOneUserAppend });
         lastAnalysisError = '';
         finalStatus = userNote && !resolvedNote
             ? 'Note not applied · try again'
@@ -1267,7 +1268,7 @@ eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
     updatePrompt(loadState(context.chatMetadata));
     // One background planning cycle revises the routes after the completed
     // assistant response. The next user generation never waits for it.
-    if (getSettings().enabled) void analyzeNow({ messages });
+    if (getSettings().enabled) void analyzeNow({ messages, allowOneUserAppend: true });
 });
 if (event_types.MESSAGE_SENT) eventSource.on(event_types.MESSAGE_SENT, () => {
     const context = currentContext();

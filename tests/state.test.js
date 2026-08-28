@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPromptPayload, clearState, defaultState, fingerprintMessages, hasExplicitProgressDirective, horizonInfluence, isGuidanceUsable, isStateAligned, loadState, normalizeState, saveState, STATE_KEY } from '../extension/state.js';
+import { buildPromptPayload, clearState, defaultState, fingerprintMessages, hasExplicitProgressDirective, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, isStateAligned, loadState, normalizeState, saveState, STATE_KEY } from '../extension/state.js';
 
 const currentPlan = {
     pathways: [{ id: 'answer', direction: 'Continue the active exchange.', when: 'The user continues or asks Mara.', responseBias: 'Have Mara answer.', horizon: 'near', status: 'foreground', conditions: [], change: 'keep', reason: 'The exchange is current.' }],
@@ -61,6 +61,16 @@ test('completed-turn guidance can route exactly one new user action', () => {
     assert.equal(isGuidanceUsable(state, [...analyzed, { mes: 'Changed assistant text.', is_user: false }], 'a'), false);
     assert.equal(isGuidanceUsable(state, [...analyzed, { mes: 'I look.', is_user: true }, { mes: 'Reply', is_user: false }], 'a'), false);
     assert.equal(isGuidanceUsable(state, [...analyzed, { mes: 'I look around.', is_user: true }], 'b'), false);
+});
+
+test('completed-turn analysis may save across one new user action but not later changes', () => {
+    const analyzed = [{ mes: 'The room settles.', is_user: false }];
+    const fingerprint = fingerprintMessages(analyzed);
+    assert.equal(isAnalysisSourceCurrent(fingerprint, 1, analyzed), true);
+    assert.equal(isAnalysisSourceCurrent(fingerprint, 1, [...analyzed, { mes: 'I look around.', is_user: true }]), false);
+    assert.equal(isAnalysisSourceCurrent(fingerprint, 1, [...analyzed, { mes: 'I look around.', is_user: true }], { allowOneUserAppend: true }), true);
+    assert.equal(isAnalysisSourceCurrent(fingerprint, 1, [...analyzed, { mes: 'Another reply.', is_user: false }], { allowOneUserAppend: true }), false);
+    assert.equal(isAnalysisSourceCurrent(fingerprint, 1, [...analyzed, { mes: 'I look.', is_user: true }, { mes: 'Reply.', is_user: false }], { allowOneUserAppend: true }), false);
 });
 
 test('aligned legacy or incomplete planning state forces fresh analysis', () => {
@@ -124,8 +134,21 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(current, /next 2–4 turns \[adaptive; moderate influence\]: Explore the reaction/);
     assert.match(current, /current arc \[stable; background influence\]: Revisit the obligation/);
     assert.match(current, /later arcs \/ open-ended \[slow; background influence\]: Let the obligation remain an evolving possibility/);
-    assert.match(current, /Horizon influence decreases line by line/);
+    assert.match(current, /Horizon influence weakens with distance/);
+    assert.match(current, /an unmatched route has zero influence/);
+    assert.match(current, /strong lean for this response/);
     assert.equal(buildPromptPayload(state, { enabled: false, guidanceUsable: true }), '');
+});
+
+test('blocked pathways stay internal and cannot bias the response', () => {
+    const state = {
+        ...defaultState(),
+        pathways: [{ id: 'closed-route', direction: 'Use the sealed passage.', when: 'The user approaches it.', responseBias: 'Open it.', horizon: 'near', status: 'blocked', conditions: ['The seal must first be removed.'], change: 'keep', reason: 'It is sealed.' }],
+        guidance: 'Do not force the passage.',
+        lastInject: true,
+    };
+    const payload = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
+    assert.doesNotMatch(payload, /closed-route|Use the sealed passage|<living-world-guide>/);
 });
 
 test('explicit progress detection distinguishes commands from negation', () => {

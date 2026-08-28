@@ -573,7 +573,7 @@ export function applyAnalysis(state, result, messages) {
         ? value.canon_constraints.slice(-12).map(item => String(item || '').trim().slice(0, 500)).filter(Boolean)
         : next.canonConstraints;
     next.guidance = String(value.guidance || '').trim().slice(0, 700);
-    next.lastInject = Boolean(next.pathways.length);
+    next.lastInject = next.pathways.some(item => item.status !== 'blocked');
     next.lastReason = String(value.reason || '').trim().slice(0, 500);
     if (typeof value.ledger === 'string' && value.ledger.trim()) next.contextLedger = value.ledger.trim().slice(0, 3000);
     if (Array.isArray(value.narrative_events)) {
