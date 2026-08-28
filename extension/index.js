@@ -13,7 +13,7 @@ import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.7.15';
+const RUNTIME_VERSION = '0.7.16';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -1384,8 +1384,9 @@ eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
     if (getSettings().enabled) void analyzeNow({ messages, allowOneUserAppend: true });
 });
 if (event_types.MESSAGE_SENT) eventSource.on(event_types.MESSAGE_SENT, () => {
-    generationRevision++;
-    cancelRunningAnalysis('The user continued before background planning finished.', 'Using available guidance…');
+    // analyzeNow allows exactly one appended user turn. Keep that completed-
+    // response plan alive while the next reply generates instead of cancelling
+    // the only planner call before it can ever persist in a fast conversation.
     generationGuideSelection = null;
     const context = currentContext();
     const state = loadState(context.chatMetadata);
