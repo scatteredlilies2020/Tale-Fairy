@@ -9,9 +9,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.7.5');
-    assert.equal(manifest.js, 'extension/index.js?v=0.7.5');
-    assert.equal(manifest.css, 'extension/style.css?v=0.7.5');
+    assert.equal(manifest.version, '0.7.6');
+    assert.equal(manifest.js, 'extension/index.js?v=0.7.6');
+    assert.equal(manifest.css, 'extension/style.css?v=0.7.6');
 });
 
 test('injection sends one immediate guide while alternatives and long-range planning stay private', () => {
@@ -97,7 +97,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /buildPromptPayload\(state/);
     assert.match(source, /function renderBoard/);
     assert.match(source, /function prepareGenerationGuide/);
-    assert.match(source, /replacementGeneration: generationGuideSelection\?\.regeneration === true/);
+    assert.match(source, /replacementGeneration: generationGuideSelection\?\.replacement === true/);
     assert.match(source, /returnedReplyMatchesVerification\(pending, messages, chatId\)/);
     assert.match(source, /function guideTurnKey/);
     assert.match(source, /swipeGuideCursors\.get\(turnKey\)/);
@@ -113,7 +113,10 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /variationCue: swipe \? randomVariationNonce\(\) : 0/);
     assert.match(source, /const retrySource = generationRetrySource\(messages, swipe\)/);
     assert.match(source, /guidesForDiscardedAssistant\(state, retrySource, chatId\)/);
-    assert.match(source, /const candidates = swipe \? \(archivedUsable \? archived : retryCandidates\) : state\.nextGuides/);
+    assert.match(source, /const alignedUsable = !swipe && isGuidanceUsable/);
+    assert.match(source, /\(alignedUsable \? state\.nextGuides : retryCandidates\)/);
+    assert.match(source, /regeneration: swipe \|\| retryUsable/);
+    assert.match(source, /replacement: swipe/);
     assert.match(source, /could not place current guidance in the provider request/);
     assert.match(source, /containsPlannerMarker\(eventData\?\.chat\)/);
     assert.match(source, /containsPlannerMarker\(generateData\)/);

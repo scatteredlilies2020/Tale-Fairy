@@ -13,7 +13,7 @@ import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.7.5';
+const RUNTIME_VERSION = '0.7.6';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -417,9 +417,12 @@ function prepareGenerationGuide(state, type) {
     // being regenerated. Evaluate archive-less retry routes against the
     // provider-bound trajectory, which ends on the preceding user turn.
     const retrySource = generationRetrySource(messages, swipe);
-    const retryCandidates = swipe && !archivedUsable ? guidesForDiscardedAssistant(state, retrySource, chatId) : [];
+    const alignedUsable = !swipe && isGuidanceUsable(state, messages, chatId);
+    const retryCandidates = !archivedUsable && !alignedUsable ? guidesForDiscardedAssistant(state, retrySource, chatId) : [];
     const retryUsable = retryCandidates.length > 1;
-    const candidates = swipe ? (archivedUsable ? archived : retryCandidates) : state.nextGuides;
+    const candidates = swipe
+        ? (archivedUsable ? archived : retryCandidates)
+        : (alignedUsable ? state.nextGuides : retryCandidates);
     const turnKey = guideTurnKey(context);
     const archivedIndex = Number(state.lastRequestVerification?.selectedGuideIndex) || 0;
     const previousIndex = swipe ? (swipeGuideCursors.get(turnKey) ?? archivedIndex) : -1;
@@ -430,8 +433,9 @@ function prepareGenerationGuide(state, type) {
         chatId,
         candidates,
         index,
-        usable: archivedUsable || retryUsable || (!swipe && isGuidanceUsable(state, messages, chatId)),
-        regeneration: swipe,
+        usable: archivedUsable || retryUsable || alignedUsable,
+        regeneration: swipe || retryUsable,
+        replacement: swipe,
         variationCue: swipe ? randomVariationNonce() : 0,
     };
 }
@@ -496,7 +500,7 @@ function rememberVerifiedRequest(payload, { provider = '', model = '' } = {}) {
             ? (generationGuideSelection.usable ? generationGuideSelection.candidates : [])
             : loadState(context.chatMetadata).nextGuides,
         selectedGuideIndex: generationGuideSelection?.index || 0,
-        replacementGeneration: generationGuideSelection?.regeneration === true,
+        replacementGeneration: generationGuideSelection?.replacement === true,
     };
     renderBoard();
 }
