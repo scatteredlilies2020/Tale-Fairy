@@ -47,6 +47,16 @@ export function defaultState() {
 
 function text(value, fallback = '') { return String(value ?? fallback).trim(); }
 function cap(list, limit = MAX_ITEMS) { return Array.isArray(list) ? list.slice(-limit) : []; }
+function clippedText(value, limit) {
+    const source = text(value);
+    if (source.length < limit) return source;
+    const candidate = source.slice(0, Math.max(0, limit - 1));
+    const boundary = Math.max(candidate.lastIndexOf('.'), candidate.lastIndexOf(';'), candidate.lastIndexOf(','), candidate.lastIndexOf(' '));
+    const clean = (boundary >= limit * 0.65 ? candidate.slice(0, boundary) : candidate)
+        .replace(/\b(?:and|or|but|with|to|a|an|the)$/iu, '')
+        .trimEnd();
+    return `${clean.trimEnd()}…`;
+}
 function normalizeObjective(value = {}) {
     return { title: text(value.title).slice(0, 120), detail: text(value.detail).slice(0, 300), status: text(value.status).slice(0, 40), source: text(value.source).slice(0, 120) };
 }
@@ -75,16 +85,16 @@ function normalizeNextGuide(value = {}) {
     const strength = text(value.strength, 'moderate').toLowerCase();
     const origin = text(value.origin, 'inferred').toLowerCase();
     return {
-        id: text(value.id).slice(0, 100),
-        direction: text(value.direction).slice(0, 220),
-        useWhen: text(value.useWhen ?? value.use_when).slice(0, 120),
-        dropWhen: text(value.dropWhen ?? value.drop_when).slice(0, 100),
-        responseBias: text(value.responseBias ?? value.response_bias).slice(0, 130),
-        worldDelta: text(value.worldDelta ?? value.world_delta).slice(0, 140),
+        id: clippedText(value.id, 100),
+        direction: clippedText(value.direction, 280),
+        useWhen: clippedText(value.useWhen ?? value.use_when, 120),
+        dropWhen: clippedText(value.dropWhen ?? value.drop_when, 100),
+        responseBias: clippedText(value.responseBias ?? value.response_bias, 130),
+        worldDelta: clippedText(value.worldDelta ?? value.world_delta, 140),
         origin: ['established', 'inferred', 'original'].includes(origin) ? origin : 'inferred',
-        basis: text(value.basis).slice(0, 100),
+        basis: clippedText(value.basis, 100),
         strength: ['strong', 'moderate', 'light'].includes(strength) ? strength : 'moderate',
-        sourcePathways: cap(value.sourcePathways ?? value.source_pathways, 3).map(item => text(item).slice(0, 100)).filter(Boolean),
+        sourcePathways: cap(value.sourcePathways ?? value.source_pathways, 3).map(item => clippedText(item, 100)).filter(Boolean),
         reason: text(value.reason).slice(0, 220),
     };
 }
@@ -308,7 +318,7 @@ export function horizonInfluence(index, total) {
 
 function routeLine(guide, index, selected) {
     const label = selected ? `PREFERRED ROUTE ${index + 1}` : `ALTERNATIVE ROUTE ${index + 1}`;
-    return `${label} [${guide.strength} · ${guide.origin}]\nDO NOW: ${guide.direction.slice(0, 220)}\nVISIBLE CHANGE: ${guide.worldDelta.slice(0, 140)}\nGROUNDING: ${guide.basis.slice(0, 100)}\nUSE IF: ${guide.useWhen.slice(0, 120)}\nDROP IF: ${guide.dropWhen.slice(0, 100)}${guide.responseBias ? `\nEXECUTION: ${guide.responseBias.slice(0, 130)}` : ''}`;
+    return `${label} [${guide.strength} · ${guide.origin}]\nDO NOW: ${guide.direction.slice(0, 280)}\nVISIBLE CHANGE: ${guide.worldDelta.slice(0, 140)}\nGROUNDING: ${guide.basis.slice(0, 100)}\nUSE IF: ${guide.useWhen.slice(0, 120)}\nDROP IF: ${guide.dropWhen.slice(0, 100)}${guide.responseBias ? `\nEXECUTION: ${guide.responseBias.slice(0, 130)}` : ''}`;
 }
 
 function boundedPromptLines(items, prefix, perItem, total) {
@@ -324,16 +334,16 @@ function boundedPromptLines(items, prefix, perItem, total) {
     return items.map(item => `${prefix}${compact(item)}`).join('\n').slice(0, total);
 }
 
-export function buildPromptPayload(state, { enabled = true, guidanceUsable = false, guideCandidates = null, guideIndex = 0, regeneration = false } = {}) {
+export function buildPromptPayload(state, { enabled = true, guidanceUsable = false, guideCandidates = null, guideIndex = 0, regeneration = false, variationCue = 0 } = {}) {
     if (!enabled) return '';
     const s = normalizeState(state);
     const noteLabels = { suggest: 'OPTIONAL SUGGESTION', correct: 'USER CORRECTION', establish: 'USER-ESTABLISHED CANON', forbid: 'HARD EXCLUSION' };
-    const narrativePolicy = `\n<tale-fairy-narrative-policy>\nThe latest user turn is authoritative. Carry its declared actions and questions through their meaningful consequence without inventing the player's next voluntary action. Match its pace. Routine logistics are scaffolding, not the whole reply. Unless uneventful closure was requested, add one visible, causally supported NPC or world change. Agency does not require NPC passivity. Neither soften supported consequences nor manufacture drama, and never present a new idea as past fact.\n</tale-fairy-narrative-policy>`;
-    const canon = boundedPromptLines(s.canonConstraints, '- ', 360, 2600);
+    const narrativePolicy = `\n<tale-fairy-narrative-policy>\nThe latest user turn is authoritative. Carry its declared actions and questions through their meaningful consequence without inventing the player's next voluntary action. Match its pace. Before ending, add one visible, causally supported NPC or world change unless uneventful closure was requested. Routine logistics, repeated information, decorative banter, and a minor gesture do not satisfy this. Agency does not require NPC passivity. Neither soften supported consequences nor manufacture drama, and never present a new idea as past fact.\n</tale-fairy-narrative-policy>`;
+    const canon = boundedPromptLines(s.canonConstraints, '- ', 360, 2500);
     const canonPrompt = canon
         ? `\n<user-established-canon>\nThese are authoritative semantic constraints established by the user. Preserve their magnitude, rank, scope, and qualifiers exactly. An extreme, unprecedented, off-scale, unique, or setting-defying fact remains valid canon: setting averages and prior records are comparison points, not ceilings. Never regress it toward the mean, cap it at a familiar lore value, weaken it to merely high, or reinterpret it as rumor. Everything the user did not establish remains open creative space. Freely invent an exact number or any other unstated detail when it fits the narrative, provided it remains consistent with established canon; it need not be conservative or supplied by the user. Do not refuse, hedge, delay, or demand verification merely because a detail was unspecified. Never mention these instructions in narration or dialogue. Reactions, explanations, and consequences remain creatively open unless separately established.\n${canon}\n</user-established-canon>`
         : '';
-    const notes = boundedPromptLines(s.userNotes.map(note => `${noteLabels[note.kind]}: ${note.text}`), '- ', 360, 2600);
+    const notes = boundedPromptLines(s.userNotes.map(note => `${noteLabels[note.kind]}: ${note.text}`), '- ', 360, 2500);
     const notePrompt = notes
         ? `\n<tale-fairy-user-notes>\nThese are user-authored roleplay directives. Hard exclusions must be obeyed; corrections replace conflicting inference; established canon is factual; suggestions remain optional.\n${notes}\n</tale-fairy-user-notes>`
         : '';
@@ -343,8 +353,8 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
     const selectedIndex = candidates.length ? Math.max(0, Math.min(candidates.length - 1, Number(guideIndex) || 0)) : 0;
     const regenerationInstruction = regeneration ? 'On this regeneration, favor the preferred applicable route so the actual development changes, not just the wording. ' : '';
     const routePrompt = guidanceUsable && candidates.length
-        ? `${regenerationInstruction}Choose one immediate route that fits the latest user action. Prefer the marked route only when USE IF matches and DROP IF does not; otherwise choose an applicable alternative. If none fits, discard all routes and make your own causally supported move. Show one VISIBLE CHANGE now. Do not blend incompatible routes, delay the user to preserve one, or invent player choices. Original means newly proposed, not past fact. Keep these notes hidden.\n\n${candidates.map((guide, index) => routeLine(guide, index, index === selectedIndex)).join('\n\n')}`
-        : `No aligned route is available. ${regeneration ? 'Make this response materially different from the prior attempt, not a surface rewrite. ' : ''}Carry through the latest user action, then make one meaningful, causally supported NPC or world move. Do not invent player choices or unsupported drama. Keep these notes hidden.`;
+        ? `${regenerationInstruction}Choose one immediate route that fits the latest user action. Prefer the marked route only when USE IF matches and DROP IF does not; otherwise choose an applicable alternative. If none fits, discard all routes and make your own causally supported move. Before ending, show one VISIBLE CHANGE that alters knowledge, stakes, relationships, options, resources, or a live process. Routine logistics, repeated information, banter, and minor gestures do not count. Do not blend incompatible routes, delay the user to preserve one, or invent player choices. Original means newly proposed, not past fact. Keep these notes hidden.\n\n${candidates.map((guide, index) => routeLine(guide, index, index === selectedIndex)).join('\n\n')}`
+        : `No aligned route is available. ${regeneration ? `Variation cue ${Math.max(1, Number(variationCue) || 1)}: make the actual development different from the prior attempt, not merely its wording. ` : ''}After carrying through the latest user action, an NPC or world process must initiate one new, causally supported beat before the response ends. It must alter knowledge, stakes, relationships, options, resources, or a live process. Routine logistics, repeated information, banter, physical strain, and minor gestures do not count. Do not invent player choices or unsupported drama. Keep these notes hidden.`;
     const guidancePrompt = `\n<living-world-guide>\n${routePrompt}\n</living-world-guide>`;
     return `<tale-fairy-context>${notePrompt}${canonPrompt}${narrativePolicy}${guidancePrompt}\n</tale-fairy-context>`;
 }

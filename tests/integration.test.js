@@ -9,9 +9,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.7.0');
-    assert.equal(manifest.js, 'extension/index.js?v=0.7.0');
-    assert.equal(manifest.css, 'extension/style.css?v=0.7.0');
+    assert.equal(manifest.version, '0.7.1');
+    assert.equal(manifest.js, 'extension/index.js?v=0.7.1');
+    assert.equal(manifest.css, 'extension/style.css?v=0.7.1');
 });
 
 test('injection routes among immediate guides while private long-range planning stays private', () => {
@@ -25,7 +25,7 @@ test('injection routes among immediate guides while private long-range planning 
     assert.match(stateSource, /VISIBLE CHANGE/);
     assert.match(stateSource, /GROUNDING/);
     assert.match(stateSource, /No aligned route is available/);
-    assert.match(stateSource, /Routine logistics are scaffolding/);
+    assert.match(stateSource, /Routine logistics, repeated information, decorative banter/);
     assert.match(stateSource, /planHorizons\.items/);
     assert.match(stateSource, /latest user action/);
     assert.doesNotMatch(stateSource, /TIME HORIZONS/);
@@ -106,6 +106,8 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /state\.lastRequestVerification\?\.guideCandidates/);
     assert.match(source, /generationGuideSelection\.usable \? generationGuideSelection\.candidates : \[\]/);
     assert.match(source, /regeneration: generationGuideSelection\.regeneration/);
+    assert.match(source, /variationCue: generationGuideSelection\.variationCue/);
+    assert.match(source, /variationCue: swipe \? randomVariationNonce\(\) : 0/);
     assert.match(source, /const candidates = swipe \? \(archivedUsable \? archived : \[\]\) : state\.nextGuides/);
     assert.match(source, /could not place current guidance in the provider request/);
     assert.match(source, /containsPlannerMarker\(eventData\?\.chat\)/);

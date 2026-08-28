@@ -14,11 +14,14 @@ const currentPlan = {
 
 test('state normalizes caps and invalid mode', () => {
     const guides = Array.from({ length: 4 }, (_, index) => ({ ...stateNextGuides[0], id: `guide-${index}`, direction: `Direction ${index}` }));
+    guides[0].responseBias = 'finished '.repeat(40);
     const state = normalizeState({ mode: 'hard', objectives: Array.from({ length: 9 }, (_, i) => ({ title: String(i) })), nextGuides: guides, enabled: false });
     assert.equal(state.mode, 'balanced');
     assert.equal(state.enabled, false);
     assert.equal(state.objectives.length, 9);
     assert.deepEqual(state.nextGuides.map(item => item.id), ['guide-0', 'guide-1', 'guide-2']);
+    assert.ok(state.nextGuides[0].responseBias.length <= 130);
+    assert.match(state.nextGuides[0].responseBias, /finished…$/);
     assert.equal(state.version, 15);
 });
 
@@ -168,8 +171,10 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(swipe, /meaningful deflection/);
     assert.match(swipe, /Let Mara answer plainly/);
 
-    const regenerationFallback = buildPromptPayload(state, { enabled: true, guidanceUsable: false, guideCandidates: [], regeneration: true });
-    assert.match(regenerationFallback, /materially different from the prior attempt, not a surface rewrite/);
+    const regenerationFallback = buildPromptPayload(state, { enabled: true, guidanceUsable: false, guideCandidates: [], regeneration: true, variationCue: 8472 });
+    assert.match(regenerationFallback, /Variation cue 8472/);
+    assert.match(regenerationFallback, /actual development different from the prior attempt, not merely its wording/);
+    assert.match(regenerationFallback, /must initiate one new, causally supported beat/);
     assert.doesNotMatch(regenerationFallback, /Let Mara answer plainly|meaningful deflection/);
     assert.equal(buildPromptPayload(state, { enabled: false, guidanceUsable: true }), '');
 });

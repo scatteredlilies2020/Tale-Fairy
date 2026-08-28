@@ -13,7 +13,7 @@ import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.7.0';
+const RUNTIME_VERSION = '0.7.1';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -371,6 +371,7 @@ function guideSelectionOptions(state, context = currentContext()) {
             guideCandidates: generationGuideSelection.candidates,
             guideIndex: generationGuideSelection.index,
             regeneration: generationGuideSelection.regeneration,
+            variationCue: generationGuideSelection.variationCue,
         };
     }
     const chat = messagesFromChat(context.chat || []);
@@ -379,6 +380,7 @@ function guideSelectionOptions(state, context = currentContext()) {
         guideCandidates: null,
         guideIndex: 0,
         regeneration: false,
+        variationCue: 0,
     };
 }
 
@@ -408,6 +410,7 @@ function prepareGenerationGuide(state, type) {
         index,
         usable: archivedUsable || (!swipe && isGuidanceUsable(state, messages, chatId)),
         regeneration: swipe,
+        variationCue: swipe ? randomVariationNonce() : 0,
     };
 }
 
