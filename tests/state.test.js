@@ -22,7 +22,42 @@ test('state normalizes caps and invalid mode', () => {
     assert.deepEqual(state.nextGuides.map(item => item.id), ['guide-0', 'guide-1', 'guide-2']);
     assert.ok(state.nextGuides[0].responseBias.length <= 130);
     assert.match(state.nextGuides[0].responseBias, /finished…$/);
-    assert.equal(state.version, 17);
+    assert.equal(state.version, 18);
+});
+
+test('offscreen causes persist privately while injection exposes only their consequence', () => {
+    const causalEvent = {
+        id: 'school-conflict',
+        title: 'Conflict at school',
+        summary: 'A classmate struck Eli during an offscreen dispute.',
+        scope: 'offscreen',
+        epistemicStatus: 'simulated',
+        disclosure: 'hidden',
+        status: 'active',
+        confidence: 'moderate',
+        cause: 'A simmering peer conflict escalated while Eli was at school.',
+        consequences: ['Eli returns with a black eye.', 'Eli may avoid discussing school.'],
+        basis: 'Eli attended school and the peer conflict was already active.',
+        requirements: [],
+    };
+    const guide = {
+        ...stateNextGuides[0],
+        id: 'eli-returns-marked',
+        direction: 'Eli returns from school with a black eye and does not volunteer an explanation.',
+        worldDelta: 'Eli arrives home with a visible black eye.',
+        causalEventIds: ['school-conflict'],
+        disclosure: 'consequence-only',
+    };
+    const state = normalizeState({ ...defaultState(), narrativeEvents: [causalEvent], nextGuides: [guide, stateNextGuides[1]] });
+    const restored = loadState(saveState({}, state));
+    const plannerState = stateForPrompt(restored);
+    assert.equal(plannerState.narrativeEvents[0].scope, 'offscreen');
+    assert.equal(plannerState.narrativeEvents[0].epistemicStatus, 'simulated');
+    assert.equal(plannerState.narrativeEvents[0].cause, causalEvent.cause.slice(0, 140));
+    const payload = buildPromptPayload(restored, { guidanceUsable: true });
+    assert.match(payload, /Eli arrives home with a visible black eye/);
+    assert.match(payload, /Show only the perceivable consequence/);
+    assert.doesNotMatch(payload, /classmate struck|peer conflict escalated|school-conflict/iu);
 });
 
 test('state round trips through portable metadata', () => {
@@ -155,7 +190,7 @@ test('pre-canon-ledger state requests one bounded bootstrap rescan', () => {
 
 test('pre-momentum guides and request verification cannot remain injectable after an upgrade', () => {
     const migrated = normalizeState({ version: 16, ...currentPlan, nextGuides: stateNextGuides, canonConstraints: ['Fact from a discarded response.'], lastInject: true, lastRequestVerification: { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides } });
-    assert.equal(migrated.version, 17);
+    assert.equal(migrated.version, 18);
     assert.equal(migrated.canonBootstrapPending, true);
     assert.deepEqual(migrated.nextGuides, []);
     assert.deepEqual(migrated.canonConstraints, []);

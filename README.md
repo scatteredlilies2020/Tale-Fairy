@@ -19,6 +19,8 @@ Tale Fairy is a standalone SillyTavern extension that supplies an **adaptive nar
 - Stores its compact state in chat metadata, so exported/copied chats carry it with them.
 - Automatically performs a bounded planner upgrade when the active chat contains legacy Tale Fairy state, verifies that the new state was actually saved, and retries transient provider failures up to three times.
 - Keeps relevant entities, possibilities, compact Director Notes, and recent beat history alongside the multi-horizon plan.
+- Maintains a compact private causal state for consequential off-screen developments. It distinguishes confirmed events, selected simulations, evidence-based inferences, and unresolved possibilities, then carries their causes and downstream effects across planner passes without treating planner knowledge as player knowledge.
+- Can surface only a consequence or partial clue—such as a child returning from school with a black eye—while keeping the off-screen cause unspoken until an in-world reveal makes it knowable. This information boundary affects narrative coherence, never prose style.
 - Treats user text and OOC corrections as higher priority than canon or inference.
 - Keeps narrative pacing under the user's control in every mode. Declared actions, direct questions, and choices receive procedural follow-through without special “advance” wording, while their outcomes may still be surprising, difficult, funny, or bold when causally supported; slow pacing develops meaningful beats instead of artificial waits.
 - Offers deliberately distinct **Light**, **Balanced**, and **Fun** intervention modes: Light applies minimal pressure, Balanced intervenes moderately, and Fun actively brings a bold, consequential scenario onstage when supported—without rushing or slowing the user's timeline or dictating the player character's response.
@@ -28,7 +30,7 @@ Tale Fairy is a standalone SillyTavern extension that supplies an **adaptive nar
 - Uses layered context instead of relying on a fixed tail: a portable narrative ledger, a configurable recent raw window (12 messages by default), and bootstrap samples from early/middle chat history on the first run. Full-chat fingerprints stay local and are used only to detect edits or stale imported state.
 - Reuses available host context as supporting evidence: chat or message summaries, other active extension context, activated World Info, and the character/scenario fields already supplied by SillyTavern. Tale Fairy excludes its own prompt and handles Continuity separately so neither is duplicated.
 - Uses context-conscious defaults: 12 recent messages at 700 characters each, a hard 12,000-character planner-request budget, and compact state collections. The 4,096-token response ceiling leaves reasoning models enough room for the complete structured plan; normal concise outputs stop well before it. Hidden thinking/stat blocks are removed from planner excerpts. When necessary, optional context, redundant planner state, and older excerpts are compacted first so the complete latest turn, the live plan, and relevant user/OOC directives receive priority.
-- Keeps a small internal list of separate narrative events alongside the ledger. These are produced by the same planner request, are not separately generated, and are never injected as a raw event list into the roleplay prompt.
+- Keeps a small internal list of causal narrative events alongside the ledger. These are produced by the same planner request, retained with visibility and confidence, are not separately generated, and are never injected as a raw event list into the roleplay prompt.
 - Director Notes can show a compact event-status view on demand; this is for inspection only and is separate from the guidance injected into the main RP model.
 - The Planner Scratchpad records the exact dynamic guide found in the final provider payload. After the provider returns an assistant reply, it persists the request as **Confirmed**, along with its provider, model, placement, and timestamps.
 - Uses Continuity Memory context when available through a read-only bridge. It accepts only a current snapshot for the active chat, trims it before planning, and never triggers extraction or writes memory. The integration remains optional and can be disabled.
@@ -55,7 +57,7 @@ Before the provider request is sent, Tale Fairy atomically replaces stale Tale F
 
 ## Scope
 
-This is not a memory database and does not replace Continuity Memory. It is a lightweight, chat-local planning and world-direction layer. The Continuity bridge is one-way and read-only.
+This is not a memory database and does not replace Continuity Memory. It is a lightweight, chat-local planning and causal world-direction layer that functions independently; the Continuity bridge is optional, one-way, and read-only.
 
 ## License
 

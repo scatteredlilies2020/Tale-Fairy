@@ -13,7 +13,7 @@ import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.7.18';
+const RUNTIME_VERSION = '0.7.19';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -1088,8 +1088,10 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
 
     scratchpadText(board, 'scratchpad-events', scratchpadList(state.narrativeEvents, item => {
         if (!item?.title) return '';
-        return `${item.title}${item.status ? ` [${item.status}]` : ''}${item.summary ? ` — ${item.summary}` : ''}${item.basis ? `\n  Basis: ${item.basis}` : ''}`;
-    }, ''), 'No internal narrative events retained.');
+        const stateLabels = [item.scope, item.epistemicStatus, item.disclosure, item.status].filter(Boolean).join(' · ');
+        const effects = Array.isArray(item.consequences) && item.consequences.length ? `\n  Consequences: ${item.consequences.join('; ')}` : '';
+        return `${item.title}${stateLabels ? ` [${stateLabels}]` : ''}${item.summary ? ` — ${item.summary}` : ''}${effects}${item.basis ? `\n  Basis: ${item.basis}` : ''}`;
+    }, ''), 'No private causal events retained.');
 
     scratchpadText(board, 'scratchpad-notes', scratchpadList(state.userNotes, item => item?.text ? `[${String(item.kind || 'note').toUpperCase()}] ${item.text}` : '', ''), 'No user notes.');
 }

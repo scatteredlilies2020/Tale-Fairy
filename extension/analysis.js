@@ -23,8 +23,8 @@ export const ANALYSIS_SCHEMA_VALUE = {
             id: { type: 'string', maxLength: 100 }, direction: { type: 'string', maxLength: 320 }, when: { type: 'string', maxLength: 240 }, response_bias: { type: 'string', maxLength: 300 }, horizon: { type: 'string', maxLength: 80 }, status: { type: 'string', enum: ['foreground','available','latent','blocked'] }, conditions: { type: 'array', maxItems: 3, items: { type: 'string', maxLength: 140 } }, change: { type: 'string', enum: ['keep','adjust','activate','deactivate','replace','retire'] }, reason: { type: 'string', maxLength: 220 },
         }, required: ['id','direction','when','response_bias','horizon','status','conditions','change','reason'] } },
         next_guides: { type: 'array', minItems: 2, maxItems: 3, items: { type: 'object', additionalProperties: false, properties: {
-            id: { type: 'string', maxLength: 100 }, direction: { type: 'string', maxLength: 280 }, use_when: { type: 'string', maxLength: 120 }, drop_when: { type: 'string', maxLength: 100 }, response_bias: { type: 'string', maxLength: 130 }, world_delta: { type: 'string', maxLength: 140 }, origin: { type: 'string', enum: ['established','inferred','original'] }, basis: { type: 'string', maxLength: 100 }, strength: { type: 'string', enum: ['strong','moderate','light'] }, source_pathways: { type: 'array', maxItems: 3, items: { type: 'string', maxLength: 100 } }, reason: { type: 'string', maxLength: 220 },
-        }, required: ['id','direction','use_when','drop_when','response_bias','world_delta','origin','basis','strength','source_pathways','reason'] } },
+            id: { type: 'string', maxLength: 100 }, direction: { type: 'string', maxLength: 280 }, use_when: { type: 'string', maxLength: 120 }, drop_when: { type: 'string', maxLength: 100 }, response_bias: { type: 'string', maxLength: 130 }, world_delta: { type: 'string', maxLength: 140 }, origin: { type: 'string', enum: ['established','inferred','original'] }, basis: { type: 'string', maxLength: 100 }, strength: { type: 'string', enum: ['strong','moderate','light'] }, source_pathways: { type: 'array', maxItems: 3, items: { type: 'string', maxLength: 100 } }, causal_event_ids: { type: 'array', maxItems: 2, items: { type: 'string', maxLength: 80 } }, disclosure: { type: 'string', enum: ['none','consequence-only','partial-clue','reveal-cause'] }, reason: { type: 'string', maxLength: 220 },
+        }, required: ['id','direction','use_when','drop_when','response_bias','world_delta','origin','basis','strength','source_pathways','causal_event_ids','disclosure','reason'] } },
         plan_horizons: { type: 'object', additionalProperties: false, properties: {
             items: { type: 'array', minItems: 6, maxItems: 10, items: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', maxLength: 100 }, direction: { type: 'string', maxLength: 360 }, timeframe: { type: 'string', maxLength: 120 }, stability: { type: 'string', enum: ['fluid','adaptive','stable','slow'] }, conditions: { type: 'array', maxItems: 3, items: { type: 'string', maxLength: 140 } }, change: { type: 'string', enum: ['keep','adjust','replace'] }, reason: { type: 'string', maxLength: 220 } }, required: ['id','direction','timeframe','stability','conditions','change','reason'] } },
             deviation: { type: 'object', additionalProperties: false, properties: { level: { type: 'string', enum: ['none','minor','major'] }, reason: { type: 'string' } }, required: ['level','reason'] },
@@ -35,7 +35,7 @@ export const ANALYSIS_SCHEMA_VALUE = {
             { type: 'null' },
         ] },
         ledger: { type: 'string', maxLength: 3000 },
-        narrative_events: { type: 'array', maxItems: 6, items: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', maxLength: 80 }, title: { type: 'string', maxLength: 120 }, summary: { type: 'string', maxLength: 300 }, status: { type: 'string', maxLength: 40 }, relevance: { type: 'string', maxLength: 40 }, confidence: { type: 'string', maxLength: 40 }, feasibility: { type: 'string', maxLength: 40 }, basis: { type: 'string', maxLength: 160 }, requirements: { type: 'array', maxItems: 4, items: { type: 'string', maxLength: 120 } }, interpretation: { type: 'string', maxLength: 40 }, source_hint: { type: 'string', maxLength: 120 } }, required: ['id','title','summary','status','relevance','confidence','feasibility','basis','requirements','interpretation','source_hint'] } },
+        narrative_events: { type: 'array', maxItems: 6, items: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', maxLength: 80 }, title: { type: 'string', maxLength: 120 }, summary: { type: 'string', maxLength: 300 }, scope: { type: 'string', enum: ['onscreen','offscreen'] }, epistemic_status: { type: 'string', enum: ['established','simulated','inferred','possible','disproved'] }, disclosure: { type: 'string', enum: ['hidden','signaled','revealed'] }, status: { type: 'string', enum: ['active','latent','manifested','resolved','retired'] }, confidence: { type: 'string', enum: ['low','moderate','high'] }, cause: { type: 'string', maxLength: 220 }, consequences: { type: 'array', maxItems: 3, items: { type: 'string', maxLength: 160 } }, basis: { type: 'string', maxLength: 160 }, requirements: { type: 'array', maxItems: 4, items: { type: 'string', maxLength: 120 } }, interpretation: { type: 'string', maxLength: 40 } }, required: ['id','title','summary','scope','epistemic_status','disclosure','status','confidence','cause','consequences','basis','requirements','interpretation'] } },
         guidance: { type: 'string', maxLength: 700 }, inject: { type: 'boolean', const: true }, reason: { type: 'string', maxLength: 300 },
     }, required: ['story_frame','scene','objectives','entities','possibilities','pathways','next_guides','plan_horizons','canon_constraints','note_resolution','ledger','narrative_events','guidance','inject','reason'],
 };
@@ -111,6 +111,8 @@ export function validateAnalysisResult(result) {
         }
         if (!guide?.id?.trim() || !guide?.direction?.trim() || !guide?.use_when?.trim() || !guide?.drop_when?.trim() || !guide?.world_delta?.trim() || !guide?.basis?.trim()) errors.push(`next_guides[${index}] must be a grounded conditional guide with a visible world delta`);
         if (!Array.isArray(guide?.source_pathways)) errors.push(`next_guides[${index}].source_pathways must be an array`);
+        if (!Array.isArray(guide?.causal_event_ids)) errors.push(`next_guides[${index}].causal_event_ids must be an array`);
+        if (!['none', 'consequence-only', 'partial-clue', 'reveal-cause'].includes(guide?.disclosure)) errors.push(`next_guides[${index}].disclosure is invalid`);
         if (!['established', 'inferred', 'original'].includes(guide?.origin)) errors.push(`next_guides[${index}].origin is invalid`);
         if (!['strong', 'moderate', 'light'].includes(guide?.strength)) errors.push(`next_guides[${index}].strength is invalid`);
         const routeConditions = `${guide?.use_when || ''} ${guide?.drop_when || ''}`;
@@ -153,7 +155,42 @@ export function validateAnalysisResult(result) {
         }
     }
     if (!Array.isArray(result.canon_constraints)) errors.push('canon_constraints must be an array');
-    if (!Array.isArray(result.narrative_events)) errors.push('narrative_events must be an array');
+    if (!Array.isArray(result.narrative_events)) {
+        errors.push('narrative_events must be an array');
+    } else {
+        for (const [index, event] of result.narrative_events.entries()) {
+            for (const key of ['id', 'title', 'summary', 'confidence', 'cause', 'basis', 'interpretation']) {
+                if (typeof event?.[key] !== 'string') errors.push(`narrative_events[${index}].${key} must be a string`);
+            }
+            if (!event?.id?.trim() || !event?.title?.trim() || !event?.summary?.trim()) errors.push(`narrative_events[${index}] must identify a concrete causal development`);
+            if (!['onscreen', 'offscreen'].includes(event?.scope)) errors.push(`narrative_events[${index}].scope is invalid`);
+            if (!['established', 'simulated', 'inferred', 'possible', 'disproved'].includes(event?.epistemic_status)) errors.push(`narrative_events[${index}].epistemic_status is invalid`);
+            if (!['hidden', 'signaled', 'revealed'].includes(event?.disclosure)) errors.push(`narrative_events[${index}].disclosure is invalid`);
+            if (!['active', 'latent', 'manifested', 'resolved', 'retired'].includes(event?.status)) errors.push(`narrative_events[${index}].status is invalid`);
+            if (!['low', 'moderate', 'high'].includes(event?.confidence)) errors.push(`narrative_events[${index}].confidence is invalid`);
+            if (!Array.isArray(event?.consequences)) errors.push(`narrative_events[${index}].consequences must be an array`);
+            if (!Array.isArray(event?.requirements)) errors.push(`narrative_events[${index}].requirements must be an array`);
+            if (event?.epistemic_status === 'simulated' && event?.scope !== 'offscreen') errors.push(`narrative_events[${index}] can be simulated only offscreen`);
+            if (event?.epistemic_status === 'simulated' && (!event?.cause?.trim() || !event?.consequences?.length)) errors.push(`narrative_events[${index}] needs a cause and consequence before it can be simulated`);
+            if (event?.scope === 'onscreen' && event?.disclosure === 'hidden') errors.push(`narrative_events[${index}] cannot be both onscreen and hidden`);
+        }
+        const eventIds = result.narrative_events.map(event => String(event?.id || '').trim());
+        if (new Set(eventIds).size !== eventIds.length) errors.push('narrative_events must use distinct ids');
+        const eventsById = new Map(result.narrative_events.map(event => [String(event?.id || '').trim(), event]));
+        for (const [index, guide] of (Array.isArray(result.next_guides) ? result.next_guides : []).entries()) {
+            if (guide?.disclosure === 'none') continue;
+            if (!guide?.causal_event_ids?.length) {
+                errors.push(`next_guides[${index}] needs a linked causal event for its disclosure boundary`);
+                continue;
+            }
+            for (const id of guide.causal_event_ids) {
+                const event = eventsById.get(String(id || '').trim());
+                if (!event) errors.push(`next_guides[${index}] links an unknown causal event`);
+                else if (['possible', 'disproved'].includes(event.epistemic_status)) errors.push(`next_guides[${index}] cannot realize an unresolved or disproved causal event`);
+                else if (guide.disclosure !== 'reveal-cause' && (event.scope !== 'offscreen' || event.disclosure === 'revealed')) errors.push(`next_guides[${index}] cannot conceal a cause that is not hidden offscreen`);
+            }
+        }
+    }
     if (typeof result.ledger !== 'string') errors.push('ledger must be a string');
     if (typeof result.guidance !== 'string') errors.push('guidance must be a string');
     if (result.inject !== true) errors.push('inject must be true');
@@ -252,7 +289,7 @@ function compactPromptStateForPriority(current = {}) {
         entities: (current.entities || []).slice(-1).map(item => ({ name: compactText(item.name, 80), state: compactText(item.state, 100), location: compactText(item.location, 60), relevance: compactText(item.relevance, 60) })),
         possibilities: (current.possibilities || []).slice(-1).map(item => ({ description: compactText(item.description, 120), conditions: (item.conditions || []).slice(0, 1).map(value => compactText(value, 80)), force: compactText(item.force, 30) })),
         pathways: (current.pathways || []).slice(0, 5).map(item => ({ id: compactText(item.id, 60), direction: compactText(item.direction, 140), when: compactText(item.when, 100), responseBias: compactText(item.responseBias, 120), horizon: compactText(item.horizon, 40), status: item.status, change: item.change })),
-        nextGuides: (current.nextGuides || []).slice(0, 3).map(item => ({ id: compactText(item.id, 60), direction: compactText(item.direction, 140), useWhen: compactText(item.useWhen, 100), dropWhen: compactText(item.dropWhen, 100), responseBias: compactText(item.responseBias, 100), worldDelta: compactText(item.worldDelta, 100), origin: item.origin, basis: compactText(item.basis, 100), strength: item.strength })),
+        nextGuides: (current.nextGuides || []).slice(0, 3).map(item => ({ id: compactText(item.id, 60), direction: compactText(item.direction, 140), useWhen: compactText(item.useWhen, 100), dropWhen: compactText(item.dropWhen, 100), responseBias: compactText(item.responseBias, 100), worldDelta: compactText(item.worldDelta, 100), origin: item.origin, basis: compactText(item.basis, 100), strength: item.strength, causalEventIds: item.causalEventIds, disclosure: item.disclosure })),
         activeBeat: current.pathways?.length ? undefined : current.activeBeat,
         planHorizons: {
             items: (horizons.items || []).map(item => ({ id: compactText(item.id, 80), direction: compactText(item.direction, 140), timeframe: compactText(item.timeframe, 80), stability: item.stability, change: item.change })),
@@ -262,7 +299,15 @@ function compactPromptStateForPriority(current = {}) {
         userNotes: (current.userNotes || []).slice(-2).map(item => ({ kind: item.kind, text: compactText(item.text, 500) })),
         contextLedger: compactText(current.contextLedger, 700),
         storyFrame: current.storyFrame,
+        narrativeEvents: (current.narrativeEvents || []).slice(-3).map(item => ({ id: compactText(item.id, 60), summary: compactText(item.summary, 120), scope: item.scope, epistemicStatus: item.epistemicStatus, disclosure: item.disclosure, status: item.status, cause: compactText(item.cause, 100), consequences: (item.consequences || []).slice(0, 1).map(value => compactText(value, 100)) })),
     };
+}
+
+function sampleHorizonItems(items = [], limit = 6) {
+    if (items.length <= limit) return items;
+    const indexes = new Set([0, 1, items.length - 1]);
+    for (let step = 1; indexes.size < limit; step++) indexes.add(Math.round((items.length - 1) * step / (limit - 1)));
+    return [...indexes].sort((a, b) => a - b).slice(0, limit).map(index => items[index]);
 }
 
 function compactPromptStateForBudget(current = {}) {
@@ -274,17 +319,18 @@ function compactPromptStateForBudget(current = {}) {
         objectives: (current.objectives || []).slice(-2).map(item => ({ title: compactText(item.title, 80), detail: compactText(item.detail, 100), status: compactText(item.status, 30) })),
         entities: (current.entities || []).slice(-1).map(item => ({ name: compactText(item.name, 80), state: compactText(item.state, 80), location: compactText(item.location, 60), relevance: compactText(item.relevance, 60) })),
         possibilities: (current.possibilities || []).slice(-1).map(item => ({ description: compactText(item.description, 100), conditions: (item.conditions || []).slice(0, 1).map(value => compactText(value, 70)), force: compactText(item.force, 30) })),
-        pathways: (current.pathways || []).slice(0, 4).map(item => ({ id: compactText(item.id, 50), direction: compactText(item.direction, 100), when: compactText(item.when, 80), responseBias: compactText(item.responseBias, 90), horizon: compactText(item.horizon, 30), status: item.status })),
-        nextGuides: (current.nextGuides || []).slice(0, 2).map(item => ({ id: compactText(item.id, 50), direction: compactText(item.direction, 100), useWhen: compactText(item.useWhen, 70), dropWhen: compactText(item.dropWhen, 70), worldDelta: compactText(item.worldDelta, 80), origin: item.origin, basis: compactText(item.basis, 80), strength: item.strength })),
+        pathways: (current.pathways || []).slice(0, 3).map(item => ({ id: compactText(item.id, 50), direction: compactText(item.direction, 90), when: compactText(item.when, 70), responseBias: compactText(item.responseBias, 80), horizon: compactText(item.horizon, 30), status: item.status })),
+        nextGuides: (current.nextGuides || []).slice(0, 2).map(item => ({ id: compactText(item.id, 50), direction: compactText(item.direction, 100), useWhen: compactText(item.useWhen, 70), dropWhen: compactText(item.dropWhen, 70), worldDelta: compactText(item.worldDelta, 80), origin: item.origin, basis: compactText(item.basis, 80), strength: item.strength, causalEventIds: (item.causalEventIds || []).slice(0, 1), disclosure: item.disclosure })),
         activeBeat: current.pathways?.length ? undefined : { id: compactText(beat.id, 80), objective: compactText(beat.objective, 180), nextAction: compactText(beat.nextAction, 260), completion: compactText(beat.completion, 180), lifecycle: beat.lifecycle },
         planHorizons: {
-            items: (horizons.items || []).map(item => ({ id: compactText(item.id, 50), direction: compactText(item.direction, 60), timeframe: compactText(item.timeframe, 50), stability: item.stability })),
+            items: sampleHorizonItems(horizons.items || []).map(item => ({ id: compactText(item.id, 50), direction: compactText(item.direction, 60), timeframe: compactText(item.timeframe, 50), stability: item.stability })),
             deviation: { level: horizons.deviation?.level, reason: compactText(horizons.deviation?.reason, 100) },
         },
         canonConstraints: (current.canonConstraints || []).slice(-4).map(item => compactText(item, 150)),
         userNotes: (current.userNotes || []).slice(-1).map(item => ({ kind: item.kind, text: compactText(item.text, 250) })),
-        contextLedger: compactText(current.contextLedger, 400),
+        contextLedger: compactText(current.contextLedger, 300),
         storyFrame: { frame: current.storyFrame?.frame, confidence: current.storyFrame?.confidence, basis: compactText(current.storyFrame?.basis, 100) },
+        narrativeEvents: (current.narrativeEvents || []).slice(-2).map(item => ({ id: compactText(item.id, 50), summary: compactText(item.summary, 90), scope: item.scope, epistemicStatus: item.epistemicStatus, disclosure: item.disclosure, status: item.status, cause: compactText(item.cause, 70), consequences: (item.consequences || []).slice(0, 1).map(value => compactText(value, 70)) })),
     };
 }
 
@@ -338,6 +384,7 @@ function retrievalQueryTerms(state, recentMessages) {
         current.activeBeat?.nextAction,
         (current.pathways || []).flatMap(item => [item.direction, item.when, item.responseBias]),
         (current.nextGuides || []).flatMap(item => [item.direction, item.useWhen, item.responseBias, item.worldDelta, item.basis]),
+        (current.narrativeEvents || []).flatMap(item => [item.title, item.summary, item.cause, item.consequences, item.basis]),
     ], 2);
     return weighted;
 }
@@ -345,6 +392,7 @@ function retrievalQueryTerms(state, recentMessages) {
 function historicalAuditClaims(state) {
     const current = normalizeState(state);
     const statusPriority = { latent: 0, blocked: 1, held: 2, background: 3, active: 4, foreground: 5 };
+    const eventPriority = { inferred: 0, simulated: 1, possible: 2, established: 4, disproved: 6 };
     const anchors = value => [...String(value || '').matchAll(/\b(?:msg|message|turn)\s*#?(\d+)\b/giu)]
         .map(match => Number(match[1]))
         .filter(Number.isInteger);
@@ -358,6 +406,11 @@ function historicalAuditClaims(state) {
             text: [item.direction, item.when, item.responseBias].filter(Boolean).join(' '),
             priority: statusPriority[String(item.status || '').toLocaleLowerCase()] ?? 5,
             anchors: anchors(item.reason),
+        })),
+        ...(current.narrativeEvents || []).map(item => ({
+            text: [item.title, item.summary, item.cause, item.consequences, item.basis].flat().filter(Boolean).join(' '),
+            priority: eventPriority[String(item.epistemicStatus || '').toLocaleLowerCase()] ?? 3,
+            anchors: anchors(item.basis),
         })),
     ].filter(item => retrievalTerms(item.text).length >= 2)
         .sort((a, b) => a.priority - b.priority)
@@ -599,7 +652,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         payload.current = compactPromptStateForBudget(payload.current);
         if (payload.user_instruction) payload.user_instruction = payload.user_instruction.slice(0, 300);
         if (payload.retrieved_historical_evidence) {
-            payload.retrieved_historical_evidence = payload.retrieved_historical_evidence.slice(0, 3).map(item => ({ ...item, content: compactMessageContent(item.content, item.purpose === 'audit-current-claim' ? 280 : 180) }));
+            payload.retrieved_historical_evidence = payload.retrieved_historical_evidence.slice(0, 2).map(item => ({ ...item, content: compactMessageContent(item.content, item.purpose === 'audit-current-claim' ? 280 : 180) }));
         }
         delete payload.planner_variation_instruction;
         serialized = JSON.stringify(payload);
@@ -608,15 +661,20 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         const latest = payload.messages.at(-1);
         const trajectoryAnchor = payload.messages.filter(item => item.kind === 'anchor').at(-1);
         const directives = payload.messages.filter(item => item.kind === 'directive').slice(-3);
-        const recentTail = payload.messages.filter(item => item.kind === 'recent' && item.index !== latest?.index).slice(-3);
+        const recentTail = payload.messages.filter(item => item.kind === 'recent' && item.index !== latest?.index).slice(-5);
         payload.messages = [...new Map([trajectoryAnchor, ...directives, ...recentTail, latest].filter(Boolean).map(item => [item.index, item])).values()].sort((a, b) => a.index - b.index);
         serialized = JSON.stringify(payload);
     }
     if (serialized.length > budget) {
         const latest = payload.messages.at(-1);
-        const directives = payload.messages.filter(item => item.kind === 'directive').slice(-3);
-        payload.messages = [...directives, latest].filter(Boolean);
-        serialized = JSON.stringify(payload);
+        while (serialized.length > budget && payload.messages.length > 1) {
+            const removableIndex = payload.messages.findIndex(item => item.index !== latest?.index && item.kind !== 'directive');
+            const fallbackIndex = payload.messages.findIndex(item => item.index !== latest?.index);
+            const index = removableIndex >= 0 ? removableIndex : fallbackIndex;
+            if (index < 0) break;
+            payload.messages.splice(index, 1);
+            serialized = JSON.stringify(payload);
+        }
     }
     if (serialized.length > budget) {
         const latest = payload.messages.at(-1);
@@ -700,14 +758,16 @@ export function applyAnalysis(state, result, messages) {
             id: String(event?.id || '').trim().slice(0, 80),
             title: String(event?.title || '').trim().slice(0, 160),
             summary: String(event?.summary || '').trim().slice(0, 500),
-            status: String(event?.status || 'uncertain').trim().slice(0, 60),
-            relevance: String(event?.relevance || 'possible').trim().slice(0, 60),
+            scope: ['onscreen', 'offscreen'].includes(event?.scope) ? event.scope : 'onscreen',
+            epistemicStatus: ['established', 'simulated', 'inferred', 'possible', 'disproved'].includes(event?.epistemic_status) ? event.epistemic_status : 'possible',
+            disclosure: ['hidden', 'signaled', 'revealed'].includes(event?.disclosure) ? event.disclosure : event?.scope === 'offscreen' ? 'hidden' : 'revealed',
+            status: ['active', 'latent', 'manifested', 'resolved', 'retired'].includes(event?.status) ? event.status : 'active',
             confidence: String(event?.confidence || 'low').trim().slice(0, 60),
-            feasibility: String(event?.feasibility || 'unknown').trim().slice(0, 60),
+            cause: String(event?.cause || '').trim().slice(0, 220),
+            consequences: Array.isArray(event?.consequences) ? event.consequences.slice(0, 3).map(item => String(item || '').trim().slice(0, 160)).filter(Boolean) : [],
             basis: String(event?.basis || '').trim().slice(0, 180),
             requirements: Array.isArray(event?.requirements) ? event.requirements.slice(0, 4).map(item => String(item || '').trim().slice(0, 120)).filter(Boolean) : [],
             interpretation: String(event?.interpretation || 'unsupported').trim().slice(0, 60),
-            source_hint: String(event?.source_hint || '').trim().slice(0, 120),
         })).filter(event => event.title && event.summary && !['joke', 'wish', 'hypothetical', 'metacommentary', 'unsupported', 'ooc'].includes(event.interpretation));
     }
     next.lastAnalysisFingerprint = fingerprintMessages(messages);
@@ -733,6 +793,10 @@ Read the newest user turn as authoritative current direction. OOC corrections an
 Treat current.canonConstraints as candidates to audit, not an immortal event log. Return only durable semantic constraints explicitly established by the user or in OOC direction. Remove ordinary plot history, status reports, observations, pending events, and prior planner inferences even when an earlier planner mistakenly stored them as canon.
 
 Maintain a compact causal world model from established evidence: relevant people, factions, locations, knowledge, motives, relationships, obligations, resources, constraints, processes, unresolved threads, and elapsed time. Lore is an active causal system, not decoration. A possibility needs an in-world source, route into the scene, timing, and reason; wishes, jokes, hypotheticals, iconic franchise elements, stale historical mentions, and unsupported speculation are not scheduled events. Keep uncertainty where evidence is incomplete. Use one unified possibility pool rather than categories. Prefer fresh, causally grounded developments that grow from the current trajectory. Develop an established thread when it is still live; otherwise create a compatible new consequence or direction instead of recycling the past.
+
+Use narrative_events as the compact working causal state, not as a recap or transcript. On every pass, consider what relevant NPCs, institutions, environmental processes, and previously selected developments could have done outside the camera while time and conditions advanced. Simulate only developments with a concrete cause and a plausible future consequence; do not fill the world with bookkeeping, routine activity, or unrelated trivia. An onscreen event occurred in supplied story evidence. An offscreen event occurs beyond the player character's direct view. Set epistemic_status precisely: established is explicitly confirmed by factual context; simulated is one causally supported offscreen occurrence selected by Tale Fairy so its later consequences remain coherent; inferred is the best current explanation of observed evidence but may be revised; possible is an unresolved candidate; disproved must not drive future guidance. Previous simulated events remain internally consistent until story evidence contradicts or supersedes them, but they never become user-established canon merely because the planner retained them.
+
+Keep occurrence separate from disclosure. hidden means neither the event nor its cause has reached the current scene; signaled means a consequence or clue is perceivable while the cause remains unknown; revealed means an in-world channel has actually exposed the cause. A visible consequence can make an offscreen event narratively real without narrating, summarizing, confirming, or flashing back to the hidden cause. For example, a child may return from school with a black eye while the school incident remains private causal state. Preserve competing explanations when evidence does not justify selecting one. Advance disclosure only through a supported in-world observation, report, admission, discovery, or investigation—not because the planner knows the event.
 
 Keep provenance exact. Use words such as promised, agreed, deferred, owed, revealed, decided, or established only when raw conversation or supplied factual context actually supports that claim. Never cite a turn as the source of something that turn did not say or do. A new extrapolation is welcome when causally compatible, but mark its origin as original; mark a conclusion drawn from motives or processes as inferred; use established only for an actual fact, commitment, setup, or direct consequence. Planner-created ideas may shape the future but must never be backfilled into objectives, the ledger, or later plans as if they already happened.
 
@@ -765,6 +829,8 @@ ${HORIZON_POLICY}
 Return one to five compact conditional pathways for what may follow the completed turn. A pathway is an editable route, not an event that must happen. Give every pathway a stable id, a specific direction, a clear when condition based on a possible user action or causal development, an optional response_bias, a horizon, a status, remaining conditions, a change operation, and a reason. Use foreground for the strongest ready route with meaningful causal motion, not merely the most physically obvious next step. Use available for credible alternatives, latent for routes needing setup, and blocked when a known condition prevents entry. Keep preserves a route, adjust edits it, activate/deactivate switches availability, replace changes direction, and retire removes it. Re-evaluate the set after every completed assistant response. Do not invent unsupported business, but when the scene is quiet, derive a small original move from an established motive, relationship, process, resource, or pressure. Routine navigation and ambience belong around that move rather than in a separate do-nothing route. An empty response_bias is valid only when direction and conditions already specify the concrete change. Never require the player to take a route.
 
 After juggling the scene, world model, possibilities, pathways, objectives, and every time horizon privately, return two or three ranked next_guides. The first is the strongest ready idea to lean toward in the next response—not the lowest-risk, least-committal, or most literal continuation. The others are mandatory contrasting alternatives reserved for generated swipes. They must differ in actual development, source of pressure, character choice, revelation, consequence, tone, or approach—not merely wording—and their world_delta values must describe genuinely distinct visible changes, all preserving established facts, characterization, causal continuity, pacing, and player agency. Contrast never licenses randomness or contradiction; find another honest possibility inside the same continuity. Every candidate must have a specific creative direction, use_when, drop_when, optional response_bias, exactly one explicit world_delta, an origin classification, a concise factual basis, lean strength, source pathway ids, and a reason. Keep each field concise and finish every sentence cleanly within the schema limits. The world_delta states the one thing that visibly changes beyond completing the player's declared action. The basis states the actual causal support without pretending an original idea already happened. Write use_when and drop_when only as in-story conditions or recognizable latest-user directions. Never mention swipes, alternatives, preferred routes, the next response/reply, writing, or which candidate dominates; every candidate must stand alone as an executable route. Every guide must deliver substance onscreen now, not merely promise, schedule, or agree to address the development tomorrow or later. The guide is not a prediction or commitment: the latest user action may activate it, reshape it, or make the main model discard it entirely. A guide may propose an original NPC move, consequence, discovery, sensory or social turn, world development, or fresh continuation, but it must arise from the current trajectory rather than a stale past reference. A transition-only or ambience-only candidate is invalid even when it feels safe.
+
+Link a next guide to any narrative_events it realizes through causal_event_ids. Set disclosure to none when no hidden causal state is involved. Use consequence-only when the scene should show an effect but keep its cause wholly offscreen; in that case direction and world_delta must contain only what can be perceived now and must not name, confirm, summarize, or flash back to the hidden cause. Use partial-clue for one supported clue without confirmation, and reveal-cause only when an established in-world channel makes disclosure timely. This controls narrative information, not prose style: never prescribe wording, sentence shape, tone imitation, formatting, or stylistic technique.
 
 Pathways, possibilities, objectives, entities, plan horizons, and the general guidance field are private planning material and are never copied wholesale into the roleplay prompt. Put any candidate-specific execution detail in that next guide's response_bias. Always return inject=true, two to three contrasting next guides, one to five pathways, six to ten plan horizons, and a compact guidance string for the private scratchpad; guidance may be empty. Keep the ledger compact.`;
 const PLANNER_SYSTEM = `${CORE_PLANNER_POLICY}\n${EVIDENCE_FIRST_POLICY}`;

@@ -1,5 +1,5 @@
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 17;
+export const STATE_VERSION = 18;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -84,6 +84,7 @@ function normalizePathway(value = {}) {
 function normalizeNextGuide(value = {}) {
     const strength = text(value.strength, 'moderate').toLowerCase();
     const origin = text(value.origin, 'inferred').toLowerCase();
+    const disclosure = text(value.disclosure, 'none').toLowerCase();
     return {
         id: clippedText(value.id, 100),
         direction: clippedText(value.direction, 280),
@@ -95,6 +96,8 @@ function normalizeNextGuide(value = {}) {
         basis: clippedText(value.basis, 100),
         strength: ['strong', 'moderate', 'light'].includes(strength) ? strength : 'moderate',
         sourcePathways: cap(value.sourcePathways ?? value.source_pathways, 3).map(item => clippedText(item, 100)).filter(Boolean),
+        causalEventIds: cap(value.causalEventIds ?? value.causal_event_ids, 2).map(item => clippedText(item, 80)).filter(Boolean),
+        disclosure: ['none', 'consequence-only', 'partial-clue', 'reveal-cause'].includes(disclosure) ? disclosure : 'none',
         reason: text(value.reason).slice(0, 220),
     };
 }
@@ -110,17 +113,24 @@ function normalizeNote(value = {}) {
     };
 }
 function normalizeEvent(value = {}) {
+    const scope = text(value.scope, 'onscreen').toLowerCase();
+    const epistemicStatus = text(value.epistemicStatus ?? value.epistemic_status, 'possible').toLowerCase();
+    const disclosure = text(value.disclosure, scope === 'offscreen' ? 'hidden' : 'revealed').toLowerCase();
+    const status = text(value.status, 'active').toLowerCase();
+    const confidence = text(value.confidence, 'low').toLowerCase();
     return {
         id: text(value.id).slice(0, 80),
         title: text(value.title).slice(0, 120),
         summary: text(value.summary).slice(0, 360),
-        status: text(value.status, 'uncertain').slice(0, 40),
-        relevance: text(value.relevance, 'possible').slice(0, 40),
-        confidence: text(value.confidence, 'low').slice(0, 40),
-        feasibility: text(value.feasibility, 'unknown').slice(0, 40),
+        scope: ['onscreen', 'offscreen'].includes(scope) ? scope : 'onscreen',
+        epistemicStatus: ['established', 'simulated', 'inferred', 'possible', 'disproved'].includes(epistemicStatus) ? epistemicStatus : 'possible',
+        disclosure: ['hidden', 'signaled', 'revealed'].includes(disclosure) ? disclosure : 'hidden',
+        status: ['active', 'latent', 'manifested', 'resolved', 'retired'].includes(status) ? status : 'active',
+        confidence: ['low', 'moderate', 'high'].includes(confidence) ? confidence : 'low',
+        cause: text(value.cause).slice(0, 220),
+        consequences: cap(value.consequences, 3).map(item => text(item).slice(0, 160)).filter(Boolean),
         basis: text(value.basis).slice(0, 180),
         requirements: cap(value.requirements, 4).map(item => text(item).slice(0, 120)).filter(Boolean),
-        source_hint: text(value.source_hint).slice(0, 120),
     };
 }
 
@@ -266,7 +276,7 @@ export function stateForPrompt(state) {
         entities: s.entities.filter(e => e && e.relevance !== 'ambient').slice(-3).map(item => ({ name: item.name, state: item.state.slice(0, 120), location: item.location.slice(0, 80), relevance: item.relevance.slice(0, 80) })),
         possibilities: s.possibilities.slice(-3).map(item => ({ description: item.description.slice(0, 160), conditions: item.conditions.slice(0, 1).map(condition => condition.slice(0, 100)), force: item.force })),
         pathways: s.pathways.map(item => ({ id: item.id, direction: item.direction.slice(0, 220), when: item.when.slice(0, 180), responseBias: item.responseBias.slice(0, 200), horizon: item.horizon, status: item.status, conditions: item.conditions.slice(0, 2), change: item.change })),
-        nextGuides: s.nextGuides.map(item => ({ id: item.id, direction: item.direction.slice(0, 240), useWhen: item.useWhen.slice(0, 160), dropWhen: item.dropWhen.slice(0, 160), responseBias: item.responseBias.slice(0, 180), worldDelta: item.worldDelta.slice(0, 180), origin: item.origin, basis: item.basis.slice(0, 140), strength: item.strength, sourcePathways: item.sourcePathways })),
+        nextGuides: s.nextGuides.map(item => ({ id: item.id, direction: item.direction.slice(0, 240), useWhen: item.useWhen.slice(0, 160), dropWhen: item.dropWhen.slice(0, 160), responseBias: item.responseBias.slice(0, 180), worldDelta: item.worldDelta.slice(0, 180), origin: item.origin, basis: item.basis.slice(0, 140), strength: item.strength, sourcePathways: item.sourcePathways, causalEventIds: item.causalEventIds, disclosure: item.disclosure })),
         // Carry the old live beat only long enough for a v9 state to be
         // converted. Current pathway states do not spend prompt tokens on it.
         activeBeat: s.pathways.length ? undefined : { id: s.activeBeat.id, objective: s.activeBeat.objective, nextAction: s.activeBeat.nextAction, completion: s.activeBeat.completion, lifecycle: s.activeBeat.lifecycle },
@@ -280,7 +290,19 @@ export function stateForPrompt(state) {
         lastReason: s.lastReason.slice(0, 180),
         contextLedger: s.contextLedger.slice(0, 1400),
         storyFrame: { frame: s.storyFrame.frame, confidence: s.storyFrame.confidence, basis: s.storyFrame.basis.slice(0, 180) },
-        narrativeEvents: s.narrativeEvents.slice(-1).map(event => ({ title: event.title, summary: event.summary.slice(0, 160), status: event.status, relevance: event.relevance })),
+        narrativeEvents: s.narrativeEvents.slice(-6).map(event => ({
+            id: event.id,
+            title: event.title,
+            summary: event.summary.slice(0, 180),
+            scope: event.scope,
+            epistemicStatus: event.epistemicStatus,
+            disclosure: event.disclosure,
+            status: event.status,
+            cause: event.cause.slice(0, 140),
+            consequences: event.consequences.slice(0, 2).map(item => item.slice(0, 120)),
+            basis: event.basis.slice(0, 120),
+            requirements: event.requirements.slice(0, 2),
+        })),
         lastDelivery: deliveredGuide ? {
             id: deliveredGuide.id,
             direction: deliveredGuide.direction.slice(0, 220),
@@ -354,7 +376,13 @@ export function horizonInfluence(index, total) {
 }
 
 function selectedRouteCue(guide) {
-    return `SUGGESTED ROUTE: ${guide.direction.slice(0, 280)}\nREQUIRED OUTCOME: ${guide.worldDelta.slice(0, 140)}`;
+    const boundaries = {
+        'consequence-only': 'Show only the perceivable consequence. Do not state, confirm, summarize, or flash back to its hidden cause.',
+        'partial-clue': 'Show the consequence and at most one supported clue. Do not confirm or narrate the hidden cause.',
+        'reveal-cause': 'The cause may become known only through an in-world reveal supported by this route.',
+    };
+    const boundary = boundaries[guide.disclosure];
+    return `SUGGESTED ROUTE: ${guide.direction.slice(0, 280)}\nREQUIRED OUTCOME: ${guide.worldDelta.slice(0, 140)}${boundary ? `\nINFORMATION BOUNDARY: ${boundary}` : ''}`;
 }
 
 function boundedPromptLines(items, prefix, perItem, total) {

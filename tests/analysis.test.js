@@ -5,8 +5,8 @@ import { defaultState } from '../extension/state.js';
 
 const pathways = [{ id: 'tea-talk', direction: 'Let the tea conversation reveal a useful tension.', when: 'The user continues the conversation or asks Mara directly.', response_bias: 'Have Mara answer plainly and expose one concrete concern.', horizon: 'next few turns', status: 'foreground', conditions: [], change: 'replace', reason: 'The current exchange supports this route.' }];
 const nextGuides = [
-    { id: 'plain-concern', direction: 'Let Mara answer plainly while one concrete concern changes the exchange.', use_when: 'The user continues the conversation or addresses Mara.', drop_when: 'The user leaves, changes subject, or explicitly rejects the conversation.', response_bias: 'Deliver the answer and its immediate relational consequence.', world_delta: 'Mara discloses a concern that changes what both characters understand.', origin: 'inferred', basis: 'Mara is present, engaged, and the current exchange supports a direct concern.', strength: 'strong', source_pathways: ['tea-talk'], reason: 'The direct exchange makes this the strongest continuation.' },
-    { id: 'revealing-deflection', direction: 'Let Mara deflect in a way that reveals a different pressure through behavior.', use_when: 'The user remains present and Mara has reason not to answer plainly.', drop_when: 'The user establishes that Mara answers directly or the pressure is absent.', response_bias: 'Make the deflection materially informative rather than evasive filler.', world_delta: 'Mara exposes a different pressure through behavior, changing the social stakes.', origin: 'original', basis: 'Her established hesitation can plausibly surface indirectly in this exchange.', strength: 'moderate', source_pathways: ['tea-talk'], reason: 'This contrasts with a plain answer while preserving the same continuity.' },
+    { id: 'plain-concern', direction: 'Let Mara answer plainly while one concrete concern changes the exchange.', use_when: 'The user continues the conversation or addresses Mara.', drop_when: 'The user leaves, changes subject, or explicitly rejects the conversation.', response_bias: 'Deliver the answer and its immediate relational consequence.', world_delta: 'Mara discloses a concern that changes what both characters understand.', origin: 'inferred', basis: 'Mara is present, engaged, and the current exchange supports a direct concern.', strength: 'strong', source_pathways: ['tea-talk'], causal_event_ids: [], disclosure: 'none', reason: 'The direct exchange makes this the strongest continuation.' },
+    { id: 'revealing-deflection', direction: 'Let Mara deflect in a way that reveals a different pressure through behavior.', use_when: 'The user remains present and Mara has reason not to answer plainly.', drop_when: 'The user establishes that Mara answers directly or the pressure is absent.', response_bias: 'Make the deflection materially informative rather than evasive filler.', world_delta: 'Mara exposes a different pressure through behavior, changing the social stakes.', origin: 'original', basis: 'Her established hesitation can plausibly surface indirectly in this exchange.', strength: 'moderate', source_pathways: ['tea-talk'], causal_event_ids: [], disclosure: 'none', reason: 'This contrasts with a plain answer while preserving the same continuity.' },
 ];
 const planHorizons = {
     items: [
@@ -53,6 +53,10 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /return null only when genuinely ambiguous/);
     assert.match(SYSTEM, /never rewrite the user's text/);
     assert.match(SYSTEM, /Lore is an active causal system/);
+    assert.match(SYSTEM, /Use narrative_events as the compact working causal state, not as a recap or transcript/);
+    assert.match(SYSTEM, /simulated is one causally supported offscreen occurrence selected by Tale Fairy/);
+    assert.match(SYSTEM, /A visible consequence can make an offscreen event narratively real without narrating/);
+    assert.match(SYSTEM, /Preserve competing explanations when evidence does not justify selecting one/);
     assert.match(SYSTEM, /Player silence is not a veto/);
     assert.match(SYSTEM, /Every next guide must be executable through NPC or world action without requiring a new player action/);
     assert.match(SYSTEM, /keep the player at the current location and bring the visible change into that scene/);
@@ -103,6 +107,8 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /mandatory contrasting alternatives reserved for generated swipes/);
     assert.match(SYSTEM, /all preserving established facts, characterization, causal continuity/);
     assert.match(SYSTEM, /private planning material and are never copied wholesale into the roleplay prompt/);
+    assert.match(SYSTEM, /Use consequence-only when the scene should show an effect but keep its cause wholly offscreen/);
+    assert.match(SYSTEM, /This controls narrative information, not prose style/);
 });
 
 test('planner validates an automatically resolved AI-assisted note', () => {
@@ -378,20 +384,45 @@ test('narrative events are stored internally but guidance remains the only injec
     const next = applyAnalysis(defaultState(), {
         scene: { status: 'active' }, objectives: [], entities: [], possibilities: [],
         story_frame: { frame: 'grounded', confidence: 'high', basis: 'ordinary setting' },
-        narrative_events: [{ id: 'shop-close', title: 'Trade shop closes', summary: 'The shop is unavailable after dusk.', status: 'established', relevance: 'relevant', confidence: 'high', feasibility: 'established', basis: 'current scene', requirements: [], interpretation: 'established_fact', source_hint: 'current scene' }],
+        narrative_events: [{ id: 'shop-close', title: 'Trade shop closes', summary: 'The shop is unavailable after dusk.', scope: 'onscreen', epistemic_status: 'established', disclosure: 'revealed', status: 'active', confidence: 'high', cause: 'The posted closing hour reached dusk.', consequences: ['The shop is unavailable tonight.'], basis: 'current scene', requirements: [], interpretation: 'established_fact' }],
         guidance: 'Keep the evening calm.', inject: true,
     }, messages);
     assert.equal(next.narrativeEvents.length, 1);
     assert.equal(next.narrativeEvents[0].id, 'shop-close');
+    assert.equal(next.narrativeEvents[0].epistemicStatus, 'established');
+    assert.deepEqual(next.narrativeEvents[0].consequences, ['The shop is unavailable tonight.']);
     assert.equal(next.guidance, 'Keep the evening calm.');
     assert.equal(next.storyFrame.frame, 'grounded');
+});
+
+test('planner validates a selected offscreen cause and its consequence-only guide as one causal chain', () => {
+    const event = {
+        id: 'school-conflict', title: 'Conflict at school', summary: 'A peer struck Eli during an offscreen dispute.',
+        scope: 'offscreen', epistemic_status: 'simulated', disclosure: 'hidden', status: 'active',
+        confidence: 'moderate',
+        cause: 'An established peer conflict escalated during the school day.', consequences: ['Eli returns home with a black eye.'],
+        basis: 'Eli attended school while the peer conflict remained active.', requirements: [], interpretation: 'supported_inference',
+    };
+    const result = {
+        ...requiredPlanning,
+        scene: { status: 'active', activity: 'waiting at home', pace: 'steady', intent: 'continue the evening', location: 'home', time: 'after school', loop: false },
+        objectives: [], entities: [], possibilities: [],
+        next_guides: [
+            { ...nextGuides[0], id: 'marked-return', direction: 'Eli returns with a black eye and offers no explanation.', world_delta: 'Eli arrives home with a visible black eye.', causal_event_ids: ['school-conflict'], disclosure: 'consequence-only' },
+            nextGuides[1],
+        ],
+        narrative_events: [event], guidance: '', inject: true, reason: 'A selected offscreen cause now has a relevant visible consequence.',
+    };
+    assert.equal(validateAnalysisResult(result).valid, true);
+    assert.equal(validateAnalysisResult({ ...result, next_guides: [{ ...result.next_guides[0], causal_event_ids: [] }, result.next_guides[1]] }).valid, false);
+    assert.equal(validateAnalysisResult({ ...result, narrative_events: [{ ...event, epistemic_status: 'possible' }] }).valid, false);
 });
 
 test('jokes, wishes, and unsupported absurdities are not retained as events', () => {
     const next = applyAnalysis(defaultState(), { narrative_events: [
         { id: 'wish', title: 'Meet the president', summary: 'The user hopes this happens.', interpretation: 'wish' },
         { id: 'joke', title: 'Moon explodes', summary: 'A joke.', interpretation: 'joke' },
-        { id: 'real', title: 'Assignment due', summary: 'The assignment is due tomorrow.', interpretation: 'established_fact', status: 'established', relevance: 'relevant', confidence: 'high', feasibility: 'established', basis: 'user and assistant established it', requirements: [], source_hint: 'chat' },
+        { id: 'real', title: 'Assignment due', summary: 'The assignment is due tomorrow.', scope: 'onscreen', epistemic_status: 'established', disclosure: 'revealed', interpretation: 'established_fact', status: 'active', confidence: 'high', cause: 'The school set a deadline.', consequences: ['Work remains due tomorrow.'], basis: 'user and assistant established it', requirements: [] },
     ] }, [{ mes: 'Hopefully I meet the president.', is_user: true }]);
     assert.deepEqual(next.narrativeEvents.map(event => event.id), ['real']);
 });
