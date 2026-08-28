@@ -671,7 +671,7 @@ Classify the story frame as grounded, heightened, surreal, or unknown. Match the
 
 Every next guide must be executable through NPC or world action without requiring a new player action. Unless the newest user turn already declares travel or arrival, keep the player at the current location and bring the visible change into that scene. Never make the player join, follow, settle somewhere, agree, answer, or otherwise bridge the route; rewrite the delivery so the NPC or world completes the delta before control returns to the player.
 
-Give each next guide exactly one immediate world outcome. Supporting actions may deliver that outcome, but do not chain a second character beat, task, reveal, transition, or follow-up with “and then,” “once,” or similar sequencing. Keep direction and world_delta about the same single change so the main model has no reason to pad the response with another subplot.
+Give each next guide exactly one immediate world outcome. Supporting actions may deliver that outcome, but do not chain a second character beat, task, reveal, transition, or follow-up with “and then,” “once,” or similar sequencing. Keep direction and world_delta about the same single narrative change.
 
 Keep every referent unambiguous inside each guide. Preserve the established semantic type of names, codes, rooms, wards, people, planets, organizations, and events. Expand a shorthand identifier when its type could be mistaken—for example, “Dorn-2 medical unit on Level 10,” not merely “Dorn-2.” Never reinterpret an established code or proper noun as a different kind of entity to create novelty.
 

@@ -389,10 +389,10 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
     const selectedIndex = candidates.length ? Math.max(0, Math.min(candidates.length - 1, Number(guideIndex) || 0)) : 0;
     const selectedGuide = candidates[selectedIndex];
     const routePrompt = guidanceUsable && candidates.length
-        ? `Director cue${regeneration ? ' for a different regeneration' : ''}:\n${selectedRouteCue(selectedGuide)}\nAnswer once; start REQUIRED OUTCOME within two sentences and show only that outcome. Omit completed actions/dialogue, recap, and side threads; use one brief prior fact only if necessary.${regeneration ? ' Do not replay the discarded reply.' : ''} Keep names/codes' established meanings. Never act for the player. If blocked, use one equally concrete outcome.`
+        ? `Narrative route${regeneration ? ' for a different regeneration' : ''}:\n${selectedRouteCue(selectedGuide)}\nMake REQUIRED OUTCOME happen through NPC or world action. It must be a new narrative change, not a replay of a completed event.${regeneration ? ' Do not reuse the discarded reply\'s event.' : ''} Preserve each name and code's established meaning and never decide player action. If blocked, use one equally concrete narrative outcome.`
         : regeneration
-            ? `Variation ${Math.max(1, Number(variationCue) || 1)}: change the event, not the wording. Answer once; begin one meaningful outcome within two sentences. No recap, completed actions, repeated dialogue, side threads, routine filler, unprepared crisis, or player action. Preserve every name and code's meaning.`
-            : 'Answer once; begin one grounded, meaningful outcome within two sentences. No recap, repeated dialogue, side threads, or player action.';
+            ? `Narrative variation ${Math.max(1, Number(variationCue) || 1)}: choose one meaningful NPC or world outcome different from the discarded reply's event. Do not repeat a completed event, reinterpret established names or codes, invent an unsupported crisis, or decide player action.`
+            : 'Choose one new grounded NPC or world outcome. Do not repeat a completed event, reinterpret established names or codes, or decide player action.';
     const guidancePrompt = `\n<living-world-guide>\n${routePrompt}\n</living-world-guide>`;
     return `<tale-fairy-context>${notePrompt}${canonPrompt}${guidancePrompt}\n</tale-fairy-context>`;
 }

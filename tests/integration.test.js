@@ -9,17 +9,18 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.7.14');
-    assert.equal(manifest.js, 'extension/index.js?v=0.7.14');
-    assert.equal(manifest.css, 'extension/style.css?v=0.7.14');
+    assert.equal(manifest.version, '0.7.15');
+    assert.equal(manifest.js, 'extension/index.js?v=0.7.15');
+    assert.equal(manifest.css, 'extension/style.css?v=0.7.15');
 });
 
 test('injection sends one immediate guide while alternatives and long-range planning stay private', () => {
-    assert.match(stateSource, /Director cue/);
+    assert.match(stateSource, /Narrative route/);
     assert.match(stateSource, /SUGGESTED ROUTE:/);
     assert.match(stateSource, /REQUIRED OUTCOME:/);
-    assert.match(stateSource, /start REQUIRED OUTCOME within two sentences/);
-    assert.match(stateSource, /Do not replay the discarded reply/);
+    assert.match(stateSource, /Make REQUIRED OUTCOME happen through NPC or world action/);
+    assert.match(stateSource, /Do not reuse the discarded reply/);
+    assert.doesNotMatch(stateSource, /within two sentences|Answer once|recap|repeated dialogue|show only that outcome/);
     assert.match(stateSource, /<tale-fairy-context>/);
     assert.doesNotMatch(stateSource, /SELECTED IMMEDIATE ROUTE|ALTERNATIVE ROUTE/);
     assert.doesNotMatch(stateSource, /USE IF:|DROP IF:|GROUNDING:|EXECUTION:/);
