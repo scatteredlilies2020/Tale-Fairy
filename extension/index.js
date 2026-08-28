@@ -13,7 +13,7 @@ import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.7.16';
+const RUNTIME_VERSION = '0.7.17';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -1183,6 +1183,28 @@ async function upgradeLegacyPlanIfNeeded() {
     }
 }
 
+async function refreshCurrentPlanIfNeeded() {
+    const context = currentContext();
+    const rawState = context.chatMetadata?.[STATE_KEY];
+    const rawVersion = Math.max(0, Number(rawState?.version) || 0);
+    const upgradePending = Boolean(rawState && (rawVersion < STATE_VERSION || rawState.canonBootstrapPending === true));
+    if (upgradePending) return upgradeLegacyPlanIfNeeded();
+
+    const chatId = String(context.getCurrentChatId?.() || '');
+    const messages = messagesFromChat(context.chat || []);
+    const state = loadState(context.chatMetadata);
+    if (!getSettings().enabled || !chatId || !messages.length || isGuidanceUsable(state, messages, chatId)) {
+        updatePrompt(state);
+        return state;
+    }
+
+    // A current-format plan can still be stale after a closed tab, extension
+    // reload, or interrupted background request. Refresh it once on chat load;
+    // analyzeNow deduplicates an identical in-flight request and never blocks
+    // the user's generation.
+    return analyzeNow({ messages, allowOneUserAppend: true });
+}
+
 async function mountUI() {
     const s = getSettings();
     const target = document.querySelector('#extensions_settings2')
@@ -1424,11 +1446,11 @@ eventSource.on(event_types.CHAT_CHANGED, () => {
     generationRevision++;
     cancelRunningAnalysis('The active chat changed while Tale Fairy was analyzing.', 'Ready');
     updatePrompt(loadState(currentContext().chatMetadata));
-    // New-format chats plan on demand. Legacy chats receive one bounded
-    // migration attempt so an old guide cannot look permanently inactive.
+    // Refresh a stale current plan as well as migrating legacy state. The
+    // planner remains non-blocking and identical in-flight work is reused.
     setTimeout(() => {
         renderBoard();
-        void upgradeLegacyPlanIfNeeded();
+        void refreshCurrentPlanIfNeeded();
     }, 0);
 });
 for (const event of [event_types.CONNECTION_PROFILE_CREATED, event_types.CONNECTION_PROFILE_UPDATED, event_types.CONNECTION_PROFILE_DELETED]) {
@@ -1439,6 +1461,6 @@ for (const event of [event_types.CONNECTION_PROFILE_CREATED, event_types.CONNECT
 eventSource.on(event_types.EXTENSIONS_FIRST_LOAD, startUIMounting);
 startUIMounting();
 // CHAT_CHANGED may fire before a third-party module finishes loading. Audit
-// legacy state once on startup as well, so the active chat cannot remain in a
-// route-less migration state until the user changes chats.
-setTimeout(() => void upgradeLegacyPlanIfNeeded(), 0);
+// the active plan once on startup as well, so a stale or legacy chat cannot
+// remain route-less until another assistant response arrives.
+setTimeout(() => void refreshCurrentPlanIfNeeded(), 0);

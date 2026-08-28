@@ -9,9 +9,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.7.16');
-    assert.equal(manifest.js, 'extension/index.js?v=0.7.16');
-    assert.equal(manifest.css, 'extension/style.css?v=0.7.16');
+    assert.equal(manifest.version, '0.7.17');
+    assert.equal(manifest.js, 'extension/index.js?v=0.7.17');
+    assert.equal(manifest.css, 'extension/style.css?v=0.7.17');
 });
 
 test('injection sends one immediate guide while alternatives and long-range planning stay private', () => {
@@ -158,6 +158,9 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.doesNotMatch(source, /roleplayGenerationActive|backgroundTimer|backgroundDelay|allowNextUserMessage/);
     assert.doesNotMatch(source, /MESSAGE_RECEIVED[\s\S]{0,500}scheduleBackgroundAnalysis/);
     assert.match(source, /async function upgradeLegacyPlanIfNeeded/);
+    assert.match(source, /async function refreshCurrentPlanIfNeeded/);
+    assert.match(source, /refreshCurrentPlanIfNeeded[\s\S]{0,900}isGuidanceUsable\(state, messages, chatId\)/);
+    assert.match(source, /refreshCurrentPlanIfNeeded[\s\S]{0,1400}analyzeNow\(\{ messages, allowOneUserAppend: true \}\)/);
     assert.match(source, /rawVersion < STATE_VERSION/);
     assert.match(source, /LEGACY_UPGRADE_MAX_ATTEMPTS = 3/);
     assert.match(source, /persistedVersion >= STATE_VERSION/);
@@ -166,7 +169,8 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /void upgradeLegacyPlanIfNeeded\(\)/);
     assert.match(source, /rawState\?\.canonBootstrapPending === true/);
     assert.match(source, /!upgradePending/);
-    assert.match(source, /startUIMounting\(\);\s*\/\/ CHAT_CHANGED[\s\S]{0,500}setTimeout\(\(\) => void upgradeLegacyPlanIfNeeded\(\), 0\)/);
+    assert.match(source, /CHAT_CHANGED[\s\S]{0,900}void refreshCurrentPlanIfNeeded\(\)/);
+    assert.match(source, /startUIMounting\(\);\s*\/\/ CHAT_CHANGED[\s\S]{0,500}setTimeout\(\(\) => void refreshCurrentPlanIfNeeded\(\), 0\)/);
     assert.doesNotMatch(source, /setTimeout\(\(\) => \{ renderBoard\(\); scheduleBackgroundAnalysis\(300\); \}, 0\)/);
     assert.match(source, /CHAT_COMPLETION_PROMPT_READY, ensureChatCompletionRequestGuidance/);
     assert.match(source, /CHAT_COMPLETION_SETTINGS_READY, ensureProviderChatRequestGuidance/);
