@@ -58,6 +58,10 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /keep the player at the current location and bring the visible change into that scene/);
     assert.match(SYSTEM, /A routine transition is scaffolding, not a sufficient primary development/);
     assert.match(SYSTEM, /Every next guide must name one concrete world_delta beyond the player's action/);
+    assert.match(SYSTEM, /Give each next guide exactly one immediate world outcome/);
+    assert.match(SYSTEM, /Keep every referent unambiguous inside each guide/);
+    assert.match(SYSTEM, /Dorn-2 medical unit on Level 10/);
+    assert.match(SYSTEM, /Never reinterpret an established code or proper noun as a different kind of entity/);
     assert.match(SYSTEM, /not the lowest-risk, least-committal, or most literal continuation/);
     assert.match(SYSTEM, /every swipe alternative must honor or materially address it/);
     assert.match(SYSTEM, /promised, agreed, deferred, owed, revealed, decided, or established only when raw conversation/);

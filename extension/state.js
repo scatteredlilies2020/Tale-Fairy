@@ -389,10 +389,10 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
     const selectedIndex = candidates.length ? Math.max(0, Math.min(candidates.length - 1, Number(guideIndex) || 0)) : 0;
     const selectedGuide = candidates[selectedIndex];
     const routePrompt = guidanceUsable && candidates.length
-        ? `Director cue${regeneration ? ' for a different regeneration' : ''}:\n${selectedRouteCue(selectedGuide)}\nAnswer directly without recapping resolved context, then immediately make REQUIRED OUTCOME true onscreen. Mention an old fact only when causally necessary, once, in a short clause.${regeneration ? ' Do not replay the discarded reply.' : ''} Adapt to the current location; never move, speak, or decide for the player. If impossible, use an equally concrete outcome.`
+        ? `Director cue${regeneration ? ' for a different regeneration' : ''}:\n${selectedRouteCue(selectedGuide)}\nAnswer once; start REQUIRED OUTCOME within two sentences and show only that outcome. Omit completed actions/dialogue, recap, and side threads; use one brief prior fact only if necessary.${regeneration ? ' Do not replay the discarded reply.' : ''} Keep names/codes' established meanings. Never act for the player. If blocked, use one equally concrete outcome.`
         : regeneration
-            ? `Variation ${Math.max(1, Number(variationCue) || 1)}: change the event, not the wording. Answer once, without recapping resolved rules, options, or logistics; then show one meaningful development at the current location. Prefer a present NPC's choice or reveal. No routine filler, unprepared crisis, or player action.`
-            : 'Answer directly without recap, then show one grounded, meaningful NPC or world development at the current location. Never act for the player.';
+            ? `Variation ${Math.max(1, Number(variationCue) || 1)}: change the event, not the wording. Answer once; begin one meaningful outcome within two sentences. No recap, completed actions, repeated dialogue, side threads, routine filler, unprepared crisis, or player action. Preserve every name and code's meaning.`
+            : 'Answer once; begin one grounded, meaningful outcome within two sentences. No recap, repeated dialogue, side threads, or player action.';
     const guidancePrompt = `\n<living-world-guide>\n${routePrompt}\n</living-world-guide>`;
     return `<tale-fairy-context>${notePrompt}${canonPrompt}${guidancePrompt}\n</tale-fairy-context>`;
 }
