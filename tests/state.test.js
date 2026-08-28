@@ -200,6 +200,16 @@ test('pre-momentum guides and request verification cannot remain injectable afte
     assert.equal(isGuidanceUsable(migrated, [], ''), false);
 });
 
+test('v18 candidates remain available while the v19 audit is pending', () => {
+    const verification = { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides };
+    const migrated = normalizeState({ version: 18, ...currentPlan, nextGuides: stateNextGuides, canonConstraints: ['Established fact.'], lastRequestVerification: verification });
+    assert.equal(migrated.version, 19);
+    assert.equal(migrated.canonBootstrapPending, true);
+    assert.deepEqual(migrated.nextGuides.map(({ causalEventIds, disclosure, ...guide }) => guide), stateNextGuides);
+    assert.deepEqual(migrated.canonConstraints, ['Established fact.']);
+    assert.notEqual(migrated.lastRequestVerification, null);
+});
+
 test('prompt payload keeps user directives active and only includes usable guidance', () => {
     const state = {
         ...defaultState(),

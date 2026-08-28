@@ -228,6 +228,10 @@ export function normalizeState(input = {}) {
     const value = input && typeof input === 'object' ? input : {};
     const inputVersion = Math.max(0, Number(value.version) || 0);
     const plannerUpgradePending = inputVersion > 0 && inputVersion < STATE_VERSION;
+    // v18 already stores the current candidate/canon shapes. Keep that usable
+    // plan visible while v19 performs its background audit; older plans are not
+    // safe to inject and still require a clean rebuild.
+    const unsafePlannerUpgrade = inputVersion > 0 && inputVersion < 18;
     const state = {
         ...base,
         ...value,
@@ -241,14 +245,13 @@ export function normalizeState(input = {}) {
         entities: cap(value.entities).map(normalizeEntity).filter(item => item.name),
         possibilities: cap(value.possibilities, 6).map(normalizePossibility).filter(item => item.description),
         pathways: cap(value.pathways, MAX_PATHWAYS).map(normalizePathway).filter(item => item.id && item.direction && item.when),
-        nextGuides: plannerUpgradePending ? [] : (Array.isArray(value.nextGuides) ? value.nextGuides.slice(0, 3) : []).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen && item.worldDelta && item.basis),
+        nextGuides: unsafePlannerUpgrade ? [] : (Array.isArray(value.nextGuides) ? value.nextGuides.slice(0, 3) : []).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen && item.worldDelta && item.basis),
         activeBeat: normalizeBeat(value.activeBeat),
         beatHistory: cap(value.beatHistory, 6).map(normalizeBeat).filter(beat => beat.objective),
         planHorizons: normalizePlanHorizons(value.planHorizons),
-        // A migrated state has no pre-response canon snapshot. Suppress its
-        // possibly discarded-assistant-derived facts until the upgrade pass
-        // audits the live chat and rebuilds them.
-        canonConstraints: plannerUpgradePending ? [] : cap(value.canonConstraints).map(item => text(item).slice(0, 500)).filter(Boolean),
+        // Older migrated states have no reliable pre-response canon snapshot.
+        // v18 already has one, so retain it until the upgrade pass refreshes it.
+        canonConstraints: unsafePlannerUpgrade ? [] : cap(value.canonConstraints).map(item => text(item).slice(0, 500)).filter(Boolean),
         canonBootstrapPending: value.canonBootstrapPending === true || plannerUpgradePending,
         userNotes: cap(value.userNotes).map(normalizeNote).filter(note => note.text),
         guidance: text(value.guidance).slice(0, 700),
@@ -265,7 +268,7 @@ export function normalizeState(input = {}) {
         lastAnalyzedAt: Number(value.lastAnalyzedAt) || 0,
         turnCount: Math.max(0, Number(value.turnCount) || 0),
         plannerSeed: Number.isInteger(value.plannerSeed) ? value.plannerSeed : 0,
-        lastRequestVerification: plannerUpgradePending ? null : normalizeRequestVerification(value.lastRequestVerification),
+        lastRequestVerification: unsafePlannerUpgrade ? null : normalizeRequestVerification(value.lastRequestVerification),
     };
     return state;
 }
