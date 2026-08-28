@@ -20,7 +20,8 @@ const planHorizons = {
     ],
     deviation: { level: 'none', reason: 'Initial plan.' },
 };
-const requiredPlanning = { story_frame: { frame: 'grounded', confidence: 'high', basis: 'ordinary scene' }, pathways, next_guides: nextGuides, plan_horizons: planHorizons, canon_constraints: [], note_resolution: null, ledger: 'Tea conversation is active.', narrative_events: [], cue_audit: { offered_ids: [], manifested_ids: [], unused_ids: [], contradicted_ids: [], pacing: 'respected', reason: 'No prior cues were offered.' } };
+const directorScore = { narrative_type: 'intimate science-fantasy character drama', scene_function: 'Let a quiet exchange alter trust.', setting_identity: 'Star Wars lived through its institutions, droids, technology, and social scale', setting_forces: ['A serving droid witnesses and mediates domestic routine.', 'Jedi obligations constrain available time and candor.'], motion: 'build', score: 'Warm and playful at first; gradually tighten focus around wary trust without rushing.', trajectory: 'Let ordinary play expose how affection and institutional duty compete across the next few turns.', meaningful_aim: 'Change what Mara and the user understand about the limits of their trust.', surprise: 'Allow one earned turn arising from Mara’s duty or the droid’s literal behavior.', change: 'adjust', basis: 'The active conversation is intimate, while established Star Wars institutions shape Mara’s choices.' };
+const requiredPlanning = { story_frame: { frame: 'grounded', confidence: 'high', basis: 'ordinary scene' }, director_score: directorScore, pathways, next_guides: nextGuides, plan_horizons: planHorizons, canon_constraints: [], note_resolution: null, ledger: 'Tea conversation is active.', narrative_events: [], cue_audit: { offered_ids: [], manifested_ids: [], unused_ids: [], contradicted_ids: [], pacing: 'respected', reason: 'No prior cues were offered.' } };
 
 test('extractJson accepts fenced and wrapped JSON', () => {
     assert.deepEqual(extractJson('```json\n{"inject":false}\n```'), { inject: false });
@@ -402,11 +403,12 @@ test('canon bootstrap retains labeled OOC turns outside ordinary sampling points
 
 test('analysis application keeps guidance bounded and records its injection decision', () => {
     const messages = [{ mes: 'I make tea', is_user: true }];
-    const next = applyAnalysis(defaultState(), { scene: { status: 'active', activity: 'tea', pace: 'slow', intent: 'rest', location: 'kitchen', time: 'evening', loop: false }, objectives: [], entities: [], possibilities: [], pathways, next_guides: nextGuides, guidance: 'x'.repeat(2000), inject: true, reason: 'A gentle reminder will preserve the established pace.' }, messages);
+    const next = applyAnalysis(defaultState(), { director_score: directorScore, scene: { status: 'active', activity: 'tea', pace: 'slow', intent: 'rest', location: 'kitchen', time: 'evening', loop: false }, objectives: [], entities: [], possibilities: [], pathways, next_guides: nextGuides, guidance: 'x'.repeat(2000), inject: true, reason: 'A gentle reminder will preserve the established pace.' }, messages);
     assert.equal(next.guidance.length, 700);
     assert.equal(next.sourceMessageCount, 1);
     assert.equal(next.scene.activity, 'tea');
     assert.equal(next.lastInject, true);
+    assert.equal(next.directorScore.settingIdentity.startsWith('Star Wars'), true);
     assert.match(next.lastReason, /established pace/);
 });
 
@@ -526,6 +528,7 @@ test('bootstrap compaction keeps a recent trajectory anchor instead of reviving 
 
 test('hard budget also compacts a fully populated long-running planner state', () => {
     const long = 'x'.repeat(1000);
+    const sentCue = { id: 'confirmed-setting-turn', direction: 'An Imperial restriction quietly changes what help is possible.', useWhen: 'The conversation still concerns available help.', dropWhen: 'The restriction has already been resolved.', responseBias: 'Warmth tightens into practical concern.', worldDelta: 'The characters must account for an institutional constraint.', origin: 'planner', basis: 'The request included this movement.', strength: 'strong', sourcePathways: [], causalEventIds: [], disclosure: 'none' };
     const state = {
         ...defaultState(),
         objectives: Array.from({ length: 10 }, (_, index) => ({ title: `thread-${index}`, detail: long, status: 'open', source: long })),
@@ -536,11 +539,15 @@ test('hard budget also compacts a fully populated long-running planner state', (
         canonConstraints: Array.from({ length: 12 }, () => long),
         userNotes: Array.from({ length: 12 }, () => ({ kind: 'establish', text: long, at: 1 })),
         contextLedger: long.repeat(3),
+        lastRequestVerification: { status: 'confirmed', guidanceBlock: 'confirmed guide', guideCandidates: [sentCue], selectedGuideIndex: 0 },
     };
     const messages = Array.from({ length: 80 }, (_, index) => ({ mes: long.repeat(4) + index, is_user: index % 2 === 0 }));
     const prompt = buildAnalysisPrompt(messages, state, long, { scenario: long }, { messageWindow: 80, messageCharLimit: 4000, maxPromptChars: 8000, continuityContext: long.repeat(6), hostContext: long.repeat(8), bootstrapScan: true });
     assert.ok(prompt.length <= 8000);
-    assert.equal(JSON.parse(prompt).messages.at(-1).index, 79);
+    const parsed = JSON.parse(prompt);
+    assert.equal(parsed.messages.at(-1).index, 79);
+    assert.equal(parsed.current.lastOfferedCues[0].id, sentCue.id);
+    assert.equal(parsed.current.lastOfferedCues[0].requestConfirmed, true);
 });
 
 test('planner excerpts remove generated scaffolding and preserve both ends of long prose', () => {

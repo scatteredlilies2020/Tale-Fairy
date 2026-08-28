@@ -7,6 +7,7 @@ const stateNextGuides = [
     { id: 'telling-deflection', direction: 'Let Mara reveal a different pressure through a meaningful deflection.', useWhen: 'The user remains with Mara and she has reason to hesitate.', dropWhen: 'The user establishes a direct answer or ends the exchange.', responseBias: 'Make the deflection consequential.', worldDelta: 'Mara exposes a different pressure and changes the social stakes.', origin: 'original', basis: 'Her hesitation supports an indirect but consequential response.', strength: 'moderate', sourcePathways: ['answer'], reason: 'Contrasting continuity-safe alternative.' },
 ];
 const currentPlan = {
+    directorScore: { narrativeType: 'intimate science-fantasy character drama', sceneFunction: 'Let a quiet exchange alter trust.', settingIdentity: 'Star Wars as a lived institutional and technological world', settingForces: ['Jedi obligations constrain time and candor.', 'Droids participate in domestic routine.'], motion: 'build', score: 'Warm and playful, then tighten gently around wary trust.', trajectory: 'Let ordinary interaction expose how affection and duty compete.', meaningfulAim: 'Change the shared understanding of trust and obligation.', surprise: 'Allow one earned turn from character or setting causality.', change: 'adjust', basis: 'The active exchange and setting support this pressure.' },
     pathways: [{ id: 'answer', direction: 'Continue the active exchange.', when: 'The user continues or asks Mara.', responseBias: 'Have Mara answer.', horizon: 'near', status: 'foreground', conditions: [], change: 'keep', reason: 'The exchange is current.' }],
     nextGuides: stateNextGuides,
     planHorizons: { items: Array.from({ length: 6 }, (_, index) => ({ id: `h${index}`, direction: `Direction ${index}`, timeframe: index === 5 ? 'later arcs / open-ended' : `range ${index}`, stability: index < 2 ? 'adaptive' : index === 5 ? 'slow' : 'stable', conditions: [], change: 'keep', reason: 'Still relevant.' })), deviation: { level: 'none', reason: 'Aligned.' } },
@@ -22,7 +23,7 @@ test('state normalizes caps and invalid mode', () => {
     assert.deepEqual(state.nextGuides.map(item => item.id), ['guide-0', 'guide-1', 'guide-2', 'guide-3']);
     assert.ok(state.nextGuides[0].responseBias.length <= 130);
     assert.match(state.nextGuides[0].responseBias, /finished…$/);
-    assert.equal(state.version, 21);
+    assert.equal(state.version, 22);
 });
 
 test('offscreen causes persist privately while injection exposes only their consequence', () => {
@@ -192,7 +193,7 @@ test('pre-canon-ledger state requests one bounded bootstrap rescan', () => {
 
 test('pre-momentum guides and request verification cannot remain injectable after an upgrade', () => {
     const migrated = normalizeState({ version: 16, ...currentPlan, nextGuides: stateNextGuides, canonConstraints: ['Fact from a discarded response.'], lastInject: true, lastRequestVerification: { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides } });
-    assert.equal(migrated.version, 21);
+    assert.equal(migrated.version, 22);
     assert.equal(migrated.canonBootstrapPending, true);
     assert.deepEqual(migrated.nextGuides, []);
     assert.deepEqual(migrated.canonConstraints, []);
@@ -200,10 +201,10 @@ test('pre-momentum guides and request verification cannot remain injectable afte
     assert.equal(isGuidanceUsable(migrated, [], ''), false);
 });
 
-test('v20 candidates are rebuilt as narrative movements while established canon survives', () => {
+test('pre-v22 candidates are rebuilt with a persistent director score while established canon survives', () => {
     const verification = { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides };
-    const migrated = normalizeState({ version: 20, ...currentPlan, nextGuides: stateNextGuides, canonConstraints: ['Established fact.'], lastRequestVerification: verification });
-    assert.equal(migrated.version, 21);
+    const migrated = normalizeState({ version: 21, ...currentPlan, nextGuides: stateNextGuides, canonConstraints: ['Established fact.'], lastRequestVerification: verification });
+    assert.equal(migrated.version, 22);
     assert.equal(migrated.canonBootstrapPending, true);
     assert.deepEqual(migrated.nextGuides, []);
     assert.deepEqual(migrated.canonConstraints, ['Established fact.']);
@@ -213,6 +214,7 @@ test('v20 candidates are rebuilt as narrative movements while established canon 
 test('prompt payload keeps user directives active and only includes usable guidance', () => {
     const state = {
         ...defaultState(),
+        directorScore: currentPlan.directorScore,
         guidance: 'Keep the scene grounded.',
         pathways: [{ id: 'answer', direction: 'Resolve the immediate question.', when: 'The user asks Mara or continues the exchange.', responseBias: 'Have Mara answer with the established facts.', horizon: 'this reply', status: 'foreground', conditions: [], change: 'replace', reason: 'The user may address her directly.' }],
         nextGuides: stateNextGuides,
@@ -241,6 +243,12 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(current, /<\/tale-fairy-context>$/);
     assert.doesNotMatch(current, /Keep the scene grounded/);
     assert.match(current, /Adaptive narrative movement \(optional\)/);
+    assert.match(current, /NARRATIVE CONDUCTOR \(active even if the optional movement below is inapplicable\)/);
+    assert.match(current, /SETTING IDENTITY: Star Wars as a lived institutional and technological world/);
+    assert.match(current, /ACTIVE SETTING FORCES: Jedi obligations constrain time and candor; Droids participate in domestic routine/);
+    assert.match(current, /ARC MOTION: BUILD/);
+    assert.match(current, /MEANINGFUL AIM: Change the shared understanding of trust and obligation/);
+    assert.match(current, /not generic genre prose, random iconic references, cameos, or reference soup/);
     assert.match(current, /MOVEMENT \[EMPHASIS\]: Let Mara answer plainly/);
     assert.match(current, /IF: The user continues or asks Mara/);
     assert.match(current, /UNLESS: The user leaves or changes subject/);

@@ -126,5 +126,5 @@ test('provider-bound request receives one complete rotated conditional cue', () 
     assert.match(chat.at(-1).content, /Tell me what happened\.$/);
     assert.doesNotMatch(chat.at(-1).content, /GROUNDING:|EXECUTION:/);
     assert.equal(chat.map(message => String(message.content)).join('\n').match(/<tale-fairy-context>/g)?.length, 1);
-    assert.ok(prompt.length < 2200, `expected lean payload, got ${prompt.length} characters`);
+    assert.ok(prompt.length < 2600, `expected bounded conductor payload, got ${prompt.length} characters`);
 });

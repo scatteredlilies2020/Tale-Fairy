@@ -3,12 +3,12 @@
   "loading_order": 65,
   "requires": [],
   "optional": [],
-  "js": "extension/index.js?v=0.8.2",
-  "css": "extension/style.css?v=0.8.2",
+  "js": "extension/index.js?v=0.9.0",
+  "css": "extension/style.css?v=0.9.0",
   "generate_interceptor": "livingWorldGuideGenerateInterceptor",
   "author": "ScatteredLilies2020",
-  "version": "0.8.2",
+  "version": "0.9.0",
   "homePage": "https://github.com/scatteredlilies2020/Tale-Fairy",
   "auto_update": true,
-  "description": "A non-blocking causal world simulator that preserves schedules and future consequences while offering compact conditional background cues."
+  "description": "A non-blocking, setting-aware narrative conductor with persistent dramatic motion, causal world simulation, and compact conditional movements."
 }

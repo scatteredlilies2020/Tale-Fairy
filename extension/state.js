@@ -1,5 +1,5 @@
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 21;
+export const STATE_VERSION = 22;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -17,6 +17,7 @@ export function defaultState() {
         analysisModel: { source: 'active', profileId: '', model: '', url: '' },
         scene: { status: 'uninitialized', activity: '', pace: '', intent: '', location: '', time: '', loop: false },
         storyFrame: { frame: 'unknown', confidence: 'low', basis: '' },
+        directorScore: { narrativeType: '', sceneFunction: '', settingIdentity: '', settingForces: [], motion: 'hold', score: '', trajectory: '', meaningfulAim: '', surprise: '', change: 'replace', basis: '' },
         objectives: [],
         entities: [],
         possibilities: [],
@@ -67,6 +68,23 @@ function normalizeEntity(value = {}) {
 }
 function normalizePossibility(value = {}) {
     return { description: text(value.description).slice(0, 280), conditions: cap(value.conditions, 4).map(item => text(item).slice(0, 140)).filter(Boolean), force: text(value.force).slice(0, 40) };
+}
+function normalizeDirectorScore(value = {}) {
+    const motion = text(value.motion, 'hold').toLowerCase();
+    const change = text(value.change, 'replace').toLowerCase();
+    return {
+        narrativeType: clippedText(value.narrativeType ?? value.narrative_type, 100),
+        sceneFunction: clippedText(value.sceneFunction ?? value.scene_function, 120),
+        settingIdentity: clippedText(value.settingIdentity ?? value.setting_identity, 120),
+        settingForces: cap(value.settingForces ?? value.setting_forces, 3).map(item => clippedText(item, 140)).filter(Boolean),
+        motion: ['hold', 'build', 'turn', 'release', 'redirect', 'recover'].includes(motion) ? motion : 'hold',
+        score: clippedText(value.score, 220),
+        trajectory: clippedText(value.trajectory, 240),
+        meaningfulAim: clippedText(value.meaningfulAim ?? value.meaningful_aim, 200),
+        surprise: clippedText(value.surprise, 120),
+        change: ['keep', 'adjust', 'turn', 'release', 'replace'].includes(change) ? change : 'replace',
+        basis: clippedText(value.basis, 180),
+    };
 }
 function normalizePathway(value = {}) {
     const status = text(value.status, 'available').toLowerCase();
@@ -230,9 +248,9 @@ export function normalizeState(input = {}) {
     const inputVersion = Math.max(0, Number(value.version) || 0);
     const plannerUpgradePending = inputVersion > 0 && inputVersion < STATE_VERSION;
     // v18 already stores the current canon shape. Preserve that evidence, but
-    // v21 must rebuild older event-prescriptive guides as narrative movements.
+    // v21 rebuilt event-prescriptive guides and v22 adds a persistent score.
     const unsafePlannerUpgrade = inputVersion > 0 && inputVersion < 18;
-    const movementUpgrade = inputVersion > 0 && inputVersion < 21;
+    const movementUpgrade = inputVersion > 0 && inputVersion < 22;
     const state = {
         ...base,
         ...value,
@@ -242,6 +260,7 @@ export function normalizeState(input = {}) {
         analysisModel: { ...base.analysisModel, ...(value.analysisModel || {}) },
         scene: { ...base.scene, ...(value.scene || {}) },
         storyFrame: { ...base.storyFrame, ...(value.storyFrame || {}) },
+        directorScore: normalizeDirectorScore(value.directorScore),
         objectives: cap(value.objectives, MAX_OBJECTIVES).map(normalizeObjective).filter(item => item.title || item.detail),
         entities: cap(value.entities).map(normalizeEntity).filter(item => item.name),
         possibilities: cap(value.possibilities, 6).map(normalizePossibility).filter(item => item.description),
@@ -315,6 +334,19 @@ export function stateForPrompt(state) {
         lastReason: s.lastReason.slice(0, 180),
         contextLedger: s.contextLedger.slice(0, 1400),
         storyFrame: { frame: s.storyFrame.frame, confidence: s.storyFrame.confidence, basis: s.storyFrame.basis.slice(0, 180) },
+        directorScore: {
+            narrativeType: s.directorScore.narrativeType,
+            sceneFunction: s.directorScore.sceneFunction,
+            settingIdentity: s.directorScore.settingIdentity,
+            settingForces: s.directorScore.settingForces,
+            motion: s.directorScore.motion,
+            score: s.directorScore.score,
+            trajectory: s.directorScore.trajectory,
+            meaningfulAim: s.directorScore.meaningfulAim,
+            surprise: s.directorScore.surprise,
+            change: s.directorScore.change,
+            basis: s.directorScore.basis,
+        },
         narrativeEvents: s.narrativeEvents.slice(-6).map(event => ({
             id: event.id,
             title: event.title,
@@ -353,7 +385,7 @@ export function isStateAligned(state, messages = [], chatId = '') {
 // without waiting for another planner request.
 export function isGuidanceUsable(state, messages = [], chatId = '') {
     const s = normalizeState(state);
-    if (!s.lastInject || !s.nextGuides.length) return false;
+    if (!s.lastInject || !s.nextGuides.length || !s.directorScore.score || !s.directorScore.meaningfulAim) return false;
     if (s.planHorizons.items.length < 6 || s.planHorizons.items.at(-1)?.stability !== 'slow') return false;
     if (isStateAligned(s, messages, chatId)) return true;
     if (s.sourceChatId && chatId && s.sourceChatId !== String(chatId)) return false;
@@ -414,6 +446,11 @@ function backgroundCue(guide, emphasized = false) {
     return `MOVEMENT${emphasized ? ' [EMPHASIS]' : ''}: ${clippedText(guide.direction, 180)}\nIF: ${clippedText(guide.useWhen, 90)}\nUNLESS: ${clippedText(guide.dropWhen, 80)}\nDRAMATIC SCORE: ${clippedText(guide.responseBias, 110)}\nDESIRED AFTEREFFECT: ${clippedText(guide.worldDelta, 110)}${boundary ? `\nINFORMATION BOUNDARY: ${boundary}` : ''}`;
 }
 
+function narrativeConductor(score) {
+    const forces = score.settingForces.length ? score.settingForces.map(item => clippedText(item, 110).replace(/[.;:,]+$/u, '')).join('; ') : 'Use only setting forces established by the supplied context.';
+    return `NARRATIVE CONDUCTOR (active even if the optional movement below is inapplicable):\nNARRATIVE TYPE: ${clippedText(score.narrativeType, 90)}\nSCENE FUNCTION: ${clippedText(score.sceneFunction, 105)}\nSETTING IDENTITY: ${clippedText(score.settingIdentity, 105)}\nACTIVE SETTING FORCES: ${forces}\nARC MOTION: ${score.motion.toUpperCase()} — ${clippedText(score.trajectory, 180)}\nDYNAMIC SCORE: ${clippedText(score.score, 180)}\nSURPRISE LATITUDE: ${clippedText(score.surprise, 100)}\nMEANINGFUL AIM: ${clippedText(score.meaningfulAim, 160)}\nConduct the reply through this dramatic logic. It must influence emphasis, NPC/world initiative, and what changes by the end, while adapting to the complete latest turn. Make the established setting causally present through its relevant institutions, technology, culture, metaphysics, constraints, scale, or social assumptions—not generic genre prose, random iconic references, cameos, or reference soup. Build or release pressure with intention; do not merely add atmosphere. Never dictate the player's action, feeling, or decision.`;
+}
+
 function boundedPromptLines(items, prefix, perItem, total) {
     if (!items.length) return '';
     const fairShare = Math.max(100, Math.floor(total / items.length) - prefix.length - 1);
@@ -445,9 +482,10 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
         : s.nextGuides;
     const selectedIndex = candidates.length ? Math.max(0, Math.min(candidates.length - 1, Number(guideIndex) || 0)) : 0;
     const selectedCandidate = candidates[selectedIndex] || null;
+    const conductorPrompt = guidanceUsable ? `${narrativeConductor(s.directorScore)}\n\n` : '';
     const pacingBoundary = 'PACING BOUNDARY: Match the latest user action\'s exact scope. Heading, going, or walking to a destination permits travel and arrival only—not doing or finishing the activity there, advancing to the next task, or skipping additional time unless the user asks.';
     const routePrompt = guidanceUsable && selectedCandidate
-        ? `Adaptive narrative movement${regeneration ? ' for a different regeneration' : ''} (optional):\n${backgroundCue(selectedCandidate, true)}\nJudge the narrative type, scene function, character dynamics, and current dramatic state from the complete latest turn. Use this movement only if its IF condition holds and its UNLESS condition does not; otherwise ignore it. It is a trajectory, not a screenplay or required event: choose the concrete dialogue, action, image, consequence, or grounded surprise yourself from established character and world causality. Interpret the score as a potentially changing blend of mood, energy, tempo, tension, focus, and surprise latitude. The aftereffect is the desired change, not its prescribed mechanism. Emphasis is optional.${regeneration ? ' Do not reuse the discarded reply\'s concrete realization.' : ''} Preserve due processes, established meanings, pacing, and player agency.\n${pacingBoundary}`
+        ? `${conductorPrompt}Adaptive narrative movement${regeneration ? ' for a different regeneration' : ''} (optional):\n${backgroundCue(selectedCandidate, true)}\nJudge the narrative type, scene function, character dynamics, and current dramatic state from the complete latest turn. Use this movement only if its IF condition holds and its UNLESS condition does not; otherwise ignore it—but continue following the Narrative Conductor. It is a trajectory, not a screenplay or required event: choose the concrete dialogue, action, image, consequence, or grounded surprise yourself from established character and world causality. Interpret the score as a potentially changing blend of mood, energy, tempo, tension, focus, and surprise latitude. The aftereffect is the desired change, not its prescribed mechanism. Emphasis is optional.${regeneration ? ' Do not reuse the discarded reply\'s concrete realization.' : ''} Preserve due processes, established meanings, pacing, and player agency.\n${pacingBoundary}`
         : regeneration
             ? `Background variation ${Math.max(1, Number(variationCue) || 1)}: if a supported NPC or world development naturally fits this beat, it may differ from the discarded reply's concrete event. Do not force one. Do not repeat a completed event, reinterpret established names or codes, invent an unsupported crisis, or decide player action.\n${pacingBoundary}`
             : `Background continuity only: allow supported NPC, schedule, or world processes to continue when they naturally fit this beat; do not force an event solely because this guide exists. Do not repeat a completed event, reinterpret established names or codes, or decide player action.\n${pacingBoundary}`;

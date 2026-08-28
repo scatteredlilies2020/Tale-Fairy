@@ -13,7 +13,7 @@ import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.8.2';
+const RUNTIME_VERSION = '0.9.0';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -1017,6 +1017,20 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         ? `${state.storyFrame.frame}${state.storyFrame.confidence ? ` · ${state.storyFrame.confidence} confidence` : ''}${state.storyFrame.basis ? `\nBasis: ${state.storyFrame.basis}` : ''}`
         : '';
     scratchpadText(board, 'scratchpad-frame', frame, 'Story frame is still uncertain.');
+
+    const score = state.directorScore || {};
+    const directorScore = score.score ? [
+        [score.narrativeType, score.sceneFunction].filter(Boolean).join(' · '),
+        score.settingIdentity && `Setting: ${score.settingIdentity}`,
+        score.settingForces?.length && `Active forces: ${score.settingForces.join('; ')}`,
+        `Motion: ${String(score.motion || 'hold').toUpperCase()}${score.change ? ` · ${score.change}` : ''}`,
+        score.score && `Score: ${score.score}`,
+        score.trajectory && `Trajectory: ${score.trajectory}`,
+        score.meaningfulAim && `Meaningful aim: ${score.meaningfulAim}`,
+        score.surprise && `Surprise: ${score.surprise}`,
+        score.basis && `Basis: ${score.basis}`,
+    ].filter(Boolean).join('\n') : '';
+    scratchpadText(board, 'scratchpad-director-score', directorScore, 'No persistent dramatic score yet.');
 
     const pathwayLines = (state.pathways || []).map(item => [
         `${item.id} [${item.status}${item.horizon ? ` · ${item.horizon}` : ''}${item.change !== 'keep' ? ` · ${item.change}` : ''}] — ${item.direction}`,

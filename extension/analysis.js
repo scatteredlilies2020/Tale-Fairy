@@ -13,6 +13,9 @@ export const ANALYSIS_SCHEMA_VALUE = {
     type: 'object', additionalProperties: false,
     properties: {
         story_frame: { type: 'object', additionalProperties: false, properties: { frame: { type: 'string' }, confidence: { type: 'string' }, basis: { type: 'string' } }, required: ['frame','confidence','basis'] },
+        director_score: { type: 'object', additionalProperties: false, properties: {
+            narrative_type: { type: 'string', maxLength: 100 }, scene_function: { type: 'string', maxLength: 120 }, setting_identity: { type: 'string', maxLength: 120 }, setting_forces: { type: 'array', maxItems: 3, items: { type: 'string', maxLength: 140 } }, motion: { type: 'string', enum: ['hold','build','turn','release','redirect','recover'] }, score: { type: 'string', maxLength: 220 }, trajectory: { type: 'string', maxLength: 240 }, meaningful_aim: { type: 'string', maxLength: 200 }, surprise: { type: 'string', maxLength: 120 }, change: { type: 'string', enum: ['keep','adjust','turn','release','replace'] }, basis: { type: 'string', maxLength: 180 },
+        }, required: ['narrative_type','scene_function','setting_identity','setting_forces','motion','score','trajectory','meaningful_aim','surprise','change','basis'] },
         scene: { type: 'object', additionalProperties: false, properties: {
             status: { type: 'string' }, activity: { type: 'string' }, pace: { type: 'string' }, intent: { type: 'string' }, location: { type: 'string' }, time: { type: 'string' }, loop: { type: 'boolean' },
         }, required: ['status','activity','pace','intent','location','time','loop'] },
@@ -40,7 +43,7 @@ export const ANALYSIS_SCHEMA_VALUE = {
             offered_ids: { type: 'array', maxItems: 4, items: { type: 'string', maxLength: 100 } }, manifested_ids: { type: 'array', maxItems: 4, items: { type: 'string', maxLength: 100 } }, unused_ids: { type: 'array', maxItems: 4, items: { type: 'string', maxLength: 100 } }, contradicted_ids: { type: 'array', maxItems: 4, items: { type: 'string', maxLength: 100 } }, pacing: { type: 'string', enum: ['respected','exceeded','uncertain'] }, reason: { type: 'string', maxLength: 300 },
         }, required: ['offered_ids','manifested_ids','unused_ids','contradicted_ids','pacing','reason'] },
         guidance: { type: 'string', maxLength: 700 }, inject: { type: 'boolean', const: true }, reason: { type: 'string', maxLength: 300 },
-    }, required: ['story_frame','scene','objectives','entities','possibilities','pathways','next_guides','plan_horizons','canon_constraints','note_resolution','ledger','narrative_events','cue_audit','guidance','inject','reason'],
+    }, required: ['story_frame','director_score','scene','objectives','entities','possibilities','pathways','next_guides','plan_horizons','canon_constraints','note_resolution','ledger','narrative_events','cue_audit','guidance','inject','reason'],
 };
 
 export const ANALYSIS_SCHEMA = Object.freeze({
@@ -75,9 +78,20 @@ export function validateAnalysisResult(result) {
     }
     const scene = result.scene;
     const storyFrame = result.story_frame;
+    const directorScore = result.director_score;
     if (!storyFrame || typeof storyFrame !== 'object' || Array.isArray(storyFrame)
         || ['frame', 'confidence', 'basis'].some(key => typeof storyFrame[key] !== 'string')) {
         errors.push('story_frame must contain frame, confidence, and basis strings');
+    }
+    if (!directorScore || typeof directorScore !== 'object' || Array.isArray(directorScore)) {
+        errors.push('director_score must be an object');
+    } else {
+        for (const key of ['narrative_type', 'scene_function', 'setting_identity', 'score', 'trajectory', 'meaningful_aim', 'surprise', 'basis']) {
+            if (typeof directorScore[key] !== 'string' || !directorScore[key].trim()) errors.push(`director_score.${key} must be a non-empty string`);
+        }
+        if (!Array.isArray(directorScore.setting_forces)) errors.push('director_score.setting_forces must be an array');
+        if (!['hold', 'build', 'turn', 'release', 'redirect', 'recover'].includes(directorScore.motion)) errors.push('director_score.motion is invalid');
+        if (!['keep', 'adjust', 'turn', 'release', 'replace'].includes(directorScore.change)) errors.push('director_score.change is invalid');
     }
     if (!scene || typeof scene !== 'object' || Array.isArray(scene)) {
         errors.push('scene must be an object');
@@ -256,12 +270,26 @@ export function repairAnalysisResult(result) {
 
     const sceneSource = result.scene && typeof result.scene === 'object' && !Array.isArray(result.scene) ? result.scene : {};
     const storySource = result.story_frame && typeof result.story_frame === 'object' && !Array.isArray(result.story_frame) ? result.story_frame : {};
+    const directorSource = result.director_score && typeof result.director_score === 'object' && !Array.isArray(result.director_score) ? result.director_score : {};
     const repaired = {
         ...result,
         story_frame: {
             frame: asString(storySource.frame, 'unknown'),
             confidence: asString(storySource.confidence, 'low'),
             basis: asString(storySource.basis, 'Planner classification was incomplete.'),
+        },
+        director_score: {
+            narrative_type: asString(directorSource.narrative_type, 'adaptive character-driven narrative') || 'adaptive character-driven narrative',
+            scene_function: asString(directorSource.scene_function, 'Develop the present interaction without exceeding its boundary.') || 'Develop the present interaction without exceeding its boundary.',
+            setting_identity: asString(directorSource.setting_identity, 'Use the established setting identity rather than generic genre decoration.') || 'Use the established setting identity rather than generic genre decoration.',
+            setting_forces: uniqueStrings(directorSource.setting_forces).slice(0, 3),
+            motion: oneOf(directorSource.motion, ['hold', 'build', 'turn', 'release', 'redirect', 'recover'], 'hold'),
+            score: asString(directorSource.score, 'Match the present charge, then create one earned change in dramatic pressure.') || 'Match the present charge, then create one earned change in dramatic pressure.',
+            trajectory: asString(directorSource.trajectory, 'Carry the current relationship or world pressure forward across the next few turns.') || 'Carry the current relationship or world pressure forward across the next few turns.',
+            meaningful_aim: asString(directorSource.meaningful_aim, 'Change understanding, relationship, stakes, or available choices in a scene-supported way.') || 'Change understanding, relationship, stakes, or available choices in a scene-supported way.',
+            surprise: asString(directorSource.surprise, 'Allow only an earned surprise arising from established character or world causality.') || 'Allow only an earned surprise arising from established character or world causality.',
+            change: oneOf(directorSource.change, ['keep', 'adjust', 'turn', 'release', 'replace'], 'replace'),
+            basis: asString(directorSource.basis, 'Recovered from the active scene and retained narrative trajectory.') || 'Recovered from the active scene and retained narrative trajectory.',
         },
         scene: {
             status: asString(sceneSource.status, 'active') || 'active',
@@ -461,6 +489,7 @@ function compactPromptStateForPriority(current = {}) {
     const horizons = current.planHorizons || {};
     return {
         mode: current.mode,
+        directorScore: current.directorScore,
         scene: current.scene,
         objectives: (current.objectives || []).slice(-2).map(item => ({ title: compactText(item.title, 80), detail: compactText(item.detail, 100), status: compactText(item.status, 30) })),
         entities: (current.entities || []).slice(-1).map(item => ({ name: compactText(item.name, 80), state: compactText(item.state, 100), location: compactText(item.location, 60), relevance: compactText(item.relevance, 60) })),
@@ -477,6 +506,7 @@ function compactPromptStateForPriority(current = {}) {
         contextLedger: compactText(current.contextLedger, 700),
         storyFrame: current.storyFrame,
         narrativeEvents: (current.narrativeEvents || []).slice(-3).map(item => ({ id: compactText(item.id, 60), summary: compactText(item.summary, 120), scope: item.scope, epistemicStatus: item.epistemicStatus, disclosure: item.disclosure, status: item.status, cause: compactText(item.cause, 100), consequences: (item.consequences || []).slice(0, 1).map(value => compactText(value, 100)) })),
+        lastOfferedCues: (current.lastOfferedCues || []).slice(0, 1).map(item => ({ id: compactText(item.id, 80), direction: compactText(item.direction, 160), useWhen: compactText(item.useWhen, 100), dropWhen: compactText(item.dropWhen, 100), worldDelta: compactText(item.worldDelta, 120), requestConfirmed: item.requestConfirmed === true })),
     };
 }
 
@@ -492,6 +522,7 @@ function compactPromptStateForBudget(current = {}) {
     const horizons = current.planHorizons || {};
     return {
         mode: current.mode,
+        directorScore: current.directorScore ? { narrativeType: compactText(current.directorScore.narrativeType, 70), sceneFunction: compactText(current.directorScore.sceneFunction, 80), settingIdentity: compactText(current.directorScore.settingIdentity, 80), settingForces: (current.directorScore.settingForces || []).slice(0, 2).map(item => compactText(item, 80)), motion: current.directorScore.motion, score: compactText(current.directorScore.score, 100), trajectory: compactText(current.directorScore.trajectory, 110), meaningfulAim: compactText(current.directorScore.meaningfulAim, 100), surprise: compactText(current.directorScore.surprise, 70), change: current.directorScore.change } : undefined,
         scene: current.scene,
         objectives: (current.objectives || []).slice(-2).map(item => ({ title: compactText(item.title, 80), detail: compactText(item.detail, 100), status: compactText(item.status, 30) })),
         entities: (current.entities || []).slice(-1).map(item => ({ name: compactText(item.name, 80), state: compactText(item.state, 80), location: compactText(item.location, 60), relevance: compactText(item.relevance, 60) })),
@@ -508,6 +539,7 @@ function compactPromptStateForBudget(current = {}) {
         contextLedger: compactText(current.contextLedger, 300),
         storyFrame: { frame: current.storyFrame?.frame, confidence: current.storyFrame?.confidence, basis: compactText(current.storyFrame?.basis, 100) },
         narrativeEvents: (current.narrativeEvents || []).slice(-2).map(item => ({ id: compactText(item.id, 50), summary: compactText(item.summary, 90), scope: item.scope, epistemicStatus: item.epistemicStatus, disclosure: item.disclosure, status: item.status, cause: compactText(item.cause, 70), consequences: (item.consequences || []).slice(0, 1).map(value => compactText(value, 70)) })),
+        lastOfferedCues: (current.lastOfferedCues || []).slice(0, 1).map(item => ({ id: compactText(item.id, 60), direction: compactText(item.direction, 100), worldDelta: compactText(item.worldDelta, 80), requestConfirmed: item.requestConfirmed === true })),
     };
 }
 
@@ -905,6 +937,9 @@ export function applyAnalysis(state, result, messages) {
     const next = normalizeState(useSpecificPlayerName(state, playerName));
     const value = result && typeof result === 'object' ? useSpecificPlayerName(result, playerName) : {};
     if (value.story_frame && typeof value.story_frame === 'object') next.storyFrame = { ...next.storyFrame, frame: String(value.story_frame.frame || 'unknown').slice(0, 40), confidence: String(value.story_frame.confidence || 'low').slice(0, 40), basis: String(value.story_frame.basis || '').slice(0, 240) };
+    if (value.director_score && typeof value.director_score === 'object') {
+        next.directorScore = normalizeState({ directorScore: value.director_score }).directorScore;
+    }
     next.scene = { ...next.scene, ...(value.scene || {}) };
     next.objectives = Array.isArray(value.objectives) ? value.objectives.slice(0, 10) : next.objectives;
     next.entities = Array.isArray(value.entities) ? value.entities.slice(-8) : next.entities;
@@ -927,7 +962,7 @@ export function applyAnalysis(state, result, messages) {
         ? value.canon_constraints.slice(-12).map(item => String(item || '').trim().slice(0, 500)).filter(Boolean)
         : next.canonConstraints;
     next.guidance = String(value.guidance || '').trim().slice(0, 700);
-    next.lastInject = Boolean(next.nextGuides.length);
+    next.lastInject = Boolean(next.nextGuides.length && next.directorScore.score && next.directorScore.meaningfulAim);
     next.lastReason = String(value.reason || '').trim().slice(0, 500);
     if (typeof value.ledger === 'string' && value.ledger.trim()) next.contextLedger = value.ledger.trim().slice(0, 3000);
     if (Array.isArray(value.narrative_events)) {
@@ -1018,13 +1053,19 @@ Return one to five compact conditional pathways for what may follow the complete
 
 After juggling the scene, world model, possibilities, pathways, objectives, schedules, and every time horizon privately, return three or four ranked next_guides as compact conditional narrative movements. First judge the narrative type and current scene function from evidence—such as intimate conversation, discovery, comedy, action, suspense, aftermath, travel, slice of life, horror, romance, or a blend—without forcing a genre label that does not fit. Then judge the scene's present emotional charge, energy, tempo, tension, focus, and appetite for surprise. Light mode normally uses three movements; Balanced and Fun should use four when four genuinely distinct supported trajectories exist, but never pad the set with duplicates. The first is the strongest fit to emphasize; all remain optional, and the roleplay model may use zero or one after applying use_when and drop_when to the newest user turn.
 
+Return director_score as the persistent dramatic conducting layer that remains useful even when a concrete next guide becomes inapplicable. It is not style advice and must not reset cosmetically every turn. Read the whole supplied evidence, including summaries and retained state, to identify the actual narrative type, the current scene's dramatic function, and the setting's specific identity. setting_identity must name the established world or its distinctive operating logic when supported; do not reduce Star Wars, fantasy, cyberpunk, horror, or another recognizable setting to “sci-fi,” “genre flavor,” or generic ambience. setting_forces names zero to three mechanisms presently capable of exerting causal pressure—institutions, technology, culture, metaphysics, geography, conflict, law, scarcity, scale, or social assumptions—not a list of famous nouns.
+
+Use motion to conduct the scene across turns: hold when charged material needs room, build when pressure or attachment should accumulate, turn when an earned contrast or reversal is ready, release when payoff or relief is due, redirect when the user's action changes the center, and recover after disruption or overreach. score describes a changing combination of emotional charge, energy, tempo, tension, focus, and tonal contrast rather than one adjective. trajectory names a specific two-to-four-turn dramatic development grounded in current people and world forces. meaningful_aim names what should actually change in understanding, relationship, stakes, choices, resources, obligations, or a live process—not “make it vivid,” atmosphere, banter, or activity for its own sake. surprise grants calibrated latitude and a causal source; it never demands randomness. Use keep or adjust while the same supported trajectory is developing, turn or release when its accumulated pressure earns that operation, and replace only when evidence or user direction makes the former trajectory irrelevant. The latest user direction wins, but continuity means the dramatic motion has memory and consequence.
+
+The director score and first next guide must agree, but they serve different purposes: the director score conducts the reply generally; the concrete guide offers one optional realization. Rank first a movement whose IF is true and UNLESS is false at analysis time and which remains executable by an NPC or world process under the broadest reasonable continuation of the current scene. Never rank a departed, absent, completed, superseded, or merely historical actor/process first. Put narrower alternatives later. If every specific development is fragile, make the first movement a broad but meaningful relationship, information, or setting-pressure change rather than a likely no-op.
+
 The candidates must differ in dramatic movement and causal opportunity—not merely wording or predetermined incidents. A movement may hold, deepen, contrast, turn, quicken, surge, ease, release, destabilize, or recover according to what this particular narrative and scene can bear. Avoid monotonically escalating every scene: quietness, humor, tenderness, dread, friction, wonder, release, and sudden contrast are all useful when earned. Surprise is latitude, not an obligation. It may range from none, through a subtle character turn, to a bold world development; its exact form must arise from established motives, relationships, setting mechanisms, objects, institutions, unresolved threads, or chance genuinely permitted by the story. Never manufacture randomness just to be surprising.
 
 Use direction for the high-level trajectory rather than a specific screenplay. Make response_bias a concise dramatic score describing the desired combination or arc of mood, energy, tempo, tension, focus, and surprise latitude; it can be nuanced and may change across the response rather than choosing one static adjective. Make world_delta the meaningful desired aftereffect while leaving the concrete dialogue, action, imagery, and causal mechanism for the roleplay model to judge. A score such as “restrained warmth; linger, then lightly quicken; ease tension; focus on wary trust; allow one earned oddity” is useful; “have Mara drop the cup and reveal the letter” is too prescriptive unless that event is already causally due. Ground flavor in established characterization and world behavior, but do not prescribe prose style, sentence shape, formatting, or imitation. Preserve established facts, causal continuity, pacing, information boundaries, and player agency. The aftereffect must occur within or immediately at the endpoint of the player's declared action; it must not consume a later implied activity. Write use_when and drop_when as binding in-story conditions. Never mention swipes, generation metadata, writing, or candidate rank inside a movement.
 
 Link a next guide to any narrative_events it realizes through causal_event_ids. Set disclosure to none when no hidden causal state is involved. Use consequence-only when the scene should show an effect but keep its cause wholly offscreen; in that case direction and world_delta must contain only what can be perceived now and must not name, confirm, summarize, or flash back to the hidden cause. Use partial-clue for one supported clue without confirmation, and reveal-cause only when an established in-world channel makes disclosure timely. This controls narrative information, not prose style: never prescribe wording, sentence shape, tone imitation, formatting, or stylistic technique.
 
-Pathways, possibilities, objectives, entities, schedules, narrative events, plan horizons, audit details, and the general guidance field are private planning material and are never copied wholesale into the roleplay prompt. Put only the adaptive dramatic score—not a hidden screenplay—in that next guide's response_bias. Always return inject=true, three to four contrasting conditional narrative movements in next_guides, one to five pathways, six to ten plan horizons, cue_audit, and a compact guidance string for the private scratchpad; guidance may be empty. Keep the ledger compact.`;
+Pathways, possibilities, objectives, entities, schedules, narrative events, plan horizons, audit details, and the general guidance field are private planning material and are never copied wholesale into the roleplay prompt. director_score is injected as compact dramatic logic, so it must be specific, actionable, causally grounded, and safe without revealing hidden planner-only facts. Put only the adaptive dramatic score—not a hidden screenplay—in a next guide's response_bias. Always return inject=true, director_score, three to four contrasting conditional narrative movements in next_guides, one to five pathways, six to ten plan horizons, cue_audit, and a compact guidance string for the private scratchpad; guidance may be empty. Keep the ledger compact.`;
 const PLANNER_SYSTEM = `${CORE_PLANNER_POLICY}\n${EVIDENCE_FIRST_POLICY}`;
 
 export { PLANNER_SYSTEM as SYSTEM, extractJson };
