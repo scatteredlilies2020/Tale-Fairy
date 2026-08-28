@@ -19,7 +19,7 @@ const planHorizons = {
     ],
     deviation: { level: 'none', reason: 'Initial plan.' },
 };
-const requiredPlanning = { story_frame: { frame: 'grounded', confidence: 'high', basis: 'ordinary scene' }, pathways, next_guides: nextGuides, plan_horizons: planHorizons, canon_constraints: [], note_resolution: null, ledger: 'Tea conversation is active.', narrative_events: [] };
+const requiredPlanning = { story_frame: { frame: 'grounded', confidence: 'high', basis: 'ordinary scene' }, pathways, next_guides: nextGuides, plan_horizons: planHorizons, canon_constraints: [], note_resolution: null, ledger: 'Tea conversation is active.', narrative_events: [], cue_audit: { offered_ids: [], manifested_ids: [], unused_ids: [], contradicted_ids: [], pacing: 'respected', reason: 'No prior cues were offered.' } };
 
 test('extractJson accepts fenced and wrapped JSON', () => {
     assert.deepEqual(extractJson('```json\n{"inject":false}\n```'), { inject: false });
@@ -54,6 +54,7 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /never rewrite the user's text/);
     assert.match(SYSTEM, /Lore is an active causal system/);
     assert.match(SYSTEM, /Use narrative_events as the compact working causal state, not as a recap or transcript/);
+    assert.match(SYSTEM, /Preserve concrete timing in timing and update due_state/);
     assert.match(SYSTEM, /simulated is one causally supported offscreen occurrence selected by Tale Fairy/);
     assert.match(SYSTEM, /A visible consequence can make an offscreen event narratively real without narrating/);
     assert.match(SYSTEM, /Preserve competing explanations when evidence does not justify selecting one/);
@@ -68,8 +69,7 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /Keep every referent unambiguous inside each guide/);
     assert.match(SYSTEM, /Dorn-2 medical unit on Level 10/);
     assert.match(SYSTEM, /Never reinterpret an established code or proper noun as a different kind of entity/);
-    assert.match(SYSTEM, /not the lowest-risk, least-committal, or most literal continuation/);
-    assert.match(SYSTEM, /every swipe alternative must honor or materially address it/);
+    assert.match(SYSTEM, /all remain optional, and the roleplay model may use zero or one/);
     assert.match(SYSTEM, /promised, agreed, deferred, owed, revealed, decided, or established only when raw conversation/);
     assert.match(SYSTEM, /Planner-created ideas may shape the future but must never be backfilled/);
     assert.match(SYSTEM, /previous planner hypotheses, not evidence/);
@@ -81,8 +81,8 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /A world_delta must matter after its sentence/);
     assert.match(SYSTEM, /not low-stakes procedural noise used to avoid a stronger supported thread/);
     assert.match(SYSTEM, /Do not pay off a delayed or repeatedly raised development with another promise/);
-    assert.match(SYSTEM, /requestConfirmed proves prompt delivery only, never story compliance/);
-    assert.match(SYSTEM, /make a direct repair the primary next guide/);
+    assert.match(SYSTEM, /requestConfirmed proves only that the cue set was present/);
+    assert.match(SYSTEM, /An unused cue creates no failure, repair debt, repetition pressure/);
     assert.match(SYSTEM, /deliver concrete substance now/);
     assert.match(SYSTEM, /six to ten concise plan_horizons\.items ordered from the next few turns to a distant story horizon/);
     assert.match(SYSTEM, /some later arc or meaningful future time/);
@@ -105,9 +105,8 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /one to five compact conditional pathways/);
     assert.match(SYSTEM, /empty response_bias is valid/);
     assert.match(SYSTEM, /Re-evaluate the set after every completed assistant response/);
-    assert.match(SYSTEM, /two or three ranked next_guides/);
-    assert.match(SYSTEM, /mandatory contrasting alternatives reserved for generated swipes/);
-    assert.match(SYSTEM, /all preserving established facts, characterization, causal continuity/);
+    assert.match(SYSTEM, /two or three ranked next_guides as a compact conditional background cue set/);
+    assert.match(SYSTEM, /not a prediction, commitment, required outcome, or fact that already happened/);
     assert.match(SYSTEM, /private planning material and are never copied wholesale into the roleplay prompt/);
     assert.match(SYSTEM, /Use consequence-only when the scene should show an effect but keep its cause wholly offscreen/);
     assert.match(SYSTEM, /This controls narrative information, not prose style/);
@@ -140,6 +139,20 @@ test('planner requires distinct alternatives for swipe variety', () => {
     assert.equal(validateAnalysisResult({ ...result, next_guides: nextGuides.map((guide, index) => index ? guide : { ...guide, direction: 'Mara promises to explain tomorrow.', world_delta: 'Mara commits to a morning explanation.' }) }).valid, false);
     assert.equal(validateAnalysisResult({ ...result, next_guides: nextGuides.map((guide, index) => index ? guide : { ...guide, direction: 'A routine ping arrives.', world_delta: 'A small routine notice changes nothing important.' }) }).valid, false);
     assert.equal(validateAnalysisResult(result).valid, true);
+});
+
+test('post-response audit classifies optional cues without creating delivery debt', () => {
+    const result = {
+        ...requiredPlanning,
+        scene: { status: 'active', activity: 'arriving for breakfast', pace: 'steady', intent: 'eat breakfast', location: 'dining hall', time: 'morning', loop: false },
+        objectives: [], entities: [], possibilities: [], guidance: '', inject: true, reason: 'Keep background developments conditional.',
+        cue_audit: { offered_ids: ['filing', 'message'], manifested_ids: [], unused_ids: ['filing', 'message'], contradicted_ids: [], pacing: 'respected', reason: 'Neither optional cue appeared; arrival remained within scope.' },
+    };
+    assert.equal(validateAnalysisResult(result).valid, true);
+    assert.equal(validateAnalysisResult({ ...result, cue_audit: { ...result.cue_audit, unused_ids: ['filing'], manifested_ids: ['unknown'] } }).valid, false);
+    const next = applyAnalysis(defaultState(), result, [{ mes: 'We arrive for breakfast.', is_user: false }]);
+    assert.deepEqual(next.cueAudit.unusedIds, ['filing', 'message']);
+    assert.equal(next.cueAudit.pacing, 'respected');
 });
 
 test('planner requires a distant but open-ended highest horizon', () => {
@@ -242,10 +255,10 @@ test('planner modes provide materially distinct intervention policies', () => {
     assert.match(prompts.light.mode_instruction, /rather than redirect it/);
     assert.match(prompts.balanced.mode_instruction, /one to three distinct supported possibilities/);
     assert.match(prompts.balanced.mode_instruction, /moderate intervention/);
-    assert.match(prompts.fun.mode_instruction, /Be bold, energetic/);
-    assert.match(prompts.fun.mode_instruction, /three to six genuinely distinct supported possibilities/);
-    assert.match(prompts.fun.mode_instruction, /decisively bring the strongest one onstage/);
-    assert.match(prompts.fun.mode_instruction, /Do not merely hint or wait/);
+    assert.match(prompts.fun.mode_instruction, /Search boldly across distinct actors and live threads/);
+    assert.match(prompts.fun.mode_instruction, /Rank the strongest causally ready development first/);
+    assert.match(prompts.fun.mode_instruction, /optional background cue/);
+    assert.match(prompts.fun.mode_instruction, /never makes a cue mandatory/);
     assert.notEqual(prompts.light.mode_instruction, prompts.balanced.mode_instruction);
     assert.notEqual(prompts.balanced.mode_instruction, prompts.fun.mode_instruction);
 });
@@ -263,8 +276,8 @@ test('every planner mode leaves narrative pacing under user control', () => {
         assert.match(prompt.pacing_instruction, /complete latest user turn/);
     }
     assert.match(MODE_INSTRUCTIONS.light, /must not artificially prolong a beat or slow a user/);
-    assert.match(MODE_INSTRUCTIONS.balanced, /does not mean changing the user's narrative speed/);
-    assert.match(MODE_INSTRUCTIONS.fun, /do not rush the user's timeline/);
+    assert.match(MODE_INSTRUCTIONS.balanced, /does not change the user's narrative speed/);
+    assert.match(MODE_INSTRUCTIONS.fun, /never makes a cue mandatory, rushes the user's timeline/);
 });
 
 test('analysis prompt maintains a lightweight world model', () => {
@@ -388,13 +401,14 @@ test('narrative events are stored internally but guidance remains the only injec
     const next = applyAnalysis(defaultState(), {
         scene: { status: 'active' }, objectives: [], entities: [], possibilities: [],
         story_frame: { frame: 'grounded', confidence: 'high', basis: 'ordinary setting' },
-        narrative_events: [{ id: 'shop-close', title: 'Trade shop closes', summary: 'The shop is unavailable after dusk.', scope: 'onscreen', epistemic_status: 'established', disclosure: 'revealed', status: 'active', confidence: 'high', cause: 'The posted closing hour reached dusk.', consequences: ['The shop is unavailable tonight.'], basis: 'current scene', requirements: [], interpretation: 'established_fact' }],
+        narrative_events: [{ id: 'shop-close', title: 'Trade shop closes', summary: 'The shop is unavailable after dusk.', scope: 'onscreen', epistemic_status: 'established', disclosure: 'revealed', status: 'active', confidence: 'high', timing: 'after dusk', due_state: 'due', cause: 'The posted closing hour reached dusk.', consequences: ['The shop is unavailable tonight.'], basis: 'current scene', requirements: [], interpretation: 'established_fact' }],
         guidance: 'Keep the evening calm.', inject: true,
     }, messages);
     assert.equal(next.narrativeEvents.length, 1);
     assert.equal(next.narrativeEvents[0].id, 'shop-close');
     assert.equal(next.narrativeEvents[0].epistemicStatus, 'established');
     assert.deepEqual(next.narrativeEvents[0].consequences, ['The shop is unavailable tonight.']);
+    assert.equal(next.narrativeEvents[0].dueState, 'due');
     assert.equal(next.guidance, 'Keep the evening calm.');
     assert.equal(next.storyFrame.frame, 'grounded');
 });
@@ -403,7 +417,7 @@ test('planner validates a selected offscreen cause and its consequence-only guid
     const event = {
         id: 'school-conflict', title: 'Conflict at school', summary: 'A peer struck Eli during an offscreen dispute.',
         scope: 'offscreen', epistemic_status: 'simulated', disclosure: 'hidden', status: 'active',
-        confidence: 'moderate',
+        confidence: 'moderate', timing: 'during the completed school day', due_state: 'due',
         cause: 'An established peer conflict escalated during the school day.', consequences: ['Eli returns home with a black eye.'],
         basis: 'Eli attended school while the peer conflict remained active.', requirements: [], interpretation: 'supported_inference',
     };
@@ -426,7 +440,7 @@ test('jokes, wishes, and unsupported absurdities are not retained as events', ()
     const next = applyAnalysis(defaultState(), { narrative_events: [
         { id: 'wish', title: 'Meet the president', summary: 'The user hopes this happens.', interpretation: 'wish' },
         { id: 'joke', title: 'Moon explodes', summary: 'A joke.', interpretation: 'joke' },
-        { id: 'real', title: 'Assignment due', summary: 'The assignment is due tomorrow.', scope: 'onscreen', epistemic_status: 'established', disclosure: 'revealed', interpretation: 'established_fact', status: 'active', confidence: 'high', cause: 'The school set a deadline.', consequences: ['Work remains due tomorrow.'], basis: 'user and assistant established it', requirements: [] },
+        { id: 'real', title: 'Assignment due', summary: 'The assignment is due tomorrow.', scope: 'onscreen', epistemic_status: 'established', disclosure: 'revealed', interpretation: 'established_fact', status: 'active', confidence: 'high', timing: 'tomorrow', due_state: 'pending', cause: 'The school set a deadline.', consequences: ['Work remains due tomorrow.'], basis: 'user and assistant established it', requirements: [] },
     ] }, [{ mes: 'Hopefully I meet the president.', is_user: true }]);
     assert.deepEqual(next.narrativeEvents.map(event => event.id), ['real']);
 });

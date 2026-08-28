@@ -22,7 +22,7 @@ test('state normalizes caps and invalid mode', () => {
     assert.deepEqual(state.nextGuides.map(item => item.id), ['guide-0', 'guide-1', 'guide-2']);
     assert.ok(state.nextGuides[0].responseBias.length <= 130);
     assert.match(state.nextGuides[0].responseBias, /finished…$/);
-    assert.equal(state.version, 18);
+    assert.equal(state.version, 19);
 });
 
 test('offscreen causes persist privately while injection exposes only their consequence', () => {
@@ -35,6 +35,8 @@ test('offscreen causes persist privately while injection exposes only their cons
         disclosure: 'hidden',
         status: 'active',
         confidence: 'moderate',
+        timing: 'during the school day',
+        dueState: 'due',
         cause: 'A simmering peer conflict escalated while Eli was at school.',
         consequences: ['Eli returns with a black eye.', 'Eli may avoid discussing school.'],
         basis: 'Eli attended school and the peer conflict was already active.',
@@ -80,7 +82,7 @@ test('request verification accepts an in-place swipe replacement', () => {
     assert.equal(returnedReplyMatchesVerification({ ...base, replacementGeneration: true }, messages, 'other-chat'), false);
 });
 
-test('planner sees only the selected delivered delta for compliance repair', () => {
+test('planner sees every offered cue for neutral post-response audit', () => {
     const state = {
         ...defaultState(),
         lastRequestVerification: {
@@ -89,10 +91,10 @@ test('planner sees only the selected delivered delta for compliance repair', () 
         },
     };
     const promptState = stateForPrompt(state);
-    assert.equal(promptState.lastDelivery.id, 'telling-deflection');
-    assert.equal(promptState.lastDelivery.worldDelta, stateNextGuides[1].worldDelta);
-    assert.equal(promptState.lastDelivery.requestConfirmed, true);
-    assert.equal(Object.hasOwn(promptState.lastDelivery, 'guideCandidates'), false);
+    assert.deepEqual(promptState.lastOfferedCues.map(item => item.id), ['direct-answer', 'telling-deflection']);
+    assert.equal(promptState.lastOfferedCues[1].worldDelta, stateNextGuides[1].worldDelta);
+    assert.equal(promptState.lastOfferedCues[0].requestConfirmed, true);
+    assert.equal(Object.hasOwn(promptState, 'lastDelivery'), false);
 });
 
 test('state retains a bounded horizon ladder with increasing planning detail', () => {
@@ -190,7 +192,7 @@ test('pre-canon-ledger state requests one bounded bootstrap rescan', () => {
 
 test('pre-momentum guides and request verification cannot remain injectable after an upgrade', () => {
     const migrated = normalizeState({ version: 16, ...currentPlan, nextGuides: stateNextGuides, canonConstraints: ['Fact from a discarded response.'], lastInject: true, lastRequestVerification: { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides } });
-    assert.equal(migrated.version, 18);
+    assert.equal(migrated.version, 19);
     assert.equal(migrated.canonBootstrapPending, true);
     assert.deepEqual(migrated.nextGuides, []);
     assert.deepEqual(migrated.canonConstraints, []);
@@ -221,39 +223,40 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(stale, /OPTIONAL SUGGESTION: A quiet meal could happen/);
     assert.match(stale, /HARD EXCLUSION: No time travel/);
     assert.doesNotMatch(stale, /Keep the scene grounded/);
-    assert.match(stale, /Choose one new grounded NPC or world outcome/);
+    assert.match(stale, /Background continuity only/);
     assert.match(stale, /Do not repeat a completed event/);
     assert.doesNotMatch(stale, /Let Mara answer plainly|meaningful deflection/);
     const current = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
     assert.match(current, /^<tale-fairy-context>/);
     assert.match(current, /<\/tale-fairy-context>$/);
     assert.doesNotMatch(current, /Keep the scene grounded/);
-    assert.match(current, /Narrative route:/);
-    assert.match(current, /SUGGESTED ROUTE: Let Mara answer plainly/);
-    assert.match(current, /USE WHEN: The user continues or asks Mara/);
-    assert.match(current, /DROP WHEN: The user leaves or changes subject/);
-    assert.match(current, /ROUTE OUTCOME: Mara reveals a concern/);
-    assert.match(current, /Apply ROUTE OUTCOME only when USE WHEN is true and DROP WHEN is false/);
+    assert.match(current, /Conditional background cues \(use zero or one\)/);
+    assert.match(current, /CUE \[EMPHASIS\]: Let Mara answer plainly/);
+    assert.match(current, /IF: The user continues or asks Mara/);
+    assert.match(current, /UNLESS: The user leaves or changes subject/);
+    assert.match(current, /POSSIBLE EFFECT: Mara reveals a concern/);
+    assert.match(current, /Use at most one cue whose IF is true and UNLESS is false/);
+    assert.match(current, /not required outcomes and not facts that already happened/);
     assert.match(current, /Heading, going, or walking to a destination permits travel and arrival only/);
-    assert.match(current, /new narrative change, not a replay of a completed event/);
+    assert.match(current, /Preserve causally due schedules and offscreen processes/);
     assert.doesNotMatch(current, /discarded reply/);
     assert.doesNotMatch(current, /GROUNDING:|EXECUTION:|response is incomplete|failure/);
     assert.doesNotMatch(current, /Mara is present/);
-    assert.doesNotMatch(current, /telling-deflection|meaningful deflection/);
+    assert.match(current, /telling-deflection|meaningful deflection/);
     assert.doesNotMatch(current, /PATHWAYS|TIME HORIZONS|Revisit the obligation/);
 
     const swipe = buildPromptPayload(state, { enabled: true, guidanceUsable: true, guideCandidates: stateNextGuides, guideIndex: 1, regeneration: true });
-    assert.doesNotMatch(swipe, /ALTERNATIVE ROUTE 1|Let Mara answer plainly/);
-    assert.match(swipe, /Narrative route for a different regeneration/);
-    assert.match(swipe, /SUGGESTED ROUTE: Let Mara reveal a different pressure/);
+    assert.match(swipe, /Conditional background cues for a different regeneration/);
+    assert.match(swipe, /CUE \[EMPHASIS\]: Let Mara reveal a different pressure/);
     assert.match(swipe, /meaningful deflection/);
-    assert.match(swipe, /Do not reuse the discarded reply's event/);
-    assert.match(swipe, /otherwise discard this route/);
+    assert.match(swipe, /Let Mara answer plainly/);
+    assert.match(swipe, /Do not reuse the discarded reply's concrete event/);
+    assert.match(swipe, /If none fit, use none/);
     assert.doesNotMatch(swipe, /moderate|original|GROUNDING:|EXECUTION:/);
 
     const regenerationFallback = buildPromptPayload(state, { enabled: true, guidanceUsable: false, guideCandidates: [], regeneration: true, variationCue: 8472 });
-    assert.match(regenerationFallback, /Narrative variation 8472/);
-    assert.match(regenerationFallback, /one meaningful NPC or world outcome different from the discarded reply's event/);
+    assert.match(regenerationFallback, /Background variation 8472/);
+    assert.match(regenerationFallback, /may differ from the discarded reply's concrete event/);
     assert.match(regenerationFallback, /Do not repeat a completed event/);
     assert.match(regenerationFallback, /reinterpret established names or codes/);
     const regenerationGuide = regenerationFallback.match(/<living-world-guide>([\s\S]*?)<\/living-world-guide>/)?.[1] || '';
@@ -295,7 +298,7 @@ test('private planning state cannot bias the response without a selected next gu
     };
     const payload = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
     assert.doesNotMatch(payload, /closed-route|Use the sealed passage/);
-    assert.match(payload, /<living-world-guide>[\s\S]*Choose one new grounded NPC or world outcome/);
+    assert.match(payload, /<living-world-guide>[\s\S]*Background continuity only/);
 });
 
 test('explicit progress detection distinguishes commands from negation', () => {

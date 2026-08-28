@@ -13,7 +13,7 @@ import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.7.20';
+const RUNTIME_VERSION = '0.8.0';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -1027,8 +1027,8 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     scratchpadText(board, 'scratchpad-pathways', pathwayLines.join('\n\n'), 'No conditional pathways yet.');
 
     const guideLines = (state.nextGuides || []).map((item, index) => [
-        `${index === 0 ? 'Primary' : `Swipe ${index}`} · ${item.id} [${item.strength}] — ${item.direction}`,
-        `Visible change: ${item.worldDelta}`,
+        `${index === 0 ? 'Emphasis' : `Background ${index + 1}`} · ${item.id} [${item.strength}] — ${item.direction}`,
+        `Possible effect: ${item.worldDelta}`,
         `Grounding: ${item.origin} — ${item.basis}`,
         `Use if: ${item.useWhen}`,
         `Drop if: ${item.dropWhen}`,
@@ -1044,9 +1044,15 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     if (deviation?.level && deviation.level !== 'none') horizonLines.push(`Deviation: ${deviation.level}${deviation.reason ? ` — ${deviation.reason}` : ''}`);
     scratchpadText(board, 'scratchpad-horizons', horizonLines.join('\n'), 'No plan horizons yet.');
 
-    const decision = state.guidance
-        ? `${state.guidance}${state.lastReason ? `\n\nWhy: ${state.lastReason}` : ''}`
-        : (state.lastReason ? `No extra guidance.\nWhy: ${state.lastReason}` : 'No extra guidance.');
+    const audit = state.cueAudit;
+    const auditText = audit?.offeredIds?.length
+        ? `Cue audit: ${audit.pacing} pacing · ${audit.manifestedIds.length} manifested · ${audit.unusedIds.length} unused · ${audit.contradictedIds.length} contradicted${audit.reason ? `\n${audit.reason}` : ''}`
+        : (audit?.reason ? `Pacing audit: ${audit.pacing}\n${audit.reason}` : '');
+    const decision = [
+        state.guidance || 'No extra guidance.',
+        state.lastReason && `Why: ${state.lastReason}`,
+        auditText,
+    ].filter(Boolean).join('\n\n');
     scratchpadText(board, 'scratchpad-guidance', decision, 'No extra guidance.');
 
     const chatId = String(currentContext().getCurrentChatId?.() || '');

@@ -9,23 +9,25 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.7.20');
-    assert.equal(manifest.js, 'extension/index.js?v=0.7.20');
-    assert.equal(manifest.css, 'extension/style.css?v=0.7.20');
+    assert.equal(manifest.version, '0.8.0');
+    assert.equal(manifest.js, 'extension/index.js?v=0.8.0');
+    assert.equal(manifest.css, 'extension/style.css?v=0.8.0');
 });
 
-test('injection sends one immediate guide while alternatives and long-range planning stay private', () => {
-    assert.match(stateSource, /Narrative route/);
-    assert.match(stateSource, /SUGGESTED ROUTE:/);
-    assert.match(stateSource, /USE WHEN:/);
-    assert.match(stateSource, /DROP WHEN:/);
-    assert.match(stateSource, /ROUTE OUTCOME:/);
-    assert.match(stateSource, /Apply ROUTE OUTCOME only when USE WHEN is true/);
+test('injection sends optional background cues while long-range planning stays private', () => {
+    assert.match(stateSource, /Conditional background cues/);
+    assert.match(stateSource, /CUE/);
+    assert.match(stateSource, /IF:/);
+    assert.match(stateSource, /UNLESS:/);
+    assert.match(stateSource, /POSSIBLE EFFECT:/);
+    assert.match(stateSource, /Use at most one cue whose IF is true/);
+    assert.match(stateSource, /If none fit, use none/);
+    assert.match(stateSource, /Preserve causally due schedules and offscreen processes/);
     assert.match(stateSource, /PACING BOUNDARY:/);
     assert.match(stateSource, /Do not reuse the discarded reply/);
     assert.doesNotMatch(stateSource, /within two sentences|Answer once|recap|repeated dialogue|show only that outcome/);
     assert.match(stateSource, /<tale-fairy-context>/);
-    assert.doesNotMatch(stateSource, /SELECTED IMMEDIATE ROUTE|ALTERNATIVE ROUTE/);
+    assert.doesNotMatch(stateSource, /SUGGESTED ROUTE|ROUTE OUTCOME|SELECTED IMMEDIATE ROUTE|ALTERNATIVE ROUTE/);
     assert.doesNotMatch(stateSource, /GROUNDING:|EXECUTION:/);
     assert.match(stateSource, /planHorizons\.items/);
     assert.doesNotMatch(stateSource, /TIME HORIZONS/);

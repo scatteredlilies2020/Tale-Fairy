@@ -1,5 +1,5 @@
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 18;
+export const STATE_VERSION = 19;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -35,6 +35,7 @@ export function defaultState() {
         ledgerMessageCount: 0,
         ledgerUpdatedAt: 0,
         narrativeEvents: [],
+        cueAudit: { offeredIds: [], manifestedIds: [], unusedIds: [], contradictedIds: [], pacing: 'uncertain', reason: '' },
         lastAnalysisFingerprint: '',
         sourceMessageCount: 0,
         sourceChatId: '',
@@ -127,10 +128,26 @@ function normalizeEvent(value = {}) {
         disclosure: ['hidden', 'signaled', 'revealed'].includes(disclosure) ? disclosure : 'hidden',
         status: ['active', 'latent', 'manifested', 'resolved', 'retired'].includes(status) ? status : 'active',
         confidence: ['low', 'moderate', 'high'].includes(confidence) ? confidence : 'low',
+        timing: text(value.timing).slice(0, 120),
+        dueState: ['unscheduled', 'pending', 'due', 'overdue'].includes(text(value.dueState ?? value.due_state).toLowerCase()) ? text(value.dueState ?? value.due_state).toLowerCase() : 'unscheduled',
         cause: text(value.cause).slice(0, 220),
         consequences: cap(value.consequences, 3).map(item => text(item).slice(0, 160)).filter(Boolean),
         basis: text(value.basis).slice(0, 180),
         requirements: cap(value.requirements, 4).map(item => text(item).slice(0, 120)).filter(Boolean),
+    };
+}
+
+function normalizeCueAudit(value = {}) {
+    const ids = key => cap(value[key] ?? value[key.replace(/[A-Z]/g, match => `_${match.toLowerCase()}`)], 3)
+        .map(item => text(item).slice(0, 100)).filter(Boolean);
+    const pacing = text(value.pacing, 'uncertain').toLowerCase();
+    return {
+        offeredIds: ids('offeredIds'),
+        manifestedIds: ids('manifestedIds'),
+        unusedIds: ids('unusedIds'),
+        contradictedIds: ids('contradictedIds'),
+        pacing: ['respected', 'exceeded', 'uncertain'].includes(pacing) ? pacing : 'uncertain',
+        reason: text(value.reason).slice(0, 300),
     };
 }
 
@@ -241,6 +258,7 @@ export function normalizeState(input = {}) {
         ledgerMessageCount: Math.max(0, Number(value.ledgerMessageCount) || 0),
         ledgerUpdatedAt: Number(value.ledgerUpdatedAt) || 0,
         narrativeEvents: cap(value.narrativeEvents, MAX_EVENTS).map(normalizeEvent).filter(event => event.title && event.summary),
+        cueAudit: normalizeCueAudit(value.cueAudit),
         lastAnalysisFingerprint: text(value.lastAnalysisFingerprint),
         sourceMessageCount: Math.max(0, Number(value.sourceMessageCount) || 0),
         sourceChatId: text(value.sourceChatId),
@@ -267,8 +285,7 @@ export function clearState(metadata) {
 
 export function stateForPrompt(state) {
     const s = normalizeState(state);
-    const deliveredIndex = s.lastRequestVerification?.selectedGuideIndex || 0;
-    const deliveredGuide = s.lastRequestVerification?.guideCandidates?.[deliveredIndex];
+    const offeredCues = s.lastRequestVerification?.guideCandidates || [];
     return {
         mode: s.mode,
         scene: Object.fromEntries(Object.entries(s.scene).map(([key, value]) => [key, typeof value === 'string' ? value.slice(0, 100) : value])),
@@ -298,17 +315,21 @@ export function stateForPrompt(state) {
             epistemicStatus: event.epistemicStatus,
             disclosure: event.disclosure,
             status: event.status,
+            timing: event.timing,
+            dueState: event.dueState,
             cause: event.cause.slice(0, 140),
             consequences: event.consequences.slice(0, 2).map(item => item.slice(0, 120)),
             basis: event.basis.slice(0, 120),
             requirements: event.requirements.slice(0, 2),
         })),
-        lastDelivery: deliveredGuide ? {
-            id: deliveredGuide.id,
-            direction: deliveredGuide.direction.slice(0, 220),
-            worldDelta: deliveredGuide.worldDelta.slice(0, 160),
+        lastOfferedCues: offeredCues.length ? offeredCues.map(cue => ({
+            id: cue.id,
+            direction: cue.direction.slice(0, 220),
+            useWhen: cue.useWhen.slice(0, 140),
+            dropWhen: cue.dropWhen.slice(0, 120),
+            worldDelta: cue.worldDelta.slice(0, 160),
             requestConfirmed: true,
-        } : undefined,
+        })) : undefined,
     };
 }
 
@@ -375,14 +396,14 @@ export function horizonInfluence(index, total) {
     return 'background';
 }
 
-function selectedRouteCue(guide) {
+function backgroundCue(guide, emphasized = false) {
     const boundaries = {
         'consequence-only': 'Show only the perceivable consequence. Do not state, confirm, summarize, or flash back to its hidden cause.',
         'partial-clue': 'Show the consequence and at most one supported clue. Do not confirm or narrate the hidden cause.',
         'reveal-cause': 'The cause may become known only through an in-world reveal supported by this route.',
     };
     const boundary = boundaries[guide.disclosure];
-    return `SUGGESTED ROUTE: ${guide.direction.slice(0, 280)}\nUSE WHEN: ${guide.useWhen.slice(0, 120)}\nDROP WHEN: ${guide.dropWhen.slice(0, 100)}\nROUTE OUTCOME: ${guide.worldDelta.slice(0, 140)}${boundary ? `\nINFORMATION BOUNDARY: ${boundary}` : ''}`;
+    return `CUE${emphasized ? ' [EMPHASIS]' : ''}: ${guide.direction.slice(0, 200)}\nIF: ${guide.useWhen.slice(0, 90)}\nUNLESS: ${guide.dropWhen.slice(0, 80)}\nPOSSIBLE EFFECT: ${guide.worldDelta.slice(0, 110)}${boundary ? `\nINFORMATION BOUNDARY: ${boundary}` : ''}`;
 }
 
 function boundedPromptLines(items, prefix, perItem, total) {
@@ -403,11 +424,11 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
     const s = normalizeState(state);
     const noteLabels = { suggest: 'OPTIONAL SUGGESTION', correct: 'USER CORRECTION', establish: 'USER-ESTABLISHED CANON', forbid: 'HARD EXCLUSION' };
     const promptCanon = Array.isArray(canonConstraints) ? canonConstraints : s.canonConstraints;
-    const canon = boundedPromptLines(promptCanon, '- ', 360, 2500);
+    const canon = boundedPromptLines(promptCanon, '- ', 300, 2000);
     const canonPrompt = canon
         ? `\n<user-established-canon>\nBinding user-established facts; preserve their stated magnitude, scope, and qualifiers. Unstated details remain creative space.\n${canon}\n</user-established-canon>`
         : '';
-    const notes = boundedPromptLines(s.userNotes.map(note => `${noteLabels[note.kind]}: ${note.text}`), '- ', 360, 2500);
+    const notes = boundedPromptLines(s.userNotes.map(note => `${noteLabels[note.kind]}: ${note.text}`), '- ', 300, 2000);
     const notePrompt = notes
         ? `\n<tale-fairy-user-notes>\nUser directives: exclusions, corrections, and canon are binding; suggestions are optional.\n${notes}\n</tale-fairy-user-notes>`
         : '';
@@ -415,13 +436,15 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
         ? guideCandidates.slice(0, 3).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen && item.worldDelta && item.basis)
         : s.nextGuides;
     const selectedIndex = candidates.length ? Math.max(0, Math.min(candidates.length - 1, Number(guideIndex) || 0)) : 0;
-    const selectedGuide = candidates[selectedIndex];
+    const orderedCandidates = candidates.length
+        ? [candidates[selectedIndex], ...candidates.filter((_, index) => index !== selectedIndex)]
+        : [];
     const pacingBoundary = 'PACING BOUNDARY: Match the latest user action\'s exact scope. Heading, going, or walking to a destination permits travel and arrival only—not doing or finishing the activity there, advancing to the next task, or skipping additional time unless the user asks.';
     const routePrompt = guidanceUsable && candidates.length
-        ? `Narrative route${regeneration ? ' for a different regeneration' : ''}:\n${selectedRouteCue(selectedGuide)}\nApply ROUTE OUTCOME only when USE WHEN is true and DROP WHEN is false for the latest user turn; otherwise discard this route. Keep any replacement NPC or world outcome inside the same immediate beat. It must be a new narrative change, not a replay of a completed event.${regeneration ? ' Do not reuse the discarded reply\'s event.' : ''} Preserve each name and code's established meaning and never decide player action.\n${pacingBoundary}`
+        ? `Conditional background cues${regeneration ? ' for a different regeneration' : ''} (use zero or one):\n${orderedCandidates.map((guide, index) => backgroundCue(guide, index === 0)).join('\n\n')}\nUse at most one cue whose IF is true and UNLESS is false after reading the latest user turn. If none fit, use none. These are possible world developments, not required outcomes and not facts that already happened. The first cue is emphasis, not an obligation. Preserve causally due schedules and offscreen processes without forcing them visibly into this beat.${regeneration ? ' Do not reuse the discarded reply\'s concrete event.' : ''} Preserve each name and code's established meaning and never decide player action.\n${pacingBoundary}`
         : regeneration
-            ? `Narrative variation ${Math.max(1, Number(variationCue) || 1)}: choose one meaningful NPC or world outcome different from the discarded reply's event. Do not repeat a completed event, reinterpret established names or codes, invent an unsupported crisis, or decide player action.\n${pacingBoundary}`
-            : `Choose one new grounded NPC or world outcome. Do not repeat a completed event, reinterpret established names or codes, or decide player action.\n${pacingBoundary}`;
+            ? `Background variation ${Math.max(1, Number(variationCue) || 1)}: if a supported NPC or world development naturally fits this beat, it may differ from the discarded reply's concrete event. Do not force one. Do not repeat a completed event, reinterpret established names or codes, invent an unsupported crisis, or decide player action.\n${pacingBoundary}`
+            : `Background continuity only: allow supported NPC, schedule, or world processes to continue when they naturally fit this beat; do not force an event solely because this guide exists. Do not repeat a completed event, reinterpret established names or codes, or decide player action.\n${pacingBoundary}`;
     const guidancePrompt = `\n<living-world-guide>\n${routePrompt}\n</living-world-guide>`;
     return `<tale-fairy-context>${notePrompt}${canonPrompt}${guidancePrompt}\n</tale-fairy-context>`;
 }

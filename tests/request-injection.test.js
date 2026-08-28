@@ -104,7 +104,7 @@ test('repairs text-completion prompts and recognizes the current guide', () => {
     assert.equal(ensureGuidanceInText(repaired, payload), repaired);
 });
 
-test('provider-bound request receives only the selected route while alternatives remain private', () => {
+test('provider-bound request receives a compact conditional cue set with rotated emphasis', () => {
     const routes = [
         { id: 'reveal', direction: 'Vekk gives the concrete war update now.', use_when: 'The user remains present or asks about the war.', drop_when: 'The user leaves or forbids the topic.', response_bias: 'State the news through dialogue and let it alter the room.', world_delta: 'The actual military situation becomes known.', origin: 'inferred', basis: 'Vekk has the report and intended to speak privately.', strength: 'strong', source_pathways: ['war-news'] },
         { id: 'interruption', direction: 'An urgent contradiction reaches Vekk before he can finish.', use_when: 'The channel remains open and outside contact is possible.', drop_when: 'The user isolates the room or time advances past it.', response_bias: 'Use a specific interruption with an immediate consequence.', world_delta: 'New evidence forces Vekk to revise part of the report.', origin: 'original', basis: 'The war is active and information remains unstable.', strength: 'moderate', source_pathways: ['war-news'] },
@@ -116,14 +116,15 @@ test('provider-bound request receives only the selected route while alternatives
     assert.equal(chatHasCurrentGuidance(chat, prompt), true);
     assert.equal(chat.length, 1);
     assert.equal(chat.at(-1).role, 'user');
-    assert.match(chat.at(-1).content, /Narrative route for a different regeneration/);
-    assert.match(chat.at(-1).content, /SUGGESTED ROUTE: An urgent contradiction reaches Vekk/);
-    assert.match(chat.at(-1).content, /USE WHEN: The channel remains open/);
-    assert.match(chat.at(-1).content, /DROP WHEN: The user isolates the room/);
-    assert.match(chat.at(-1).content, /ROUTE OUTCOME: New evidence forces Vekk/);
-    assert.match(chat.at(-1).content, /Do not reuse the discarded reply's event/);
+    assert.match(chat.at(-1).content, /Conditional background cues for a different regeneration/);
+    assert.match(chat.at(-1).content, /CUE \[EMPHASIS\]: An urgent contradiction reaches Vekk/);
+    assert.match(chat.at(-1).content, /IF: The channel remains open/);
+    assert.match(chat.at(-1).content, /UNLESS: The user isolates the room/);
+    assert.match(chat.at(-1).content, /POSSIBLE EFFECT: New evidence forces Vekk/);
+    assert.match(chat.at(-1).content, /Vekk gives the concrete war update now/);
+    assert.match(chat.at(-1).content, /Do not reuse the discarded reply's concrete event/);
     assert.match(chat.at(-1).content, /Tell me what happened\.$/);
-    assert.doesNotMatch(chat.at(-1).content, /Vekk gives the concrete war update now|GROUNDING:|EXECUTION:/);
+    assert.doesNotMatch(chat.at(-1).content, /GROUNDING:|EXECUTION:/);
     assert.equal(chat.map(message => String(message.content)).join('\n').match(/<tale-fairy-context>/g)?.length, 1);
-    assert.ok(prompt.length < 1200, `expected lean payload, got ${prompt.length} characters`);
+    assert.ok(prompt.length < 2200, `expected lean payload, got ${prompt.length} characters`);
 });
