@@ -118,10 +118,12 @@ test('provider-bound request receives only the selected route while alternatives
     assert.equal(chat.at(-1).role, 'user');
     assert.match(chat.at(-1).content, /Narrative route for a different regeneration/);
     assert.match(chat.at(-1).content, /SUGGESTED ROUTE: An urgent contradiction reaches Vekk/);
-    assert.match(chat.at(-1).content, /REQUIRED OUTCOME: New evidence forces Vekk/);
+    assert.match(chat.at(-1).content, /USE WHEN: The channel remains open/);
+    assert.match(chat.at(-1).content, /DROP WHEN: The user isolates the room/);
+    assert.match(chat.at(-1).content, /ROUTE OUTCOME: New evidence forces Vekk/);
     assert.match(chat.at(-1).content, /Do not reuse the discarded reply's event/);
     assert.match(chat.at(-1).content, /Tell me what happened\.$/);
-    assert.doesNotMatch(chat.at(-1).content, /Vekk gives the concrete war update now|USE IF:|DROP IF:|GROUNDING:|EXECUTION:/);
+    assert.doesNotMatch(chat.at(-1).content, /Vekk gives the concrete war update now|GROUNDING:|EXECUTION:/);
     assert.equal(chat.map(message => String(message.content)).join('\n').match(/<tale-fairy-context>/g)?.length, 1);
-    assert.ok(prompt.length < 650, `expected lean payload, got ${prompt.length} characters`);
+    assert.ok(prompt.length < 1200, `expected lean payload, got ${prompt.length} characters`);
 });

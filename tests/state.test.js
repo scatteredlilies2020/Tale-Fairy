@@ -230,12 +230,15 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.doesNotMatch(current, /Keep the scene grounded/);
     assert.match(current, /Narrative route:/);
     assert.match(current, /SUGGESTED ROUTE: Let Mara answer plainly/);
-    assert.match(current, /REQUIRED OUTCOME: Mara reveals a concern/);
-    assert.match(current, /Make REQUIRED OUTCOME happen through NPC or world action/);
+    assert.match(current, /USE WHEN: The user continues or asks Mara/);
+    assert.match(current, /DROP WHEN: The user leaves or changes subject/);
+    assert.match(current, /ROUTE OUTCOME: Mara reveals a concern/);
+    assert.match(current, /Apply ROUTE OUTCOME only when USE WHEN is true and DROP WHEN is false/);
+    assert.match(current, /Heading, going, or walking to a destination permits travel and arrival only/);
     assert.match(current, /new narrative change, not a replay of a completed event/);
     assert.doesNotMatch(current, /discarded reply/);
-    assert.doesNotMatch(current, /USE IF:|DROP IF:|GROUNDING:|EXECUTION:|response is incomplete|failure/);
-    assert.doesNotMatch(current, /Mara is present|The user continues or asks Mara|The user leaves or changes subject/);
+    assert.doesNotMatch(current, /GROUNDING:|EXECUTION:|response is incomplete|failure/);
+    assert.doesNotMatch(current, /Mara is present/);
     assert.doesNotMatch(current, /telling-deflection|meaningful deflection/);
     assert.doesNotMatch(current, /PATHWAYS|TIME HORIZONS|Revisit the obligation/);
 
@@ -245,8 +248,8 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(swipe, /SUGGESTED ROUTE: Let Mara reveal a different pressure/);
     assert.match(swipe, /meaningful deflection/);
     assert.match(swipe, /Do not reuse the discarded reply's event/);
-    assert.match(swipe, /If blocked, use one equally concrete narrative outcome/);
-    assert.doesNotMatch(swipe, /moderate|original|USE IF:|DROP IF:|GROUNDING:|EXECUTION:/);
+    assert.match(swipe, /otherwise discard this route/);
+    assert.doesNotMatch(swipe, /moderate|original|GROUNDING:|EXECUTION:/);
 
     const regenerationFallback = buildPromptPayload(state, { enabled: true, guidanceUsable: false, guideCandidates: [], regeneration: true, variationCue: 8472 });
     assert.match(regenerationFallback, /Narrative variation 8472/);
@@ -254,7 +257,7 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(regenerationFallback, /Do not repeat a completed event/);
     assert.match(regenerationFallback, /reinterpret established names or codes/);
     const regenerationGuide = regenerationFallback.match(/<living-world-guide>([\s\S]*?)<\/living-world-guide>/)?.[1] || '';
-    assert.ok(regenerationGuide.length < 500);
+    assert.ok(regenerationGuide.length < 800);
     assert.doesNotMatch(regenerationFallback, /Let Mara answer plainly|meaningful deflection/);
     assert.equal(buildPromptPayload(state, { enabled: false, guidanceUsable: true }), '');
 });

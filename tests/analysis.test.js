@@ -60,8 +60,10 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /Player silence is not a veto/);
     assert.match(SYSTEM, /Every next guide must be executable through NPC or world action without requiring a new player action/);
     assert.match(SYSTEM, /keep the player at the current location and bring the visible change into that scene/);
-    assert.match(SYSTEM, /A routine transition is scaffolding, not a sufficient primary development/);
-    assert.match(SYSTEM, /Every next guide must name one concrete world_delta beyond the player's action/);
+    assert.match(SYSTEM, /A routine transition may be the entire temporal scope/);
+    assert.match(SYSTEM, /Never finish a subsequent activity or jump to a later task/);
+    assert.match(SYSTEM, /“we head to breakfast,” “I go to the meeting,” or “we walk home”/);
+    assert.match(SYSTEM, /ends at travel or arrival/);
     assert.match(SYSTEM, /Give each next guide exactly one immediate world outcome/);
     assert.match(SYSTEM, /Keep every referent unambiguous inside each guide/);
     assert.match(SYSTEM, /Dorn-2 medical unit on Level 10/);
@@ -252,9 +254,11 @@ test('every planner mode leaves narrative pacing under user control', () => {
     for (const mode of ['light', 'balanced', 'fun']) {
         const prompt = JSON.parse(buildAnalysisPrompt([{ mes: 'I keep watching for a while.', is_user: true }], { ...defaultState(), mode }));
         assert.match(prompt.pacing_instruction, /Match the user’s demonstrated speed and granularity/);
-        assert.match(prompt.pacing_instruction, /Complete declared actions, direct questions, and routine implied mechanics/);
+        assert.match(prompt.pacing_instruction, /maximum authorized player-action progress/);
+        assert.match(prompt.pacing_instruction, /travel and arrival only/);
+        assert.match(prompt.pacing_instruction, /not doing or finishing the activity there/);
         assert.match(prompt.pacing_instruction, /mode changes narrative pressure, not speed/);
-        assert.match(prompt.pacing_instruction, /Explicit requests to advance or reach a milestone are binding minimum progress/);
+        assert.match(prompt.pacing_instruction, /Only explicit requests to advance, skip, continue until, or reach a milestone authorize broader progress/);
         assert.match(prompt.pacing_instruction, /without inventing the player’s choices/);
         assert.match(prompt.pacing_instruction, /complete latest user turn/);
     }

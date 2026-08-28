@@ -382,7 +382,7 @@ function selectedRouteCue(guide) {
         'reveal-cause': 'The cause may become known only through an in-world reveal supported by this route.',
     };
     const boundary = boundaries[guide.disclosure];
-    return `SUGGESTED ROUTE: ${guide.direction.slice(0, 280)}\nREQUIRED OUTCOME: ${guide.worldDelta.slice(0, 140)}${boundary ? `\nINFORMATION BOUNDARY: ${boundary}` : ''}`;
+    return `SUGGESTED ROUTE: ${guide.direction.slice(0, 280)}\nUSE WHEN: ${guide.useWhen.slice(0, 120)}\nDROP WHEN: ${guide.dropWhen.slice(0, 100)}\nROUTE OUTCOME: ${guide.worldDelta.slice(0, 140)}${boundary ? `\nINFORMATION BOUNDARY: ${boundary}` : ''}`;
 }
 
 function boundedPromptLines(items, prefix, perItem, total) {
@@ -416,11 +416,12 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
         : s.nextGuides;
     const selectedIndex = candidates.length ? Math.max(0, Math.min(candidates.length - 1, Number(guideIndex) || 0)) : 0;
     const selectedGuide = candidates[selectedIndex];
+    const pacingBoundary = 'PACING BOUNDARY: Match the latest user action\'s exact scope. Heading, going, or walking to a destination permits travel and arrival only—not doing or finishing the activity there, advancing to the next task, or skipping additional time unless the user asks.';
     const routePrompt = guidanceUsable && candidates.length
-        ? `Narrative route${regeneration ? ' for a different regeneration' : ''}:\n${selectedRouteCue(selectedGuide)}\nMake REQUIRED OUTCOME happen through NPC or world action. It must be a new narrative change, not a replay of a completed event.${regeneration ? ' Do not reuse the discarded reply\'s event.' : ''} Preserve each name and code's established meaning and never decide player action. If blocked, use one equally concrete narrative outcome.`
+        ? `Narrative route${regeneration ? ' for a different regeneration' : ''}:\n${selectedRouteCue(selectedGuide)}\nApply ROUTE OUTCOME only when USE WHEN is true and DROP WHEN is false for the latest user turn; otherwise discard this route. Keep any replacement NPC or world outcome inside the same immediate beat. It must be a new narrative change, not a replay of a completed event.${regeneration ? ' Do not reuse the discarded reply\'s event.' : ''} Preserve each name and code's established meaning and never decide player action.\n${pacingBoundary}`
         : regeneration
-            ? `Narrative variation ${Math.max(1, Number(variationCue) || 1)}: choose one meaningful NPC or world outcome different from the discarded reply's event. Do not repeat a completed event, reinterpret established names or codes, invent an unsupported crisis, or decide player action.`
-            : 'Choose one new grounded NPC or world outcome. Do not repeat a completed event, reinterpret established names or codes, or decide player action.';
+            ? `Narrative variation ${Math.max(1, Number(variationCue) || 1)}: choose one meaningful NPC or world outcome different from the discarded reply's event. Do not repeat a completed event, reinterpret established names or codes, invent an unsupported crisis, or decide player action.\n${pacingBoundary}`
+            : `Choose one new grounded NPC or world outcome. Do not repeat a completed event, reinterpret established names or codes, or decide player action.\n${pacingBoundary}`;
     const guidancePrompt = `\n<living-world-guide>\n${routePrompt}\n</living-world-guide>`;
     return `<tale-fairy-context>${notePrompt}${canonPrompt}${guidancePrompt}\n</tale-fairy-context>`;
 }
