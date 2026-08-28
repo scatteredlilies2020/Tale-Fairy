@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPromptPayload, clearState, defaultState, fingerprintMessages, hasExplicitProgressDirective, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, isStateAligned, loadState, normalizeState, saveState, STATE_KEY } from '../extension/state.js';
+import { buildPromptPayload, clearState, defaultState, fingerprintMessages, guidesForDiscardedAssistant, hasExplicitProgressDirective, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, isStateAligned, loadState, normalizeState, saveState, STATE_KEY } from '../extension/state.js';
 
 const stateNextGuides = [
     { id: 'direct-answer', direction: 'Let Mara answer plainly and reveal one concrete concern.', useWhen: 'The user continues or asks Mara.', dropWhen: 'The user leaves or changes subject.', responseBias: 'Answer directly and show its immediate effect.', worldDelta: 'Mara reveals a concern that changes the shared understanding.', origin: 'inferred', basis: 'Mara is present and engaged in the live conversation.', strength: 'strong', sourcePathways: ['answer'], reason: 'Direct continuation.' },
@@ -73,6 +73,15 @@ test('completed-turn guidance can route exactly one new user action', () => {
     assert.equal(isGuidanceUsable(state, [...analyzed, { mes: 'Changed assistant text.', is_user: false }], 'a'), false);
     assert.equal(isGuidanceUsable(state, [...analyzed, { mes: 'I look.', is_user: true }, { mes: 'Reply', is_user: false }], 'a'), false);
     assert.equal(isGuidanceUsable(state, [...analyzed, { mes: 'I look around.', is_user: true }], 'b'), false);
+});
+
+test('a discarded assistant attempt can supply non-established retry routes', () => {
+    const messages = [{ mes: 'Try that again.', is_user: true }];
+    const state = { ...defaultState(), ...currentPlan, sourceChatId: 'a', sourceMessageCount: 2 };
+    assert.deepEqual(guidesForDiscardedAssistant(state, messages, 'a').map(item => item.id), ['direct-answer', 'telling-deflection']);
+    assert.deepEqual(guidesForDiscardedAssistant(state, messages, 'b'), []);
+    assert.deepEqual(guidesForDiscardedAssistant({ ...state, sourceMessageCount: 3 }, messages, 'a'), []);
+    assert.deepEqual(guidesForDiscardedAssistant({ ...state, nextGuides: stateNextGuides.map(item => ({ ...item, origin: 'established' })) }, messages, 'a'), []);
 });
 
 test('completed-turn analysis may save across one new user action but not later changes', () => {

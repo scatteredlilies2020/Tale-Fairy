@@ -5,7 +5,7 @@ import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
 import { AnalysisValidationError, applyAnalysis, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, requireValidAnalysisResult, SYSTEM } from './analysis.js';
-import { buildPromptPayload, clearState, defaultState, fingerprintMessages, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, saveState, STATE_KEY, STATE_VERSION } from './state.js';
+import { buildPromptPayload, clearState, defaultState, fingerprintMessages, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, saveState, STATE_KEY, STATE_VERSION } from './state.js';
 import { resolveInjectionPlacement } from './injection-placement.js';
 import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js';
 import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js';
@@ -13,12 +13,12 @@ import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.7.1';
+const RUNTIME_VERSION = '0.7.2';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
 const INJECTION_POSITIONS = new Set(['before-main', 'after-main', 'before-character-definitions', 'after-character-definitions', 'before-example-messages', 'after-example-messages', 'before-an', 'after-an', 'before-chat-history', 'after-chat-history', 'before-jailbreak', 'after-jailbreak', 'at-depth']);
-const DEFAULT_SETTINGS = { enabled: true, mode: 'balanced', analysisProfileId: '', analysisSource: 'active', analysisProvider: 'custom', analysisModel: '', analysisUrl: '', analysisSecretId: '', analysisReasoningMode: 'auto', directSettingsMigrated: false, directCustomModel: '', directCustomUrl: '', directCustomSecretId: '', directOpenRouterModel: '', directOpenRouterUrl: '', directOpenRouterSecretId: '', injectionPosition: 'at-depth', injectionDepth: 2, injectionRole: 'user', includeWorldInfo: false, showDirectorNotes: false, messageWindow: 12, messageCharLimit: 700, maxPromptChars: 12000, continuityIntegration: true, continuityContextLimit: 3500, contextSettingsVersion: 3 };
+const DEFAULT_SETTINGS = { enabled: true, mode: 'balanced', analysisProfileId: '', analysisSource: 'active', analysisProvider: 'custom', analysisModel: '', analysisUrl: '', analysisSecretId: '', analysisReasoningMode: 'auto', directSettingsMigrated: false, directCustomModel: '', directCustomUrl: '', directCustomSecretId: '', directOpenRouterModel: '', directOpenRouterUrl: '', directOpenRouterSecretId: '', injectionPosition: 'at-depth', injectionDepth: 2, injectionRole: 'system', includeWorldInfo: false, showDirectorNotes: false, messageWindow: 12, messageCharLimit: 700, maxPromptChars: 12000, continuityIntegration: true, continuityContextLimit: 3500, contextSettingsVersion: 4 };
 let settings = null;
 let analysisPromise = null;
 let analysisAbortController = null;
@@ -67,6 +67,10 @@ function getSettings() {
         if ([14000, 18000].includes(Number(settings.maxPromptChars))) settings.maxPromptChars = 12000;
         if ([4000, 5000].includes(Number(settings.continuityContextLimit))) settings.continuityContextLimit = 3500;
         settings.contextSettingsVersion = 3;
+    }
+    if (previousContextVersion < 4) {
+        if (settings.injectionRole === 'user') settings.injectionRole = 'system';
+        settings.contextSettingsVersion = 4;
     }
     if (!settings.directSettingsMigrated) {
         const legacySource = settings.analysisSource === 'openrouter' || settings.analysisProvider === 'openrouter' ? 'openrouter' : 'direct';
@@ -396,19 +400,21 @@ function prepareGenerationGuide(state, type) {
     const swipe = type === 'swipe' || type === 'regenerate';
     const archived = state.lastRequestVerification?.guideCandidates || [];
     const archivedUsable = swipe && archived.length > 1;
-    const candidates = swipe ? (archivedUsable ? archived : []) : state.nextGuides;
+    const messages = messagesFromChat(context.chat || []);
+    const retryCandidates = swipe && !archivedUsable ? guidesForDiscardedAssistant(state, messages, chatId) : [];
+    const retryUsable = retryCandidates.length > 1;
+    const candidates = swipe ? (archivedUsable ? archived : retryCandidates) : state.nextGuides;
     const turnKey = guideTurnKey(context);
     const archivedIndex = Number(state.lastRequestVerification?.selectedGuideIndex) || 0;
     const previousIndex = swipe ? (swipeGuideCursors.get(turnKey) ?? archivedIndex) : -1;
     const index = swipe && candidates.length > 1 ? (previousIndex + 1) % candidates.length : 0;
     swipeGuideCursors.set(turnKey, index);
     while (swipeGuideCursors.size > 20) swipeGuideCursors.delete(swipeGuideCursors.keys().next().value);
-    const messages = messagesFromChat(context.chat || []);
     generationGuideSelection = {
         chatId,
         candidates,
         index,
-        usable: archivedUsable || (!swipe && isGuidanceUsable(state, messages, chatId)),
+        usable: archivedUsable || retryUsable || (!swipe && isGuidanceUsable(state, messages, chatId)),
         regeneration: swipe,
         variationCue: swipe ? randomVariationNonce() : 0,
     };
@@ -1028,7 +1034,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
             verification.requestedAt ? `Request: ${new Date(verification.requestedAt).toLocaleString()}` : '',
             verification.confirmedAt ? `Reply confirmed: ${new Date(verification.confirmedAt).toLocaleString()}` : '',
             [verification.provider, verification.model].filter(Boolean).length ? `Provider: ${[verification.provider, verification.model].filter(Boolean).join(' · ')}` : '',
-            `Placement: ${verification.position || 'at-depth'} · ${verification.role || 'user'}${verification.position === 'at-depth' ? ` · depth ${verification.depth}` : ''}`,
+            `Placement: ${verification.position || 'at-depth'} · ${verification.role || 'system'}${verification.position === 'at-depth' ? ` · depth ${verification.depth}` : ''}`,
             `\nExact dynamic block:\n${verification.guidanceBlock}`,
         ].filter(Boolean).join('\n')
         : '';

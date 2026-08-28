@@ -5,7 +5,7 @@ import { resolveInjectionPlacement } from '../extension/injection-placement.js';
 const types = { NONE: -1, IN_PROMPT: 0, IN_CHAT: 1, BEFORE_PROMPT: 2 };
 const roles = { SYSTEM: 0, USER: 1, ASSISTANT: 2 };
 
-test('defaults Tale Fairy to user-role chat injection at depth two', () => {
+test('supports user-role chat injection at depth two', () => {
     assert.deepEqual(resolveInjectionPlacement({ injectionPosition: 'at-depth', injectionDepth: 2, injectionRole: 'user' }, types, roles), {
         position: types.IN_CHAT,
         depth: 2,

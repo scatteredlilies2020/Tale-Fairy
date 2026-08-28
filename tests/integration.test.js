@@ -9,9 +9,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.7.1');
-    assert.equal(manifest.js, 'extension/index.js?v=0.7.1');
-    assert.equal(manifest.css, 'extension/style.css?v=0.7.1');
+    assert.equal(manifest.version, '0.7.2');
+    assert.equal(manifest.js, 'extension/index.js?v=0.7.2');
+    assert.equal(manifest.css, 'extension/style.css?v=0.7.2');
 });
 
 test('injection routes among immediate guides while private long-range planning stays private', () => {
@@ -108,7 +108,8 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /regeneration: generationGuideSelection\.regeneration/);
     assert.match(source, /variationCue: generationGuideSelection\.variationCue/);
     assert.match(source, /variationCue: swipe \? randomVariationNonce\(\) : 0/);
-    assert.match(source, /const candidates = swipe \? \(archivedUsable \? archived : \[\]\) : state\.nextGuides/);
+    assert.match(source, /guidesForDiscardedAssistant\(state, messages, chatId\)/);
+    assert.match(source, /const candidates = swipe \? \(archivedUsable \? archived : retryCandidates\) : state\.nextGuides/);
     assert.match(source, /could not place current guidance in the provider request/);
     assert.match(source, /containsPlannerMarker\(eventData\?\.chat\)/);
     assert.match(source, /containsPlannerMarker\(generateData\)/);
@@ -120,7 +121,9 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /scratchpad-continuity/);
     assert.match(source, /scratchpad-ledger/);
     assert.match(source, /configurePromptManagerInjection\(promptManager, s, payload\)/);
-    assert.match(source, /injectionPosition: 'at-depth', injectionDepth: 2, injectionRole: 'user'/);
+    assert.match(source, /injectionPosition: 'at-depth', injectionDepth: 2, injectionRole: 'system'/);
+    assert.match(source, /previousContextVersion < 4/);
+    assert.match(template, /<option value="system">System \(default\)<\/option>/);
     assert.match(source, /export async function livingWorldGuideGenerateInterceptor/);
     assert.doesNotMatch(source, /livingWorldGuideGenerateInterceptor[\s\S]{0,1200}await analyzeNow/);
     assert.match(source, /Planning never blocks generation/);

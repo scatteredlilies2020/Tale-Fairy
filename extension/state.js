@@ -291,6 +291,19 @@ export function isGuidanceUsable(state, messages = [], chatId = '') {
     return s.lastAnalysisFingerprint === fingerprintMessages(messages.slice(0, -1));
 }
 
+// If a generation has no archived routes yet, a plan made from the discarded
+// assistant attempt can still provide safe variation. Exclude established
+// routes so a discarded attempt cannot turn its inventions into prior fact.
+export function guidesForDiscardedAssistant(state, messages = [], chatId = '') {
+    const s = normalizeState(state);
+    if (!messages.length
+        || !messages.at(-1)?.is_user
+        || String(s.sourceChatId || '') !== String(chatId || '')
+        || s.sourceMessageCount !== messages.length + 1) return [];
+    const candidates = s.nextGuides.filter(guide => guide.origin !== 'established');
+    return candidates.length >= 2 ? candidates : [];
+}
+
 export function isAnalysisSourceCurrent(fingerprint, messageCount, messages = [], { allowOneUserAppend = false } = {}) {
     const count = Math.max(0, Number(messageCount) || 0);
     if (messages.length === count && fingerprintMessages(messages) === fingerprint) return true;
