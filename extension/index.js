@@ -5,7 +5,7 @@ import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
 import { AnalysisValidationError, applyAnalysis, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, requireValidAnalysisResult, SYSTEM } from './analysis.js';
-import { buildPromptPayload, clearState, defaultState, fingerprintMessages, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, saveState, STATE_KEY, STATE_VERSION } from './state.js';
+import { buildPromptPayload, clearState, defaultState, fingerprintMessages, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js';
 import { resolveInjectionPlacement } from './injection-placement.js';
 import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js';
 import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js';
@@ -13,7 +13,7 @@ import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.7.3';
+const RUNTIME_VERSION = '0.7.4';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -483,6 +483,7 @@ function rememberVerifiedRequest(payload, { provider = '', model = '' } = {}) {
             ? (generationGuideSelection.usable ? generationGuideSelection.candidates : [])
             : loadState(context.chatMetadata).nextGuides,
         selectedGuideIndex: generationGuideSelection?.index || 0,
+        replacementGeneration: generationGuideSelection?.regeneration === true,
     };
     renderBoard();
 }
@@ -521,7 +522,7 @@ async function confirmReturnedReplyUsedGuidance() {
     const context = currentContext();
     const chatId = String(context.getCurrentChatId?.() || '');
     const messages = messagesFromChat(context.chat || []);
-    if (pending.chatId !== chatId || messages.length <= pending.sourceMessageCount || messages.at(-1)?.is_user) return false;
+    if (!returnedReplyMatchesVerification(pending, messages, chatId)) return false;
 
     const state = loadState(context.chatMetadata);
     state.lastRequestVerification = {

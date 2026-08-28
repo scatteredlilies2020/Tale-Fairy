@@ -9,9 +9,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.7.3');
-    assert.equal(manifest.js, 'extension/index.js?v=0.7.3');
-    assert.equal(manifest.css, 'extension/style.css?v=0.7.3');
+    assert.equal(manifest.version, '0.7.4');
+    assert.equal(manifest.js, 'extension/index.js?v=0.7.4');
+    assert.equal(manifest.css, 'extension/style.css?v=0.7.4');
 });
 
 test('injection sends one immediate guide while alternatives and long-range planning stay private', () => {
@@ -97,6 +97,8 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /buildPromptPayload\(state/);
     assert.match(source, /function renderBoard/);
     assert.match(source, /function prepareGenerationGuide/);
+    assert.match(source, /replacementGeneration: generationGuideSelection\?\.regeneration === true/);
+    assert.match(source, /returnedReplyMatchesVerification\(pending, messages, chatId\)/);
     assert.match(source, /function guideTurnKey/);
     assert.match(source, /swipeGuideCursors\.get\(turnKey\)/);
     assert.match(source, /swipeGuideCursors\.set\(turnKey, index\)/);

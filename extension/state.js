@@ -185,7 +185,14 @@ function normalizeRequestVerification(value) {
         depth: Math.max(0, Math.min(100, Number(value.depth) || 0)),
         guideCandidates: (Array.isArray(value.guideCandidates) ? value.guideCandidates.slice(0, 3) : []).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen && item.worldDelta && item.basis),
         selectedGuideIndex: Math.max(0, Math.min(2, Number(value.selectedGuideIndex) || 0)),
+        replacementGeneration: value.replacementGeneration === true,
     };
+}
+
+export function returnedReplyMatchesVerification(pending, messages = [], chatId = '') {
+    if (!pending || pending.chatId !== String(chatId || '') || !messages.length || messages.at(-1)?.is_user) return false;
+    const requiredCount = Math.max(0, Number(pending.sourceMessageCount) || 0) + (pending.replacementGeneration ? 0 : 1);
+    return messages.length >= requiredCount;
 }
 
 export function normalizeState(input = {}) {

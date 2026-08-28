@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPromptPayload, clearState, defaultState, fingerprintMessages, guidesForDiscardedAssistant, hasExplicitProgressDirective, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, isStateAligned, loadState, normalizeState, saveState, STATE_KEY } from '../extension/state.js';
+import { buildPromptPayload, clearState, defaultState, fingerprintMessages, guidesForDiscardedAssistant, hasExplicitProgressDirective, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, isStateAligned, loadState, normalizeState, returnedReplyMatchesVerification, saveState, STATE_KEY } from '../extension/state.js';
 
 const stateNextGuides = [
     { id: 'direct-answer', direction: 'Let Mara answer plainly and reveal one concrete concern.', useWhen: 'The user continues or asks Mara.', dropWhen: 'The user leaves or changes subject.', responseBias: 'Answer directly and show its immediate effect.', worldDelta: 'Mara reveals a concern that changes the shared understanding.', origin: 'inferred', basis: 'Mara is present and engaged in the live conversation.', strength: 'strong', sourcePathways: ['answer'], reason: 'Direct continuation.' },
@@ -34,6 +34,14 @@ test('state round trips through portable metadata', () => {
     assert.equal(loadState(metadata).lastRequestVerification.guideCandidates.length, 2);
     assert.equal(loadState(metadata).lastRequestVerification.selectedGuideIndex, 1);
     assert.equal(clearState(metadata)[STATE_KEY], undefined);
+});
+
+test('request verification accepts an in-place swipe replacement', () => {
+    const messages = [{ mes: 'question', is_user: true }, { mes: 'new swipe', is_user: false }];
+    const base = { chatId: 'chat-1', sourceMessageCount: 2 };
+    assert.equal(returnedReplyMatchesVerification({ ...base, replacementGeneration: true }, messages, 'chat-1'), true);
+    assert.equal(returnedReplyMatchesVerification({ ...base, replacementGeneration: false }, messages, 'chat-1'), false);
+    assert.equal(returnedReplyMatchesVerification({ ...base, replacementGeneration: true }, messages, 'other-chat'), false);
 });
 
 test('state retains a bounded horizon ladder with increasing planning detail', () => {
