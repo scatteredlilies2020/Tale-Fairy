@@ -13,7 +13,7 @@ import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.5.0';
+const RUNTIME_VERSION = '0.6.0';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -980,6 +980,8 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
 
     const guideLines = (state.nextGuides || []).map((item, index) => [
         `${index === 0 ? 'Primary' : `Swipe ${index}`} · ${item.id} [${item.strength}] — ${item.direction}`,
+        `Visible change: ${item.worldDelta}`,
+        `Grounding: ${item.origin} — ${item.basis}`,
         `Use if: ${item.useWhen}`,
         `Drop if: ${item.dropWhen}`,
         item.responseBias && `If used: ${item.responseBias}`,

@@ -5,8 +5,8 @@ import { defaultState } from '../extension/state.js';
 
 const pathways = [{ id: 'tea-talk', direction: 'Let the tea conversation reveal a useful tension.', when: 'The user continues the conversation or asks Mara directly.', response_bias: 'Have Mara answer plainly and expose one concrete concern.', horizon: 'next few turns', status: 'foreground', conditions: [], change: 'replace', reason: 'The current exchange supports this route.' }];
 const nextGuides = [
-    { id: 'plain-concern', direction: 'Let Mara answer plainly while one concrete concern changes the exchange.', use_when: 'The user continues the conversation or addresses Mara.', drop_when: 'The user leaves, changes subject, or explicitly rejects the conversation.', response_bias: 'Deliver the answer and its immediate relational consequence.', strength: 'strong', source_pathways: ['tea-talk'], reason: 'The direct exchange makes this the strongest continuation.' },
-    { id: 'revealing-deflection', direction: 'Let Mara deflect in a way that reveals a different pressure through behavior.', use_when: 'The user remains present and Mara has reason not to answer plainly.', drop_when: 'The user establishes that Mara answers directly or the pressure is absent.', response_bias: 'Make the deflection materially informative rather than evasive filler.', strength: 'moderate', source_pathways: ['tea-talk'], reason: 'This contrasts with a plain answer while preserving the same continuity.' },
+    { id: 'plain-concern', direction: 'Let Mara answer plainly while one concrete concern changes the exchange.', use_when: 'The user continues the conversation or addresses Mara.', drop_when: 'The user leaves, changes subject, or explicitly rejects the conversation.', response_bias: 'Deliver the answer and its immediate relational consequence.', world_delta: 'Mara discloses a concern that changes what both characters understand.', origin: 'inferred', basis: 'Mara is present, engaged, and the current exchange supports a direct concern.', strength: 'strong', source_pathways: ['tea-talk'], reason: 'The direct exchange makes this the strongest continuation.' },
+    { id: 'revealing-deflection', direction: 'Let Mara deflect in a way that reveals a different pressure through behavior.', use_when: 'The user remains present and Mara has reason not to answer plainly.', drop_when: 'The user establishes that Mara answers directly or the pressure is absent.', response_bias: 'Make the deflection materially informative rather than evasive filler.', world_delta: 'Mara exposes a different pressure through behavior, changing the social stakes.', origin: 'original', basis: 'Her established hesitation can plausibly surface indirectly in this exchange.', strength: 'moderate', source_pathways: ['tea-talk'], reason: 'This contrasts with a plain answer while preserving the same continuity.' },
 ];
 const planHorizons = {
     items: [
@@ -54,6 +54,12 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /never rewrite the user's text/);
     assert.match(SYSTEM, /Lore is an active causal system/);
     assert.match(SYSTEM, /Player silence is not a veto/);
+    assert.match(SYSTEM, /A routine transition is scaffolding, not a sufficient primary development/);
+    assert.match(SYSTEM, /Every next guide must name one concrete world_delta beyond the player's action/);
+    assert.match(SYSTEM, /not the lowest-risk, least-committal, or most literal continuation/);
+    assert.match(SYSTEM, /every swipe alternative must honor or materially address it/);
+    assert.match(SYSTEM, /promised, agreed, deferred, owed, revealed, decided, or established only when raw conversation/);
+    assert.match(SYSTEM, /Planner-created ideas may shape the future but must never be backfilled/);
     assert.match(SYSTEM, /six to ten concise plan_horizons\.items ordered from the next few turns to a distant story horizon/);
     assert.match(SYSTEM, /some later arc or meaningful future time/);
     assert.match(SYSTEM, /Everything in the plan remains changeable/);
@@ -101,6 +107,8 @@ test('planner requires distinct alternatives for swipe variety', () => {
     };
     assert.equal(validateAnalysisResult({ ...result, next_guides: [nextGuides[0]] }).valid, false);
     assert.equal(validateAnalysisResult({ ...result, next_guides: [nextGuides[0], { ...nextGuides[0] }] }).valid, false);
+    assert.equal(validateAnalysisResult({ ...result, next_guides: nextGuides.map(({ world_delta, ...guide }) => guide) }).valid, false);
+    assert.equal(validateAnalysisResult({ ...result, next_guides: nextGuides.map(guide => ({ ...guide, origin: 'wish' })) }).valid, false);
     assert.equal(validateAnalysisResult(result).valid, true);
 });
 

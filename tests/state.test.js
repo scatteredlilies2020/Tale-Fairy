@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import { buildPromptPayload, clearState, defaultState, fingerprintMessages, hasExplicitProgressDirective, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, isStateAligned, loadState, normalizeState, saveState, STATE_KEY } from '../extension/state.js';
 
 const stateNextGuides = [
-    { id: 'direct-answer', direction: 'Let Mara answer plainly and reveal one concrete concern.', useWhen: 'The user continues or asks Mara.', dropWhen: 'The user leaves or changes subject.', responseBias: 'Answer directly and show its immediate effect.', strength: 'strong', sourcePathways: ['answer'], reason: 'Direct continuation.' },
-    { id: 'telling-deflection', direction: 'Let Mara reveal a different pressure through a meaningful deflection.', useWhen: 'The user remains with Mara and she has reason to hesitate.', dropWhen: 'The user establishes a direct answer or ends the exchange.', responseBias: 'Make the deflection consequential.', strength: 'moderate', sourcePathways: ['answer'], reason: 'Contrasting continuity-safe alternative.' },
+    { id: 'direct-answer', direction: 'Let Mara answer plainly and reveal one concrete concern.', useWhen: 'The user continues or asks Mara.', dropWhen: 'The user leaves or changes subject.', responseBias: 'Answer directly and show its immediate effect.', worldDelta: 'Mara reveals a concern that changes the shared understanding.', origin: 'inferred', basis: 'Mara is present and engaged in the live conversation.', strength: 'strong', sourcePathways: ['answer'], reason: 'Direct continuation.' },
+    { id: 'telling-deflection', direction: 'Let Mara reveal a different pressure through a meaningful deflection.', useWhen: 'The user remains with Mara and she has reason to hesitate.', dropWhen: 'The user establishes a direct answer or ends the exchange.', responseBias: 'Make the deflection consequential.', worldDelta: 'Mara exposes a different pressure and changes the social stakes.', origin: 'original', basis: 'Her hesitation supports an indirect but consequential response.', strength: 'moderate', sourcePathways: ['answer'], reason: 'Contrasting continuity-safe alternative.' },
 ];
 const currentPlan = {
     pathways: [{ id: 'answer', direction: 'Continue the active exchange.', when: 'The user continues or asks Mara.', responseBias: 'Have Mara answer.', horizon: 'near', status: 'foreground', conditions: [], change: 'keep', reason: 'The exchange is current.' }],
@@ -19,7 +19,7 @@ test('state normalizes caps and invalid mode', () => {
     assert.equal(state.enabled, false);
     assert.equal(state.objectives.length, 9);
     assert.deepEqual(state.nextGuides.map(item => item.id), ['guide-0', 'guide-1', 'guide-2']);
-    assert.equal(state.version, 11);
+    assert.equal(state.version, 12);
 });
 
 test('state round trips through portable metadata', () => {
@@ -110,6 +110,15 @@ test('pre-canon-ledger state requests one bounded bootstrap rescan', () => {
     assert.equal(defaultState().canonBootstrapPending, false);
 });
 
+test('pre-momentum guides cannot remain injectable after the v12 upgrade', () => {
+    const legacyGuides = stateNextGuides.map(({ worldDelta, origin, basis, ...guide }) => guide);
+    const migrated = normalizeState({ version: 11, ...currentPlan, nextGuides: legacyGuides, lastInject: true });
+    assert.equal(migrated.version, 12);
+    assert.equal(migrated.canonBootstrapPending, true);
+    assert.deepEqual(migrated.nextGuides, []);
+    assert.equal(isGuidanceUsable(migrated, [], ''), false);
+});
+
 test('prompt payload keeps user directives active and only includes usable guidance', () => {
     const state = {
         ...defaultState(),
@@ -139,6 +148,8 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.doesNotMatch(current, /Keep the scene grounded/);
     assert.match(current, /NEXT LEAN \[strong\]/);
     assert.match(current, /Let Mara answer plainly/);
+    assert.match(current, /VISIBLE CHANGE: Mara reveals a concern/);
+    assert.match(current, /GROUNDING \[inferred\]: Mara is present/);
     assert.match(current, /USE IF: The user continues or asks Mara/);
     assert.match(current, /DROP IF: The user leaves or changes subject/);
     assert.doesNotMatch(current, /PATHWAYS|TIME HORIZONS|Revisit the obligation|telling-deflection/);
@@ -146,6 +157,7 @@ test('prompt payload keeps user directives active and only includes usable guida
     const swipe = buildPromptPayload(state, { enabled: true, guidanceUsable: true, guideCandidates: stateNextGuides, guideIndex: 1 });
     assert.match(swipe, /NEXT LEAN \[moderate\]/);
     assert.match(swipe, /meaningful deflection/);
+    assert.match(swipe, /GROUNDING \[original\]/);
     assert.doesNotMatch(swipe, /Let Mara answer plainly/);
     assert.equal(buildPromptPayload(state, { enabled: false, guidanceUsable: true }), '');
 });

@@ -9,9 +9,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.5.0');
-    assert.equal(manifest.js, 'extension/index.js?v=0.5.0');
-    assert.equal(manifest.css, 'extension/style.css?v=0.5.0');
+    assert.equal(manifest.version, '0.6.0');
+    assert.equal(manifest.js, 'extension/index.js?v=0.6.0');
+    assert.equal(manifest.css, 'extension/style.css?v=0.6.0');
 });
 
 test('injection exposes one immediate guide while private planning stays private', () => {
@@ -19,6 +19,10 @@ test('injection exposes one immediate guide while private planning stays private
     assert.match(stateSource, /NEXT LEAN/);
     assert.match(stateSource, /USE IF/);
     assert.match(stateSource, /DROP IF/);
+    assert.match(stateSource, /VISIBLE CHANGE/);
+    assert.match(stateSource, /GROUNDING/);
+    assert.match(stateSource, /do not become inert/);
+    assert.match(stateSource, /Routine transit and logistics are scaffolding/);
     assert.match(stateSource, /planHorizons\.items/);
     assert.match(stateSource, /latest user action/);
     assert.doesNotMatch(stateSource, /TIME HORIZONS/);
