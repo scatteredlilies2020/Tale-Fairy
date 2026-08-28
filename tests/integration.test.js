@@ -14,15 +14,16 @@ test('manifest identifies the adaptive planning release', () => {
     assert.equal(manifest.css, 'extension/style.css?v=0.8.0');
 });
 
-test('injection sends optional background cues while long-range planning stays private', () => {
-    assert.match(stateSource, /Conditional background cues/);
-    assert.match(stateSource, /CUE/);
+test('injection sends optional narrative movements while long-range planning stays private', () => {
+    assert.match(stateSource, /Adaptive narrative movements/);
+    assert.match(stateSource, /MOVEMENT/);
     assert.match(stateSource, /IF:/);
     assert.match(stateSource, /UNLESS:/);
-    assert.match(stateSource, /POSSIBLE EFFECT:/);
-    assert.match(stateSource, /Use at most one cue whose IF is true/);
-    assert.match(stateSource, /If none fit, use none/);
-    assert.match(stateSource, /Preserve causally due schedules and offscreen processes/);
+    assert.match(stateSource, /DRAMATIC SCORE:/);
+    assert.match(stateSource, /DESIRED AFTEREFFECT:/);
+    assert.match(stateSource, /Use zero or one fitting movement/);
+    assert.match(stateSource, /choose the concrete dialogue, action, image, consequence, or grounded surprise yourself/);
+    assert.match(stateSource, /Preserve due processes/);
     assert.match(stateSource, /PACING BOUNDARY:/);
     assert.match(stateSource, /Do not reuse the discarded reply/);
     assert.doesNotMatch(stateSource, /within two sentences|Answer once|recap|repeated dialogue|show only that outcome/);

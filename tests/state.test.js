@@ -22,7 +22,7 @@ test('state normalizes caps and invalid mode', () => {
     assert.deepEqual(state.nextGuides.map(item => item.id), ['guide-0', 'guide-1', 'guide-2', 'guide-3']);
     assert.ok(state.nextGuides[0].responseBias.length <= 130);
     assert.match(state.nextGuides[0].responseBias, /finished…$/);
-    assert.equal(state.version, 20);
+    assert.equal(state.version, 21);
 });
 
 test('offscreen causes persist privately while injection exposes only their consequence', () => {
@@ -192,7 +192,7 @@ test('pre-canon-ledger state requests one bounded bootstrap rescan', () => {
 
 test('pre-momentum guides and request verification cannot remain injectable after an upgrade', () => {
     const migrated = normalizeState({ version: 16, ...currentPlan, nextGuides: stateNextGuides, canonConstraints: ['Fact from a discarded response.'], lastInject: true, lastRequestVerification: { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides } });
-    assert.equal(migrated.version, 20);
+    assert.equal(migrated.version, 21);
     assert.equal(migrated.canonBootstrapPending, true);
     assert.deepEqual(migrated.nextGuides, []);
     assert.deepEqual(migrated.canonConstraints, []);
@@ -200,14 +200,14 @@ test('pre-momentum guides and request verification cannot remain injectable afte
     assert.equal(isGuidanceUsable(migrated, [], ''), false);
 });
 
-test('v18 candidates remain available while the v20 audit is pending', () => {
+test('v20 candidates are rebuilt as narrative movements while established canon survives', () => {
     const verification = { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides };
-    const migrated = normalizeState({ version: 18, ...currentPlan, nextGuides: stateNextGuides, canonConstraints: ['Established fact.'], lastRequestVerification: verification });
-    assert.equal(migrated.version, 20);
+    const migrated = normalizeState({ version: 20, ...currentPlan, nextGuides: stateNextGuides, canonConstraints: ['Established fact.'], lastRequestVerification: verification });
+    assert.equal(migrated.version, 21);
     assert.equal(migrated.canonBootstrapPending, true);
-    assert.deepEqual(migrated.nextGuides.map(({ causalEventIds, disclosure, ...guide }) => guide), stateNextGuides);
+    assert.deepEqual(migrated.nextGuides, []);
     assert.deepEqual(migrated.canonConstraints, ['Established fact.']);
-    assert.notEqual(migrated.lastRequestVerification, null);
+    assert.equal(migrated.lastRequestVerification, null);
 });
 
 test('prompt payload keeps user directives active and only includes usable guidance', () => {
@@ -240,16 +240,19 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(current, /^<tale-fairy-context>/);
     assert.match(current, /<\/tale-fairy-context>$/);
     assert.doesNotMatch(current, /Keep the scene grounded/);
-    assert.match(current, /Conditional background cues \(use zero or one\)/);
-    assert.match(current, /CUE \[EMPHASIS\]: Let Mara answer plainly/);
+    assert.match(current, /Adaptive narrative movements \(use zero or one\)/);
+    assert.match(current, /MOVEMENT \[EMPHASIS\]: Let Mara answer plainly/);
     assert.match(current, /IF: The user continues or asks Mara/);
     assert.match(current, /UNLESS: The user leaves or changes subject/);
-    assert.match(current, /DELIVERY: Answer directly and show its immediate effect/);
-    assert.match(current, /POSSIBLE EFFECT: Mara reveals a concern/);
-    assert.match(current, /Use at most one cue whose IF is true and UNLESS is false/);
-    assert.match(current, /not required outcomes and not facts that already happened/);
+    assert.match(current, /DRAMATIC SCORE: Answer directly and show its immediate effect/);
+    assert.match(current, /DESIRED AFTEREFFECT: Mara reveals a concern/);
+    assert.match(current, /Judge the narrative type, scene function, character dynamics/);
+    assert.match(current, /It is a trajectory, not a screenplay or required event/);
+    assert.match(current, /choose the concrete dialogue, action, image, consequence, or grounded surprise yourself/);
+    assert.match(current, /mood, energy, tempo, tension, focus, and surprise latitude/);
+    assert.match(current, /aftereffect is the desired change, not its prescribed mechanism/);
     assert.match(current, /Heading, going, or walking to a destination permits travel and arrival only/);
-    assert.match(current, /Preserve causally due schedules and offscreen processes/);
+    assert.match(current, /Preserve due processes, established meanings, pacing, and player agency/);
     assert.doesNotMatch(current, /discarded reply/);
     assert.doesNotMatch(current, /GROUNDING:|EXECUTION:|response is incomplete|failure/);
     assert.doesNotMatch(current, /Mara is present/);
@@ -257,12 +260,12 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.doesNotMatch(current, /PATHWAYS|TIME HORIZONS|Revisit the obligation/);
 
     const swipe = buildPromptPayload(state, { enabled: true, guidanceUsable: true, guideCandidates: stateNextGuides, guideIndex: 1, regeneration: true });
-    assert.match(swipe, /Conditional background cues for a different regeneration/);
-    assert.match(swipe, /CUE \[EMPHASIS\]: Let Mara reveal a different pressure/);
+    assert.match(swipe, /Adaptive narrative movements for a different regeneration/);
+    assert.match(swipe, /MOVEMENT \[EMPHASIS\]: Let Mara reveal a different pressure/);
     assert.match(swipe, /meaningful deflection/);
     assert.match(swipe, /Let Mara answer plainly/);
-    assert.match(swipe, /Do not reuse the discarded reply's concrete event/);
-    assert.match(swipe, /If none fit, use none/);
+    assert.match(swipe, /Do not reuse the discarded reply's concrete realization/);
+    assert.match(swipe, /Use zero or one fitting movement/);
     assert.doesNotMatch(swipe, /moderate|original|GROUNDING:|EXECUTION:/);
 
     const regenerationFallback = buildPromptPayload(state, { enabled: true, guidanceUsable: false, guideCandidates: [], regeneration: true, variationCue: 8472 });

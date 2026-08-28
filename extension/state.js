@@ -1,5 +1,5 @@
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 20;
+export const STATE_VERSION = 21;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -229,10 +229,10 @@ export function normalizeState(input = {}) {
     const value = input && typeof input === 'object' ? input : {};
     const inputVersion = Math.max(0, Number(value.version) || 0);
     const plannerUpgradePending = inputVersion > 0 && inputVersion < STATE_VERSION;
-    // v18 already stores the current candidate/canon shapes. Keep that usable
-    // plan visible while v20 performs its background audit; older plans are not
-    // safe to inject and still require a clean rebuild.
+    // v18 already stores the current canon shape. Preserve that evidence, but
+    // v21 must rebuild older event-prescriptive guides as narrative movements.
     const unsafePlannerUpgrade = inputVersion > 0 && inputVersion < 18;
+    const movementUpgrade = inputVersion > 0 && inputVersion < 21;
     const state = {
         ...base,
         ...value,
@@ -246,7 +246,7 @@ export function normalizeState(input = {}) {
         entities: cap(value.entities).map(normalizeEntity).filter(item => item.name),
         possibilities: cap(value.possibilities, 6).map(normalizePossibility).filter(item => item.description),
         pathways: cap(value.pathways, MAX_PATHWAYS).map(normalizePathway).filter(item => item.id && item.direction && item.when),
-        nextGuides: unsafePlannerUpgrade ? [] : (Array.isArray(value.nextGuides) ? value.nextGuides.slice(0, MAX_GUIDES) : []).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen && item.responseBias && item.worldDelta && item.basis),
+        nextGuides: movementUpgrade ? [] : (Array.isArray(value.nextGuides) ? value.nextGuides.slice(0, MAX_GUIDES) : []).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen && item.responseBias && item.worldDelta && item.basis),
         activeBeat: normalizeBeat(value.activeBeat),
         beatHistory: cap(value.beatHistory, 6).map(normalizeBeat).filter(beat => beat.objective),
         planHorizons: normalizePlanHorizons(value.planHorizons),
@@ -269,7 +269,7 @@ export function normalizeState(input = {}) {
         lastAnalyzedAt: Number(value.lastAnalyzedAt) || 0,
         turnCount: Math.max(0, Number(value.turnCount) || 0),
         plannerSeed: Number.isInteger(value.plannerSeed) ? value.plannerSeed : 0,
-        lastRequestVerification: unsafePlannerUpgrade ? null : normalizeRequestVerification(value.lastRequestVerification),
+        lastRequestVerification: movementUpgrade ? null : normalizeRequestVerification(value.lastRequestVerification),
     };
     return state;
 }
@@ -407,7 +407,7 @@ function backgroundCue(guide, emphasized = false) {
         'reveal-cause': 'The cause may become known only through an in-world reveal supported by this route.',
     };
     const boundary = boundaries[guide.disclosure];
-    return `CUE${emphasized ? ' [EMPHASIS]' : ''}: ${guide.direction.slice(0, 180)}\nIF: ${guide.useWhen.slice(0, 90)}\nUNLESS: ${guide.dropWhen.slice(0, 80)}\nDELIVERY: ${guide.responseBias.slice(0, 90)}\nPOSSIBLE EFFECT: ${guide.worldDelta.slice(0, 100)}${boundary ? `\nINFORMATION BOUNDARY: ${boundary}` : ''}`;
+    return `MOVEMENT${emphasized ? ' [EMPHASIS]' : ''}: ${guide.direction.slice(0, 180)}\nIF: ${guide.useWhen.slice(0, 90)}\nUNLESS: ${guide.dropWhen.slice(0, 80)}\nDRAMATIC SCORE: ${guide.responseBias.slice(0, 110)}\nDESIRED AFTEREFFECT: ${guide.worldDelta.slice(0, 110)}${boundary ? `\nINFORMATION BOUNDARY: ${boundary}` : ''}`;
 }
 
 function boundedPromptLines(items, prefix, perItem, total) {
@@ -428,11 +428,11 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
     const s = normalizeState(state);
     const noteLabels = { suggest: 'OPTIONAL SUGGESTION', correct: 'USER CORRECTION', establish: 'USER-ESTABLISHED CANON', forbid: 'HARD EXCLUSION' };
     const promptCanon = Array.isArray(canonConstraints) ? canonConstraints : s.canonConstraints;
-    const canon = boundedPromptLines(promptCanon, '- ', 300, 2000);
+    const canon = boundedPromptLines(promptCanon, '- ', 300, 1850);
     const canonPrompt = canon
         ? `\n<user-established-canon>\nBinding user-established facts; preserve their stated magnitude, scope, and qualifiers. Unstated details remain creative space.\n${canon}\n</user-established-canon>`
         : '';
-    const notes = boundedPromptLines(s.userNotes.map(note => `${noteLabels[note.kind]}: ${note.text}`), '- ', 300, 2000);
+    const notes = boundedPromptLines(s.userNotes.map(note => `${noteLabels[note.kind]}: ${note.text}`), '- ', 300, 1850);
     const notePrompt = notes
         ? `\n<tale-fairy-user-notes>\nUser directives: exclusions, corrections, and canon are binding; suggestions are optional.\n${notes}\n</tale-fairy-user-notes>`
         : '';
@@ -445,7 +445,7 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
         : [];
     const pacingBoundary = 'PACING BOUNDARY: Match the latest user action\'s exact scope. Heading, going, or walking to a destination permits travel and arrival only—not doing or finishing the activity there, advancing to the next task, or skipping additional time unless the user asks.';
     const routePrompt = guidanceUsable && candidates.length
-        ? `Conditional background cues${regeneration ? ' for a different regeneration' : ''} (use zero or one):\n${orderedCandidates.map((guide, index) => backgroundCue(guide, index === 0)).join('\n\n')}\nUse at most one cue whose IF is true and UNLESS is false after reading the latest user turn. If none fit, use none. These are possible world developments, not required outcomes and not facts that already happened. The first cue is emphasis, not an obligation. Preserve causally due schedules and offscreen processes without forcing them visibly into this beat.${regeneration ? ' Do not reuse the discarded reply\'s concrete event.' : ''} Preserve each name and code's established meaning and never decide player action.\n${pacingBoundary}`
+        ? `Adaptive narrative movements${regeneration ? ' for a different regeneration' : ''} (use zero or one):\n${orderedCandidates.map((guide, index) => backgroundCue(guide, index === 0)).join('\n\n')}\nJudge the narrative type, scene function, character dynamics, and current dramatic state from the complete latest turn. Use zero or one fitting movement. It is a trajectory, not a screenplay or required event: choose the concrete dialogue, action, image, consequence, or grounded surprise yourself from established character and world causality. Interpret the score as a potentially changing blend of mood, energy, tempo, tension, focus, and surprise latitude. The aftereffect is the desired change, not its prescribed mechanism. Emphasis is optional.${regeneration ? ' Do not reuse the discarded reply\'s concrete realization.' : ''} Preserve due processes, established meanings, pacing, and player agency.\n${pacingBoundary}`
         : regeneration
             ? `Background variation ${Math.max(1, Number(variationCue) || 1)}: if a supported NPC or world development naturally fits this beat, it may differ from the discarded reply's concrete event. Do not force one. Do not repeat a completed event, reinterpret established names or codes, invent an unsupported crisis, or decide player action.\n${pacingBoundary}`
             : `Background continuity only: allow supported NPC, schedule, or world processes to continue when they naturally fit this beat; do not force an event solely because this guide exists. Do not repeat a completed event, reinterpret established names or codes, or decide player action.\n${pacingBoundary}`;

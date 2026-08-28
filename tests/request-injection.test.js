@@ -116,13 +116,13 @@ test('provider-bound request receives a compact conditional cue set with rotated
     assert.equal(chatHasCurrentGuidance(chat, prompt), true);
     assert.equal(chat.length, 1);
     assert.equal(chat.at(-1).role, 'user');
-    assert.match(chat.at(-1).content, /Conditional background cues for a different regeneration/);
-    assert.match(chat.at(-1).content, /CUE \[EMPHASIS\]: An urgent contradiction reaches Vekk/);
+    assert.match(chat.at(-1).content, /Adaptive narrative movements for a different regeneration/);
+    assert.match(chat.at(-1).content, /MOVEMENT \[EMPHASIS\]: An urgent contradiction reaches Vekk/);
     assert.match(chat.at(-1).content, /IF: The channel remains open/);
     assert.match(chat.at(-1).content, /UNLESS: The user isolates the room/);
-    assert.match(chat.at(-1).content, /POSSIBLE EFFECT: New evidence forces Vekk/);
+    assert.match(chat.at(-1).content, /DESIRED AFTEREFFECT: New evidence forces Vekk/);
     assert.match(chat.at(-1).content, /Vekk gives the concrete war update now/);
-    assert.match(chat.at(-1).content, /Do not reuse the discarded reply's concrete event/);
+    assert.match(chat.at(-1).content, /Do not reuse the discarded reply's concrete realization/);
     assert.match(chat.at(-1).content, /Tell me what happened\.$/);
     assert.doesNotMatch(chat.at(-1).content, /GROUNDING:|EXECUTION:/);
     assert.equal(chat.map(message => String(message.content)).join('\n').match(/<tale-fairy-context>/g)?.length, 1);
