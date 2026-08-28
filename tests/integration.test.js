@@ -9,19 +9,20 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.7.8');
-    assert.equal(manifest.js, 'extension/index.js?v=0.7.8');
-    assert.equal(manifest.css, 'extension/style.css?v=0.7.8');
+    assert.equal(manifest.version, '0.7.10');
+    assert.equal(manifest.js, 'extension/index.js?v=0.7.10');
+    assert.equal(manifest.css, 'extension/style.css?v=0.7.10');
 });
 
 test('injection sends one immediate guide while alternatives and long-range planning stay private', () => {
     assert.match(stateSource, /Director cue/);
-    assert.match(stateSource, /DIRECTION:/);
-    assert.match(stateSource, /INTENDED SHIFT:/);
-    assert.match(stateSource, /Direction, not script: adapt or discard it/);
+    assert.match(stateSource, /SUGGESTED ROUTE:/);
+    assert.match(stateSource, /REQUIRED OUTCOME:/);
+    assert.match(stateSource, /make REQUIRED OUTCOME true onscreen/);
+    assert.match(stateSource, /Do not replay or reword the discarded reply/);
     assert.match(stateSource, /<tale-fairy-context>/);
     assert.doesNotMatch(stateSource, /SELECTED IMMEDIATE ROUTE|ALTERNATIVE ROUTE/);
-    assert.doesNotMatch(stateSource, /USE IF:|DROP IF:|VISIBLE CHANGE:|GROUNDING:|EXECUTION:/);
+    assert.doesNotMatch(stateSource, /USE IF:|DROP IF:|GROUNDING:|EXECUTION:/);
     assert.match(stateSource, /planHorizons\.items/);
     assert.doesNotMatch(stateSource, /TIME HORIZONS/);
     assert.match(stateSource, /guideCandidates = null, guideIndex = 0, regeneration = false/);
@@ -102,6 +103,8 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /type === 'swipe' \|\| type === 'regenerate'/);
     assert.match(source, /\(previousIndex \+ 1\) % candidates\.length/);
     assert.match(source, /state\.lastRequestVerification\?\.guideCandidates/);
+    assert.match(source, /state\.lastRequestVerification\?\.canonConstraints/);
+    assert.match(source, /canonConstraints: loadState\(context\.chatMetadata\)\.canonConstraints/);
     assert.match(source, /generationGuideSelection\.usable \? generationGuideSelection\.candidates : \[\]/);
     assert.match(source, /regeneration: generationGuideSelection\.regeneration/);
     assert.match(source, /variationCue: generationGuideSelection\.variationCue/);

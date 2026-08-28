@@ -22,17 +22,18 @@ test('state normalizes caps and invalid mode', () => {
     assert.deepEqual(state.nextGuides.map(item => item.id), ['guide-0', 'guide-1', 'guide-2']);
     assert.ok(state.nextGuides[0].responseBias.length <= 130);
     assert.match(state.nextGuides[0].responseBias, /finished…$/);
-    assert.equal(state.version, 15);
+    assert.equal(state.version, 16);
 });
 
 test('state round trips through portable metadata', () => {
-    const metadata = saveState({ title: 'chat' }, { ...defaultState(), guidance: 'take a breath', sourceChatId: 'chat-1', sourceMessageCount: 1, lastAnalysisFingerprint: fingerprintMessages([{ mes: 'hello', is_user: true }]), scene: { status: 'active' }, lastRequestVerification: { status: 'confirmed', guidanceBlock: '<living-world-guide>take a breath</living-world-guide>', requestedAt: 10, confirmedAt: 20, sourceMessageCount: 1, responseMessageCount: 2, chatId: 'chat-1', provider: 'custom', model: 'model', position: 'at-depth', role: 'user', depth: 3, guideCandidates: stateNextGuides, selectedGuideIndex: 1 } });
+    const metadata = saveState({ title: 'chat' }, { ...defaultState(), guidance: 'take a breath', sourceChatId: 'chat-1', sourceMessageCount: 1, lastAnalysisFingerprint: fingerprintMessages([{ mes: 'hello', is_user: true }]), scene: { status: 'active' }, lastRequestVerification: { status: 'confirmed', guidanceBlock: '<living-world-guide>take a breath</living-world-guide>', requestedAt: 10, confirmedAt: 20, sourceMessageCount: 1, responseMessageCount: 2, chatId: 'chat-1', provider: 'custom', model: 'model', position: 'at-depth', role: 'user', depth: 3, guideCandidates: stateNextGuides, canonConstraints: ['Fact before the response.'], selectedGuideIndex: 1 } });
     assert.equal(metadata.title, 'chat');
     assert.equal(loadState(metadata).guidance, 'take a breath');
     assert.equal(loadState(metadata).lastRequestVerification.guidanceBlock, '<living-world-guide>take a breath</living-world-guide>');
     assert.equal(loadState(metadata).lastRequestVerification.responseMessageCount, 2);
     assert.equal(loadState(metadata).lastRequestVerification.guideCandidates.length, 2);
     assert.equal(loadState(metadata).lastRequestVerification.selectedGuideIndex, 1);
+    assert.deepEqual(loadState(metadata).lastRequestVerification.canonConstraints, ['Fact before the response.']);
     assert.equal(clearState(metadata)[STATE_KEY], undefined);
 });
 
@@ -153,8 +154,8 @@ test('pre-canon-ledger state requests one bounded bootstrap rescan', () => {
 });
 
 test('pre-momentum guides and request verification cannot remain injectable after an upgrade', () => {
-    const migrated = normalizeState({ version: 14, ...currentPlan, nextGuides: stateNextGuides, lastInject: true, lastRequestVerification: { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides } });
-    assert.equal(migrated.version, 15);
+    const migrated = normalizeState({ version: 15, ...currentPlan, nextGuides: stateNextGuides, lastInject: true, lastRequestVerification: { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides } });
+    assert.equal(migrated.version, 16);
     assert.equal(migrated.canonBootstrapPending, true);
     assert.deepEqual(migrated.nextGuides, []);
     assert.equal(migrated.lastRequestVerification, null);
@@ -192,9 +193,11 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(current, /<\/tale-fairy-context>$/);
     assert.doesNotMatch(current, /Keep the scene grounded/);
     assert.match(current, /Director cue:/);
-    assert.match(current, /DIRECTION: Let Mara answer plainly/);
-    assert.match(current, /INTENDED SHIFT: Mara reveals a concern/);
-    assert.match(current, /Direction, not script: adapt or discard it as the latest user turn requires/);
+    assert.match(current, /SUGGESTED ROUTE: Let Mara answer plainly/);
+    assert.match(current, /REQUIRED OUTCOME: Mara reveals a concern/);
+    assert.match(current, /make REQUIRED OUTCOME true onscreen through NPC or world action/);
+    assert.match(current, /Repeat old logistics at most once briefly/);
+    assert.doesNotMatch(current, /discarded reply/);
     assert.doesNotMatch(current, /USE IF:|DROP IF:|GROUNDING:|EXECUTION:|response is incomplete|failure/);
     assert.doesNotMatch(current, /Mara is present|The user continues or asks Mara|The user leaves or changes subject/);
     assert.doesNotMatch(current, /telling-deflection|meaningful deflection/);
@@ -203,8 +206,10 @@ test('prompt payload keeps user directives active and only includes usable guida
     const swipe = buildPromptPayload(state, { enabled: true, guidanceUsable: true, guideCandidates: stateNextGuides, guideIndex: 1, regeneration: true });
     assert.doesNotMatch(swipe, /ALTERNATIVE ROUTE 1|Let Mara answer plainly/);
     assert.match(swipe, /Director cue for a materially different regeneration/);
-    assert.match(swipe, /DIRECTION: Let Mara reveal a different pressure/);
+    assert.match(swipe, /SUGGESTED ROUTE: Let Mara reveal a different pressure/);
     assert.match(swipe, /meaningful deflection/);
+    assert.match(swipe, /Do not replay or reword the discarded reply/);
+    assert.match(swipe, /Replace the outcome only if impossible/);
     assert.doesNotMatch(swipe, /moderate|original|USE IF:|DROP IF:|GROUNDING:|EXECUTION:/);
 
     const regenerationFallback = buildPromptPayload(state, { enabled: true, guidanceUsable: false, guideCandidates: [], regeneration: true, variationCue: 8472 });
@@ -214,6 +219,13 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(regenerationFallback, /Unless quiet closure was requested/);
     assert.doesNotMatch(regenerationFallback, /Let Mara answer plainly|meaningful deflection/);
     assert.equal(buildPromptPayload(state, { enabled: false, guidanceUsable: true }), '');
+});
+
+test('replacement payload uses pre-response canon instead of facts inferred from the discarded reply', () => {
+    const state = { ...defaultState(), canonConstraints: ['Vekk promised something only in the discarded response.'], nextGuides: stateNextGuides };
+    const payload = buildPromptPayload(state, { guidanceUsable: true, regeneration: true, canonConstraints: ['Lucia remains at the tray station.'] });
+    assert.match(payload, /Lucia remains at the tray station/);
+    assert.doesNotMatch(payload, /Vekk promised something only in the discarded response/);
 });
 
 test('roleplay injection stays bounded with maximum notes, canon, and route fields', () => {

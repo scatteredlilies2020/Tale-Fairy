@@ -54,6 +54,8 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /never rewrite the user's text/);
     assert.match(SYSTEM, /Lore is an active causal system/);
     assert.match(SYSTEM, /Player silence is not a veto/);
+    assert.match(SYSTEM, /Every next guide must be executable through NPC or world action without requiring a new player action/);
+    assert.match(SYSTEM, /keep the player at the current location and bring the visible change into that scene/);
     assert.match(SYSTEM, /A routine transition is scaffolding, not a sufficient primary development/);
     assert.match(SYSTEM, /Every next guide must name one concrete world_delta beyond the player's action/);
     assert.match(SYSTEM, /not the lowest-risk, least-committal, or most literal continuation/);
@@ -119,6 +121,7 @@ test('planner requires distinct alternatives for swipe variety', () => {
     };
     assert.equal(validateAnalysisResult({ ...result, next_guides: [nextGuides[0]] }).valid, false);
     assert.equal(validateAnalysisResult({ ...result, next_guides: [nextGuides[0], { ...nextGuides[0] }] }).valid, false);
+    assert.equal(validateAnalysisResult({ ...result, next_guides: nextGuides.map((guide, index) => index ? { ...guide, world_delta: nextGuides[0].world_delta } : guide) }).valid, false);
     assert.equal(validateAnalysisResult({ ...result, next_guides: nextGuides.map(({ world_delta, ...guide }) => guide) }).valid, false);
     assert.equal(validateAnalysisResult({ ...result, next_guides: nextGuides.map(guide => ({ ...guide, origin: 'wish' })) }).valid, false);
     assert.equal(validateAnalysisResult({ ...result, next_guides: nextGuides.map((guide, index) => index ? { ...guide, use_when: 'Alternative swipe wanting tension.' } : guide) }).valid, false);

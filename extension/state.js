@@ -1,5 +1,5 @@
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 15;
+export const STATE_VERSION = 16;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -184,6 +184,7 @@ function normalizeRequestVerification(value) {
         role: ['system', 'user', 'assistant'].includes(value.role) ? value.role : 'user',
         depth: Math.max(0, Math.min(100, Number(value.depth) || 0)),
         guideCandidates: (Array.isArray(value.guideCandidates) ? value.guideCandidates.slice(0, 3) : []).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen && item.worldDelta && item.basis),
+        canonConstraints: cap(value.canonConstraints).map(item => text(item).slice(0, 500)).filter(Boolean),
         selectedGuideIndex: Math.max(0, Math.min(2, Number(value.selectedGuideIndex) || 0)),
         replacementGeneration: value.replacementGeneration === true,
     };
@@ -350,7 +351,7 @@ export function horizonInfluence(index, total) {
 }
 
 function selectedRouteCue(guide) {
-    return `DIRECTION: ${guide.direction.slice(0, 280)}\nINTENDED SHIFT: ${guide.worldDelta.slice(0, 140)}`;
+    return `SUGGESTED ROUTE: ${guide.direction.slice(0, 280)}\nREQUIRED OUTCOME: ${guide.worldDelta.slice(0, 140)}`;
 }
 
 function boundedPromptLines(items, prefix, perItem, total) {
@@ -366,11 +367,12 @@ function boundedPromptLines(items, prefix, perItem, total) {
     return items.map(item => `${prefix}${compact(item)}`).join('\n').slice(0, total);
 }
 
-export function buildPromptPayload(state, { enabled = true, guidanceUsable = false, guideCandidates = null, guideIndex = 0, regeneration = false, variationCue = 0 } = {}) {
+export function buildPromptPayload(state, { enabled = true, guidanceUsable = false, guideCandidates = null, guideIndex = 0, regeneration = false, variationCue = 0, canonConstraints = null } = {}) {
     if (!enabled) return '';
     const s = normalizeState(state);
     const noteLabels = { suggest: 'OPTIONAL SUGGESTION', correct: 'USER CORRECTION', establish: 'USER-ESTABLISHED CANON', forbid: 'HARD EXCLUSION' };
-    const canon = boundedPromptLines(s.canonConstraints, '- ', 360, 2500);
+    const promptCanon = Array.isArray(canonConstraints) ? canonConstraints : s.canonConstraints;
+    const canon = boundedPromptLines(promptCanon, '- ', 360, 2500);
     const canonPrompt = canon
         ? `\n<user-established-canon>\nBinding user-established facts; preserve their stated magnitude, scope, and qualifiers. Unstated details remain creative space.\n${canon}\n</user-established-canon>`
         : '';
@@ -384,7 +386,7 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
     const selectedIndex = candidates.length ? Math.max(0, Math.min(candidates.length - 1, Number(guideIndex) || 0)) : 0;
     const selectedGuide = candidates[selectedIndex];
     const routePrompt = guidanceUsable && candidates.length
-        ? `Director cue${regeneration ? ' for a materially different regeneration' : ''}:\n${selectedRouteCue(selectedGuide)}\nDirection, not script: adapt or discard it as the latest user turn requires. Preserve player agency.`
+        ? `Director cue${regeneration ? ' for a materially different regeneration' : ''}:\n${selectedRouteCue(selectedGuide)}\nAnswer the user, then make REQUIRED OUTCOME true onscreen through NPC or world action. Do not move the player; adapt the route to the current location. Repeat old logistics at most once briefly.${regeneration ? ' Do not replay or reword the discarded reply.' : ''} Replace the outcome only if impossible, with an equally concrete change. Never act or speak for the player.`
         : `${regeneration ? `Variation ${Math.max(1, Number(variationCue) || 1)}: develop the scene differently, not just the wording. ` : ''}Let the latest user turn lead. Unless quiet closure was requested, allow one grounded NPC or world development. Preserve player agency.`;
     const guidancePrompt = `\n<living-world-guide>\n${routePrompt}\n</living-world-guide>`;
     return `<tale-fairy-context>${notePrompt}${canonPrompt}${guidancePrompt}\n</tale-fairy-context>`;

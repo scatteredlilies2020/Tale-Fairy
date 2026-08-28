@@ -13,7 +13,7 @@ import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.7.8';
+const RUNTIME_VERSION = '0.7.10';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -388,6 +388,7 @@ function guideSelectionOptions(state, context = currentContext()) {
             guideIndex: generationGuideSelection.index,
             regeneration: generationGuideSelection.regeneration,
             variationCue: generationGuideSelection.variationCue,
+            canonConstraints: generationGuideSelection.canonConstraints,
         };
     }
     const chat = messagesFromChat(context.chat || []);
@@ -437,6 +438,9 @@ function prepareGenerationGuide(state, type) {
         regeneration: swipe || retryUsable,
         replacement: swipe,
         variationCue: swipe ? randomVariationNonce() : 0,
+        // A replacement must not receive canon inferred from the assistant
+        // reply being discarded. Reuse the exact pre-response canon snapshot.
+        canonConstraints: swipe ? (state.lastRequestVerification?.canonConstraints || []) : null,
     };
 }
 
@@ -499,6 +503,7 @@ function rememberVerifiedRequest(payload, { provider = '', model = '' } = {}) {
         guideCandidates: generationGuideSelection
             ? (generationGuideSelection.usable ? generationGuideSelection.candidates : [])
             : loadState(context.chatMetadata).nextGuides,
+        canonConstraints: loadState(context.chatMetadata).canonConstraints,
         selectedGuideIndex: generationGuideSelection?.index || 0,
         replacementGeneration: generationGuideSelection?.replacement === true,
     };

@@ -117,8 +117,9 @@ test('provider-bound request receives only the selected route while alternatives
     assert.equal(chat.length, 1);
     assert.equal(chat.at(-1).role, 'user');
     assert.match(chat.at(-1).content, /Director cue for a materially different regeneration/);
-    assert.match(chat.at(-1).content, /DIRECTION: An urgent contradiction reaches Vekk/);
-    assert.match(chat.at(-1).content, /INTENDED SHIFT: New evidence forces Vekk/);
+    assert.match(chat.at(-1).content, /SUGGESTED ROUTE: An urgent contradiction reaches Vekk/);
+    assert.match(chat.at(-1).content, /REQUIRED OUTCOME: New evidence forces Vekk/);
+    assert.match(chat.at(-1).content, /Do not replay or reword the discarded reply/);
     assert.match(chat.at(-1).content, /Tell me what happened\.$/);
     assert.doesNotMatch(chat.at(-1).content, /Vekk gives the concrete war update now|USE IF:|DROP IF:|GROUNDING:|EXECUTION:/);
     assert.equal(chat.map(message => String(message.content)).join('\n').match(/<tale-fairy-context>/g)?.length, 1);
