@@ -22,7 +22,7 @@ test('state normalizes caps and invalid mode', () => {
     assert.deepEqual(state.nextGuides.map(item => item.id), ['guide-0', 'guide-1', 'guide-2']);
     assert.ok(state.nextGuides[0].responseBias.length <= 130);
     assert.match(state.nextGuides[0].responseBias, /finished…$/);
-    assert.equal(state.version, 16);
+    assert.equal(state.version, 17);
 });
 
 test('state round trips through portable metadata', () => {
@@ -154,10 +154,11 @@ test('pre-canon-ledger state requests one bounded bootstrap rescan', () => {
 });
 
 test('pre-momentum guides and request verification cannot remain injectable after an upgrade', () => {
-    const migrated = normalizeState({ version: 15, ...currentPlan, nextGuides: stateNextGuides, lastInject: true, lastRequestVerification: { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides } });
-    assert.equal(migrated.version, 16);
+    const migrated = normalizeState({ version: 16, ...currentPlan, nextGuides: stateNextGuides, canonConstraints: ['Fact from a discarded response.'], lastInject: true, lastRequestVerification: { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides } });
+    assert.equal(migrated.version, 17);
     assert.equal(migrated.canonBootstrapPending, true);
     assert.deepEqual(migrated.nextGuides, []);
+    assert.deepEqual(migrated.canonConstraints, []);
     assert.equal(migrated.lastRequestVerification, null);
     assert.equal(isGuidanceUsable(migrated, [], ''), false);
 });
@@ -185,8 +186,8 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(stale, /OPTIONAL SUGGESTION: A quiet meal could happen/);
     assert.match(stale, /HARD EXCLUSION: No time travel/);
     assert.doesNotMatch(stale, /Keep the scene grounded/);
-    assert.match(stale, /Let the latest user turn lead/);
-    assert.match(stale, /Preserve player agency/);
+    assert.match(stale, /Answer directly without recap/);
+    assert.match(stale, /Never act for the player/);
     assert.doesNotMatch(stale, /Let Mara answer plainly|meaningful deflection/);
     const current = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
     assert.match(current, /^<tale-fairy-context>/);
@@ -195,8 +196,8 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(current, /Director cue:/);
     assert.match(current, /SUGGESTED ROUTE: Let Mara answer plainly/);
     assert.match(current, /REQUIRED OUTCOME: Mara reveals a concern/);
-    assert.match(current, /make REQUIRED OUTCOME true onscreen through NPC or world action/);
-    assert.match(current, /Repeat old logistics at most once briefly/);
+    assert.match(current, /immediately make REQUIRED OUTCOME true onscreen/);
+    assert.match(current, /Mention an old fact only when causally necessary, once, in a short clause/);
     assert.doesNotMatch(current, /discarded reply/);
     assert.doesNotMatch(current, /USE IF:|DROP IF:|GROUNDING:|EXECUTION:|response is incomplete|failure/);
     assert.doesNotMatch(current, /Mara is present|The user continues or asks Mara|The user leaves or changes subject/);
@@ -205,18 +206,21 @@ test('prompt payload keeps user directives active and only includes usable guida
 
     const swipe = buildPromptPayload(state, { enabled: true, guidanceUsable: true, guideCandidates: stateNextGuides, guideIndex: 1, regeneration: true });
     assert.doesNotMatch(swipe, /ALTERNATIVE ROUTE 1|Let Mara answer plainly/);
-    assert.match(swipe, /Director cue for a materially different regeneration/);
+    assert.match(swipe, /Director cue for a different regeneration/);
     assert.match(swipe, /SUGGESTED ROUTE: Let Mara reveal a different pressure/);
     assert.match(swipe, /meaningful deflection/);
-    assert.match(swipe, /Do not replay or reword the discarded reply/);
-    assert.match(swipe, /Replace the outcome only if impossible/);
+    assert.match(swipe, /Do not replay the discarded reply/);
+    assert.match(swipe, /If impossible, use an equally concrete outcome/);
     assert.doesNotMatch(swipe, /moderate|original|USE IF:|DROP IF:|GROUNDING:|EXECUTION:/);
 
     const regenerationFallback = buildPromptPayload(state, { enabled: true, guidanceUsable: false, guideCandidates: [], regeneration: true, variationCue: 8472 });
     assert.match(regenerationFallback, /Variation 8472/);
-    assert.match(regenerationFallback, /develop the scene differently, not just the wording/);
-    assert.match(regenerationFallback, /allow one grounded NPC or world development/);
-    assert.match(regenerationFallback, /Unless quiet closure was requested/);
+    assert.match(regenerationFallback, /change the event, not the wording/);
+    assert.match(regenerationFallback, /Answer once, without recapping resolved rules, options, or logistics/);
+    assert.match(regenerationFallback, /Prefer a present NPC's choice or reveal/);
+    assert.match(regenerationFallback, /No routine filler, unprepared crisis, or player action/);
+    const regenerationGuide = regenerationFallback.match(/<living-world-guide>([\s\S]*?)<\/living-world-guide>/)?.[1] || '';
+    assert.ok(regenerationGuide.length < 500);
     assert.doesNotMatch(regenerationFallback, /Let Mara answer plainly|meaningful deflection/);
     assert.equal(buildPromptPayload(state, { enabled: false, guidanceUsable: true }), '');
 });
@@ -254,7 +258,7 @@ test('private planning state cannot bias the response without a selected next gu
     };
     const payload = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
     assert.doesNotMatch(payload, /closed-route|Use the sealed passage/);
-    assert.match(payload, /<living-world-guide>[\s\S]*Let the latest user turn lead/);
+    assert.match(payload, /<living-world-guide>[\s\S]*Answer directly without recap/);
 });
 
 test('explicit progress detection distinguishes commands from negation', () => {
@@ -288,6 +292,6 @@ test('the lean guide preserves player agency without a general narrative-policy 
     };
     const payload = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
     assert.equal(hasExplicitProgressDirective('I open the consultation door and walk inside to receive my results.'), false);
-    assert.match(payload, /Preserve player agency/);
+    assert.match(payload, /Never act for the player/);
     assert.doesNotMatch(payload, /<tale-fairy-narrative-policy>|Carry its declared actions|Before ending|Routine logistics/);
 });

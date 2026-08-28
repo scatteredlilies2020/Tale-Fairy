@@ -13,7 +13,7 @@ import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.7.10';
+const RUNTIME_VERSION = '0.7.13';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -1140,11 +1140,15 @@ async function upgradeLegacyPlanIfNeeded() {
     const context = currentContext();
     const rawState = context.chatMetadata?.[STATE_KEY];
     const rawVersion = Math.max(0, Number(rawState?.version) || 0);
+    // An interceptor can normalize and save the new version before this startup
+    // audit runs. The bootstrap flag must therefore remain an independent
+    // migration marker until a fresh planner pass clears it.
+    const upgradePending = rawVersion < STATE_VERSION || rawState?.canonBootstrapPending === true;
     const chatId = String(context.getCurrentChatId?.() || '');
     const messages = messagesFromChat(context.chat || []);
     const fingerprint = fingerprintMessages(messages);
-    const attemptKey = `${chatId}:${rawVersion}:${messages.length}`;
-    if (!getSettings().enabled || !chatId || !messages.length || !rawState || rawVersion >= STATE_VERSION || legacyUpgradeAttempts.has(attemptKey)) return;
+    const attemptKey = `${chatId}:${rawVersion}:${Number(rawState?.canonBootstrapPending === true)}:${messages.length}`;
+    if (!getSettings().enabled || !chatId || !messages.length || !rawState || !upgradePending || legacyUpgradeAttempts.has(attemptKey)) return;
     legacyUpgradeAttempts.add(attemptKey);
     const stopSequence = analysisStopSequence;
     let upgraded = loadState(context.chatMetadata);
@@ -1433,3 +1437,7 @@ for (const event of [event_types.CONNECTION_PROFILE_CREATED, event_types.CONNECT
 // Observe briefly instead of assuming one startup event is late enough.
 eventSource.on(event_types.EXTENSIONS_FIRST_LOAD, startUIMounting);
 startUIMounting();
+// CHAT_CHANGED may fire before a third-party module finishes loading. Audit
+// legacy state once on startup as well, so the active chat cannot remain in a
+// route-less migration state until the user changes chats.
+setTimeout(() => void upgradeLegacyPlanIfNeeded(), 0);

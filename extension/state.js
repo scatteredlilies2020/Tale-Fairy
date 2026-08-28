@@ -1,5 +1,5 @@
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 16;
+export const STATE_VERSION = 17;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -218,7 +218,10 @@ export function normalizeState(input = {}) {
         activeBeat: normalizeBeat(value.activeBeat),
         beatHistory: cap(value.beatHistory, 6).map(normalizeBeat).filter(beat => beat.objective),
         planHorizons: normalizePlanHorizons(value.planHorizons),
-        canonConstraints: cap(value.canonConstraints).map(item => text(item).slice(0, 500)).filter(Boolean),
+        // A migrated state has no pre-response canon snapshot. Suppress its
+        // possibly discarded-assistant-derived facts until the upgrade pass
+        // audits the live chat and rebuilds them.
+        canonConstraints: plannerUpgradePending ? [] : cap(value.canonConstraints).map(item => text(item).slice(0, 500)).filter(Boolean),
         canonBootstrapPending: value.canonBootstrapPending === true || plannerUpgradePending,
         userNotes: cap(value.userNotes).map(normalizeNote).filter(note => note.text),
         guidance: text(value.guidance).slice(0, 700),
@@ -386,8 +389,10 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
     const selectedIndex = candidates.length ? Math.max(0, Math.min(candidates.length - 1, Number(guideIndex) || 0)) : 0;
     const selectedGuide = candidates[selectedIndex];
     const routePrompt = guidanceUsable && candidates.length
-        ? `Director cue${regeneration ? ' for a materially different regeneration' : ''}:\n${selectedRouteCue(selectedGuide)}\nAnswer the user, then make REQUIRED OUTCOME true onscreen through NPC or world action. Do not move the player; adapt the route to the current location. Repeat old logistics at most once briefly.${regeneration ? ' Do not replay or reword the discarded reply.' : ''} Replace the outcome only if impossible, with an equally concrete change. Never act or speak for the player.`
-        : `${regeneration ? `Variation ${Math.max(1, Number(variationCue) || 1)}: develop the scene differently, not just the wording. ` : ''}Let the latest user turn lead. Unless quiet closure was requested, allow one grounded NPC or world development. Preserve player agency.`;
+        ? `Director cue${regeneration ? ' for a different regeneration' : ''}:\n${selectedRouteCue(selectedGuide)}\nAnswer directly without recapping resolved context, then immediately make REQUIRED OUTCOME true onscreen. Mention an old fact only when causally necessary, once, in a short clause.${regeneration ? ' Do not replay the discarded reply.' : ''} Adapt to the current location; never move, speak, or decide for the player. If impossible, use an equally concrete outcome.`
+        : regeneration
+            ? `Variation ${Math.max(1, Number(variationCue) || 1)}: change the event, not the wording. Answer once, without recapping resolved rules, options, or logistics; then show one meaningful development at the current location. Prefer a present NPC's choice or reveal. No routine filler, unprepared crisis, or player action.`
+            : 'Answer directly without recap, then show one grounded, meaningful NPC or world development at the current location. Never act for the player.';
     const guidancePrompt = `\n<living-world-guide>\n${routePrompt}\n</living-world-guide>`;
     return `<tale-fairy-context>${notePrompt}${canonPrompt}${guidancePrompt}\n</tale-fairy-context>`;
 }

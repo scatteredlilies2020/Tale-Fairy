@@ -9,9 +9,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.7.10');
-    assert.equal(manifest.js, 'extension/index.js?v=0.7.10');
-    assert.equal(manifest.css, 'extension/style.css?v=0.7.10');
+    assert.equal(manifest.version, '0.7.13');
+    assert.equal(manifest.js, 'extension/index.js?v=0.7.13');
+    assert.equal(manifest.css, 'extension/style.css?v=0.7.13');
 });
 
 test('injection sends one immediate guide while alternatives and long-range planning stay private', () => {
@@ -19,7 +19,7 @@ test('injection sends one immediate guide while alternatives and long-range plan
     assert.match(stateSource, /SUGGESTED ROUTE:/);
     assert.match(stateSource, /REQUIRED OUTCOME:/);
     assert.match(stateSource, /make REQUIRED OUTCOME true onscreen/);
-    assert.match(stateSource, /Do not replay or reword the discarded reply/);
+    assert.match(stateSource, /Do not replay the discarded reply/);
     assert.match(stateSource, /<tale-fairy-context>/);
     assert.doesNotMatch(stateSource, /SELECTED IMMEDIATE ROUTE|ALTERNATIVE ROUTE/);
     assert.doesNotMatch(stateSource, /USE IF:|DROP IF:|GROUNDING:|EXECUTION:/);
@@ -156,12 +156,15 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.doesNotMatch(source, /roleplayGenerationActive|backgroundTimer|backgroundDelay|allowNextUserMessage/);
     assert.doesNotMatch(source, /MESSAGE_RECEIVED[\s\S]{0,500}scheduleBackgroundAnalysis/);
     assert.match(source, /async function upgradeLegacyPlanIfNeeded/);
-    assert.match(source, /rawVersion >= STATE_VERSION/);
+    assert.match(source, /rawVersion < STATE_VERSION/);
     assert.match(source, /LEGACY_UPGRADE_MAX_ATTEMPTS = 3/);
     assert.match(source, /persistedVersion >= STATE_VERSION/);
     assert.match(source, /if \(!completed\) legacyUpgradeAttempts\.delete\(attemptKey\)/);
     assert.match(source, /analyzeNow\(\{ messages, force: true, rebuild: true \}\)/);
     assert.match(source, /void upgradeLegacyPlanIfNeeded\(\)/);
+    assert.match(source, /rawState\?\.canonBootstrapPending === true/);
+    assert.match(source, /!upgradePending/);
+    assert.match(source, /startUIMounting\(\);\s*\/\/ CHAT_CHANGED[\s\S]{0,500}setTimeout\(\(\) => void upgradeLegacyPlanIfNeeded\(\), 0\)/);
     assert.doesNotMatch(source, /setTimeout\(\(\) => \{ renderBoard\(\); scheduleBackgroundAnalysis\(300\); \}, 0\)/);
     assert.match(source, /CHAT_COMPLETION_PROMPT_READY, ensureChatCompletionRequestGuidance/);
     assert.match(source, /CHAT_COMPLETION_SETTINGS_READY, ensureProviderChatRequestGuidance/);
