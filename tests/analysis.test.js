@@ -272,7 +272,7 @@ test('analysis prompt limits sent messages and accepts optional continuity conte
     assert.match(prompt.continuity_instruction, /ground planner decisions/);
 });
 
-test('analysis prompt retrieves a few relevant older user statements without continuity memory', () => {
+test('analysis prompt retrieves a few relevant older turns without continuity memory', () => {
     const messages = Array.from({ length: 70 }, (_, index) => ({ mes: `Unrelated turn ${index} about corridor lighting.`, is_user: index % 2 === 0 }));
     messages[44] = { mes: 'I want the message to discuss the war and my homeworld.', is_user: true };
     messages[46] = { mes: 'I wish for the war to stop and help the affected families. That is what I truly want.', is_user: true };
@@ -284,10 +284,33 @@ test('analysis prompt retrieves a few relevant older user statements without con
         contextLedger: 'The current thread concerns Lucia’s message to the Chancellor about the war.',
     };
     const prompt = JSON.parse(buildAnalysisPrompt(messages, state, '', {}, { messageWindow: 6, maxPromptChars: 12000 }));
-    assert.ok(prompt.retrieved_user_evidence.length <= 4);
-    assert.ok(prompt.retrieved_user_evidence.some(item => item.index === 46 && /affected families/.test(item.content)));
-    assert.match(prompt.retrieval_instruction, /older raw user turns/);
+    assert.ok(prompt.retrieved_historical_evidence.length <= 4);
+    assert.ok(prompt.retrieved_historical_evidence.some(item => item.index === 46 && /affected families/.test(item.content)));
+    assert.match(prompt.retrieval_instruction, /older turns from the active chat/);
     assert.equal('optional_continuity_context' in prompt, false);
+});
+
+test('standalone retrieval includes an old assistant payoff instead of preserving only its setup', () => {
+    const messages = Array.from({ length: 80 }, (_, index) => ({ mes: `Unrelated corridor routine ${index}.`, is_user: index % 2 === 0 }));
+    messages[20] = { mes: 'I tell Vekk I have something private to disclose about my vision later.', is_user: true };
+    messages[22] = { mes: 'I tell Vekk the vision showed clone troopers deliberately shooting him and another Jedi.', is_user: true };
+    messages[23] = { mes: 'Vekk accepts Lucia’s private disclosure of the clone vision and records her warning.', is_user: false };
+    messages[30] = { mes: 'I disclose the clone vision to the Council and explain the deliberate switch.', is_user: true };
+    messages[31] = { mes: 'The Council records Lucia’s disclosed vision in a sealed restricted addendum.', is_user: false };
+    messages[78] = { mes: 'The evening remains quiet in Lucia’s room.', is_user: false };
+    messages[79] = { mes: 'I continue reading.', is_user: true };
+    const state = {
+        ...defaultState(),
+        objectives: [{ title: 'Lucia private disclosure', detail: 'Disclose the clone vision to Vekk and the Council.', status: 'latent', source: 'User msg 20' }],
+        pathways: [{ ...pathways[0], id: 'private-vision', direction: 'Lucia discloses the private clone vision.', when: 'Lucia chooses to tell Vekk.' }],
+        contextLedger: 'Lucia still has a private clone vision to disclose.',
+    };
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, state, '', {}, { messageWindow: 6, maxPromptChars: 12000 }));
+    assert.ok(prompt.retrieved_historical_evidence.some(item => item.role === 'user' && /disclos|vision/iu.test(item.content)));
+    assert.ok(prompt.retrieved_historical_evidence.some(item => item.role === 'assistant' && /records|addendum|accepts/iu.test(item.content)));
+    assert.ok(prompt.retrieved_historical_evidence.some(item => item.index === 23 && item.purpose === 'audit-current-claim'));
+    assert.match(prompt.retrieval_instruction, /distinguish a setup from its later payoff/);
+    assert.match(prompt.retrieval_instruction, /Never keep or reopen a setup/);
 });
 
 test('analysis prompt accepts supporting host context without declaring it canon', () => {
