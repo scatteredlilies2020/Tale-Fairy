@@ -676,11 +676,20 @@ function stopAnalysis() {
 
 function parseAnalysisResponse(value, evidence = '') {
     try {
+        let expectedOfferedIds = [];
+        try {
+            const prompt = JSON.parse(evidence);
+            expectedOfferedIds = (Array.isArray(prompt?.current?.lastOfferedCues) ? prompt.current.lastOfferedCues : [])
+                .filter(cue => cue?.requestConfirmed === true && typeof cue?.id === 'string' && cue.id.trim())
+                .map(cue => cue.id.trim());
+        } catch {
+            // Non-JSON evidence simply has no authoritative offered-cue record.
+        }
         let result;
         if (value && typeof value === 'object' && !Array.isArray(value) && value.scene) {
-            result = requireValidAnalysisResult(value);
+            result = requireValidAnalysisResult(value, { expectedOfferedIds });
         } else {
-            result = requireValidAnalysisResult(extractJson(completionText(value)));
+            result = requireValidAnalysisResult(extractJson(completionText(value)), { expectedOfferedIds });
         }
         return finalizeAnalysisResult(result, evidence);
     } catch (error) {

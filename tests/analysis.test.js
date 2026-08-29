@@ -262,6 +262,31 @@ test('planner recovers missing next guides from grounded pathways', () => {
     assert.equal(validateAnalysisResult(repaired).valid, true);
 });
 
+test('planner preserves contrasting pathways when generic response biases repeat', () => {
+    const repeatedBias = 'Describe only the causal step this pathway enables.';
+    const routes = [
+        { ...pathways[0], id: 'direct-answer', direction: 'Mara answers the central question directly.', response_bias: repeatedBias },
+        { ...pathways[0], id: 'outside-pressure', direction: 'An established outside pressure interrupts the discussion.', response_bias: repeatedBias },
+        { ...pathways[0], id: 'private-doubt', direction: 'Mara reveals a private doubt that changes the available choices.', response_bias: repeatedBias },
+    ];
+    const repaired = requireValidAnalysisResult({ ...requiredPlanning, pathways: routes, next_guides: [] });
+    assert.equal(repaired.next_guides.length, 3);
+    assert.equal(new Set(repaired.next_guides.map(guide => guide.world_delta)).size, 3);
+    assert.deepEqual(repaired.next_guides.map(guide => guide.source_pathways[0]), routes.map(route => route.id));
+    assert.equal(validateAnalysisResult(repaired).valid, true);
+});
+
+test('planner restores confirmed offered cues when the provider omits its audit', () => {
+    const repaired = requireValidAnalysisResult(
+        { ...requiredPlanning, cue_audit: { offered_ids: [], manifested_ids: [], unused_ids: [], contradicted_ids: [], pacing: 'respected', reason: '' } },
+        { expectedOfferedIds: ['filing-step'] },
+    );
+    assert.deepEqual(repaired.cue_audit.offered_ids, ['filing-step']);
+    assert.deepEqual(repaired.cue_audit.unused_ids, ['filing-step']);
+    assert.match(repaired.cue_audit.reason, /restored from the request record/i);
+    assert.equal(validateAnalysisResult(repaired).valid, true);
+});
+
 test('planner preserves semantic causal roles when a provider omits the operation keyword', () => {
     const providerResult = {
         ...requiredPlanning,

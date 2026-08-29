@@ -270,8 +270,8 @@ export function validateAnalysisResult(result) {
     return { valid: errors.length === 0, errors };
 }
 
-export function requireValidAnalysisResult(result) {
-    const repaired = repairAnalysisResult(result);
+export function requireValidAnalysisResult(result, options = {}) {
+    const repaired = repairAnalysisResult(result, options);
     const validation = validateAnalysisResult(repaired);
     if (!validation.valid) {
         throw new AnalysisValidationError(`Planner returned unusable JSON: ${validation.errors.join('; ')}.`);
@@ -340,7 +340,7 @@ function repairCausalRole(value) {
  * otherwise useful authorial directions. This deliberately repairs bookkeeping
  * while dropping individual candidates that violate narrative safety rules.
  */
-export function repairAnalysisResult(result) {
+export function repairAnalysisResult(result, { expectedOfferedIds = [] } = {}) {
     if (!result || typeof result !== 'object' || Array.isArray(result)) return result;
 
     const sceneSource = result.scene && typeof result.scene === 'object' && !Array.isArray(result.scene) ? result.scene : {};
@@ -462,6 +462,8 @@ export function repairAnalysisResult(result) {
         // though they return grounded conditional pathways. Promote those
         // routes into conservative ranked guides rather than discarding the
         // complete planner pass. Unsafe/deferred routes are still rejected.
+        const promotedDeltas = new Set();
+        const genericPathwayImpact = /^\s*(?:describe|show|follow|advance)\b[\s\S]{0,100}\b(?:causal step|this pathway|this route)\b/iu;
         repaired.next_guides = repaired.pathways.flatMap((pathway, index) => {
             const direction = pathway.direction.trim();
             const impact = asString(pathway.response_bias).trim();
@@ -470,9 +472,17 @@ export function repairAnalysisResult(result) {
                 || 'Use while the current story conditions continue to support this route.';
             if (unsafeCondition.test(useWhen)) useWhen = 'Use while the current story conditions continue to support this route.';
             const routeId = pathway.id || `recovered-path-${index + 1}`;
-            const worldDelta = impact && !STYLE_DIRECTIVE.test(impact) && !delayedSubstance.test(impact) && !trivialDelta.test(impact)
+            const impactKey = impact.toLocaleLowerCase();
+            const usableImpact = impact
+                && !genericPathwayImpact.test(impact)
+                && !promotedDeltas.has(impactKey)
+                && !STYLE_DIRECTIVE.test(impact)
+                && !delayedSubstance.test(impact)
+                && !trivialDelta.test(impact);
+            const worldDelta = usableImpact
                 ? impact
-                : `Following ${routeId} changes the active situation and available choices now.`;
+                : `${direction} This changes the active situation or available choices now.`;
+            promotedDeltas.add(worldDelta.slice(0, 140).trim().toLocaleLowerCase());
             return [{
                 id: `recovered-guide-${index + 1}`,
                 direction,
@@ -575,13 +585,24 @@ export function repairAnalysisResult(result) {
     }
 
     const auditSource = result.cue_audit && typeof result.cue_audit === 'object' ? result.cue_audit : {};
-    const offered = uniqueStrings(auditSource.offered_ids).slice(0, 4);
+    const authoritativeOffered = uniqueStrings(expectedOfferedIds).slice(0, 4);
+    const offered = authoritativeOffered.length ? authoritativeOffered : uniqueStrings(auditSource.offered_ids).slice(0, 4);
     const classified = new Set();
     const auditGroup = key => uniqueStrings(auditSource[key]).filter(id => offered.includes(id) && !classified.has(id)).filter(id => (classified.add(id), true));
     const manifested = auditGroup('manifested_ids');
     const contradicted = auditGroup('contradicted_ids');
     const unused = [...auditGroup('unused_ids'), ...offered.filter(id => !classified.has(id))];
-    repaired.cue_audit = { offered_ids: offered, manifested_ids: manifested, unused_ids: unused, contradicted_ids: contradicted, pacing: oneOf(auditSource.pacing, ['respected', 'exceeded', 'uncertain'], 'uncertain'), reason: asString(auditSource.reason, 'Incomplete cue audit was normalized.') };
+    const auditWasRecovered = authoritativeOffered.length && !authoritativeOffered.every(id => uniqueStrings(auditSource.offered_ids).includes(id));
+    repaired.cue_audit = {
+        offered_ids: offered,
+        manifested_ids: manifested,
+        unused_ids: unused,
+        contradicted_ids: contradicted,
+        pacing: oneOf(auditSource.pacing, ['respected', 'exceeded', 'uncertain'], 'uncertain'),
+        reason: auditWasRecovered
+            ? 'Confirmed offered cues were restored from the request record; unclassified cues were conservatively marked unused.'
+            : asString(auditSource.reason, 'Incomplete cue audit was normalized.'),
+    };
     return repaired;
 }
 
