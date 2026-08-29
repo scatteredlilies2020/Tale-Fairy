@@ -10,9 +10,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.17');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.17');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.17');
+    assert.equal(manifest.version, '0.11.18');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.18');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.18');
 });
 
 test('injection sends layered authorial control while concrete realization and future setup stay private', () => {
@@ -93,8 +93,8 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /text: submittedNote\.text/);
     assert.match(source, /Instruction saved/);
     assert.match(source, /function stopAnalysis\(\)/);
-    assert.match(source, /Full rebuild into Delete guide state/);
-    assert.doesNotMatch(source, /async function rebuildGuideState\(\) \{[\s\S]*?clearState\(context\.chatMetadata\)[\s\S]*?\n\}/);
+    assert.match(source, /Run the actual Delete guide state operation first/);
+    assert.match(source, /async function rebuildGuideState\(\) \{[\s\S]*?await resetState\(\)[\s\S]*?\n\}/);
     assert.match(source, /analysisAbortController\.abort/);
     assert.match(source, /waitForAbortable\(generateRaw/);
     assert.doesNotMatch(source, /ANALYSIS_TIMEOUT_MS|analysis timed out/);
@@ -211,8 +211,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.doesNotMatch(source, /firstAnalysisWaitMs|waitForFirstAnalysis/);
     assert.match(source, /function rebuildState\(\) \{\s*return defaultState\(\);\s*\}/);
     assert.doesNotMatch(source, /rebuilt\.userNotes = previous\.userNotes|rebuilt\.lastRequestVerification = previous\.lastRequestVerification/);
-    assert.match(source, /async function rebuildGuideState\(\)[\s\S]{0,500}pendingRequestVerification = null[\s\S]{0,500}analyzeNow\(\{ force: true, rebuild: true \}\)/);
-    assert.doesNotMatch(source, /async function rebuildGuideState\(\) \{[\s\S]*?clearState\(context\.chatMetadata\)[\s\S]*?\n\}/);
+    assert.match(source, /async function rebuildGuideState\(\)[\s\S]{0,500}await resetState\(\)[\s\S]{0,500}analyzeNow\(\{ force: true, rebuild: true, waitForContinuity: true \}\)/);
     assert.match(source, /async function resetState\(\)[\s\S]{0,350}pendingRequestVerification = null[\s\S]{0,350}renderBoard\(defaultState\(\)\)/);
     assert.match(template, /data-action="guide"[\s\S]{0,180}data-role="guide-label"/);
     assert.match(template, /data-action="rebuild"/);

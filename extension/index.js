@@ -14,7 +14,7 @@ import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlErr
 import { compactContinuityPrompt, readContinuityBridge, waitForContinuityBridge } from './continuity.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.17';
+const RUNTIME_VERSION = '0.11.18';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -1220,12 +1220,11 @@ async function resetState() {
 }
 
 async function rebuildGuideState() {
-    stopAnalysis();
-    pendingRequestVerification = null;
-    // Build against a clean in-memory state, but keep the last saved plan until
-    // its replacement has passed validation and persist() commits it. A failed
-    // provider response must never turn Full rebuild into Delete guide state.
-    return analyzeNow({ force: true, rebuild: true });
+    // Run the actual Delete guide state operation first so these actions cannot
+    // drift apart. A failed rebuild must leave the explicitly deleted state empty.
+    await resetState();
+    renderAnalysisActivity('Guide state deleted · rebuilding', true);
+    return analyzeNow({ force: true, rebuild: true, waitForContinuity: true });
 }
 
 async function reevaluateGuideState() {
