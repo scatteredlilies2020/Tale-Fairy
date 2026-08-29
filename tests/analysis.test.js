@@ -274,6 +274,25 @@ test('planner salvages incomplete structured output before using fallback', () =
     assert.equal(validateAnalysisResult(repaired).valid, true);
 });
 
+test('planner preserves semantic causal roles when a provider omits the operation keyword', () => {
+    const providerResult = {
+        ...requiredPlanning,
+        next_guides: nextGuides.map((guide, index) => ({
+            ...guide,
+            causal_role: [
+                "Deepen Mara's concern through a disclosure that changes shared knowledge.",
+                'Sustain the conversation while indirect behavior exposes practical pressure.',
+                'Connect the household demand to choices that remain available later.',
+            ][index],
+        })),
+    };
+    assert.equal(validateAnalysisResult(providerResult).valid, false, 'raw provider output still misses the strict schema token');
+    const repaired = requireValidAnalysisResult(providerResult);
+    assert.equal(repaired.next_guides.length, 3);
+    for (const guide of repaired.next_guides) assert.match(guide.causal_role, /^advance — /);
+    assert.equal(validateAnalysisResult(repaired).valid, true);
+});
+
 test('planner still falls back when no usable narrative movement survives', () => {
     assert.throws(() => requireValidAnalysisResult({ scene: {}, next_guides: [] }), AnalysisValidationError);
     assert.throws(() => requireValidAnalysisResult({

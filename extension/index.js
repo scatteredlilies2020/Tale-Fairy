@@ -13,7 +13,7 @@ import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.5';
+const RUNTIME_VERSION = '0.11.9';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -35,7 +35,6 @@ let uiMountObserver = null;
 let uiMountTimeout = null;
 const legacyUpgradeAttempts = new Set();
 const directModelCache = new Map();
-const ANALYSIS_TIMEOUT_MS = 240000;
 // Reasoning providers may count hidden thinking against this ceiling. The
 // planner prompt and schema separately target a concise visible JSON result.
 const PLANNER_RESPONSE_TOKENS = 32768;
@@ -779,7 +778,6 @@ async function requestAnalysis(prompt, externalSignal) {
     const forwardAbort = () => controller.abort(externalSignal?.reason || new DOMException('Tale Fairy analysis stopped.', 'AbortError'));
     if (externalSignal?.aborted) forwardAbort();
     else externalSignal?.addEventListener('abort', forwardAbort, { once: true });
-    const timer = setTimeout(() => controller.abort(new DOMException('Tale Fairy analysis timed out.', 'TimeoutError')), ANALYSIS_TIMEOUT_MS);
     try {
         controller.signal.throwIfAborted();
         const model = analysisModelOptions();
@@ -924,7 +922,6 @@ async function requestAnalysis(prompt, externalSignal) {
             }
         }
     } finally {
-        clearTimeout(timer);
         externalSignal?.removeEventListener('abort', forwardAbort);
     }
 }
@@ -1224,8 +1221,12 @@ async function upgradeLegacyPlanIfNeeded() {
                 || fingerprintMessages(activeMessages) !== fingerprint) return;
             renderAnalysisActivity(`Upgrading legacy Tale Fairy plan v${rawVersion} · attempt ${attempt}/${LEGACY_UPGRADE_MAX_ATTEMPTS}…`, true);
             upgraded = await analyzeNow({ messages, force: true, rebuild: true });
-            const persistedVersion = Math.max(0, Number(currentContext().chatMetadata?.[STATE_KEY]?.version) || 0);
-            if (persistedVersion >= STATE_VERSION) {
+            const persistedState = currentContext().chatMetadata?.[STATE_KEY];
+            const persistedVersion = Math.max(0, Number(persistedState?.version) || 0);
+            // Version normalization can happen before a planner pass. A rebuild
+            // is only complete once that pass has actually replaced the pending
+            // bootstrap state and preserved its extracted canon.
+            if (persistedVersion >= STATE_VERSION && persistedState?.canonBootstrapPending !== true) {
                 completed = true;
                 renderBoard(upgraded);
                 renderAnalysisActivity('Legacy plan upgraded', false);

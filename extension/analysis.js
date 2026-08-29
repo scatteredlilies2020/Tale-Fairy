@@ -417,6 +417,22 @@ const asString = (value, fallback = '') => typeof value === 'string' ? value : f
 const asArray = value => Array.isArray(value) ? value : [];
 const oneOf = (value, allowed, fallback) => allowed.includes(value) ? value : fallback;
 const uniqueStrings = values => [...new Set(asArray(values).map(value => asString(value).trim()).filter(Boolean))];
+const CAUSAL_OPERATION = /\b(?:hold|seed|advance|converge|payoff|redirect|recover)\b/iu;
+const STYLE_DIRECTIVE = /\b(?:mood|tone|warmth|playful|prose|sentence|rhythm|verbosity|descriptive texture|dialogue delivery|surprise latitude)\b/iu;
+const VACUOUS_CAUSAL_ROLE = /^\s*(?:make|keep)\b[\s\S]*\b(?:interesting|engaging|good|better)\b[.!?]*\s*$/iu;
+
+function repairCausalRole(value) {
+    const role = asString(value).trim();
+    const fallback = 'Advance one supported thread without exceeding the current action boundary.';
+    if (!role) return fallback;
+    // Some providers describe a sound cause-and-effect function but omit the
+    // schema's exact operation token. Preserve the substance and supply the
+    // neutral operation instead of spending the entire timeout on a retry.
+    // Style-only and vacuous directions remain invalid and still trigger the
+    // normal fallback path.
+    if (CAUSAL_OPERATION.test(role) || STYLE_DIRECTIVE.test(role) || VACUOUS_CAUSAL_ROLE.test(role)) return role;
+    return `advance — ${role}`.slice(0, 130).trim();
+}
 
 /**
  * Salvage provider output before using the generic fallback. Structured-output
@@ -514,7 +530,7 @@ export function repairAnalysisResult(result) {
         seenIds.add(idKey); seenDirections.add(directionKey); seenDeltas.add(deltaKey);
         return [{
             id, direction, use_when: useWhen, drop_when: dropWhen,
-            causal_role: asString(guide.causal_role, 'Advance one supported thread without exceeding the current action boundary.').trim() || 'Advance one supported thread without exceeding the current action boundary.',
+            causal_role: repairCausalRole(guide.causal_role),
             world_delta: worldDelta,
             origin: oneOf(guide.origin, ['established', 'inferred', 'original'], 'inferred'),
             basis: asString(guide.basis, 'Supported by the current scene and its active trajectory.').trim() || 'Supported by the current scene and its active trajectory.',
