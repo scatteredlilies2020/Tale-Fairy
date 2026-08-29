@@ -4,7 +4,7 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, requireGroundedAnalysisResult, requireValidAnalysisResult, SYSTEM } from './analysis.js';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, finalizeAnalysisResult, requireValidAnalysisResult, SYSTEM } from './analysis.js';
 import { buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js';
 import { resolveInjectionPlacement } from './injection-placement.js';
 import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js';
@@ -13,7 +13,7 @@ import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.11';
+const RUNTIME_VERSION = '0.11.15';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -675,7 +675,7 @@ function parseAnalysisResponse(value, evidence = '') {
         } else {
             result = requireValidAnalysisResult(extractJson(completionText(value)));
         }
-        return requireGroundedAnalysisResult(result, evidence);
+        return finalizeAnalysisResult(result, evidence);
     } catch (error) {
         if (error instanceof AnalysisValidationError) throw error;
         throw new AnalysisValidationError(`Planner did not return valid JSON: ${error?.message || error}.`);
@@ -812,6 +812,11 @@ async function requestAnalysis(prompt, externalSignal) {
                 return parseAnalysisResponse(response, prompt);
             } catch (error) {
                 controller.signal.throwIfAborted();
+                // A completed planner response that fails our deterministic
+                // validator will not gain anything from another full model
+                // call. Surface the exact cause immediately instead of making
+                // the user wait for an equally invalid duplicate response.
+                if (error instanceof AnalysisValidationError) throw error;
                 if (isReasoningControlError(error) && (reasoning.controlled || isMandatoryReasoningError(error))) {
                     reasoningPayload = reasoningFallbackPayload(error, reasoningPayload);
                 }
@@ -861,6 +866,7 @@ async function requestAnalysis(prompt, externalSignal) {
                 return parseAnalysisResponse(raw, prompt);
             } catch (error) {
                 controller.signal.throwIfAborted();
+                if (error instanceof AnalysisValidationError) throw error;
                 if (isReasoningControlError(error)) {
                     activeReasoningMode = isMandatoryReasoningError(error) ? 'minimum' : 'default';
                     try {
@@ -902,12 +908,14 @@ async function requestAnalysis(prompt, externalSignal) {
             return await send(structured);
         } catch (error) {
             controller.signal.throwIfAborted();
+            if (error instanceof AnalysisValidationError) throw error;
             if (isReasoningControlError(error) && (reasoning.controlled || isMandatoryReasoningError(error))) {
                 reasoningPayload = reasoningFallbackPayload(error, reasoningPayload);
                 try {
                     return await send(structured);
                 } catch (retryError) {
                     controller.signal.throwIfAborted();
+                    if (retryError instanceof AnalysisValidationError) throw retryError;
                     error = retryError;
                 }
             }
@@ -1126,12 +1134,26 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         : '';
     scratchpadText(board, 'scratchpad-request-verification', verificationText, 'No provider request has been verified yet.');
 
-    scratchpadText(board, 'scratchpad-objectives', scratchpadList(state.objectives, item => {
+    const displayedObjectives = state.objectives?.length
+        ? state.objectives
+        : (state.planHorizons?.items || []).slice(0, 4).map(item => ({
+            title: `Open direction · ${item.timeframe || 'future'}`,
+            detail: item.direction,
+            status: item.stability,
+        }));
+    scratchpadText(board, 'scratchpad-objectives', scratchpadList(displayedObjectives, item => {
         if (!item?.title && !item?.detail) return '';
         return `${item.title || 'Open direction'}${item.detail ? ` — ${item.detail}` : ''}${item.status ? ` [${item.status}]` : ''}`;
     }, ''), boardFallback('No active objectives.'));
 
-    scratchpadText(board, 'scratchpad-possibilities', scratchpadList(state.possibilities, item => {
+    const displayedPossibilities = state.possibilities?.length
+        ? state.possibilities
+        : (state.pathways || []).filter(item => item?.status !== 'blocked').slice(0, 6).map(item => ({
+            description: item.direction,
+            conditions: item.conditions,
+            force: item.status === 'foreground' ? 'strong' : item.status === 'latent' ? 'light' : 'moderate',
+        }));
+    scratchpadText(board, 'scratchpad-possibilities', scratchpadList(displayedPossibilities, item => {
         if (!item?.description) return '';
         const conditions = Array.isArray(item.conditions) && item.conditions.length ? ` Conditions: ${item.conditions.join('; ')}.` : '';
         return `${item.description}${conditions}${item.force ? ` Weight: ${item.force}.` : ''}`;
@@ -1143,7 +1165,13 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         return `${item.name}${details ? ` — ${details}` : ''}`;
     }, ''), boardFallback('No relevant off-screen entities retained.'));
 
-    scratchpadText(board, 'scratchpad-ledger', state.contextLedger, boardFallback('No narrative ledger yet.'));
+    const displayedLedger = state.contextLedger || [
+        state.scene?.activity && `Working scene: ${state.scene.activity}.`,
+        state.narrativeLayers?.situation && `Situation: ${state.narrativeLayers.situation}`,
+        state.narrativeLayers?.widerWorld && `Wider context: ${state.narrativeLayers.widerWorld}`,
+        state.narrativeLayers?.durableTrajectory && `Durable trajectory: ${state.narrativeLayers.durableTrajectory}`,
+    ].filter(Boolean).join('\n');
+    scratchpadText(board, 'scratchpad-ledger', displayedLedger, boardFallback('No narrative ledger yet.'));
 
     scratchpadText(board, 'scratchpad-events', scratchpadList(state.narrativeEvents, item => {
         if (!item?.title) return '';
@@ -1168,14 +1196,11 @@ async function resetState() {
 }
 
 async function rebuildGuideState() {
-    const context = currentContext();
     stopAnalysis();
     pendingRequestVerification = null;
-    context.updateChatMetadata(clearState(context.chatMetadata));
-    clearPromptManagerInjection(promptManager);
-    setExtensionPrompt(PROMPT_KEY, '', 0, 0);
-    await context.saveMetadata?.();
-    renderBoard(defaultState());
+    // Build against a clean in-memory state, but keep the last saved plan until
+    // its replacement has passed validation and persist() commits it. A failed
+    // provider response must never turn Full rebuild into Delete guide state.
     return analyzeNow({ force: true, rebuild: true });
 }
 

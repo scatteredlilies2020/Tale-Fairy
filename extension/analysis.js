@@ -278,99 +278,6 @@ export function requireValidAnalysisResult(result) {
     return repaired;
 }
 
-const GROUNDING_NAME_ALLOWLIST = new Set([
-    'A', 'An', 'And', 'As', 'At', 'Balanced', 'But', 'By', 'Canon', 'Current', 'Direct', 'For', 'From',
-    'Fun', 'Guide', 'Hold', 'If', 'In', 'Json', 'Keep', 'Light', 'No', 'Not', 'Ooc', 'On', 'Only', 'Or',
-    'Planner', 'Return', 'Scene', 'Story', 'Tale', 'Fairy', 'The', 'Then', 'This', 'Through', 'To', 'Use',
-    'When', 'While', 'With', 'Without', 'World',
-]);
-
-function collectStringValues(value, values = []) {
-    if (typeof value === 'string') values.push(value);
-    else if (Array.isArray(value)) value.forEach(item => collectStringValues(item, values));
-    else if (value && typeof value === 'object') Object.values(value).forEach(item => collectStringValues(item, values));
-    return values;
-}
-
-function groundingEvidenceText(evidence) {
-    if (!evidence) return '';
-    if (typeof evidence !== 'string') return collectStringValues(evidence).join('\n');
-    try {
-        const payload = JSON.parse(evidence);
-        if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return collectStringValues(payload).join('\n');
-        // `current` is retained planner output, so letting it ground a name
-        // would allow a previous hallucination to verify and perpetuate itself.
-        // Use only factual/supporting inputs supplied independently of that
-        // planner state. The planner may retain a name only while one of these
-        // sources still supports it.
-        const { current: _plannerHypotheses, ...independentEvidence } = payload;
-        return collectStringValues(independentEvidence).join('\n');
-    } catch {
-        return evidence;
-    }
-}
-
-function unsupportedNamesInText(text, evidenceText) {
-    const unsupported = new Set();
-    const source = String(text || '');
-    const isSupported = name => new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(name)}([^\\p{L}\\p{N}]|$)`, 'iu').test(evidenceText);
-    const consider = name => {
-        const normalized = name.replace(/[’']s$/u, '');
-        if (normalized.length < 3 || GROUNDING_NAME_ALLOWLIST.has(normalized) || isSupported(normalized)) return;
-        unsupported.add(normalized);
-    };
-
-    // Catch malformed joins such as "Slice-of-lifeSophia", which are a strong
-    // signal that a name was spliced into otherwise ordinary planner text.
-    for (const match of source.matchAll(/\p{Ll}(\p{Lu}[\p{L}\p{M}'’_-]{2,})/gu)) consider(match[1]);
-
-    // A title-cased word embedded inside a sentence normally denotes a named
-    // person, place, faction, object, or setting term. Sentence-openers remain
-    // unrestricted so ordinary English wording is not mistaken for an entity.
-    for (const match of source.matchAll(/\b\p{Lu}[\p{Ll}\p{M}][\p{L}\p{M}'’_-]{1,}\b/gu)) {
-        const before = source.slice(0, match.index).trimEnd();
-        if (!before || /[.!?;:]$/u.test(before)) continue;
-        consider(match[0]);
-    }
-    return [...unsupported];
-}
-
-/**
- * Reject named specificity that cannot be found anywhere in the planner's
- * supplied evidence. This supplements JSON/schema validation: schema-valid
- * fiction can still be contaminated by a model hallucinating an unrelated
- * character or setting name.
- */
-export function validateAnalysisGrounding(result, evidence) {
-    const evidenceText = groundingEvidenceText(evidence);
-    if (!evidenceText.trim()) return { valid: true, errors: [] };
-    const unsupported = new Set();
-    for (const value of collectStringValues(result)) {
-        unsupportedNamesInText(value, evidenceText).forEach(name => unsupported.add(name));
-    }
-    const errors = unsupported.size
-        ? [`unsupported named terms absent from supplied context: ${[...unsupported].sort().join(', ')}`]
-        : [];
-    return { valid: errors.length === 0, errors };
-}
-
-const CANON_COVERAGE_STOPWORDS = new Set([
-    'about', 'after', 'again', 'also', 'and', 'are', 'been', 'being', 'but', 'can', 'could', 'does', 'for',
-    'from', 'have', 'here', 'into', 'its', 'like', 'must', 'only', 'possible', 'probably', 'should', 'that',
-    'the', 'their', 'then', 'there', 'these', 'they', 'this', 'through', 'very', 'was', 'were', 'what', 'when',
-    'where', 'which', 'while', 'with', 'would', 'your',
-]);
-
-function canonCoverageTerms(value) {
-    const source = String(value || '').toLocaleLowerCase();
-    const terms = new Set((source.match(/[\p{L}\p{N}][\p{L}\p{N}'’_-]{2,}/gu) || [])
-        .map(term => term.replace(/[’']/gu, ''))
-        .filter(term => !CANON_COVERAGE_STOPWORDS.has(term)));
-    if (/\b(?:midichlorian|midi-chlorian)s?\b/iu.test(source)) terms.add('midichlorian');
-    if (/\b(?:abnormally\s+high|highest|greatest|record|unprecedented|unmatched|off[ -]?(?:the[ -]?)?(?:charts?|scale)|immeasurable|unmeasurable|extreme|exceptional)\b/iu.test(source)) terms.add('extreme-magnitude');
-    return terms;
-}
-
 function requiredCanonClaims(evidence) {
     if (typeof evidence !== 'string') return [];
     try {
@@ -383,33 +290,25 @@ function requiredCanonClaims(evidence) {
     }
 }
 
-/** Reject a planner result that silently drops explicit factual OOC claims. */
-export function validateAnalysisCanonCoverage(result, evidence) {
-    const claims = requiredCanonClaims(evidence);
-    if (!claims.length) return { valid: true, errors: [] };
-    const constraints = Array.isArray(result?.canon_constraints) ? result.canon_constraints : [];
-    const constraintTerms = constraints.map(canonCoverageTerms);
-    const missing = claims.filter(claim => {
-        const claimTerms = canonCoverageTerms(claim);
-        if (!claimTerms.size) return false;
-        const requiredOverlap = Math.min(2, claimTerms.size);
-        return !constraintTerms.some(terms => [...claimTerms].filter(term => terms.has(term)).length >= requiredOverlap);
-    });
-    return {
-        valid: missing.length === 0,
-        errors: missing.length ? [`canon_constraints omitted ${missing.length} explicit factual OOC claim(s)`] : [],
-    };
-}
-
-export function requireGroundedAnalysisResult(result, evidence) {
-    const grounding = validateAnalysisGrounding(result, evidence);
-    if (!grounding.valid) {
-        throw new AnalysisValidationError(`Planner introduced unsupported named specificity: ${grounding.errors.join('; ')}. Rebuild using only names present in the supplied context.`);
-    }
-    const canonCoverage = validateAnalysisCanonCoverage(result, evidence);
-    if (!canonCoverage.valid) {
-        throw new AnalysisValidationError(`Planner omitted binding canon: ${canonCoverage.errors.join('; ')}. Rebuild canon_constraints from every required_canon_claim.`);
-    }
+/**
+ * Keep explicit OOC facts even when the model forgets to copy them into its
+ * structured result. This is deterministic and must never reject an otherwise
+ * usable plan. Tale Fairy is an author, so newly invented names are not errors.
+ */
+export function finalizeAnalysisResult(result, evidence) {
+    const claims = requiredCanonClaims(evidence)
+        .map(claim => claim.slice(0, 500))
+        .filter(Boolean)
+        .slice(-12);
+    if (!claims.length) return result;
+    const constraints = Array.isArray(result?.canon_constraints)
+        ? result.canon_constraints.map(item => String(item || '').trim().slice(0, 500)).filter(Boolean)
+        : [];
+    const seen = new Set(claims.map(claim => claim.toLocaleLowerCase()));
+    result.canon_constraints = [
+        ...constraints.filter(constraint => !seen.has(constraint.toLocaleLowerCase())),
+        ...claims,
+    ].slice(-12);
     return result;
 }
 
@@ -601,6 +500,36 @@ export function repairAnalysisResult(result) {
     }
     items.at(-1).stability = 'slow';
     repaired.plan_horizons = { items, deviation: { level: oneOf(horizonSource.deviation?.level, ['none', 'minor', 'major'], 'minor'), reason: asString(horizonSource.deviation?.reason, 'Minor planner structure was normalized without changing its usable narrative direction.') } };
+
+    // Older scratchpad sections should reflect the usable modern plan rather
+    // than looking like a failed/empty rebuild. These are working directions,
+    // not terminal goals or claims that an event already happened.
+    if (!repaired.objectives.length) {
+        repaired.objectives = items.slice(0, 4).map(item => ({
+            title: `Open direction · ${item.timeframe}`.slice(0, 120),
+            detail: item.direction.slice(0, 300),
+            status: item.stability,
+            source: 'Current plan horizon',
+        }));
+    }
+    if (!repaired.possibilities.length) {
+        repaired.possibilities = repaired.pathways
+            .filter(pathway => pathway.status !== 'blocked')
+            .slice(0, 6)
+            .map(pathway => ({
+                description: pathway.direction.slice(0, 280),
+                conditions: pathway.conditions.slice(0, 4),
+                force: pathway.status === 'foreground' ? 'strong' : pathway.status === 'latent' ? 'light' : 'moderate',
+            }));
+    }
+    if (!repaired.ledger.trim()) {
+        repaired.ledger = [
+            `Working scene: ${repaired.scene.activity}.`,
+            `Situation: ${repaired.narrative_layers.situation}`,
+            `Wider context: ${repaired.narrative_layers.wider_world}`,
+            `Durable trajectory: ${repaired.narrative_layers.durable_trajectory}`,
+        ].join('\n').slice(0, 3000);
+    }
 
     const auditSource = result.cue_audit && typeof result.cue_audit === 'object' ? result.cue_audit : {};
     const offered = uniqueStrings(auditSource.offered_ids).slice(0, 4);
@@ -1263,7 +1192,7 @@ Everything in the plan remains changeable. Build fresh, specific future directio
 Every horizon also retains some effect with a strict distance gradient: near directions may shape the current reply, middle directions bias setup and compatible choices, and distant directions provide only a subtle background pull unless events bring them closer. Never force or foreshadow a distant direction merely to prove it exists. Assign fluid, adaptive, stable, then slow stability as distance grows. Re-evaluate every horizon each run with increasing inertia only while it remains causally supported: fluid may change every turn; adaptive changes with beats or scenes; stable and slow directions resist cosmetic churn but must adjust or be replaced when the trajectory no longer supports them. The latest user direction always wins. Preserve ids only when genuinely keeping or adjusting the same supported direction, use a new id when replacing it, record keep/adjust/replace, and report overall deviation as none, minor, or major.`;
 const CORE_PLANNER_POLICY = `You are Tale Fairy, the authorial story-control layer for SillyTavern roleplay. The roleplay model performs the concrete fiction; you author causal direction, narrative function, timing, scale, and the evolving world without scripting exact prose. Do not write prose or expose reasoning. Return only one JSON object matching the supplied schema. Keep that JSON concise and under approximately 6,000 visible output tokens; the API's larger completion ceiling exists to accommodate hidden reasoning, not verbose planner state.
 
-Every proper noun and named entity in the returned JSON must be grounded in independently supplied story evidence. Never invent a character, person, place, faction, organization, title, setting, or other proper name merely to make a direction specific. New causal possibilities must remain role- or function-based until the roleplay establishes their names. Before returning, audit every name against supplied messages, bootstrap, and factual supporting context; remove or generalize any unsupported name. Retained planner state is a hypothesis to audit and cannot make its own unsupported name valid. Do not splice an unrelated name into a genre, activity, or story-frame phrase.
+You may invent contextually appropriate people, places, factions, titles, and other names when authoring a genuinely new causal possibility. Mark new material with original provenance and never present it as established history merely because you created it. Retained planner state remains a hypothesis to audit: do not copy an unrelated name, fragment, preset artifact, or malformed splice from prior planner text into a new result. Established names and semantic types must remain consistent unless the fiction changes them.
 
 Read the newest user turn as authoritative for immediate direction and the temporal scope of the next response, not as automatic evidence of the durable story identity. OOC corrections and explicit user establishments outrank inference. A genuine explicit pivot may change the long-range trajectory; ordinary participation in a temporary activity may not, regardless of how many turns it lasts. The user should never need to prompt Tale Fairy, select a route, or manage immediacy: infer authorial direction automatically from the story state and normal roleplay. When user_instruction contains an AI-assisted note, classify it in this call as suggest, correct, establish, or forbid; return null only when genuinely ambiguous and never rewrite the user's text.
 
