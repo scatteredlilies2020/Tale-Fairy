@@ -457,6 +457,43 @@ export function repairAnalysisResult(result) {
             reason: asString(pathway.reason, 'Recovered from an incomplete planner route.'),
         }];
     }).slice(0, 5);
+    if (!repaired.next_guides.length && repaired.pathways.length) {
+        // Some otherwise capable providers intermittently omit next_guides even
+        // though they return grounded conditional pathways. Promote those
+        // routes into conservative ranked guides rather than discarding the
+        // complete planner pass. Unsafe/deferred routes are still rejected.
+        repaired.next_guides = repaired.pathways.flatMap((pathway, index) => {
+            const direction = pathway.direction.trim();
+            const impact = asString(pathway.response_bias).trim();
+            if (!direction || delayedSubstance.test(direction) || trivialDelta.test(direction)) return [];
+            let useWhen = asString(pathway.when, 'Use while the current story conditions continue to support this route.').trim()
+                || 'Use while the current story conditions continue to support this route.';
+            if (unsafeCondition.test(useWhen)) useWhen = 'Use while the current story conditions continue to support this route.';
+            const routeId = pathway.id || `recovered-path-${index + 1}`;
+            const worldDelta = impact && !STYLE_DIRECTIVE.test(impact) && !delayedSubstance.test(impact) && !trivialDelta.test(impact)
+                ? impact
+                : `Following ${routeId} changes the active situation and available choices now.`;
+            return [{
+                id: `recovered-guide-${index + 1}`,
+                direction,
+                use_when: useWhen,
+                drop_when: 'Drop when new story evidence contradicts or supersedes this route.',
+                causal_role: `${repaired.director_score.causal_tempo} — follow this supported conditional route.`.slice(0, 130),
+                world_delta: worldDelta.slice(0, 140).trim(),
+                origin: 'inferred',
+                basis: pathway.reason || 'Recovered from a grounded planner pathway.',
+                strength: pathway.status === 'foreground' ? 'strong' : pathway.status === 'latent' ? 'light' : 'moderate',
+                source_pathways: [routeId],
+                causal_event_ids: [],
+                disclosure: 'none',
+                reason: 'Recovered because the planner supplied this grounded pathway but omitted ranked next guides.',
+            }];
+        }).filter((guide, index, guides) => guides.findIndex(other => other.direction.toLowerCase() === guide.direction.toLowerCase()
+            || other.world_delta.toLowerCase() === guide.world_delta.toLowerCase()) === index).slice(0, 4);
+        if (repaired.next_guides.length) {
+            repaired.reason = 'Recovered ranked guidance from grounded planner pathways after next_guides was omitted.';
+        }
+    }
     if (!repaired.pathways.length && repaired.next_guides.length) {
         const guide = repaired.next_guides[0];
         repaired.pathways = [{ id: 'recovered-path-1', direction: guide.direction, when: guide.use_when, response_bias: guide.causal_role, horizon: 'next few turns', status: 'available', conditions: [], change: 'adjust', reason: guide.basis }];

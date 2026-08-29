@@ -48,3 +48,27 @@ export function readContinuityBridge(context = {}, bridge, { allowStale = false 
         : '';
     return { text, status };
 }
+
+export async function waitForContinuityBridge(context = {}, bridgeProvider, {
+    allowStale = false,
+    timeoutMs = 8000,
+    intervalMs = 200,
+    signal,
+    sleep = ms => new Promise(resolve => setTimeout(resolve, ms)),
+    now = () => Date.now(),
+} = {}) {
+    const deadline = now() + Math.max(0, Number(timeoutMs) || 0);
+    let latest = { text: '', status: 'unavailable' };
+    do {
+        signal?.throwIfAborted?.();
+        try {
+            latest = readContinuityBridge(context, bridgeProvider?.(), { allowStale })
+                || { text: '', status: 'unavailable' };
+        } catch {
+            latest = { text: '', status: 'unavailable' };
+        }
+        if (latest.text || now() >= deadline) return latest;
+        await sleep(Math.max(10, Math.min(Number(intervalMs) || 200, deadline - now())));
+    } while (now() < deadline);
+    return latest;
+}

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { compactContinuityPrompt, readContinuityBridge } from '../extension/continuity.js';
+import { compactContinuityPrompt, readContinuityBridge, waitForContinuityBridge } from '../extension/continuity.js';
 
 function bridge(snapshot) {
     return { version: 1, getContextSnapshot: () => snapshot };
@@ -23,6 +23,35 @@ test('Continuity bridge never consumes a snapshot from another chat', () => {
     assert.deepEqual(readContinuityBridge({ chatId: 'chat-2' }, bridge({
         chatId: 'chat-1', status: 'current', prompt: 'wrong chat',
     })), { text: '', status: 'stale' });
+});
+
+test('Continuity startup wait observes a bridge published after Tale Fairy loads', async () => {
+    let reads = 0;
+    let clock = 0;
+    const result = await waitForContinuityBridge({ chatId: 'chat-1' }, () => {
+        reads++;
+        return reads < 3 ? undefined : bridge({ chatId: 'chat-1', status: 'current', prompt: 'late memory' });
+    }, {
+        timeoutMs: 100,
+        intervalMs: 10,
+        sleep: async ms => { clock += ms; },
+        now: () => clock,
+    });
+    assert.deepEqual(result, { text: 'late memory', status: 'current' });
+    assert.equal(reads, 3);
+});
+
+test('Continuity startup wait times out without consuming another chat', async () => {
+    let clock = 0;
+    const result = await waitForContinuityBridge({ chatId: 'chat-2' }, () => bridge({
+        chatId: 'chat-1', status: 'current', prompt: 'wrong chat',
+    }), {
+        timeoutMs: 25,
+        intervalMs: 10,
+        sleep: async ms => { clock += ms; },
+        now: () => clock,
+    });
+    assert.deepEqual(result, { text: '', status: 'stale' });
 });
 
 test('Continuity compaction preserves retrieved records and the trailing Chronicle', () => {

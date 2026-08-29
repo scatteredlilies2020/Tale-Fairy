@@ -10,9 +10,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.16');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.16');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.16');
+    assert.equal(manifest.version, '0.11.17');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.17');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.17');
 });
 
 test('injection sends layered authorial control while concrete realization and future setup stay private', () => {
@@ -86,8 +86,9 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /messages\.join\('\s*→\s*'\)/);
     assert.match(source, /active model structured request failed; retrying with a JSON-only prompt/);
     assert.match(source, /direct model structured request failed; retrying with a JSON-only prompt/);
-    assert.match(source, /if \(error instanceof AnalysisValidationError\) throw error/);
-    assert.match(source, /if \(retryError instanceof AnalysisValidationError\) throw retryError/);
+    assert.match(source, /planner JSON was incomplete after deterministic recovery; retrying once with explicit correction/);
+    assert.match(source, /async function requestAnalysisOnce/);
+    assert.match(source, /async function requestAnalysis\(/);
     assert.match(source, /JSON\.stringify\(ANALYSIS_SCHEMA\.value\)/);
     assert.match(source, /text: submittedNote\.text/);
     assert.match(source, /Instruction saved/);
@@ -144,6 +145,8 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(continuitySource, /snapshot\?\.status === 'current'/);
     assert.match(continuitySource, /snapshot\?\.status === 'stale'/);
     assert.match(continuitySource, /continuity context compacted/);
+    assert.match(continuitySource, /export async function waitForContinuityBridge/);
+    assert.match(source, /optionalContinuityContextWhenReady/);
     assert.match(source, /scratchpad-possibilities/);
     assert.match(source, /scratchpad-continuity/);
     assert.match(source, /scratchpad-ledger/);
@@ -184,7 +187,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /async function upgradeLegacyPlanIfNeeded/);
     assert.match(source, /async function refreshCurrentPlanIfNeeded/);
     assert.match(source, /refreshCurrentPlanIfNeeded[\s\S]{0,900}isGuidanceUsable\(state, messages, chatId\)/);
-    assert.match(source, /refreshCurrentPlanIfNeeded[\s\S]{0,1400}analyzeNow\(\{ messages, allowOneUserAppend: true \}\)/);
+    assert.match(source, /refreshCurrentPlanIfNeeded[\s\S]{0,1400}analyzeNow\(\{ messages, allowOneUserAppend: true, waitForContinuity: true \}\)/);
     assert.match(source, /rawVersion < STATE_VERSION/);
     assert.match(source, /LEGACY_UPGRADE_MAX_ATTEMPTS = 1/);
     assert.match(source, /persistedVersion >= STATE_VERSION/);

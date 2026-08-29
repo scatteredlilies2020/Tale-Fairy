@@ -11,10 +11,10 @@ import { clearPromptManagerInjection, configurePromptManagerInjection } from './
 import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js';
 import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
-import { compactContinuityPrompt, readContinuityBridge } from './continuity.js';
+import { compactContinuityPrompt, readContinuityBridge, waitForContinuityBridge } from './continuity.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.16';
+const RUNTIME_VERSION = '0.11.17';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -319,6 +319,22 @@ function continuityContextState(context, allowStale = false) {
 function optionalContinuityContext(context, allowStale = false) {
     const s = getSettings();
     return compactContinuityPrompt(continuityContextState(context, allowStale).text, s.continuityContextLimit);
+}
+
+async function optionalContinuityContextWhenReady(context, allowStale, signal) {
+    const s = getSettings();
+    const immediate = continuityContextState(context, allowStale);
+    if (!s.continuityIntegration || immediate.text) return compactContinuityPrompt(immediate.text, s.continuityContextLimit);
+    const ready = await waitForContinuityBridge(context, () => globalThis.continuityMemoryBridge, {
+        allowStale,
+        timeoutMs: 8000,
+        intervalMs: 200,
+        signal,
+    });
+    // Preserve compatibility with Continuity versions that expose only their
+    // SillyTavern extension prompt rather than the bridge.
+    const finalState = ready.text ? ready : continuityContextState(context, allowStale);
+    return compactContinuityPrompt(finalState.text, s.continuityContextLimit);
 }
 
 function auxiliaryTexts(value) {
@@ -764,7 +780,7 @@ function rebuildState() {
     return defaultState();
 }
 
-async function requestAnalysis(prompt, externalSignal) {
+async function requestAnalysisOnce(prompt, externalSignal) {
     const controller = new AbortController();
     const forwardAbort = () => controller.abort(externalSignal?.reason || new DOMException('Tale Fairy analysis stopped.', 'AbortError'));
     if (externalSignal?.aborted) forwardAbort();
@@ -925,7 +941,19 @@ async function requestAnalysis(prompt, externalSignal) {
     }
 }
 
-export async function analyzeNow({ note = null, force = false, messages = null, rebuild = false, allowOneUserAppend = false, allowStaleContinuity = false } = {}) {
+async function requestAnalysis(prompt, externalSignal) {
+    try {
+        return await requestAnalysisOnce(prompt, externalSignal);
+    } catch (error) {
+        externalSignal?.throwIfAborted?.();
+        if (!(error instanceof AnalysisValidationError)) throw error;
+        console.warn(`[${EXTENSION_ID}] planner JSON was incomplete after deterministic recovery; retrying once with explicit correction`, error);
+        const correction = `\n\n[REPAIR REQUIRED]\nThe prior planner response was rejected: ${analysisErrorMessage(error)}\nReturn one complete JSON object. Include 3 or 4 distinct, grounded next_guides; each must specify an immediate direction, use/drop conditions, a causal operation, and a distinct world_delta. Do not omit required fields.`;
+        return requestAnalysisOnce(`${prompt}${correction}`, externalSignal);
+    }
+}
+
+export async function analyzeNow({ note = null, force = false, messages = null, rebuild = false, allowOneUserAppend = false, allowStaleContinuity = false, waitForContinuity = false } = {}) {
     const context = currentContext();
     const s = getSettings();
     if (!s.enabled) return loadState(context.chatMetadata);
@@ -960,7 +988,11 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         };
         const hostContext = await collectHostContext(context, chat);
         controller.signal.throwIfAborted();
-        const plannerPrompt = buildAnalysisPrompt(chat, current, noteInstruction(userNote), bootstrapContext(context), { messageWindow: s.messageWindow, messageCharLimit: s.messageCharLimit, continuityContext: optionalContinuityContext(context, allowStaleContinuity), hostContext, bootstrapScan: rebuild || current.canonBootstrapPending || current.scene.status === 'uninitialized' || !current.contextLedger, maxPromptChars: s.maxPromptChars, variationNonce });
+        const continuityContext = waitForContinuity
+            ? await optionalContinuityContextWhenReady(context, allowStaleContinuity, controller.signal)
+            : optionalContinuityContext(context, allowStaleContinuity);
+        controller.signal.throwIfAborted();
+        const plannerPrompt = buildAnalysisPrompt(chat, current, noteInstruction(userNote), bootstrapContext(context), { messageWindow: s.messageWindow, messageCharLimit: s.messageCharLimit, continuityContext, hostContext, bootstrapScan: rebuild || current.canonBootstrapPending || current.scene.status === 'uninitialized' || !current.contextLedger, maxPromptChars: s.maxPromptChars, variationNonce });
         const result = await requestAnalysis(plannerPrompt, controller.signal);
         controller.signal.throwIfAborted();
         const resolvedNote = resolveUserNote(result, userNote);
@@ -986,6 +1018,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         if (!stopped) lastAnalysisError = analysisErrorMessage(error);
         finalStatus = stopped ? 'Stopped' : `Analysis failed · ${lastAnalysisError}`;
         if (!stopped) console.warn(`[${EXTENSION_ID}] analysis skipped`, error);
+        renderBoard(loadState(context.chatMetadata));
         return loadState(context.chatMetadata);
     }).finally(() => {
         if (runId !== analysisRunId) return;
@@ -1287,7 +1320,7 @@ async function refreshCurrentPlanIfNeeded() {
     // reload, or interrupted background request. Refresh it once on chat load;
     // analyzeNow deduplicates an identical in-flight request and never blocks
     // the user's generation.
-    return analyzeNow({ messages, allowOneUserAppend: true });
+    return analyzeNow({ messages, allowOneUserAppend: true, waitForContinuity: true });
 }
 
 async function mountUI() {

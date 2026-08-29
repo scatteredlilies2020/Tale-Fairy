@@ -251,6 +251,15 @@ test('planner salvages incomplete structured output before using fallback', () =
     assert.equal(validateAnalysisResult(repaired).valid, true);
 });
 
+test('planner recovers missing next guides from grounded pathways', () => {
+    const repaired = requireValidAnalysisResult({ ...requiredPlanning, next_guides: [] });
+    assert.equal(repaired.next_guides.length, 1);
+    assert.equal(repaired.next_guides[0].direction, pathways[0].direction);
+    assert.deepEqual(repaired.next_guides[0].source_pathways, ['tea-talk']);
+    assert.match(repaired.reason, /next_guides was omitted/);
+    assert.equal(validateAnalysisResult(repaired).valid, true);
+});
+
 test('planner preserves semantic causal roles when a provider omits the operation keyword', () => {
     const providerResult = {
         ...requiredPlanning,
