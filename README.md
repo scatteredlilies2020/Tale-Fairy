@@ -38,7 +38,7 @@ Tale Fairy is a standalone SillyTavern extension that acts as an **adaptive auth
 - Keeps a small internal list of causal narrative events alongside the ledger. These are produced by the same planner request, retained with visibility and confidence, are not separately generated, and are never injected as a raw event list into the roleplay prompt.
 - Director Notes can show a compact event-status view on demand; this is for inspection only and is separate from the guidance injected into the main RP model.
 - The Planner Scratchpad records the exact dynamic guide found in the final provider payload. After the provider returns an assistant reply, it persists the request as **Confirmed**, along with its provider, model, placement, and timestamps.
-- Functions independently using raw turns, relevance-selected history, lore, in-text recaps, injected summaries, host context, and its own compact causal state. An optional read-only Continuity snapshot can be consumed as just one unprivileged summary source; it is never required or treated as the continuity authority.
+- Functions independently using raw turns, relevance-selected history, lore, in-text recaps, injected summaries, host context, and its own compact causal state. An optional read-only Continuity snapshot can be consumed as just one unprivileged summary source; same-chat snapshots remain usable while Continuity refreshes after the latest raw turn, and Chronicle-aware trimming preserves both current recall and the chronological spine. Continuity is never required or treated as the continuity authority.
 
 ## Install
 

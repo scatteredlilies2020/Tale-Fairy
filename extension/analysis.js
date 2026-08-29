@@ -1,4 +1,5 @@
 import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js';
+import { compactContinuityPrompt } from './continuity.js';
 
 export const DEFAULT_PROMPT_BUDGET = 12000;
 
@@ -959,7 +960,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     }
     const userInstruction = compactText(note, 1200);
     const bootstrapContext = compactOptionalObject(bootstrap, 1800);
-    const continuityContext = compactText(options.continuityContext, 6000);
+    const continuityContext = compactContinuityPrompt(options.continuityContext, 6000);
     const hostContext = compactText(options.hostContext, 8000);
     if (userInstruction) payload.user_instruction = userInstruction;
     if (Object.keys(bootstrapContext).length) {
@@ -976,7 +977,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     }
     let serialized = JSON.stringify(payload);
     if (serialized.length > budget) {
-        if (payload.optional_continuity_context) payload.optional_continuity_context = payload.optional_continuity_context.slice(0, 1800);
+        if (payload.optional_continuity_context) payload.optional_continuity_context = compactContinuityPrompt(payload.optional_continuity_context, 1800);
         if (payload.optional_host_context) payload.optional_host_context = payload.optional_host_context.slice(0, 2200);
         if (payload.bootstrap) payload.bootstrap = compactOptionalObject(payload.bootstrap, 900);
         payload.current.contextLedger = String(payload.current.contextLedger || '').slice(0, 2600);

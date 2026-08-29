@@ -3,15 +3,16 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 
 const source = await readFile(new URL('../extension/index.js', import.meta.url), 'utf8');
+const continuitySource = await readFile(new URL('../extension/continuity.js', import.meta.url), 'utf8');
 const stateSource = await readFile(new URL('../extension/state.js', import.meta.url), 'utf8');
 const template = await readFile(new URL('../extension/settings.html', import.meta.url), 'utf8');
 const styles = await readFile(new URL('../extension/style.css', import.meta.url), 'utf8');
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.15');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.15');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.15');
+    assert.equal(manifest.version, '0.11.16');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.16');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.16');
 });
 
 test('injection sends layered authorial control while concrete realization and future setup stay private', () => {
@@ -138,7 +139,11 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.doesNotMatch(source, /MESSAGE_SENT[\s\S]{0,180}(?:generationRevision\+\+|cancelRunningAnalysis)/);
     assert.doesNotMatch(source, /internalAnalysisRequests/);
     assert.match(source, /globalThis\.continuityMemoryBridge/);
-    assert.match(source, /snapshot\?\.status === 'current'/);
+    assert.match(source, /readContinuityBridge\(context, bridge, \{ allowStale \}\)/);
+    assert.match(source, /allowStaleContinuity: true/);
+    assert.match(continuitySource, /snapshot\?\.status === 'current'/);
+    assert.match(continuitySource, /snapshot\?\.status === 'stale'/);
+    assert.match(continuitySource, /continuity context compacted/);
     assert.match(source, /scratchpad-possibilities/);
     assert.match(source, /scratchpad-continuity/);
     assert.match(source, /scratchpad-ledger/);

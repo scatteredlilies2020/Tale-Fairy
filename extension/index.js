@@ -11,9 +11,10 @@ import { clearPromptManagerInjection, configurePromptManagerInjection } from './
 import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js';
 import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
+import { compactContinuityPrompt, readContinuityBridge } from './continuity.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.15';
+const RUNTIME_VERSION = '0.11.16';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -297,19 +298,13 @@ async function fetchDirectModels(root = document.querySelector(`#${EXTENSION_ID}
     }
 }
 
-function continuityContextState(context) {
+function continuityContextState(context, allowStale = false) {
     const s = getSettings();
     if (!s.continuityIntegration) return { text: '', status: 'off' };
     const bridge = globalThis.continuityMemoryBridge;
     if (bridge?.version === 1 && typeof bridge.getContextSnapshot === 'function') {
         try {
-            const snapshot = bridge.getContextSnapshot();
-            const chatId = String(context.getCurrentChatId?.() || context.chatId || '');
-            const sameChat = !snapshot?.chatId || !chatId || String(snapshot.chatId) === chatId;
-            if (snapshot?.status === 'current' && sameChat && typeof snapshot.prompt === 'string' && snapshot.prompt) {
-                return { text: snapshot.prompt, status: 'current' };
-            }
-            return { text: '', status: snapshot?.status === 'stale' || !sameChat ? 'stale' : 'unavailable' };
+            return readContinuityBridge(context, bridge, { allowStale });
         } catch (error) {
             console.warn(`[${EXTENSION_ID}] Continuity context bridge was unavailable`, error);
             return { text: '', status: 'unavailable' };
@@ -321,13 +316,9 @@ function continuityContextState(context) {
         : { text: '', status: 'unavailable' };
 }
 
-function optionalContinuityContext(context) {
+function optionalContinuityContext(context, allowStale = false) {
     const s = getSettings();
-    return continuityContextState(context).text
-        .replace(/<[^>]+>/g, ' ')
-        .replace(/\s+/g, ' ')
-        .trim()
-        .slice(0, Math.max(500, Math.min(12000, Number(s.continuityContextLimit) || 5000)));
+    return compactContinuityPrompt(continuityContextState(context, allowStale).text, s.continuityContextLimit);
 }
 
 function auxiliaryTexts(value) {
@@ -934,7 +925,7 @@ async function requestAnalysis(prompt, externalSignal) {
     }
 }
 
-export async function analyzeNow({ note = null, force = false, messages = null, rebuild = false, allowOneUserAppend = false } = {}) {
+export async function analyzeNow({ note = null, force = false, messages = null, rebuild = false, allowOneUserAppend = false, allowStaleContinuity = false } = {}) {
     const context = currentContext();
     const s = getSettings();
     if (!s.enabled) return loadState(context.chatMetadata);
@@ -969,7 +960,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         };
         const hostContext = await collectHostContext(context, chat);
         controller.signal.throwIfAborted();
-        const plannerPrompt = buildAnalysisPrompt(chat, current, noteInstruction(userNote), bootstrapContext(context), { messageWindow: s.messageWindow, messageCharLimit: s.messageCharLimit, continuityContext: optionalContinuityContext(context), hostContext, bootstrapScan: rebuild || current.canonBootstrapPending || current.scene.status === 'uninitialized' || !current.contextLedger, maxPromptChars: s.maxPromptChars, variationNonce });
+        const plannerPrompt = buildAnalysisPrompt(chat, current, noteInstruction(userNote), bootstrapContext(context), { messageWindow: s.messageWindow, messageCharLimit: s.messageCharLimit, continuityContext: optionalContinuityContext(context, allowStaleContinuity), hostContext, bootstrapScan: rebuild || current.canonBootstrapPending || current.scene.status === 'uninitialized' || !current.contextLedger, maxPromptChars: s.maxPromptChars, variationNonce });
         const result = await requestAnalysis(plannerPrompt, controller.signal);
         controller.signal.throwIfAborted();
         const resolvedNote = resolveUserNote(result, userNote);
@@ -1514,7 +1505,7 @@ eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
     updatePrompt(loadState(context.chatMetadata));
     // One background planning cycle revises the routes after the completed
     // assistant response. The next user generation never waits for it.
-    if (getSettings().enabled) void analyzeNow({ messages, allowOneUserAppend: true });
+    if (getSettings().enabled) void analyzeNow({ messages, allowOneUserAppend: true, allowStaleContinuity: true });
 });
 if (event_types.MESSAGE_SENT) eventSource.on(event_types.MESSAGE_SENT, () => {
     // analyzeNow allows exactly one appended user turn. Keep that completed-
