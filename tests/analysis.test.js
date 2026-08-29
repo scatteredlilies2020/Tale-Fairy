@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, AnalysisValidationError, MODE_INSTRUCTIONS, applyAnalysis, buildAnalysisPrompt, extractJson, requireGroundedAnalysisResult, requireValidAnalysisResult, SYSTEM, validateAnalysisGrounding, validateAnalysisResult } from '../extension/analysis.js';
+import { ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, AnalysisValidationError, MODE_INSTRUCTIONS, applyAnalysis, buildAnalysisPrompt, extractJson, requireGroundedAnalysisResult, requireValidAnalysisResult, SYSTEM, validateAnalysisCanonCoverage, validateAnalysisGrounding, validateAnalysisResult } from '../extension/analysis.js';
 import { defaultState } from '../extension/state.js';
 
 const pathways = [{ id: 'tea-talk', direction: 'Let the tea conversation reveal a useful tension.', when: 'The user continues the conversation or asks Mara directly.', response_bias: 'Have Mara answer plainly and expose one concrete concern.', horizon: 'next few turns', status: 'foreground', conditions: [], change: 'replace', reason: 'The current exchange supports this route.' }];
@@ -79,6 +79,20 @@ test('semantic grounding accepts names that occur in supplied planner evidence',
     const prompt = JSON.stringify({ messages: [{ role: 'user', name: 'Lucia', content: 'I talk with Mara about her Jedi obligations aboard the Star Wars waystation.' }] });
     assert.equal(validateAnalysisGrounding(result, prompt).valid, true);
     assert.equal(requireGroundedAnalysisResult(result, prompt), result);
+});
+
+test('semantic enforcement rejects omission of explicit factual OOC canon', () => {
+    const evidence = JSON.stringify({ required_canon_claims: [
+        'I have an abnormally high Midichlorian count, probably one of the highest in history.',
+        'If I am tested, my Midichlorian count should be off the charts.',
+    ] });
+    assert.deepEqual(validateAnalysisCanonCoverage({ canon_constraints: [] }, evidence), {
+        valid: false,
+        errors: ['canon_constraints omitted 2 explicit factual OOC claim(s)'],
+    });
+    assert.equal(validateAnalysisCanonCoverage({ canon_constraints: [
+        "Lucia's Midichlorian count is off the charts and among the highest in history.",
+    ] }, evidence).valid, true);
 });
 
 test('planner keeps a causal possibility pool and adaptive multi-horizon plan', () => {
@@ -315,11 +329,11 @@ test('planner receives and consistently uses the named player character identity
 
 test('planner preserves explicit extreme canon without normalizing it to setting averages', () => {
     const prompt = JSON.parse(buildAnalysisPrompt([{ mes: '[OOC: Lucia has a Midichlorian count off the charts, among the highest in history.]', is_user: true }], defaultState()));
-    assert.match(prompt.extreme_canon_instruction, /facts remain authoritative even when extreme, unique, unprecedented/);
-    assert.match(prompt.extreme_canon_instruction, /averages are context, not ceilings/);
+    assert.match(prompt.extreme_canon_instruction, /facts remain authoritative even when extreme or unprecedented/);
+    assert.match(prompt.extreme_canon_instruction, /averages are not ceilings/);
     assert.match(prompt.extreme_canon_instruction, /Unspecified details remain creative space/);
-    assert.match(prompt.extreme_canon_instruction, /complete current durable user-established constraints until explicitly corrected/);
-    assert.match(prompt.extreme_canon_instruction, /Ordinary event history, status reports, old observations, and planner inferences are not canon constraints/);
+    assert.match(prompt.extreme_canon_instruction, /Keep all durable user-established constraints until corrected/);
+    assert.match(prompt.extreme_canon_instruction, /remove ordinary plot history and planner inference from canon constraints/);
     const next = applyAnalysis(defaultState(), { canon_constraints: ['Lucia is among the highest in history; exact count is unspecified.'] }, []);
     assert.deepEqual(next.canonConstraints, ['Lucia is among the highest in history; exact count is unspecified.']);
 });
@@ -368,15 +382,17 @@ test('planner modes provide materially distinct intervention policies', () => {
 test('every planner mode leaves narrative pacing under user control', () => {
     for (const mode of ['light', 'balanced', 'fun']) {
         const prompt = JSON.parse(buildAnalysisPrompt([{ mes: 'I keep watching for a while.', is_user: true }], { ...defaultState(), mode }));
-        assert.match(prompt.pacing_instruction, /Match the user’s demonstrated speed and granularity/);
-        assert.match(prompt.pacing_instruction, /maximum temporal scope authorized by the latest user turn/);
-        assert.match(prompt.pacing_instruction, /Treat that scope as a ceiling, not a quota/);
+        assert.match(prompt.pacing_instruction, /latest user turn’s maximum scope/);
+        assert.match(prompt.pacing_instruction, /ceiling, not a quota/);
         assert.match(prompt.pacing_instruction, /travel and arrival only/);
-        assert.match(prompt.pacing_instruction, /not doing or finishing the activity there/);
-        assert.match(prompt.pacing_instruction, /mode changes narrative pressure, not speed/);
-        assert.match(prompt.pacing_instruction, /Only explicit requests to advance, skip, continue until, or reach a milestone authorize broader progress/);
-        assert.match(prompt.pacing_instruction, /without inventing the player’s choices/);
-        assert.match(prompt.pacing_instruction, /complete latest user turn/);
+        assert.match(prompt.pacing_instruction, /not the activity there/);
+        assert.match(prompt.pacing_instruction, /“I play the game,”/);
+        assert.match(prompt.pacing_instruction, /“I take my turn” or a specific move authorizes one action/);
+        assert.match(prompt.pacing_instruction, /changing game state, tactics, counterplay, reversals, and any authorized outcome/);
+        assert.match(prompt.pacing_instruction, /not dialogue, feelings, consequential decisions/);
+        assert.match(prompt.pacing_instruction, /mode changes pressure, not speed/);
+        assert.match(prompt.pacing_instruction, /without inventing undelegated player choices/);
+        assert.match(prompt.pacing_instruction, /Complete the declared endpoint/);
     }
     assert.match(MODE_INSTRUCTIONS.light, /must not artificially prolong a beat or slow a user/);
     assert.match(MODE_INSTRUCTIONS.balanced, /does not change the user's narrative speed/);
@@ -391,6 +407,10 @@ test('analysis prompt maintains a lightweight world model', () => {
     assert.match(SYSTEM, /Do not echo an earlier scene, incident, reveal, conflict, conversation pattern, joke, emotional beat, or plot structure with renamed parts/);
     assert.match(SYSTEM, /Prefer synthesis across multiple relevant facts over copying any single past plot/);
     assert.match(SYSTEM, /Retained planner state is a hypothesis to audit and cannot make its own unsupported name valid/);
+    assert.match(SYSTEM, /Do not confuse player agency with procedural micromanagement/);
+    assert.match(SYSTEM, /must not merely announce success or hand control back after one move/);
+    assert.match(SYSTEM, /a historically exceptional capability must have an exceptional relevant effect/);
+    assert.match(SYSTEM, /ordinary opposition must not be inflated to cancel it/);
     assert.equal('world_model_instruction' in prompt, false);
 });
 
@@ -502,9 +522,11 @@ test('bootstrap prompt samples older messages instead of only the recent tail', 
 
 test('canon bootstrap retains labeled OOC turns outside ordinary sampling points', () => {
     const messages = Array.from({ length: 60 }, (_, i) => ({ mes: `message-${i}`, is_user: i % 2 === 0 }));
-    messages[22] = { mes: 'OOC: Lucia is off the charts and among the highest in history.', is_user: true };
+    messages[22] = { mes: '"My name is Lucia."\nOOC: I have an abnormally high Midichlorian count, among the highest in history.', is_user: true };
     const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { messageWindow: 4, bootstrapScan: true }));
-    assert.ok(prompt.messages.some(item => item.index === 22 && item.kind === 'directive' && /off the charts/.test(item.content)));
+    assert.ok(prompt.messages.some(item => item.index === 22 && item.kind === 'directive' && /highest in history/.test(item.content)));
+    assert.deepEqual(prompt.required_canon_claims, ['I have an abnormally high Midichlorian count, among the highest in history.']);
+    assert.match(prompt.required_canon_instruction, /Preserve every claim semantically in canon_constraints/);
 });
 
 test('analysis application keeps layered guidance bounded and records its injection decision', () => {

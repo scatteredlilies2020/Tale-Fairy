@@ -24,7 +24,7 @@ test('state normalizes caps and invalid mode', () => {
     assert.deepEqual(state.nextGuides.map(item => item.id), ['guide-0', 'guide-1', 'guide-2', 'guide-3']);
     assert.ok(state.nextGuides[0].causalRole.length <= 130);
     assert.match(state.nextGuides[0].causalRole, /advance…$/);
-    assert.equal(state.version, 24);
+    assert.equal(state.version, 25);
 });
 
 test('offscreen causes persist privately while injection exposes only their consequence', () => {
@@ -194,7 +194,7 @@ test('pre-canon-ledger state requests one bounded bootstrap rescan', () => {
 
 test('pre-momentum guides and request verification cannot remain injectable after an upgrade', () => {
     const migrated = normalizeState({ version: 16, ...currentPlan, nextGuides: stateNextGuides, canonConstraints: ['Fact from a discarded response.'], lastInject: true, lastRequestVerification: { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides } });
-    assert.equal(migrated.version, 24);
+    assert.equal(migrated.version, 25);
     assert.equal(migrated.canonBootstrapPending, true);
     assert.deepEqual(migrated.nextGuides, []);
     assert.deepEqual(migrated.canonConstraints, []);
@@ -205,7 +205,7 @@ test('pre-momentum guides and request verification cannot remain injectable afte
 test('pre-v24 candidates are rebuilt with layered authorial control while established canon survives', () => {
     const verification = { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides };
     const migrated = normalizeState({ version: 22, ...currentPlan, nextGuides: stateNextGuides, canonConstraints: ['Established fact.'], lastRequestVerification: verification });
-    assert.equal(migrated.version, 24);
+    assert.equal(migrated.version, 25);
     assert.equal(migrated.canonBootstrapPending, true);
     assert.deepEqual(migrated.nextGuides, []);
     assert.deepEqual(migrated.canonConstraints, ['Established fact.']);
@@ -254,8 +254,8 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(current, /WIDER WORLD: Star Wars institutions, droids, duties/);
     assert.match(current, /ACTIVE CAUSAL FORCES: Jedi obligations constrain time and candor; Droids participate in domestic routine/);
     assert.match(current, /STORY OPERATION: SEED/);
-    assert.match(current, /Tale Fairy authors the narrative function, causal pressure, and scale/);
-    assert.match(current, /You author the concrete realization/);
+    assert.match(current, /Tale Fairy controls narrative function, pressure, and scale/);
+    assert.match(current, /realize exact events, NPC actions, dialogue, outcomes, and prose/);
     assert.match(current, /AUTHORIAL INTENT: Let Mara answer plainly/);
     assert.doesNotMatch(current, /\[EMPHASIS\]/);
     assert.match(current, /APPLY WHEN: The user continues or asks Mara/);
@@ -264,7 +264,12 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(current, /IMPACT ENVELOPE: Mara reveals a concern/);
     assert.match(current, /binding at the level of narrative purpose, not at the level of a prescribed incident/);
     assert.match(current, /Keep private future developments offscreen/);
-    assert.match(current, /Heading, going, or walking to a destination permits travel and arrival only/);
+    assert.match(current, /travel ends at arrival/);
+    assert.match(current, /“I play the game” authorizes representative progression/);
+    assert.match(current, /Simulate routine micro-actions without prompting/);
+    assert.match(current, /show concrete progress and any authorized result/);
+    assert.match(current, /Apply established strengths and limitations proportionately/);
+    assert.match(current, /never cancel an exceptional advantage/);
     assert.match(current, /preserve established meanings, pacing, and player agency/);
     assert.doesNotMatch(current, /discarded reply/);
     assert.doesNotMatch(current, /Mara must choose between the relationship and a Jedi obligation/);

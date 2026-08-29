@@ -9,9 +9,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.3');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.3');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.3');
+    assert.equal(manifest.version, '0.11.5');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.5');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.5');
 });
 
 test('injection sends layered authorial control while concrete realization and future setup stay private', () => {
@@ -22,13 +22,13 @@ test('injection sends layered authorial control while concrete realization and f
     assert.match(stateSource, /STORY FUNCTION:/);
     assert.match(stateSource, /IMPACT ENVELOPE:/);
     assert.match(stateSource, /binding at the level of narrative purpose/);
-    assert.match(stateSource, /Tale Fairy authors the narrative function, causal pressure, and scale/);
-    assert.match(stateSource, /You author the concrete realization/);
+    assert.match(stateSource, /Tale Fairy controls narrative function, pressure, and scale/);
+    assert.match(stateSource, /realize exact events, NPC actions, dialogue, outcomes, and prose/);
     assert.match(stateSource, /IMMEDIATE ACTION:/);
     assert.match(stateSource, /AUTHORIZED SCOPE:/);
     assert.doesNotMatch(stateSource, /DYNAMIC SCORE:|DRAMATIC SCORE:|SURPRISE LATITUDE:/);
-    assert.match(stateSource, /HOLD may be fulfilled by letting the declared activity complete naturally/);
-    assert.match(stateSource, /PACING BOUNDARY:/);
+    assert.match(stateSource, /HOLD may complete the activity naturally/);
+    assert.match(stateSource, /PACING:/);
     assert.match(stateSource, /Do not reuse the discarded reply/);
     assert.doesNotMatch(stateSource, /within two sentences|Answer once|recap|repeated dialogue|show only that outcome/);
     assert.match(stateSource, /<tale-fairy-context>/);

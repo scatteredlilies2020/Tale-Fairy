@@ -63,9 +63,9 @@ export const MODE_INSTRUCTIONS = Object.freeze({
     fun: 'FUN MODE — Search boldly across distinct actors and live threads for consequential authorial opportunities. Prefer the strongest causally ready function, but its conditions and the user\'s temporal boundary still decide whether it enters the response. A fitting development may use interruption, discovery, reveal, NPC initiative, complication, opportunity, collision of threads, or world change as possible mechanisms; do not prescribe which mechanism the roleplay model must use. Boldness widens opportunity and impact, never pacing or control of the player.',
 });
 
-export const PACING_INSTRUCTION = 'USER-CONTROLLED PACING — Infer the maximum temporal scope authorized by the complete latest user turn: moment, action, activity, scene, or extended. Treat it as a ceiling, not a quota. A narrow action may receive depth without artificial delay; a broad declaration such as finishing an assignment or skipping through routine training may complete that whole activity without fragmentation, manufactured difficulty, or permission checkpoints. Routine life is allowed to remain routine and may be the whole response; do not force an NPC interruption, world event, or wider plot consequence merely to make it seem important. The world may act inside the authorized scope only when an established causal process makes that meaningful. Mode changes narrative pressure, boldness, and breadth of possibilities—not speed. Never invent the player\'s decisions or cross the endpoint they authorized.';
+export const PACING_INSTRUCTION = 'USER-CONTROLLED PACING — Infer the maximum temporal scope authorized by the complete latest user turn: moment, action, activity, scene, or extended. Treat it as a ceiling, not a quota. A narrow action may receive depth without artificial delay; a broad declaration such as finishing an assignment, playing a game, or skipping through routine training may complete that whole activity without fragmentation, manufactured difficulty, or permission checkpoints. “I play the game” normally authorizes representative play across the game rather than one move; “I take my turn” or a specifically named move remains one action. An NPC saying “your turn” does not by itself require the user to micromanage every later move. Broad authorization delegates low-stakes procedural execution inside that activity, including reasonable tactics consistent with the user\'s stated approach or competence, but never delegates consequential choices, dialogue, feelings, or a new activity. When the bounded activity is the focus, show its actual evolving substance through concrete representative beats and reach any authorized result; do not replace it with a generic summary or repeatedly stop for trivial input. Routine life is allowed to remain routine and may be the whole response; do not force an NPC interruption, world event, or wider plot consequence merely to make it seem important. The world may act inside the authorized scope only when an established causal process makes that meaningful. Mode changes narrative pressure, boldness, and breadth of possibilities—not speed. Never invent undelegated player decisions or cross the endpoint they authorized.';
 
-export const EXTREME_CANON_INSTRUCTION = 'USER-ESTABLISHED CANON FIDELITY — Explicit user/OOC continuity assertions are authoritative even when statistically extreme, unprecedented, off-scale, unique, or beyond familiar setting records. Preserve their semantic magnitude, rank, scope, comparisons, and qualifiers exactly in canon_constraints and in any relevant guidance. Do not regress an outlier toward the mean, cap it at a franchise record, reinterpret it as rumor, or downgrade “off the charts” or “among the highest in history” to merely high. Setting averages and records provide contrast, not a ceiling. Unspecified details are open creative space, not prohibited unknowns. When no exact number or other detail was established, the planner and story may freely invent one or leave it relational according to what best fits the narrative. An invented detail need only fit the narrative and remain consistent with established canon; it need not be conservative or supplied by the user. Never turn missing specificity into a refusal, hedge, delay, or demand for verification unless the narrative itself calls for one, and never mention this policy in narration or dialogue. This fixes the established fact, not its unstated details, reactions, causes, complications, or future consequences. A later explicit user/OOC correction may replace the constraint. Return canon_constraints as the complete current list of durable explicit user/OOC semantic constraints that must survive future context loss; preserve existing constraints until explicitly corrected.';
+export const EXTREME_CANON_INSTRUCTION = 'USER-ESTABLISHED CANON FIDELITY — Explicit user/OOC continuity assertions are authoritative even when statistically extreme, unprecedented, off-scale, unique, or beyond familiar setting records. Preserve their semantic magnitude, rank, scope, comparisons, and qualifiers exactly in canon_constraints and in any relevant guidance. Do not regress an outlier toward the mean, cap it at a franchise record, reinterpret it as rumor, or downgrade “off the charts” or “among the highest in history” to merely high. Operationalize established capabilities, limitations, knowledge, condition, equipment, and environmental advantages as causal modifiers: exceptional strengths must make relevant tasks proportionately easier or more effective, while relevant limitations must make them harder. Show that difference through concrete process and result rather than stating the trait decoratively, and never manufacture equal odds merely to preserve tension. Setting averages and records provide contrast, not a ceiling. Unspecified details are open creative space, not prohibited unknowns. When no exact number or other detail was established, the planner and story may freely invent one or leave it relational according to what best fits the narrative. An invented detail need only fit the narrative and remain consistent with established canon; it need not be conservative or supplied by the user. Never turn missing specificity into a refusal, hedge, delay, or demand for verification unless the narrative itself calls for one, and never mention this policy in narration or dialogue. This fixes the established fact, not its unstated details, reactions, causes, complications, or future consequences. A later explicit user/OOC correction may replace the constraint. Return canon_constraints as the complete current list of durable explicit user/OOC semantic constraints that must survive future context loss; preserve existing constraints until explicitly corrected.';
 
 
 function extractJson(raw) {
@@ -354,10 +354,61 @@ export function validateAnalysisGrounding(result, evidence) {
     return { valid: errors.length === 0, errors };
 }
 
+const CANON_COVERAGE_STOPWORDS = new Set([
+    'about', 'after', 'again', 'also', 'and', 'are', 'been', 'being', 'but', 'can', 'could', 'does', 'for',
+    'from', 'have', 'here', 'into', 'its', 'like', 'must', 'only', 'possible', 'probably', 'should', 'that',
+    'the', 'their', 'then', 'there', 'these', 'they', 'this', 'through', 'very', 'was', 'were', 'what', 'when',
+    'where', 'which', 'while', 'with', 'would', 'your',
+]);
+
+function canonCoverageTerms(value) {
+    const source = String(value || '').toLocaleLowerCase();
+    const terms = new Set((source.match(/[\p{L}\p{N}][\p{L}\p{N}'’_-]{2,}/gu) || [])
+        .map(term => term.replace(/[’']/gu, ''))
+        .filter(term => !CANON_COVERAGE_STOPWORDS.has(term)));
+    if (/\b(?:midichlorian|midi-chlorian)s?\b/iu.test(source)) terms.add('midichlorian');
+    if (/\b(?:abnormally\s+high|highest|greatest|record|unprecedented|unmatched|off[ -]?(?:the[ -]?)?(?:charts?|scale)|immeasurable|unmeasurable|extreme|exceptional)\b/iu.test(source)) terms.add('extreme-magnitude');
+    return terms;
+}
+
+function requiredCanonClaims(evidence) {
+    if (typeof evidence !== 'string') return [];
+    try {
+        const payload = JSON.parse(evidence);
+        return Array.isArray(payload?.required_canon_claims)
+            ? payload.required_canon_claims.map(item => String(item || '').trim()).filter(Boolean)
+            : [];
+    } catch {
+        return [];
+    }
+}
+
+/** Reject a planner result that silently drops explicit factual OOC claims. */
+export function validateAnalysisCanonCoverage(result, evidence) {
+    const claims = requiredCanonClaims(evidence);
+    if (!claims.length) return { valid: true, errors: [] };
+    const constraints = Array.isArray(result?.canon_constraints) ? result.canon_constraints : [];
+    const constraintTerms = constraints.map(canonCoverageTerms);
+    const missing = claims.filter(claim => {
+        const claimTerms = canonCoverageTerms(claim);
+        if (!claimTerms.size) return false;
+        const requiredOverlap = Math.min(2, claimTerms.size);
+        return !constraintTerms.some(terms => [...claimTerms].filter(term => terms.has(term)).length >= requiredOverlap);
+    });
+    return {
+        valid: missing.length === 0,
+        errors: missing.length ? [`canon_constraints omitted ${missing.length} explicit factual OOC claim(s)`] : [],
+    };
+}
+
 export function requireGroundedAnalysisResult(result, evidence) {
-    const validation = validateAnalysisGrounding(result, evidence);
-    if (!validation.valid) {
-        throw new AnalysisValidationError(`Planner introduced unsupported named specificity: ${validation.errors.join('; ')}. Rebuild using only names present in the supplied context.`);
+    const grounding = validateAnalysisGrounding(result, evidence);
+    if (!grounding.valid) {
+        throw new AnalysisValidationError(`Planner introduced unsupported named specificity: ${grounding.errors.join('; ')}. Rebuild using only names present in the supplied context.`);
+    }
+    const canonCoverage = validateAnalysisCanonCoverage(result, evidence);
+    if (!canonCoverage.valid) {
+        throw new AnalysisValidationError(`Planner omitted binding canon: ${canonCoverage.errors.join('; ')}. Rebuild canon_constraints from every required_canon_claim.`);
     }
     return result;
 }
@@ -546,6 +597,29 @@ export function repairAnalysisResult(result) {
     return repaired;
 }
 
+const META_DIRECTIVE_PATTERN = /(?:^|[\r\n])\s*(?:[\[(<{]\s*)?(?:ooc|out[ -]?of[ -]?character|meta|canon|author|gm|narrator)(?:\s*(?:note))?\s*(?:[:\-\])}>]|$)\s*([\s\S]*)/iu;
+
+function metaDirectiveText(value) {
+    const match = String(value || '').match(META_DIRECTIVE_PATTERN);
+    return String(match?.[1] || '').trim().replace(/\s*[\])}>]\s*$/u, '').trim();
+}
+
+function isExplicitDurableCanonClaim(value) {
+    const claim = String(value || '').trim();
+    if (!claim || /\bi\s+have\s+to\b/iu.test(claim)) return false;
+    return /\b(?:i\s+(?:am|have|possess|can(?:not)?|can't|always|never)\b|i['’]?m\b|my\s+[\p{L}\p{N}'’_-]+(?:\s+[\p{L}\p{N}'’_-]+){0,5}\s+(?:is|are|has|have|should|must|can(?:not)?)\b)/iu.test(claim);
+}
+
+function explicitCanonClaims(messages = []) {
+    const claims = [];
+    for (const message of messages) {
+        if (!message?.is_user) continue;
+        const claim = metaDirectiveText(message?.mes);
+        if (isExplicitDurableCanonClaim(claim) && !claims.includes(claim)) claims.push(claim.slice(0, 500));
+    }
+    return claims.slice(-12);
+}
+
 function selectMessages(messages, windowSize, bootstrapScan = false) {
     const source = Array.isArray(messages) ? messages : [];
     const recentStart = Math.max(0, source.length - windowSize);
@@ -556,10 +630,9 @@ function selectMessages(messages, windowSize, bootstrapScan = false) {
         for (let index = 0; index < Math.min(6, source.length); index++) indexes.add(index);
         const sampleCount = Math.min(10, Math.max(0, Math.floor(windowSize / 2)));
         for (let i = 1; i <= sampleCount; i++) indexes.add(Math.min(source.length - 1, Math.floor((source.length - 1) * i / (sampleCount + 1))));
-        const metaPattern = /^\s*(?:[\[(<{]\s*)?(?:ooc|out[ -]?of[ -]?character|meta|canon|author|gm|narrator)(?:\s*(?:note))?\s*(?:[:\-\])}>]|$)/iu;
         const metaIndexes = source
             .map((message, index) => ({ message, index }))
-            .filter(({ message }) => message?.is_user && metaPattern.test(String(message?.mes || '')))
+            .filter(({ message }) => message?.is_user && META_DIRECTIVE_PATTERN.test(String(message?.mes || '')))
             .slice(-16);
         for (const { index } of metaIndexes) {
             indexes.add(index);
@@ -895,8 +968,8 @@ function retrieveOlderHistoricalEvidence(messages, state, recentStart, selectedI
         .map(({ score: _score, terms: _terms, overlap: _overlap, specificity: _specificity, hasIntent: _hasIntent, hasCorrection: _hasCorrection, intentBoost: _intentBoost, correctionBoost: _correctionBoost, proximity: _proximity, ...item }) => item);
 }
 
-const PROMPT_PACING_INSTRUCTION = 'USER-CONTROLLED PACING — Match the user’s demonstrated speed and granularity. Classify the maximum temporal scope authorized by the latest user turn as moment, action, activity, scene, or extended, and return it in narrative_layers.temporal_scope. Treat that scope as a ceiling, not a quota. Complete exactly what was declared without adding permission checkpoints: heading, going, or walking to a destination permits travel and arrival only, not doing or finishing the activity there, advancing to the next task, or skipping additional time. Conversely, “I finish the assignment,” “skip through training,” or an equivalent broad declaration authorizes completing that activity without fragmenting it across replies or manufacturing difficulty. An NPC or world development may occur inside the same authorized scope, but it must not require crossing the endpoint. Slow pacing permits depth inside the current beat, not artificial delay; mode changes narrative pressure, not speed. Only explicit requests to advance, skip, continue until, or reach a milestone authorize broader progress. If established facts make an action impossible, show the attempt and concrete obstacle. Let causal motives, constraints, hidden information, and world processes determine interesting outcomes without inventing the player’s choices. Respond directly to the complete latest user turn.';
-const PROMPT_EXTREME_CANON_INSTRUCTION = 'USER-ESTABLISHED CANON FIDELITY — Explicit user/OOC facts remain authoritative even when extreme, unique, unprecedented, or beyond familiar setting records. Preserve their magnitude, scope, rank, and qualifiers; averages are context, not ceilings. Unspecified details remain creative space and may be invented consistently rather than causing refusal, delay, or hedging. Keep the complete current durable user-established constraints until explicitly corrected. Ordinary event history, status reports, old observations, and planner inferences are not canon constraints and must be removed if mistakenly present.';
+const PROMPT_PACING_INSTRUCTION = 'USER-CONTROLLED PACING — Infer the latest user turn’s maximum scope as moment, action, activity, scene, or extended; it is a ceiling, not a quota. Complete the declared endpoint without permission checkpoints. Travel to a destination permits travel and arrival only, not the activity there. A broad declaration such as “I finish the assignment,” “I play the game,” or “skip through training” normally authorizes that bounded activity; “I take my turn” or a specific move authorizes one action, and an NPC’s “your turn” does not narrow a later broad declaration. Broad authorization delegates reasonable low-stakes procedure, not dialogue, feelings, consequential decisions, or another activity. When the activity is the focus, show representative concrete progression—changing game state, tactics, counterplay, reversals, and any authorized outcome—instead of a generic summary or stopping after every micro-step. Slow pacing permits depth, not delay; mode changes pressure, not speed. Apply established causes and constraints without inventing undelegated player choices or crossing the endpoint.';
+const PROMPT_EXTREME_CANON_INSTRUCTION = 'USER-ESTABLISHED CANON FIDELITY — Explicit user/OOC facts remain authoritative even when extreme or unprecedented. Preserve magnitude, scope, rank, and qualifiers; averages are not ceilings. Apply relevant capabilities, limitations, knowledge, condition, equipment, and environment causally: exceptional strength makes relevant tasks proportionately easier or more effective, while limitations make them harder. Show this through process and outcome; never make a trait decorative or manufacture equal odds. Unspecified details remain creative space. Keep all durable user-established constraints until corrected, but remove ordinary plot history and planner inference from canon constraints.';
 
 export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, options = {}) {
     const windowSize = Math.max(1, Math.min(80, Number(options.messageWindow) || 12));
@@ -919,6 +992,11 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         current: useSpecificPlayerName(stateForPrompt(state), playerName),
         messages: compact,
     };
+    const canonClaims = explicitCanonClaims(messages);
+    if (canonClaims.length) {
+        payload.required_canon_claims = canonClaims;
+        payload.required_canon_instruction = 'These are explicit factual OOC assertions recovered independently from the full chat. Preserve every claim semantically in canon_constraints, including its magnitude and qualifiers; consolidate overlaps, but do not omit or normalize them. Procedural OOC commands and questions are excluded from this list.';
+    }
     if (playerName) {
         payload.player_character = { name: playerName };
         payload.player_identity_instruction = `The user-controlled player character is ${playerName}. In every returned field, call this character ${playerName}, never "protagonist", "the protagonist", "player character", or another generic role label. ${playerName} in existing state and ${playerName} in user messages are the same person, never separate entities.`;
@@ -1200,6 +1278,10 @@ Message kind recent is live trajectory evidence. Message kind directive preserve
 Classify the story frame as grounded, heightened, surreal, or unknown. Match the supplied pacing and mode policies. Player silence is not a veto on supported NPC or world activity, but never invent the player's choices, dialogue, voluntary actions, thoughts, or feelings. Avoid recency loops and arbitrary escalation.
 
 Every next guide must be fulfillable without inventing a new player action. It may author clean completion of an action or activity the user already declared, depth within the current situation, or an NPC/world development. Unless the newest user turn declares travel or arrival, keep the player at the current location. Never make the player join, follow, settle somewhere, agree, answer, or otherwise bridge a route; leave concrete realization to NPC/world behavior and the already-authorized player action.
+
+Do not confuse player agency with procedural micromanagement. When the user broadly says they play a game, train, study, work, travel through a bounded route, or otherwise perform an established multi-step activity, they authorize the ordinary low-stakes micro-actions needed to depict that activity at the requested scale. The roleplay model may concretize those steps consistently without asking the user to select every move. A game-focused response should play through a meaningful sequence with changing state, tactics, opponent adaptation, reversals, and—when the user authorized completion—the result; it must not merely announce success or hand control back after one move. Preserve any outcome or degree of success the user explicitly establishes. Stop for input only at a genuinely consequential choice, a user-specified endpoint, or when the user clearly adopts move-by-move control. This procedural delegation never licenses new dialogue, feelings, major commitments, moral choices, or movement into a different activity.
+
+Make procedural depth causally context-sensitive. Apply every relevant established capability, limitation, condition, skill, item, relationship, rule, and environmental factor to how easy or hard the activity is and how it unfolds. Preserve scale: a historically exceptional capability must have an exceptional relevant effect, not a merely average bonus, and ordinary opposition must not be inflated to cancel it. Show the advantage or difficulty inside concrete mechanics, choices available, opponent adaptation, costs, and results. Interest may come from the manner and consequences of success; it does not require contriving struggle or negating an established advantage.
 
 Preserve the exact endpoint of the newest user action. A motion phrase such as “we head to breakfast,” “I go to the meeting,” or “we walk home” ends at travel or arrival; the named destination or purpose does not authorize eating breakfast, conducting the meeting, spending the evening, completing the next errand, or moving to a later agenda. Do not skip beyond that endpoint to satisfy a guide, horizon, due thread, or momentum target. Place any supported development during the movement or at arrival, and leave subsequent activity available for later turns unless the user explicitly requests broader progress.
 
