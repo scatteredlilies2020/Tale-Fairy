@@ -1,15 +1,17 @@
 # Tale Fairy
 
-Tale Fairy is a standalone SillyTavern extension that supplies an **adaptive narrative plan**, not prose. It maintains several story directions across different timeframes, revises them after each completed response, and gives the roleplay model compact immediate routes for the next turn.
+Tale Fairy is a standalone SillyTavern extension that acts as an **adaptive authorial story controller**, not a prose writer. It maintains story direction and causal depth across different layers and timeframes, while the roleplay model realizes each scene from the full conversation.
 
 ## What it does
 
 - Replans in the background after each completed assistant response. The next roleplay request never waits for the planner and never makes an extra AI call; sending a new turn cancels any unfinished background pass so the roleplay request takes priority.
-- Prepares three or four contrasting conditional causal movements, then lets the roleplay model apply one—or ignore all of them—after reading the complete latest user action.
+- Separates authorial purpose from scene realization: Tale Fairy chooses the relevant narrative function, causal source, and impact scale; the roleplay model chooses the exact event, NPC behavior, dialogue, outcome, and prose.
+- Tracks nested layers from immediate action through local activity, situation, wider world, and durable open-ended trajectory. A hundred turns of homework can remain one routine academy activity inside a much larger life.
+- Automatically classifies the latest turn's temporal scope. The user can linger inside one moment or breeze through an entire declared activity without prompts, permission checkpoints, or manufactured obstacles.
 - Separates durable overall story identity from the current scene's local function. A quiet breakfast or board game can remain a slice-of-life scene inside a larger war, survival, political, mystery, or metaphysical arc without redefining the whole story.
 - Uses causal tempo only to control story-state progression: hold, seed, advance, converge, payoff, redirect, or recover. It never directs prose rhythm, mood, dialogue style, sentence form, verbosity, or descriptive texture.
 - Tracks a primary future setup privately with its current causal step, remaining conditions, earliest window, and disclosure state. Hidden developments can progress offscreen; only a conditionally valid clue, consequence, or payoff can reach the roleplay request.
-- Privately archives and evaluates the full route set, but sends the roleplay model only compact causal control plus one optional conditional movement. Alternatives stay inside Tale Fairy. Regenerates and swipes rotate to distinct movements, reuse only pre-response canon, and reject replaying the discarded realization; if no aligned archive exists, a compact generic continuity fallback is injected.
+- Privately archives and evaluates the full route set, but sends the roleplay model only a compact layered authorial frame plus one conditional narrative function and impact envelope. Alternatives stay inside Tale Fairy. Regenerates and swipes rotate to distinct functions, reuse only pre-response canon, and reject replaying the discarded realization; if no aligned archive exists, a compact generic continuity fallback is injected.
 - Places that route inside the provider-bound latest user content, before the user's actual turn. This avoids a late interleaved system message and keeps the default portable across chat-completion providers; the saved chat itself is never modified.
 - Maintains up to ten durable story threads plus six to ten ordered planning horizons, from the current reply through later arcs or meaningful distant timeframes—without assuming an ending.
 - Everything remains changeable. Short horizons move freely; increasingly distant horizons change more gradually as deviations accumulate, while explicit user pivots always win.

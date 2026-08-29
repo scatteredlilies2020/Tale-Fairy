@@ -9,23 +9,25 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.10.1');
-    assert.equal(manifest.js, 'extension/index.js?v=0.10.1');
-    assert.equal(manifest.css, 'extension/style.css?v=0.10.1');
+    assert.equal(manifest.version, '0.11.0');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.0');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.0');
 });
 
-test('injection sends optional causal movements while style and future setup stay private', () => {
-    assert.match(stateSource, /Conditional causal movement/);
-    assert.match(stateSource, /MOVEMENT/);
-    assert.match(stateSource, /IF:/);
-    assert.match(stateSource, /UNLESS:/);
-    assert.match(stateSource, /CAUSAL ROLE:/);
-    assert.match(stateSource, /POSSIBLE AFTEREFFECT:/);
-    assert.match(stateSource, /Use this movement only if its IF condition holds/);
-    assert.match(stateSource, /Causal tempo means the rate of story-state change, never prose rhythm/);
-    assert.match(stateSource, /Do not control wording, dialogue style, mood, sentence rhythm, verbosity, formatting, or descriptive texture/);
+test('injection sends layered authorial control while concrete realization and future setup stay private', () => {
+    assert.match(stateSource, /Conditional authorial direction/);
+    assert.match(stateSource, /AUTHORIAL INTENT/);
+    assert.match(stateSource, /APPLY WHEN:/);
+    assert.match(stateSource, /DO NOT APPLY WHEN:/);
+    assert.match(stateSource, /STORY FUNCTION:/);
+    assert.match(stateSource, /IMPACT ENVELOPE:/);
+    assert.match(stateSource, /binding at the level of narrative purpose/);
+    assert.match(stateSource, /Tale Fairy authors the narrative function, causal pressure, and scale/);
+    assert.match(stateSource, /You author the concrete realization/);
+    assert.match(stateSource, /IMMEDIATE ACTION:/);
+    assert.match(stateSource, /AUTHORIZED SCOPE:/);
     assert.doesNotMatch(stateSource, /DYNAMIC SCORE:|DRAMATIC SCORE:|SURPRISE LATITUDE:/);
-    assert.match(stateSource, /Preserve due processes/);
+    assert.match(stateSource, /HOLD may be fulfilled by letting the declared activity complete naturally/);
     assert.match(stateSource, /PACING BOUNDARY:/);
     assert.match(stateSource, /Do not reuse the discarded reply/);
     assert.doesNotMatch(stateSource, /within two sentences|Answer once|recap|repeated dialogue|show only that outcome/);

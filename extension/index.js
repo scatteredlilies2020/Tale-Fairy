@@ -13,7 +13,7 @@ import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.10.1';
+const RUNTIME_VERSION = '0.11.0';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -1003,7 +1003,14 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const continuityStatus = analyzed ? continuityContextState(currentContext()).status : 'unavailable';
     scratchpadText(board, 'scratchpad-continuity', `Continuity: ${continuityStatus}`, 'Continuity: unavailable');
 
+    const layers = state.narrativeLayers || {};
     const scene = [
+        layers.immediateAction && `Immediate action: ${layers.immediateAction}`,
+        layers.localActivity && `Local activity: ${layers.localActivity} [${layers.activityRole || 'routine'}]`,
+        layers.situation && `Situation: ${layers.situation}`,
+        layers.widerWorld && `Wider world: ${layers.widerWorld}`,
+        layers.durableTrajectory && `Durable trajectory: ${layers.durableTrajectory}`,
+        layers.temporalScope && `Authorized scope: ${layers.temporalScope}`,
         state.scene.activity && `Activity: ${state.scene.activity}`,
         state.scene.intent && `Intent: ${state.scene.intent}`,
         state.scene.pace && `Pace: ${state.scene.pace}`,
@@ -1044,8 +1051,8 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     scratchpadText(board, 'scratchpad-pathways', pathwayLines.join('\n\n'), 'No conditional pathways yet.');
 
     const guideLines = (state.nextGuides || []).map((item, index) => [
-        `${index === 0 ? 'Emphasis' : `Background ${index + 1}`} · ${item.id} [${item.strength}] — ${item.direction}`,
-        `Possible effect: ${item.worldDelta}`,
+        `${index === 0 ? 'Authorial direction' : `Alternative ${index + 1}`} · ${item.id} [${item.strength}] — ${item.direction}`,
+        `Impact envelope: ${item.worldDelta}`,
         `Grounding: ${item.origin} — ${item.basis}`,
         `Use if: ${item.useWhen}`,
         `Drop if: ${item.dropWhen}`,

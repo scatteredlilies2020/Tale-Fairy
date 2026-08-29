@@ -21,7 +21,8 @@ const planHorizons = {
     deviation: { level: 'none', reason: 'Initial plan.' },
 };
 const directorScore = { story_identity: 'A Star Wars survival and institutional-conflict arc about trust under Jedi obligations.', scene_function: 'Let a quiet exchange alter trust.', setting_identity: 'Star Wars lived through its institutions, droids, technology, and social scale', setting_forces: ['A serving droid witnesses and mediates domestic routine.', 'Jedi obligations constrain available time and candor.'], causal_tempo: 'seed', arc_direction: 'Let ordinary interaction expose how affection and institutional duty compete across the next few turns.', future_setup: { id: 'duty-conflict', development: 'Mara must eventually choose between the relationship and a Jedi obligation.', current_step: 'Establish the obligation as a concrete constraint.', conditions: ['The duty becomes due.'], earliest_window: 'later in the current arc', disclosure: 'hidden' }, meaningful_aim: 'Change what Mara and the user understand about the limits of their trust.', change: 'adjust', basis: 'The active conversation is intimate, while established Star Wars institutions shape Mara’s choices.' };
-const requiredPlanning = { story_frame: { frame: 'grounded', confidence: 'high', basis: 'ordinary scene' }, director_score: directorScore, pathways, next_guides: nextGuides, plan_horizons: planHorizons, canon_constraints: [], note_resolution: null, ledger: 'Tea conversation is active.', narrative_events: [], cue_audit: { offered_ids: [], manifested_ids: [], unused_ids: [], contradicted_ids: [], pacing: 'respected', reason: 'No prior cues were offered.' } };
+const narrativeLayers = { immediate_action: 'Continue the tea conversation.', local_activity: 'A quiet tea conversation with Mara.', situation: 'An intimate home exchange constrained by Jedi obligations.', wider_world: 'Star Wars institutions, droids, duties, and ongoing life beyond this room.', durable_trajectory: 'An open-ended survival and institutional-conflict story about trust under Jedi obligations.', activity_role: 'developmental', temporal_scope: 'action' };
+const requiredPlanning = { story_frame: { frame: 'grounded', confidence: 'high', basis: 'ordinary scene' }, director_score: directorScore, narrative_layers: narrativeLayers, pathways, next_guides: nextGuides, plan_horizons: planHorizons, canon_constraints: [], note_resolution: null, ledger: 'Tea conversation is active.', narrative_events: [], cue_audit: { offered_ids: [], manifested_ids: [], unused_ids: [], contradicted_ids: [], pacing: 'respected', reason: 'No prior cues were offered.' } };
 
 test('extractJson accepts fenced and wrapped JSON', () => {
     assert.deepEqual(extractJson('```json\n{"inject":false}\n```'), { inject: false });
@@ -45,6 +46,9 @@ test('planner validation rejects empty or incomplete structured output', () => {
         scene: { status: 'active', activity: '', pace: 'slow', intent: '', location: '', time: '', loop: false },
         objectives: [], entities: [], possibilities: [], guidance: 'Preserve the slow pace and deepen the next supported reaction.', inject: true, reason: 'Even a quiet scene benefits from focused guidance.',
     }).valid, true);
+    assert.equal(validateAnalysisResult({ ...requiredPlanning, narrative_layers: undefined }).valid, false);
+    assert.equal(validateAnalysisResult({ ...requiredPlanning, narrative_layers: { ...narrativeLayers, activity_role: 'foreground' } }).valid, false);
+    assert.equal(validateAnalysisResult({ ...requiredPlanning, narrative_layers: { ...narrativeLayers, temporal_scope: 'turn' } }).valid, false);
 });
 
 test('planner keeps a causal possibility pool and adaptive multi-horizon plan', () => {
@@ -61,17 +65,18 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /A visible consequence can make an offscreen event narratively real without narrating/);
     assert.match(SYSTEM, /Preserve competing explanations when evidence does not justify selecting one/);
     assert.match(SYSTEM, /Player silence is not a veto/);
-    assert.match(SYSTEM, /Every next guide must be executable through NPC or world action without requiring a new player action/);
-    assert.match(SYSTEM, /keep the player at the current location and bring the visible change into that scene/);
-    assert.match(SYSTEM, /A routine transition may be the entire temporal scope/);
+    assert.match(SYSTEM, /Every next guide must be fulfillable without inventing a new player action/);
+    assert.match(SYSTEM, /Unless the newest user turn declares travel or arrival, keep the player at the current location/);
+    assert.match(SYSTEM, /A routine action, activity, or transition may be the entire temporal scope/);
     assert.match(SYSTEM, /Never finish a subsequent activity or jump to a later task/);
     assert.match(SYSTEM, /“we head to breakfast,” “I go to the meeting,” or “we walk home”/);
     assert.match(SYSTEM, /ends at travel or arrival/);
-    assert.match(SYSTEM, /Give each next guide one coherent causal movement and one meaningful possible aftereffect/);
+    assert.match(SYSTEM, /Give each next guide one coherent authorial function and one bounded impact envelope/);
     assert.match(SYSTEM, /Keep every referent unambiguous inside each guide/);
     assert.match(SYSTEM, /Dorn-2 medical unit on Level 10/);
     assert.match(SYSTEM, /Never reinterpret an established code or proper noun as a different kind of entity/);
-    assert.match(SYSTEM, /all remain optional, and the roleplay model may use zero or one/);
+    assert.match(SYSTEM, /The first is Tale Fairy's preferred authorial function/);
+    assert.match(SYSTEM, /A HOLD direction is substantive/);
     assert.match(SYSTEM, /promised, agreed, deferred, owed, revealed, decided, or established only when raw conversation/);
     assert.match(SYSTEM, /Planner-created ideas may shape the future but must never be backfilled/);
     assert.match(SYSTEM, /previous planner hypotheses, not evidence/);
@@ -80,11 +85,11 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /Keep thread referents exact/);
     assert.match(SYSTEM, /never transfer “after breakfast,” “tomorrow,” “in private,” or another condition/);
     assert.match(SYSTEM, /Do not mark an older setup unresolved merely because a selected excerpt ends before its payoff/);
-    assert.match(SYSTEM, /A world_delta is the desired narrative aftereffect, not a demanded plot event/);
-    assert.match(SYSTEM, /not low-stakes procedural noise used to avoid a stronger supported thread/);
+    assert.match(SYSTEM, /A world_delta is an impact envelope for the roleplay model/);
+    assert.match(SYSTEM, /not procedural noise used to avoid a stronger supported thread/);
     assert.match(SYSTEM, /Do not pay off a delayed or repeatedly raised development with another promise/);
-    assert.match(SYSTEM, /requestConfirmed proves only that the cue set was present/);
-    assert.match(SYSTEM, /An unused cue creates no failure, repair debt, repetition pressure/);
+    assert.match(SYSTEM, /requestConfirmed proves only that it was present/);
+    assert.match(SYSTEM, /An unused direction does not become a promise, canon fact, repetition debt/);
     assert.match(SYSTEM, /deliver concrete substance now/);
     assert.match(SYSTEM, /six to ten concise plan_horizons\.items ordered from the next few turns to a distant story horizon/);
     assert.match(SYSTEM, /some later arc or meaningful future time/);
@@ -106,10 +111,15 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /do not add cruelty, darkness, punishment, or conflict merely to appear bold/);
     assert.match(SYSTEM, /one to five compact conditional pathways/);
     assert.match(SYSTEM, /response_bias is private and may describe only causal handling or readiness/);
-    assert.match(SYSTEM, /causal_role states whether and how the movement holds, seeds, advances, converges, pays off, redirects, or recovers/);
+    assert.match(SYSTEM, /causal_role states whether and why the direction holds, seeds, advances, converges, pays off, redirects, or recovers/);
     assert.match(SYSTEM, /Re-evaluate the set after every completed assistant response/);
-    assert.match(SYSTEM, /three or four ranked next_guides as compact conditional causal movements/);
+    assert.match(SYSTEM, /three or four ranked next_guides as alternative authorial directions/);
     assert.match(SYSTEM, /Tale Fairy must function independently/);
+    assert.match(SYSTEM, /You are Tale Fairy, the authorial story-control layer/);
+    assert.match(SYSTEM, /Return narrative_layers as an explicit action-to-world model/);
+    assert.match(SYSTEM, /The local activity never becomes central merely because it is difficult, described in detail, or occupies many turns/);
+    assert.match(SYSTEM, /author its clean completion at the requested scale/);
+    assert.match(SYSTEM, /roleplay model remains authoritative about concrete realization/);
     assert.match(SYSTEM, /in-text recaps, chat summaries, injected summaries/);
     assert.match(SYSTEM, /No named memory extension is privileged or required/);
     assert.match(SYSTEM, /If the referent remains unavailable, do not invent its name, identity, rules, prior result, or history/);
@@ -132,10 +142,10 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /causal_tempo controls only the rate of story-state change/);
     assert.match(SYSTEM, /It never controls prose speed, dialogue cadence, mood, sentence rhythm, verbosity, descriptive density, or response length/);
     assert.match(SYSTEM, /future_setup is private planning state/);
-    assert.match(SYSTEM, /does not make that movement a foreground requirement/);
+    assert.match(SYSTEM, /No pathway must be foreground/);
     assert.match(SYSTEM, /Hidden setup stays out of roleplay guidance/);
     assert.match(SYSTEM, /must never mention mood, emotional tone, prose tempo, dialogue delivery/);
-    assert.match(SYSTEM, /Only the non-secret story identity, current scene function, setting forces, causal tempo/);
+    assert.match(SYSTEM, /compact layered authorial frame, the causal operation, and one conditional authorial direction/);
     assert.match(SYSTEM, /Use consequence-only when the scene should show an effect but keep its cause wholly offscreen/);
     assert.match(SYSTEM, /This controls narrative information, not prose style/);
 });
@@ -313,14 +323,14 @@ test('planner modes provide materially distinct intervention policies', () => {
         return [mode, JSON.parse(buildAnalysisPrompt([{ mes: 'The room goes quiet.', is_user: false }], state))];
     }));
     assert.equal(prompts.light.mode_instruction, MODE_INSTRUCTIONS.light);
-    assert.match(prompts.light.mode_instruction, /at most one active possibility/);
-    assert.match(prompts.light.mode_instruction, /rather than redirect it/);
-    assert.match(prompts.balanced.mode_instruction, /one to three distinct supported possibilities/);
-    assert.match(prompts.balanced.mode_instruction, /moderate intervention/);
+    assert.match(prompts.light.mode_instruction, /Favor HOLD, small continuity effects, or already-imminent consequences/);
+    assert.match(prompts.light.mode_instruction, /rather than redirecting it/);
+    assert.match(prompts.balanced.mode_instruction, /Maintain distinct supported possibilities/);
+    assert.match(prompts.balanced.mode_instruction, /Moderate intervention/);
     assert.match(prompts.fun.mode_instruction, /Search boldly across distinct actors and live threads/);
-    assert.match(prompts.fun.mode_instruction, /Rank the strongest causally ready development first/);
-    assert.match(prompts.fun.mode_instruction, /optional background cue/);
-    assert.match(prompts.fun.mode_instruction, /never makes a cue mandatory/);
+    assert.match(prompts.fun.mode_instruction, /Prefer the strongest causally ready function/);
+    assert.match(prompts.fun.mode_instruction, /do not prescribe which mechanism/);
+    assert.match(prompts.fun.mode_instruction, /never pacing or control of the player/);
     assert.notEqual(prompts.light.mode_instruction, prompts.balanced.mode_instruction);
     assert.notEqual(prompts.balanced.mode_instruction, prompts.fun.mode_instruction);
 });
@@ -329,7 +339,8 @@ test('every planner mode leaves narrative pacing under user control', () => {
     for (const mode of ['light', 'balanced', 'fun']) {
         const prompt = JSON.parse(buildAnalysisPrompt([{ mes: 'I keep watching for a while.', is_user: true }], { ...defaultState(), mode }));
         assert.match(prompt.pacing_instruction, /Match the user’s demonstrated speed and granularity/);
-        assert.match(prompt.pacing_instruction, /maximum authorized player-action progress/);
+        assert.match(prompt.pacing_instruction, /maximum temporal scope authorized by the latest user turn/);
+        assert.match(prompt.pacing_instruction, /Treat that scope as a ceiling, not a quota/);
         assert.match(prompt.pacing_instruction, /travel and arrival only/);
         assert.match(prompt.pacing_instruction, /not doing or finishing the activity there/);
         assert.match(prompt.pacing_instruction, /mode changes narrative pressure, not speed/);
@@ -339,7 +350,7 @@ test('every planner mode leaves narrative pacing under user control', () => {
     }
     assert.match(MODE_INSTRUCTIONS.light, /must not artificially prolong a beat or slow a user/);
     assert.match(MODE_INSTRUCTIONS.balanced, /does not change the user's narrative speed/);
-    assert.match(MODE_INSTRUCTIONS.fun, /never makes a cue mandatory, rushes the user's timeline/);
+    assert.match(MODE_INSTRUCTIONS.fun, /Boldness widens opportunity and impact, never pacing or control of the player/);
 });
 
 test('analysis prompt maintains a lightweight world model', () => {
@@ -398,6 +409,47 @@ test('standalone retrieval includes an old assistant payoff instead of preservin
     assert.match(prompt.retrieval_instruction, /Never keep or reopen a setup/);
 });
 
+test('an upstream trajectory survives a hundred-turn routine lull and is audited against older evidence', () => {
+    const messages = Array.from({ length: 112 }, (_, index) => ({
+        mes: `Routine academy assignment work continues during turn ${index}.`,
+        is_user: index % 2 === 0,
+    }));
+    messages[18] = { mes: 'I am a Naruto academy student. I want my open-ended ninja life to grow toward becoming Hokage someday.', is_user: true };
+    messages[19] = { mes: 'The academy remains one early part of a much wider life in the Hidden Leaf.', is_user: false };
+    messages[110] = { mes: 'The last questions of the long academy assignment remain on the desk.', is_user: false };
+    messages[111] = { mes: 'I finish the rest of the assignment and move on.', is_user: true };
+    const state = {
+        ...defaultState(),
+        directorScore: {
+            storyIdentity: 'An open-ended Naruto ninja life growing from academy student toward a possible future as Hokage.',
+            sceneFunction: 'Let the routine assignment conclude cleanly without mistaking it for the whole story.',
+            settingIdentity: 'The Hidden Leaf and its living shinobi institutions.',
+            settingForces: ['Academy requirements shape the present day.', 'Village life and future ninja duties continue beyond classwork.'],
+            causalTempo: 'hold',
+            arcDirection: 'Complete academy life while preserving room for changing ambitions and later ninja arcs.',
+            futureSetup: { id: 'ninja-life', development: 'The student gradually enters the wider shinobi world.', currentStep: 'Finish the current academy routine.', conditions: ['Academy life continues.'], earliestWindow: 'later', disclosure: 'open' },
+            meaningfulAim: 'Keep ordinary academy life nested inside a broader evolving ninja identity.',
+            change: 'keep',
+            basis: 'User turn 18 established academy status and an open-ended Hokage ambition.',
+        },
+        narrativeLayers: {
+            immediateAction: 'Finish the remaining assignment.',
+            localActivity: 'A long academy assignment.',
+            situation: 'Routine academy education before active ninja service.',
+            widerWorld: 'The Hidden Leaf continues through missions, institutions, rivalries, and village life.',
+            durableTrajectory: 'An open-ended ninja life growing from academy student toward a possible future as Hokage.',
+            activityRole: 'routine',
+            temporalScope: 'activity',
+        },
+    };
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, state, '', {}, { messageWindow: 6, maxPromptChars: 12000 }));
+    assert.match(prompt.current.narrativeLayers.durableTrajectory, /Hokage/);
+    assert.equal(prompt.current.narrativeLayers.activityRole, 'routine');
+    assert.equal(prompt.current.narrativeLayers.temporalScope, 'activity');
+    assert.equal(prompt.messages.at(-1).content, 'I finish the rest of the assignment and move on.');
+    assert.ok(prompt.retrieved_historical_evidence.some(item => item.index === 18 && item.purpose === 'audit-current-claim' && /Hokage/iu.test(item.content)));
+});
+
 test('analysis prompt accepts supporting host context without declaring it canon', () => {
     const prompt = JSON.parse(buildAnalysisPrompt([{ mes: 'Tea', is_user: true }], defaultState(), '', {}, { hostContext: '[Chat summary] Yesterday was quiet.' }));
     assert.equal(prompt.optional_host_context, '[Chat summary] Yesterday was quiet.');
@@ -421,9 +473,9 @@ test('canon bootstrap retains labeled OOC turns outside ordinary sampling points
     assert.ok(prompt.messages.some(item => item.index === 22 && item.kind === 'directive' && /off the charts/.test(item.content)));
 });
 
-test('analysis application keeps guidance bounded and records its injection decision', () => {
+test('analysis application keeps layered guidance bounded and records its injection decision', () => {
     const messages = [{ mes: 'I make tea', is_user: true }];
-    const next = applyAnalysis(defaultState(), { director_score: directorScore, scene: { status: 'active', activity: 'tea', pace: 'slow', intent: 'rest', location: 'kitchen', time: 'evening', loop: false }, objectives: [], entities: [], possibilities: [], pathways, next_guides: nextGuides, guidance: 'x'.repeat(2000), inject: true, reason: 'A gentle reminder will preserve the established pace.' }, messages);
+    const next = applyAnalysis(defaultState(), { director_score: directorScore, narrative_layers: narrativeLayers, scene: { status: 'active', activity: 'tea', pace: 'slow', intent: 'rest', location: 'kitchen', time: 'evening', loop: false }, objectives: [], entities: [], possibilities: [], pathways, next_guides: nextGuides, guidance: 'x'.repeat(2000), inject: true, reason: 'A gentle reminder will preserve the established pace.' }, messages);
     assert.equal(next.guidance.length, 700);
     assert.equal(next.sourceMessageCount, 1);
     assert.equal(next.scene.activity, 'tea');
@@ -432,6 +484,9 @@ test('analysis application keeps guidance bounded and records its injection deci
     assert.match(next.directorScore.storyIdentity, /survival and institutional-conflict/);
     assert.equal(next.directorScore.causalTempo, 'seed');
     assert.equal(next.directorScore.futureSetup.disclosure, 'hidden');
+    assert.equal(next.narrativeLayers.activityRole, 'developmental');
+    assert.equal(next.narrativeLayers.temporalScope, 'action');
+    assert.match(next.narrativeLayers.durableTrajectory, /open-ended survival/);
     assert.match(next.lastReason, /established pace/);
 });
 
