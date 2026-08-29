@@ -252,10 +252,12 @@ test('planner salvages incomplete structured output before using fallback', () =
 });
 
 test('planner recovers missing next guides from grounded pathways', () => {
-    const repaired = requireValidAnalysisResult({ ...requiredPlanning, next_guides: [] });
+    const repaired = requireValidAnalysisResult({ ...requiredPlanning, next_guides: [], guidance: 'Prefer tea-talk for the next response.' });
     assert.equal(repaired.next_guides.length, 1);
     assert.equal(repaired.next_guides[0].direction, pathways[0].direction);
     assert.deepEqual(repaired.next_guides[0].source_pathways, ['tea-talk']);
+    assert.match(repaired.guidance, new RegExp(pathways[0].direction, 'i'));
+    assert.doesNotMatch(repaired.guidance, /tea-talk|next response/i);
     assert.match(repaired.reason, /next_guides was omitted/);
     assert.equal(validateAnalysisResult(repaired).valid, true);
 });

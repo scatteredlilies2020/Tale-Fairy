@@ -491,6 +491,11 @@ export function repairAnalysisResult(result) {
         }).filter((guide, index, guides) => guides.findIndex(other => other.direction.toLowerCase() === guide.direction.toLowerCase()
             || other.world_delta.toLowerCase() === guide.world_delta.toLowerCase()) === index).slice(0, 4);
         if (repaired.next_guides.length) {
+            const [preferred, alternate] = repaired.next_guides;
+            repaired.guidance = [
+                `Preferred direction: ${preferred.direction}`,
+                alternate && `Alternative when ${alternate.use_when}: ${alternate.direction}`,
+            ].filter(Boolean).join('\n');
             repaired.reason = 'Recovered ranked guidance from grounded planner pathways after next_guides was omitted.';
         }
     }

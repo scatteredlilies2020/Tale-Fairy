@@ -14,7 +14,7 @@ import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlErr
 import { compactContinuityPrompt, readContinuityBridge, waitForContinuityBridge } from './continuity.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.18';
+const RUNTIME_VERSION = '0.11.19';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -1041,6 +1041,22 @@ function scratchpadList(items, formatter, fallback) {
     return lines.length ? lines.map(line => `• ${line}`).join('\n') : fallback;
 }
 
+function readableScratchpadGuidance(state) {
+    let value = String(state.guidance || 'No extra guidance.');
+    const routes = [...(state.pathways || []), ...(state.nextGuides || [])]
+        .filter(item => item?.id && item?.direction)
+        .sort((a, b) => String(b.id).length - String(a.id).length);
+    for (const route of routes) {
+        const id = String(route.id).trim();
+        if (!id || id.length > 60) continue;
+        const escaped = id.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+        const pattern = new RegExp(`(^|[^\\p{L}\\p{N}_-])${escaped}(?=$|[^\\p{L}\\p{N}_-])`, 'giu');
+        const direction = String(route.direction).trim().slice(0, 160);
+        value = value.replace(pattern, (_match, prefix) => `${prefix}“${direction}”`);
+    }
+    return value;
+}
+
 function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const board = document.querySelector(`#${EXTENSION_ID}-board`);
     if (!board) return;
@@ -1132,10 +1148,13 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const audit = state.cueAudit;
     const auditText = audit?.offeredIds?.length
         ? `Cue audit: ${audit.pacing} pacing · ${audit.manifestedIds.length} manifested · ${audit.unusedIds.length} unused · ${audit.contradictedIds.length} contradicted${audit.reason ? `\n${audit.reason}` : ''}`
-        : (audit?.reason ? `Pacing audit: ${audit.pacing}\n${audit.reason}` : '');
+        : '';
+    const recovered = /Recovered (?:usable narrative guidance from incomplete planner output|ranked guidance from grounded planner pathways)/iu.test(state.lastReason || '');
     const decision = [
-        state.guidance || 'No extra guidance.',
-        state.lastReason && `Why: ${state.lastReason}`,
+        readableScratchpadGuidance(state),
+        state.lastReason && (recovered
+            ? 'Recovery: the planner omitted ranked guides, so Tale Fairy rebuilt them from grounded pathways.'
+            : `Why: ${state.lastReason}`),
         auditText,
     ].filter(Boolean).join('\n\n');
     scratchpadText(board, 'scratchpad-guidance', decision, boardFallback('No extra guidance.'));

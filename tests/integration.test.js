@@ -10,9 +10,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.18');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.18');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.18');
+    assert.equal(manifest.version, '0.11.19');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.19');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.19');
 });
 
 test('injection sends layered authorial control while concrete realization and future setup stay private', () => {
@@ -150,6 +150,8 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /scratchpad-possibilities/);
     assert.match(source, /scratchpad-continuity/);
     assert.match(source, /scratchpad-ledger/);
+    assert.match(source, /function readableScratchpadGuidance/);
+    assert.match(source, /Recovery: the planner omitted ranked guides/);
     assert.match(source, /configurePromptManagerInjection\(promptManager, s, payload\)/);
     assert.match(source, /injectionPosition: 'at-depth', injectionDepth: 1, injectionRole: 'user'/);
     assert.match(source, /previousContextVersion > 0 && previousContextVersion < 4/);
