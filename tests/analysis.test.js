@@ -72,7 +72,9 @@ test('finalization never rejects authored names and deterministically retains ex
 test('planner keeps a causal possibility pool and adaptive multi-horizon plan', () => {
     assert.match(SYSTEM, /one unified possibility pool rather than categories/);
     assert.match(SYSTEM, /source, route into the scene, timing, and reason/);
-    assert.match(SYSTEM, /iconic franchise elements, stale historical mentions, and unsupported speculation are not scheduled events/);
+    assert.match(SYSTEM, /established evidence and active invention/);
+    assert.match(SYSTEM, /Tale Fairy may author that source/);
+    assert.match(SYSTEM, /disconnected franchise cameos are not scheduled events/);
     assert.match(SYSTEM, /classify it in this call as suggest, correct, establish, or forbid/);
     assert.match(SYSTEM, /return null only when genuinely ambiguous/);
     assert.match(SYSTEM, /never rewrite the user's text/);
@@ -160,7 +162,7 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /causal_tempo controls only the rate of story-state change/);
     assert.match(SYSTEM, /It never controls prose speed, dialogue cadence, mood, sentence rhythm, verbosity, descriptive density, or response length/);
     assert.match(SYSTEM, /future_setup is private planning state/);
-    assert.match(SYSTEM, /No pathway must be foreground/);
+    assert.match(SYSTEM, /Balanced and Fun must include at least one active inventive route/);
     assert.match(SYSTEM, /Hidden setup stays out of roleplay guidance/);
     assert.match(SYSTEM, /must never mention mood, emotional tone, prose tempo, dialogue delivery/);
     assert.match(SYSTEM, /compact layered authorial frame, the causal operation, and one conditional authorial direction/);
@@ -403,10 +405,13 @@ test('planner modes provide materially distinct intervention policies', () => {
     assert.match(prompts.light.mode_instruction, /rather than redirecting it/);
     assert.match(prompts.balanced.mode_instruction, /Maintain distinct supported possibilities/);
     assert.match(prompts.balanced.mode_instruction, /Moderate intervention/);
+    assert.match(prompts.balanced.mode_instruction, /active co-author, not a continuity clerk/);
+    assert.match(prompts.balanced.mode_instruction, /invent a setting-compatible/);
     assert.match(prompts.fun.mode_instruction, /Search boldly across distinct actors and live threads/);
     assert.match(prompts.fun.mode_instruction, /Prefer the strongest causally ready function/);
     assert.match(prompts.fun.mode_instruction, /do not prescribe which mechanism/);
     assert.match(prompts.fun.mode_instruction, /never pacing or control of the player/);
+    assert.match(prompts.fun.mode_instruction, /actively invent a compatible cause/);
     assert.notEqual(prompts.light.mode_instruction, prompts.balanced.mode_instruction);
     assert.notEqual(prompts.balanced.mode_instruction, prompts.fun.mode_instruction);
 });

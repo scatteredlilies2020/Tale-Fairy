@@ -1215,7 +1215,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         if (!item?.name) return '';
         const details = [item.state, item.location, item.relevance, item.confidence && `${item.confidence} confidence`, item.window].filter(Boolean).join(' · ');
         return `${item.name}${details ? ` — ${details}` : ''}`;
-    }, ''), boardFallback('No relevant off-screen entities retained.'));
+    }, ''), boardFallback('No relevant people, institutions, or active world processes retained.'));
 
     const displayedLedger = state.contextLedger || [
         state.scene?.activity && `Working scene: ${state.scene.activity}.`,
