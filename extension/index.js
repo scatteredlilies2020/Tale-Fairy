@@ -13,12 +13,12 @@ import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.1';
+const RUNTIME_VERSION = '0.11.2';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
 const INJECTION_POSITIONS = new Set(['before-main', 'after-main', 'before-character-definitions', 'after-character-definitions', 'before-example-messages', 'after-example-messages', 'before-an', 'after-an', 'before-chat-history', 'after-chat-history', 'before-jailbreak', 'after-jailbreak', 'at-depth']);
-const DEFAULT_SETTINGS = { enabled: true, mode: 'balanced', analysisProfileId: '', analysisSource: 'active', analysisProvider: 'custom', analysisModel: '', analysisUrl: '', analysisSecretId: '', analysisReasoningMode: 'auto', directSettingsMigrated: false, directCustomModel: '', directCustomUrl: '', directCustomSecretId: '', directOpenRouterModel: '', directOpenRouterUrl: '', directOpenRouterSecretId: '', injectionPosition: 'at-depth', injectionDepth: 1, injectionRole: 'user', includeWorldInfo: false, showDirectorNotes: false, messageWindow: 12, messageCharLimit: 700, maxPromptChars: 12000, continuityIntegration: true, continuityContextLimit: 3500, contextSettingsVersion: 6 };
+const DEFAULT_SETTINGS = { enabled: true, mode: 'balanced', analysisProfileId: '', analysisSource: 'active', analysisProvider: 'custom', analysisModel: '', analysisUrl: '', analysisSecretId: '', analysisReasoningMode: 'auto', analysisTemperature: 1, directSettingsMigrated: false, directCustomModel: '', directCustomUrl: '', directCustomSecretId: '', directOpenRouterModel: '', directOpenRouterUrl: '', directOpenRouterSecretId: '', injectionPosition: 'at-depth', injectionDepth: 1, injectionRole: 'user', includeWorldInfo: false, showDirectorNotes: false, messageWindow: 12, messageCharLimit: 700, maxPromptChars: 12000, continuityIntegration: true, continuityContextLimit: 3500, contextSettingsVersion: 6 };
 let settings = null;
 let analysisPromise = null;
 let analysisAbortController = null;
@@ -99,7 +99,18 @@ function getSettings() {
     if (!['user', 'system', 'assistant'].includes(settings.injectionRole)) settings.injectionRole = 'user';
     settings.analysisReasoningMode = normalizeReasoningMode(settings.analysisReasoningMode);
     if (settings.analysisReasoningMode === 'default') settings.analysisReasoningMode = 'auto';
+    settings.analysisTemperature = normalizePlannerTemperature(settings.analysisTemperature);
     return settings;
+}
+
+function normalizePlannerTemperature(value) {
+    const temperature = Number(value);
+    if (!Number.isFinite(temperature)) return DEFAULT_SETTINGS.analysisTemperature;
+    return Math.round(Math.min(2, Math.max(0, temperature)) * 100) / 100;
+}
+
+function plannerTemperature() {
+    return normalizePlannerTemperature(getSettings().analysisTemperature);
 }
 
 function messagesFromChat(chat = []) { return chat.map(m => ({ mes: m?.mes || '', is_user: Boolean(m?.is_user), name: m?.name || '' })); }
@@ -679,11 +690,11 @@ function waitForAbortable(promise, signal) {
     ]);
 }
 
-function isolatePlannerGenerationData(generateData, reasoningMode) {
+function isolatePlannerGenerationData(generateData, reasoningMode, temperature = plannerTemperature()) {
     if (!generateData || typeof generateData !== 'object') return;
     generateData.stream = false;
     generateData.n = 1;
-    generateData.temperature = 1;
+    generateData.temperature = normalizePlannerTemperature(temperature);
     generateData.top_p = 1;
     generateData.frequency_penalty = 0;
     generateData.presence_penalty = 0;
@@ -767,6 +778,7 @@ async function requestAnalysis(prompt, externalSignal) {
     try {
         controller.signal.throwIfAborted();
         const model = analysisModelOptions();
+        const temperature = plannerTemperature();
         if (model.profileId) {
             const profile = ConnectionManagerRequestService.getProfile(model.profileId);
             const apiMap = ConnectionManagerRequestService.validateProfile(profile);
@@ -787,7 +799,7 @@ async function requestAnalysis(prompt, externalSignal) {
                 {
                     ...(structured ? { json_schema: ANALYSIS_SCHEMA } : {}),
                     custom_prompt_post_processing: '',
-                    temperature: 1,
+                    temperature,
                     ...reasoningPayload,
                 },
             );
@@ -820,7 +832,7 @@ async function requestAnalysis(prompt, externalSignal) {
                 const seedEvent = mainApi === 'openai' ? event_types.CHAT_COMPLETION_SETTINGS_READY : event_types.GENERATE_AFTER_DATA;
                 const configurePlanner = generateData => {
                     if (!containsPlannerMarker(generateData)) return;
-                    isolatePlannerGenerationData(generateData, activeReasoningMode);
+                    isolatePlannerGenerationData(generateData, activeReasoningMode, temperature);
                 };
                 eventSource.on(seedEvent, configurePlanner);
                 return waitForAbortable(generateRaw({
@@ -874,7 +886,7 @@ async function requestAnalysis(prompt, externalSignal) {
         let reasoningPayload = reasoning.payload;
         const send = async structured => {
             const systemPrompt = structured ? SYSTEM : fallbackSystemPrompt();
-            const body = { chat_completion_source: model.provider, model: model.model, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }], max_tokens: PLANNER_RESPONSE_TOKENS, stream: false, temperature: 1, ...reasoningPayload, ...(structured ? { response_format: { type: 'json_object' } } : {}), ...(model.provider === 'openrouter' ? { api_url: model.url.replace(/\/$/, '') } : { custom_url: model.url.replace(/\/$/, '') }) };
+            const body = { chat_completion_source: model.provider, model: model.model, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }], max_tokens: PLANNER_RESPONSE_TOKENS, stream: false, temperature, ...reasoningPayload, ...(structured ? { response_format: { type: 'json_object' } } : {}), ...(model.provider === 'openrouter' ? { api_url: model.url.replace(/\/$/, '') } : { custom_url: model.url.replace(/\/$/, '') }) };
             if (model.secretId) body.secret_id = model.secretId;
             const response = await fetch('/api/backends/chat-completions/generate', { method: 'POST', headers: currentContext().getRequestHeaders?.() || getRequestHeaders?.() || { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
             const payload = await response.json();
@@ -1272,6 +1284,8 @@ async function mountUI() {
     root.querySelector('[data-setting="enabled"]').checked = s.enabled;
     root.querySelector('[data-setting="mode"]').value = s.mode;
     root.querySelector('[data-setting="reasoning"]').value = s.analysisReasoningMode;
+    root.querySelector('[data-setting="temperature-slider"]').value = s.analysisTemperature;
+    root.querySelector('[data-setting="temperature"]').value = s.analysisTemperature;
     root.querySelector('[data-setting="model"]').value = s.analysisModel;
     root.querySelector('[data-setting="url"]').value = s.analysisUrl;
     root.querySelector('[data-setting="continuity"]').checked = Boolean(s.continuityIntegration);
@@ -1294,6 +1308,15 @@ async function mountUI() {
     root.querySelector('[data-setting="mode"]').addEventListener('change', e => { invalidatePlanner(); s.mode = e.target.value; save(); });
     root.querySelector('[data-setting="connection"]').addEventListener('change', e => { invalidatePlanner(); applyAnalysisConnectionChoice(e.target.value, s); save(); });
     root.querySelector('[data-setting="reasoning"]').addEventListener('change', e => { invalidatePlanner(); s.analysisReasoningMode = normalizeReasoningMode(e.target.value); save(); });
+    const updateTemperature = value => {
+        s.analysisTemperature = normalizePlannerTemperature(value);
+        root.querySelector('[data-setting="temperature-slider"]').value = s.analysisTemperature;
+        root.querySelector('[data-setting="temperature"]').value = s.analysisTemperature;
+        invalidatePlanner();
+        save();
+    };
+    root.querySelector('[data-setting="temperature-slider"]').addEventListener('input', e => updateTemperature(e.target.value));
+    root.querySelector('[data-setting="temperature"]').addEventListener('change', e => updateTemperature(e.target.value));
     root.querySelector('[data-setting="model"]').addEventListener('change', e => { invalidatePlanner(); s.analysisModel = e.target.value.trim(); rememberDirectSettings(s); save(); });
     root.querySelector('[data-setting="model-list"]').addEventListener('change', e => {
         const model = String(e.target.value || '').trim();
@@ -1396,6 +1419,8 @@ function refreshControls(root = document.querySelector(`#${EXTENSION_ID}-setting
     const direct = source === 'direct' || source === 'openrouter';
     root.querySelector('[data-setting="enabled"]').checked = Boolean(s.enabled);
     root.querySelector('[data-setting="mode"]').value = s.mode;
+    root.querySelector('[data-setting="temperature-slider"]').value = s.analysisTemperature;
+    root.querySelector('[data-setting="temperature"]').value = s.analysisTemperature;
     root.querySelector('[data-setting="connection"]').value = analysisConnectionChoice(s);
     root.querySelector('[data-source-panel="direct"]').hidden = !direct;
     root.querySelector('[data-setting="model"]').value = s.analysisModel;

@@ -85,6 +85,22 @@
     margin: 8px 0;
 }
 
+.living-world-guide-temperature {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.living-world-guide-temperature input[type="range"] {
+    flex: 1 1 auto;
+    min-width: 120px;
+}
+
+.living-world-guide-temperature input[type="number"].text_pole {
+    flex: 0 0 5.5em;
+    width: 5.5em;
+}
+
 .living-world-guide-progress {
     min-height: 1.3em;
     margin-top: 6px;

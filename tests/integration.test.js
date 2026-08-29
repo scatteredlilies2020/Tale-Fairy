@@ -9,9 +9,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.1');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.1');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.1');
+    assert.equal(manifest.version, '0.11.2');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.2');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.2');
 });
 
 test('injection sends layered authorial control while concrete realization and future setup stay private', () => {
@@ -99,7 +99,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /function plannerReasoningMode/);
     assert.match(source, /openai_setting_names,[\s\S]*openai_settings,[\s\S]*oai_settings\?\.reasoning_effort/);
     assert.match(source, /\.\.\.reasoningPayload/);
-    assert.match(source, /isolatePlannerGenerationData\(generateData, activeReasoningMode\)/);
+    assert.match(source, /isolatePlannerGenerationData\(generateData, activeReasoningMode, temperature\)/);
     assert.match(source, /isGuidanceUsable\(state, messages/);
     assert.match(source, /buildPromptPayload\(state/);
     assert.match(source, /function renderBoard/);
@@ -151,9 +151,13 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.doesNotMatch(source, /Planner retrying in|guidanceGateActive|guidanceGateStopSequence|abort\(true\)/);
     assert.match(source, /function randomVariationNonce/);
     assert.match(source, /function isolatePlannerGenerationData/);
-    assert.match(source, /generateData\.temperature = 1/);
-    assert.match(source, /custom_prompt_post_processing: '',\s*temperature: 1/);
-    assert.match(source, /max_tokens: PLANNER_RESPONSE_TOKENS, stream: false, temperature: 1/);
+    assert.match(template, /data-setting="temperature-slider"[^>]*min="0"[^>]*max="2"[^>]*step="0\.05"/);
+    assert.match(template, /data-setting="temperature"[^>]*min="0"[^>]*max="2"[^>]*step="0\.05"/);
+    assert.match(source, /analysisTemperature: 1/);
+    assert.match(source, /generateData\.temperature = normalizePlannerTemperature\(temperature\)/);
+    assert.match(source, /custom_prompt_post_processing: '',\s*temperature,/);
+    assert.match(source, /max_tokens: PLANNER_RESPONSE_TOKENS, stream: false, temperature,/);
+    assert.match(source, /isolatePlannerGenerationData\(generateData, activeReasoningMode, temperature\)/);
     assert.doesNotMatch(source, /generateData\.seed\s*=|generateData\.sampler_seed\s*=|seed:\s*variation/);
     assert.match(source, /generateData\.custom_prompt_post_processing = ''/);
     assert.match(source, /generateData\[key\] = PLANNER_RESPONSE_TOKENS/);
