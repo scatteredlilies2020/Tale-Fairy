@@ -9,20 +9,22 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.9.0');
-    assert.equal(manifest.js, 'extension/index.js?v=0.9.0');
-    assert.equal(manifest.css, 'extension/style.css?v=0.9.0');
+    assert.equal(manifest.version, '0.10.0');
+    assert.equal(manifest.js, 'extension/index.js?v=0.10.0');
+    assert.equal(manifest.css, 'extension/style.css?v=0.10.0');
 });
 
-test('injection sends optional narrative movements while long-range planning stays private', () => {
-    assert.match(stateSource, /Adaptive narrative movement/);
+test('injection sends optional causal movements while style and future setup stay private', () => {
+    assert.match(stateSource, /Conditional causal movement/);
     assert.match(stateSource, /MOVEMENT/);
     assert.match(stateSource, /IF:/);
     assert.match(stateSource, /UNLESS:/);
-    assert.match(stateSource, /DRAMATIC SCORE:/);
-    assert.match(stateSource, /DESIRED AFTEREFFECT:/);
+    assert.match(stateSource, /CAUSAL ROLE:/);
+    assert.match(stateSource, /POSSIBLE AFTEREFFECT:/);
     assert.match(stateSource, /Use this movement only if its IF condition holds/);
-    assert.match(stateSource, /choose the concrete dialogue, action, image, consequence, or grounded surprise yourself/);
+    assert.match(stateSource, /Causal tempo means the rate of story-state change, never prose rhythm/);
+    assert.match(stateSource, /Do not control wording, dialogue style, mood, sentence rhythm, verbosity, formatting, or descriptive texture/);
+    assert.doesNotMatch(stateSource, /DYNAMIC SCORE:|DRAMATIC SCORE:|SURPRISE LATITUDE:/);
     assert.match(stateSource, /Preserve due processes/);
     assert.match(stateSource, /PACING BOUNDARY:/);
     assert.match(stateSource, /Do not reuse the discarded reply/);
@@ -168,7 +170,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /refreshCurrentPlanIfNeeded[\s\S]{0,900}isGuidanceUsable\(state, messages, chatId\)/);
     assert.match(source, /refreshCurrentPlanIfNeeded[\s\S]{0,1400}analyzeNow\(\{ messages, allowOneUserAppend: true \}\)/);
     assert.match(source, /rawVersion < STATE_VERSION/);
-    assert.match(source, /LEGACY_UPGRADE_MAX_ATTEMPTS = 3/);
+    assert.match(source, /LEGACY_UPGRADE_MAX_ATTEMPTS = 1/);
     assert.match(source, /persistedVersion >= STATE_VERSION/);
     assert.match(source, /if \(!completed\) legacyUpgradeAttempts\.delete\(attemptKey\)/);
     assert.match(source, /analyzeNow\(\{ messages, force: true, rebuild: true \}\)/);

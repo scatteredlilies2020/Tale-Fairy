@@ -3,11 +3,11 @@ import assert from 'node:assert/strict';
 import { buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, hasExplicitProgressDirective, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, isStateAligned, loadState, normalizeState, returnedReplyMatchesVerification, saveState, STATE_KEY, stateForPrompt } from '../extension/state.js';
 
 const stateNextGuides = [
-    { id: 'direct-answer', direction: 'Let Mara answer plainly and reveal one concrete concern.', useWhen: 'The user continues or asks Mara.', dropWhen: 'The user leaves or changes subject.', responseBias: 'Answer directly and show its immediate effect.', worldDelta: 'Mara reveals a concern that changes the shared understanding.', origin: 'inferred', basis: 'Mara is present and engaged in the live conversation.', strength: 'strong', sourcePathways: ['answer'], reason: 'Direct continuation.' },
-    { id: 'telling-deflection', direction: 'Let Mara reveal a different pressure through a meaningful deflection.', useWhen: 'The user remains with Mara and she has reason to hesitate.', dropWhen: 'The user establishes a direct answer or ends the exchange.', responseBias: 'Make the deflection consequential.', worldDelta: 'Mara exposes a different pressure and changes the social stakes.', origin: 'original', basis: 'Her hesitation supports an indirect but consequential response.', strength: 'moderate', sourcePathways: ['answer'], reason: 'Contrasting continuity-safe alternative.' },
+    { id: 'direct-answer', direction: 'Let Mara answer plainly and reveal one concrete concern.', useWhen: 'The user continues or asks Mara.', dropWhen: 'The user leaves or changes subject.', causalRole: 'Advance the live trust thread through a concrete disclosure.', worldDelta: 'Mara reveals a concern that changes the shared understanding.', origin: 'inferred', basis: 'Mara is present and engaged in the live conversation.', strength: 'strong', sourcePathways: ['answer'], reason: 'Direct continuation.' },
+    { id: 'telling-deflection', direction: 'Let Mara reveal a different pressure through a meaningful deflection.', useWhen: 'The user remains with Mara and she has reason to hesitate.', dropWhen: 'The user establishes a direct answer or ends the exchange.', causalRole: 'Advance the social-pressure thread through an indirect consequence.', worldDelta: 'Mara exposes a different pressure and changes the social stakes.', origin: 'original', basis: 'Her hesitation supports an indirect but consequential response.', strength: 'moderate', sourcePathways: ['answer'], reason: 'Contrasting continuity-safe alternative.' },
 ];
 const currentPlan = {
-    directorScore: { narrativeType: 'intimate science-fantasy character drama', sceneFunction: 'Let a quiet exchange alter trust.', settingIdentity: 'Star Wars as a lived institutional and technological world', settingForces: ['Jedi obligations constrain time and candor.', 'Droids participate in domestic routine.'], motion: 'build', score: 'Warm and playful, then tighten gently around wary trust.', trajectory: 'Let ordinary interaction expose how affection and duty compete.', meaningfulAim: 'Change the shared understanding of trust and obligation.', surprise: 'Allow one earned turn from character or setting causality.', change: 'adjust', basis: 'The active exchange and setting support this pressure.' },
+    directorScore: { storyIdentity: 'A Star Wars survival and institutional-conflict arc about trust under Jedi obligations.', sceneFunction: 'Let a quiet slice-of-life exchange alter trust.', settingIdentity: 'Star Wars as a lived institutional and technological world', settingForces: ['Jedi obligations constrain time and candor.', 'Droids participate in domestic routine.'], causalTempo: 'seed', arcDirection: 'Let ordinary interaction expose how affection and duty compete.', futureSetup: { id: 'duty-conflict', development: 'Mara must choose between the relationship and a Jedi obligation.', currentStep: 'Establish the obligation as a real constraint.', conditions: ['The duty becomes due.'], earliestWindow: 'later in the current arc', disclosure: 'hidden' }, meaningfulAim: 'Change the shared understanding of trust and obligation.', change: 'adjust', basis: 'The active exchange and setting support this pressure.' },
     pathways: [{ id: 'answer', direction: 'Continue the active exchange.', when: 'The user continues or asks Mara.', responseBias: 'Have Mara answer.', horizon: 'near', status: 'foreground', conditions: [], change: 'keep', reason: 'The exchange is current.' }],
     nextGuides: stateNextGuides,
     planHorizons: { items: Array.from({ length: 6 }, (_, index) => ({ id: `h${index}`, direction: `Direction ${index}`, timeframe: index === 5 ? 'later arcs / open-ended' : `range ${index}`, stability: index < 2 ? 'adaptive' : index === 5 ? 'slow' : 'stable', conditions: [], change: 'keep', reason: 'Still relevant.' })), deviation: { level: 'none', reason: 'Aligned.' } },
@@ -15,15 +15,15 @@ const currentPlan = {
 
 test('state normalizes caps and invalid mode', () => {
     const guides = Array.from({ length: 4 }, (_, index) => ({ ...stateNextGuides[0], id: `guide-${index}`, direction: `Direction ${index}` }));
-    guides[0].responseBias = 'finished '.repeat(40);
+    guides[0].causalRole = 'advance '.repeat(40);
     const state = normalizeState({ mode: 'hard', objectives: Array.from({ length: 9 }, (_, i) => ({ title: String(i) })), nextGuides: guides, enabled: false });
     assert.equal(state.mode, 'balanced');
     assert.equal(state.enabled, false);
     assert.equal(state.objectives.length, 9);
     assert.deepEqual(state.nextGuides.map(item => item.id), ['guide-0', 'guide-1', 'guide-2', 'guide-3']);
-    assert.ok(state.nextGuides[0].responseBias.length <= 130);
-    assert.match(state.nextGuides[0].responseBias, /finished…$/);
-    assert.equal(state.version, 22);
+    assert.ok(state.nextGuides[0].causalRole.length <= 130);
+    assert.match(state.nextGuides[0].causalRole, /advance…$/);
+    assert.equal(state.version, 23);
 });
 
 test('offscreen causes persist privately while injection exposes only their consequence', () => {
@@ -193,7 +193,7 @@ test('pre-canon-ledger state requests one bounded bootstrap rescan', () => {
 
 test('pre-momentum guides and request verification cannot remain injectable after an upgrade', () => {
     const migrated = normalizeState({ version: 16, ...currentPlan, nextGuides: stateNextGuides, canonConstraints: ['Fact from a discarded response.'], lastInject: true, lastRequestVerification: { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides } });
-    assert.equal(migrated.version, 22);
+    assert.equal(migrated.version, 23);
     assert.equal(migrated.canonBootstrapPending, true);
     assert.deepEqual(migrated.nextGuides, []);
     assert.deepEqual(migrated.canonConstraints, []);
@@ -201,10 +201,10 @@ test('pre-momentum guides and request verification cannot remain injectable afte
     assert.equal(isGuidanceUsable(migrated, [], ''), false);
 });
 
-test('pre-v22 candidates are rebuilt with a persistent director score while established canon survives', () => {
+test('pre-v23 candidates are rebuilt with causal narrative control while established canon survives', () => {
     const verification = { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides };
-    const migrated = normalizeState({ version: 21, ...currentPlan, nextGuides: stateNextGuides, canonConstraints: ['Established fact.'], lastRequestVerification: verification });
-    assert.equal(migrated.version, 22);
+    const migrated = normalizeState({ version: 22, ...currentPlan, nextGuides: stateNextGuides, canonConstraints: ['Established fact.'], lastRequestVerification: verification });
+    assert.equal(migrated.version, 23);
     assert.equal(migrated.canonBootstrapPending, true);
     assert.deepEqual(migrated.nextGuides, []);
     assert.deepEqual(migrated.canonConstraints, ['Established fact.']);
@@ -242,34 +242,40 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(current, /^<tale-fairy-context>/);
     assert.match(current, /<\/tale-fairy-context>$/);
     assert.doesNotMatch(current, /Keep the scene grounded/);
-    assert.match(current, /Adaptive narrative movement \(optional\)/);
-    assert.match(current, /NARRATIVE CONDUCTOR \(active even if the optional movement below is inapplicable\)/);
+    assert.match(current, /Conditional causal movement \(optional\)/);
+    assert.match(current, /BACKGROUND NARRATIVE STATE \(orientation, not a required beat\)/);
+    assert.match(current, /OVERALL STORY IDENTITY: A Star Wars survival and institutional-conflict arc/);
+    assert.match(current, /CURRENT SCENE FUNCTION: Let a quiet slice-of-life exchange alter trust/);
     assert.match(current, /SETTING IDENTITY: Star Wars as a lived institutional and technological world/);
-    assert.match(current, /ACTIVE SETTING FORCES: Jedi obligations constrain time and candor; Droids participate in domestic routine/);
-    assert.match(current, /ARC MOTION: BUILD/);
+    assert.match(current, /ACTIVE CAUSAL FORCES: Jedi obligations constrain time and candor; Droids participate in domestic routine/);
+    assert.match(current, /CAUSAL TEMPO: SEED/);
+    assert.match(current, /NEAR-TERM ARC DIRECTION: Let ordinary interaction expose how affection and duty compete/);
     assert.match(current, /MEANINGFUL AIM: Change the shared understanding of trust and obligation/);
-    assert.match(current, /not generic genre prose, random iconic references, cameos, or reference soup/);
-    assert.match(current, /MOVEMENT \[EMPHASIS\]: Let Mara answer plainly/);
+    assert.match(current, /Causal tempo means the rate of story-state change, never prose rhythm/);
+    assert.match(current, /does not require this reply to mention, foreshadow, or visibly advance the overall arc/);
+    assert.match(current, /current scene function does not replace the overall story identity/);
+    assert.match(current, /Do not control wording, dialogue style, mood, sentence rhythm, verbosity, formatting, or descriptive texture/);
+    assert.match(current, /MOVEMENT: Let Mara answer plainly/);
+    assert.doesNotMatch(current, /\[EMPHASIS\]/);
     assert.match(current, /IF: The user continues or asks Mara/);
     assert.match(current, /UNLESS: The user leaves or changes subject/);
-    assert.match(current, /DRAMATIC SCORE: Answer directly and show its immediate effect/);
-    assert.match(current, /DESIRED AFTEREFFECT: Mara reveals a concern/);
-    assert.match(current, /Judge the narrative type, scene function, character dynamics/);
-    assert.match(current, /It is a trajectory, not a screenplay or required event/);
-    assert.match(current, /choose the concrete dialogue, action, image, consequence, or grounded surprise yourself/);
-    assert.match(current, /mood, energy, tempo, tension, focus, and surprise latitude/);
-    assert.match(current, /aftereffect is the desired change, not its prescribed mechanism/);
+    assert.match(current, /CAUSAL ROLE: Advance the live trust thread through a concrete disclosure/);
+    assert.match(current, /POSSIBLE AFTEREFFECT: Mara reveals a concern/);
+    assert.match(current, /possible story-state transition, not a screenplay or required event/);
+    assert.match(current, /Keep private future developments offscreen/);
     assert.match(current, /Heading, going, or walking to a destination permits travel and arrival only/);
     assert.match(current, /Preserve due processes, established meanings, pacing, and player agency/);
     assert.doesNotMatch(current, /discarded reply/);
+    assert.doesNotMatch(current, /Mara must choose between the relationship and a Jedi obligation/);
+    assert.doesNotMatch(current, /future_setup|FUTURE SETUP|later in the current arc/);
     assert.doesNotMatch(current, /GROUNDING:|EXECUTION:|response is incomplete|failure/);
     assert.doesNotMatch(current, /Mara is present/);
     assert.doesNotMatch(current, /telling-deflection|meaningful deflection/);
     assert.doesNotMatch(current, /PATHWAYS|TIME HORIZONS|Revisit the obligation/);
 
     const swipe = buildPromptPayload(state, { enabled: true, guidanceUsable: true, guideCandidates: stateNextGuides, guideIndex: 1, regeneration: true });
-    assert.match(swipe, /Adaptive narrative movement for a different regeneration/);
-    assert.match(swipe, /MOVEMENT \[EMPHASIS\]: Let Mara reveal a different pressure/);
+    assert.match(swipe, /Conditional causal movement for a different regeneration/);
+    assert.match(swipe, /MOVEMENT: Let Mara reveal a different pressure/);
     assert.match(swipe, /meaningful deflection/);
     assert.doesNotMatch(swipe, /Let Mara answer plainly/);
     assert.match(swipe, /Do not reuse the discarded reply's concrete realization/);
@@ -278,7 +284,7 @@ test('prompt payload keeps user directives active and only includes usable guida
 
     const longMovement = { ...stateNextGuides[0], direction: `${'measured '.repeat(22)}extraordinary consequence` };
     const clipped = buildPromptPayload(state, { enabled: true, guidanceUsable: true, guideCandidates: [longMovement] });
-    const movementLine = clipped.match(/^MOVEMENT \[EMPHASIS\]: (.+)$/m)?.[1] || '';
+    const movementLine = clipped.match(/^MOVEMENT: (.+)$/m)?.[1] || '';
     assert.match(movementLine, /…$/);
     assert.doesNotMatch(movementLine, /\bextra?$/);
 
@@ -302,7 +308,7 @@ test('replacement payload uses pre-response canon instead of facts inferred from
 
 test('roleplay injection stays bounded with maximum notes, canon, and route fields', () => {
     const long = 'constraint '.repeat(100);
-    const route = { id: 'route', direction: long, use_when: long, drop_when: long, response_bias: long, world_delta: long, origin: 'original', basis: long, strength: 'moderate', source_pathways: ['path'] };
+    const route = { id: 'route', direction: long, use_when: long, drop_when: long, causal_role: `Advance ${long}`, world_delta: long, origin: 'original', basis: long, strength: 'moderate', source_pathways: ['path'] };
     const state = {
         ...defaultState(),
         canonConstraints: Array.from({ length: 12 }, (_, index) => `canon-${index} ${long}`),

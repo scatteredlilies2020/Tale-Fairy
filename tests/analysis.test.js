@@ -5,9 +5,9 @@ import { defaultState } from '../extension/state.js';
 
 const pathways = [{ id: 'tea-talk', direction: 'Let the tea conversation reveal a useful tension.', when: 'The user continues the conversation or asks Mara directly.', response_bias: 'Have Mara answer plainly and expose one concrete concern.', horizon: 'next few turns', status: 'foreground', conditions: [], change: 'replace', reason: 'The current exchange supports this route.' }];
 const nextGuides = [
-    { id: 'plain-concern', direction: 'Let Mara answer plainly while one concrete concern changes the exchange.', use_when: 'The user continues the conversation or addresses Mara.', drop_when: 'The user leaves, changes subject, or explicitly rejects the conversation.', response_bias: 'Deliver the answer and its immediate relational consequence.', world_delta: 'Mara discloses a concern that changes what both characters understand.', origin: 'inferred', basis: 'Mara is present, engaged, and the current exchange supports a direct concern.', strength: 'strong', source_pathways: ['tea-talk'], causal_event_ids: [], disclosure: 'none', reason: 'The direct exchange makes this the strongest continuation.' },
-    { id: 'revealing-deflection', direction: 'Let Mara deflect in a way that reveals a different pressure through behavior.', use_when: 'The user remains present and Mara has reason not to answer plainly.', drop_when: 'The user establishes that Mara answers directly or the pressure is absent.', response_bias: 'Make the deflection materially informative rather than evasive filler.', world_delta: 'Mara exposes a different pressure through behavior, changing the social stakes.', origin: 'original', basis: 'Her established hesitation can plausibly surface indirectly in this exchange.', strength: 'moderate', source_pathways: ['tea-talk'], causal_event_ids: [], disclosure: 'none', reason: 'This contrasts with a plain answer while preserving the same continuity.' },
-    { id: 'outside-pressure', direction: 'Let a concrete household consequence intrude on the conversation without ending it.', use_when: 'The conversation continues in the active home setting.', drop_when: 'The user establishes privacy or leaves the setting.', response_bias: 'Route the pressure through a familiar household object that Mara reacts to personally.', world_delta: 'A household demand creates a new practical choice while the concern remains live.', origin: 'original', basis: 'The active home setting can plausibly exert a small but consequential pressure.', strength: 'light', source_pathways: ['tea-talk'], causal_event_ids: [], disclosure: 'none', reason: 'This adds a world-driven option distinct from disclosure or deflection.' },
+    { id: 'plain-concern', direction: 'Let Mara answer plainly while one concrete concern changes the exchange.', use_when: 'The user continues the conversation or addresses Mara.', drop_when: 'The user leaves, changes subject, or explicitly rejects the conversation.', causal_role: 'Advance the trust thread through a concrete disclosure.', world_delta: 'Mara discloses a concern that changes what both characters understand.', origin: 'inferred', basis: 'Mara is present, engaged, and the current exchange supports a direct concern.', strength: 'strong', source_pathways: ['tea-talk'], causal_event_ids: [], disclosure: 'none', reason: 'The direct exchange makes this the strongest continuation.' },
+    { id: 'revealing-deflection', direction: 'Let Mara deflect in a way that reveals a different pressure through behavior.', use_when: 'The user remains present and Mara has reason not to answer plainly.', drop_when: 'The user establishes that Mara answers directly or the pressure is absent.', causal_role: 'Advance the social-pressure thread through an indirect consequence.', world_delta: 'Mara exposes a different pressure through behavior, changing the social stakes.', origin: 'original', basis: 'Her established hesitation can plausibly surface indirectly in this exchange.', strength: 'moderate', source_pathways: ['tea-talk'], causal_event_ids: [], disclosure: 'none', reason: 'This contrasts with a plain answer while preserving the same continuity.' },
+    { id: 'outside-pressure', direction: 'Let a concrete household consequence intrude on the conversation without ending it.', use_when: 'The conversation continues in the active home setting.', drop_when: 'The user establishes privacy or leaves the setting.', causal_role: 'Seed a practical household pressure that can affect later choices.', world_delta: 'A household demand creates a new practical choice while the concern remains live.', origin: 'original', basis: 'The active home setting can plausibly exert a small but consequential pressure.', strength: 'light', source_pathways: ['tea-talk'], causal_event_ids: [], disclosure: 'none', reason: 'This adds a world-driven option distinct from disclosure or deflection.' },
 ];
 const planHorizons = {
     items: [
@@ -20,7 +20,7 @@ const planHorizons = {
     ],
     deviation: { level: 'none', reason: 'Initial plan.' },
 };
-const directorScore = { narrative_type: 'intimate science-fantasy character drama', scene_function: 'Let a quiet exchange alter trust.', setting_identity: 'Star Wars lived through its institutions, droids, technology, and social scale', setting_forces: ['A serving droid witnesses and mediates domestic routine.', 'Jedi obligations constrain available time and candor.'], motion: 'build', score: 'Warm and playful at first; gradually tighten focus around wary trust without rushing.', trajectory: 'Let ordinary play expose how affection and institutional duty compete across the next few turns.', meaningful_aim: 'Change what Mara and the user understand about the limits of their trust.', surprise: 'Allow one earned turn arising from Mara’s duty or the droid’s literal behavior.', change: 'adjust', basis: 'The active conversation is intimate, while established Star Wars institutions shape Mara’s choices.' };
+const directorScore = { story_identity: 'A Star Wars survival and institutional-conflict arc about trust under Jedi obligations.', scene_function: 'Let a quiet exchange alter trust.', setting_identity: 'Star Wars lived through its institutions, droids, technology, and social scale', setting_forces: ['A serving droid witnesses and mediates domestic routine.', 'Jedi obligations constrain available time and candor.'], causal_tempo: 'seed', arc_direction: 'Let ordinary interaction expose how affection and institutional duty compete across the next few turns.', future_setup: { id: 'duty-conflict', development: 'Mara must eventually choose between the relationship and a Jedi obligation.', current_step: 'Establish the obligation as a concrete constraint.', conditions: ['The duty becomes due.'], earliest_window: 'later in the current arc', disclosure: 'hidden' }, meaningful_aim: 'Change what Mara and the user understand about the limits of their trust.', change: 'adjust', basis: 'The active conversation is intimate, while established Star Wars institutions shape Mara’s choices.' };
 const requiredPlanning = { story_frame: { frame: 'grounded', confidence: 'high', basis: 'ordinary scene' }, director_score: directorScore, pathways, next_guides: nextGuides, plan_horizons: planHorizons, canon_constraints: [], note_resolution: null, ledger: 'Tea conversation is active.', narrative_events: [], cue_audit: { offered_ids: [], manifested_ids: [], unused_ids: [], contradicted_ids: [], pacing: 'respected', reason: 'No prior cues were offered.' } };
 
 test('extractJson accepts fenced and wrapped JSON', () => {
@@ -67,7 +67,7 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /Never finish a subsequent activity or jump to a later task/);
     assert.match(SYSTEM, /“we head to breakfast,” “I go to the meeting,” or “we walk home”/);
     assert.match(SYSTEM, /ends at travel or arrival/);
-    assert.match(SYSTEM, /Give each next guide one coherent dramatic movement and one meaningful desired aftereffect/);
+    assert.match(SYSTEM, /Give each next guide one coherent causal movement and one meaningful possible aftereffect/);
     assert.match(SYSTEM, /Keep every referent unambiguous inside each guide/);
     assert.match(SYSTEM, /Dorn-2 medical unit on Level 10/);
     assert.match(SYSTEM, /Never reinterpret an established code or proper noun as a different kind of entity/);
@@ -105,19 +105,23 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /Do not force sympathy, vulnerability, redemption, reconciliation, banter, avoidance, or silent treatment/);
     assert.match(SYSTEM, /do not add cruelty, darkness, punishment, or conflict merely to appear bold/);
     assert.match(SYSTEM, /one to five compact conditional pathways/);
-    assert.match(SYSTEM, /Make response_bias a concise dramatic score/);
+    assert.match(SYSTEM, /response_bias is private and may describe only causal handling or readiness/);
+    assert.match(SYSTEM, /causal_role states whether and how the movement holds, seeds, advances, converges, pays off, redirects, or recovers/);
     assert.match(SYSTEM, /Re-evaluate the set after every completed assistant response/);
-    assert.match(SYSTEM, /three or four ranked next_guides as compact conditional narrative movements/);
+    assert.match(SYSTEM, /three or four ranked next_guides as compact conditional causal movements/);
     assert.match(SYSTEM, /Tale Fairy must function independently/);
     assert.match(SYSTEM, /in-text recaps, chat summaries, injected summaries/);
     assert.match(SYSTEM, /No named memory extension is privileged or required/);
     assert.match(SYSTEM, /If the referent remains unavailable, do not invent its name, identity, rules, prior result, or history/);
-    assert.match(SYSTEM, /judge the narrative type and current scene function from evidence/);
-    assert.match(SYSTEM, /mood, energy, tempo, tension, focus, and surprise latitude/);
-    assert.match(SYSTEM, /Surprise is latitude, not an obligation/);
-    assert.match(SYSTEM, /leaving the concrete dialogue, action, imagery, and causal mechanism for the roleplay model to judge/);
-    assert.match(SYSTEM, /Put only the adaptive dramatic score—not a hidden screenplay/);
-    assert.match(SYSTEM, /private planning material and are never copied wholesale into the roleplay prompt/);
+    assert.match(SYSTEM, /story_identity is the durable overall story or arc identity/);
+    assert.match(SYSTEM, /Never let a quiet meal, game, domestic pause, romance beat, or other slice-of-life scene redefine the whole story/);
+    assert.match(SYSTEM, /causal_tempo controls only the rate of story-state change/);
+    assert.match(SYSTEM, /It never controls prose speed, dialogue cadence, mood, sentence rhythm, verbosity, descriptive density, or response length/);
+    assert.match(SYSTEM, /future_setup is private planning state/);
+    assert.match(SYSTEM, /does not make that movement a foreground requirement/);
+    assert.match(SYSTEM, /Hidden setup stays out of roleplay guidance/);
+    assert.match(SYSTEM, /must never mention mood, emotional tone, prose tempo, dialogue delivery/);
+    assert.match(SYSTEM, /Only the non-secret story identity, current scene function, setting forces, causal tempo/);
     assert.match(SYSTEM, /Use consequence-only when the scene should show an effect but keep its cause wholly offscreen/);
     assert.match(SYSTEM, /This controls narrative information, not prose style/);
 });
@@ -146,6 +150,8 @@ test('planner requires distinct alternatives for swipe variety', () => {
     assert.equal(validateAnalysisResult({ ...result, next_guides: nextGuides.map(({ world_delta, ...guide }) => guide) }).valid, false);
     assert.equal(validateAnalysisResult({ ...result, next_guides: nextGuides.map(guide => ({ ...guide, origin: 'wish' })) }).valid, false);
     assert.equal(validateAnalysisResult({ ...result, next_guides: nextGuides.map((guide, index) => index ? { ...guide, use_when: 'Alternative swipe wanting tension.' } : guide) }).valid, false);
+    assert.equal(validateAnalysisResult({ ...result, next_guides: nextGuides.map((guide, index) => index ? guide : { ...guide, causal_role: 'Set a warm playful mood and quick prose tempo.' }) }).valid, false);
+    assert.equal(validateAnalysisResult({ ...result, next_guides: nextGuides.map((guide, index) => index ? guide : { ...guide, causal_role: 'Make the exchange interesting.' }) }).valid, false);
     assert.equal(validateAnalysisResult({ ...result, next_guides: nextGuides.map((guide, index) => index ? guide : { ...guide, direction: 'Mara promises to explain tomorrow.', world_delta: 'Mara commits to a morning explanation.' }) }).valid, false);
     assert.equal(validateAnalysisResult({ ...result, next_guides: nextGuides.map((guide, index) => index ? guide : { ...guide, direction: 'A routine ping arrives.', world_delta: 'A small routine notice changes nothing important.' }) }).valid, false);
     assert.equal(validateAnalysisResult(result).valid, true);
@@ -409,6 +415,9 @@ test('analysis application keeps guidance bounded and records its injection deci
     assert.equal(next.scene.activity, 'tea');
     assert.equal(next.lastInject, true);
     assert.equal(next.directorScore.settingIdentity.startsWith('Star Wars'), true);
+    assert.match(next.directorScore.storyIdentity, /survival and institutional-conflict/);
+    assert.equal(next.directorScore.causalTempo, 'seed');
+    assert.equal(next.directorScore.futureSetup.disclosure, 'hidden');
     assert.match(next.lastReason, /established pace/);
 });
 
@@ -528,7 +537,7 @@ test('bootstrap compaction keeps a recent trajectory anchor instead of reviving 
 
 test('hard budget also compacts a fully populated long-running planner state', () => {
     const long = 'x'.repeat(1000);
-    const sentCue = { id: 'confirmed-setting-turn', direction: 'An Imperial restriction quietly changes what help is possible.', useWhen: 'The conversation still concerns available help.', dropWhen: 'The restriction has already been resolved.', responseBias: 'Warmth tightens into practical concern.', worldDelta: 'The characters must account for an institutional constraint.', origin: 'planner', basis: 'The request included this movement.', strength: 'strong', sourcePathways: [], causalEventIds: [], disclosure: 'none' };
+    const sentCue = { id: 'confirmed-setting-turn', direction: 'An Imperial restriction quietly changes what help is possible.', useWhen: 'The conversation still concerns available help.', dropWhen: 'The restriction has already been resolved.', causalRole: 'Advance the institutional-pressure thread through a concrete restriction.', worldDelta: 'The characters must account for an institutional constraint.', origin: 'planner', basis: 'The request included this movement.', strength: 'strong', sourcePathways: [], causalEventIds: [], disclosure: 'none' };
     const state = {
         ...defaultState(),
         objectives: Array.from({ length: 10 }, (_, index) => ({ title: `thread-${index}`, detail: long, status: 'open', source: long })),

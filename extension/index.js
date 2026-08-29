@@ -13,7 +13,7 @@ import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.9.0';
+const RUNTIME_VERSION = '0.10.0';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -38,7 +38,7 @@ const directModelCache = new Map();
 const ANALYSIS_TIMEOUT_MS = 180000;
 const PLANNER_RESPONSE_TOKENS = 4096;
 const UI_MOUNT_TIMEOUT_MS = 30000;
-const LEGACY_UPGRADE_MAX_ATTEMPTS = 3;
+const LEGACY_UPGRADE_MAX_ATTEMPTS = 1;
 const INTERNAL_PLANNER_MARKER = 'You are Tale Fairy, a narrative planning layer for SillyTavern roleplay.';
 
 globalThis.taleFairyRuntime = Object.freeze({ version: RUNTIME_VERSION, loadedAt: Date.now() });
@@ -1019,18 +1019,21 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     scratchpadText(board, 'scratchpad-frame', frame, 'Story frame is still uncertain.');
 
     const score = state.directorScore || {};
-    const directorScore = score.score ? [
-        [score.narrativeType, score.sceneFunction].filter(Boolean).join(' · '),
+    const setup = score.futureSetup || {};
+    const directorScore = score.storyIdentity ? [
+        `Overall story: ${score.storyIdentity}`,
+        score.sceneFunction && `Current scene function: ${score.sceneFunction}`,
         score.settingIdentity && `Setting: ${score.settingIdentity}`,
-        score.settingForces?.length && `Active forces: ${score.settingForces.join('; ')}`,
-        `Motion: ${String(score.motion || 'hold').toUpperCase()}${score.change ? ` · ${score.change}` : ''}`,
-        score.score && `Score: ${score.score}`,
-        score.trajectory && `Trajectory: ${score.trajectory}`,
+        score.settingForces?.length && `Active causal forces: ${score.settingForces.join('; ')}`,
+        `Causal tempo: ${String(score.causalTempo || 'hold').toUpperCase()}${score.change ? ` · ${score.change}` : ''}`,
+        score.arcDirection && `Near-term arc: ${score.arcDirection}`,
+        setup.development && `Private future setup: ${setup.development}${setup.earliestWindow ? ` · earliest ${setup.earliestWindow}` : ''}`,
+        setup.currentStep && `Setup step: ${setup.currentStep}`,
+        setup.conditions?.length && `Setup needs: ${setup.conditions.join('; ')}`,
         score.meaningfulAim && `Meaningful aim: ${score.meaningfulAim}`,
-        score.surprise && `Surprise: ${score.surprise}`,
         score.basis && `Basis: ${score.basis}`,
     ].filter(Boolean).join('\n') : '';
-    scratchpadText(board, 'scratchpad-director-score', directorScore, 'No persistent dramatic score yet.');
+    scratchpadText(board, 'scratchpad-director-score', directorScore, 'No persistent causal narrative control yet.');
 
     const pathwayLines = (state.pathways || []).map(item => [
         `${item.id} [${item.status}${item.horizon ? ` · ${item.horizon}` : ''}${item.change !== 'keep' ? ` · ${item.change}` : ''}] — ${item.direction}`,
@@ -1046,7 +1049,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         `Grounding: ${item.origin} — ${item.basis}`,
         `Use if: ${item.useWhen}`,
         `Drop if: ${item.dropWhen}`,
-        item.responseBias && `If used: ${item.responseBias}`,
+        item.causalRole && `Causal role: ${item.causalRole}`,
     ].filter(Boolean).join('\n'));
     scratchpadText(board, 'scratchpad-next-guides', guideLines.join('\n\n'), 'No next-guide candidates yet.');
 
