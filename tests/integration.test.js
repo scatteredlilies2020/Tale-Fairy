@@ -9,9 +9,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.2');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.2');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.2');
+    assert.equal(manifest.version, '0.11.3');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.3');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.3');
 });
 
 test('injection sends layered authorial control while concrete realization and future setup stay private', () => {
@@ -91,7 +91,8 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /function stopAnalysis\(\)/);
     assert.match(source, /analysisAbortController\.abort/);
     assert.match(source, /waitForAbortable\(generateRaw/);
-    assert.match(source, /PLANNER_RESPONSE_TOKENS = 4096/);
+    assert.match(source, /ANALYSIS_TIMEOUT_MS = 240000/);
+    assert.match(source, /PLANNER_RESPONSE_TOKENS = 32768/);
     assert.match(source, /suppressErrorToasts: true/);
     assert.match(source, /activeSource === 'openrouter'/);
     assert.match(source, /const structured = model\.provider !== 'openrouter'/);

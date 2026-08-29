@@ -4,7 +4,7 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, requireValidAnalysisResult, SYSTEM } from './analysis.js';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, requireGroundedAnalysisResult, requireValidAnalysisResult, SYSTEM } from './analysis.js';
 import { buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js';
 import { resolveInjectionPlacement } from './injection-placement.js';
 import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js';
@@ -13,7 +13,7 @@ import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.2';
+const RUNTIME_VERSION = '0.11.3';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -35,8 +35,10 @@ let uiMountObserver = null;
 let uiMountTimeout = null;
 const legacyUpgradeAttempts = new Set();
 const directModelCache = new Map();
-const ANALYSIS_TIMEOUT_MS = 180000;
-const PLANNER_RESPONSE_TOKENS = 4096;
+const ANALYSIS_TIMEOUT_MS = 240000;
+// Reasoning providers may count hidden thinking against this ceiling. The
+// planner prompt and schema separately target a concise visible JSON result.
+const PLANNER_RESPONSE_TOKENS = 32768;
 const UI_MOUNT_TIMEOUT_MS = 30000;
 const LEGACY_UPGRADE_MAX_ATTEMPTS = 1;
 const INTERNAL_PLANNER_MARKER = 'You are Tale Fairy, a narrative planning layer for SillyTavern roleplay.';
@@ -666,12 +668,15 @@ function stopAnalysis() {
     }
 }
 
-function parseAnalysisResponse(value) {
+function parseAnalysisResponse(value, evidence = '') {
     try {
+        let result;
         if (value && typeof value === 'object' && !Array.isArray(value) && value.scene) {
-            return requireValidAnalysisResult(value);
+            result = requireValidAnalysisResult(value);
+        } else {
+            result = requireValidAnalysisResult(extractJson(completionText(value)));
         }
-        return requireValidAnalysisResult(extractJson(completionText(value)));
+        return requireGroundedAnalysisResult(result, evidence);
     } catch (error) {
         if (error instanceof AnalysisValidationError) throw error;
         throw new AnalysisValidationError(`Planner did not return valid JSON: ${error?.message || error}.`);
@@ -806,7 +811,7 @@ async function requestAnalysis(prompt, externalSignal) {
             try {
                 const response = await sendProfile(true);
                 controller.signal.throwIfAborted();
-                return parseAnalysisResponse(response);
+                return parseAnalysisResponse(response, prompt);
             } catch (error) {
                 controller.signal.throwIfAborted();
                 if (isReasoningControlError(error) && (reasoning.controlled || isMandatoryReasoningError(error))) {
@@ -822,7 +827,7 @@ async function requestAnalysis(prompt, externalSignal) {
                     response = await sendProfile(false, fallbackSystem);
                 }
                 controller.signal.throwIfAborted();
-                return parseAnalysisResponse(response);
+                return parseAnalysisResponse(response, prompt);
             }
         }
         if (model.active) {
@@ -851,11 +856,11 @@ async function requestAnalysis(prompt, externalSignal) {
                 if (activeSource === 'openrouter') {
                     const raw = await runActive(false);
                     controller.signal.throwIfAborted();
-                    return parseAnalysisResponse(raw);
+                    return parseAnalysisResponse(raw, prompt);
                 }
                 const raw = await runActive(true);
                 controller.signal.throwIfAborted();
-                return parseAnalysisResponse(raw);
+                return parseAnalysisResponse(raw, prompt);
             } catch (error) {
                 controller.signal.throwIfAborted();
                 if (isReasoningControlError(error)) {
@@ -864,7 +869,7 @@ async function requestAnalysis(prompt, externalSignal) {
                         const activeSource = String(currentContext().chatCompletionSettings?.chat_completion_source || '');
                         const raw = await runActive(activeSource !== 'openrouter');
                         controller.signal.throwIfAborted();
-                        return parseAnalysisResponse(raw);
+                        return parseAnalysisResponse(raw, prompt);
                     } catch (retryError) {
                         controller.signal.throwIfAborted();
                         error = retryError;
@@ -873,7 +878,7 @@ async function requestAnalysis(prompt, externalSignal) {
                 console.warn(`[${EXTENSION_ID}] active model structured request failed; retrying with a JSON-only prompt`, error);
                 const raw = await runActive(false);
                 controller.signal.throwIfAborted();
-                return parseAnalysisResponse(raw);
+                return parseAnalysisResponse(raw, prompt);
             }
         }
         const reasoningMode = plannerReasoningMode();
@@ -892,7 +897,7 @@ async function requestAnalysis(prompt, externalSignal) {
             const payload = await response.json();
             if (!response.ok || payload?.error) throw new Error(payload?.error?.message || payload?.error || `Analysis request failed (${response.status}).`);
             controller.signal.throwIfAborted();
-            return parseAnalysisResponse(payload);
+            return parseAnalysisResponse(payload, prompt);
         };
         const structured = model.provider !== 'openrouter';
         try {

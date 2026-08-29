@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, AnalysisValidationError, MODE_INSTRUCTIONS, applyAnalysis, buildAnalysisPrompt, extractJson, requireValidAnalysisResult, SYSTEM, validateAnalysisResult } from '../extension/analysis.js';
+import { ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, AnalysisValidationError, MODE_INSTRUCTIONS, applyAnalysis, buildAnalysisPrompt, extractJson, requireGroundedAnalysisResult, requireValidAnalysisResult, SYSTEM, validateAnalysisGrounding, validateAnalysisResult } from '../extension/analysis.js';
 import { defaultState } from '../extension/state.js';
 
 const pathways = [{ id: 'tea-talk', direction: 'Let the tea conversation reveal a useful tension.', when: 'The user continues the conversation or asks Mara directly.', response_bias: 'Have Mara answer plainly and expose one concrete concern.', horizon: 'next few turns', status: 'foreground', conditions: [], change: 'replace', reason: 'The current exchange supports this route.' }];
@@ -49,6 +49,36 @@ test('planner validation rejects empty or incomplete structured output', () => {
     assert.equal(validateAnalysisResult({ ...requiredPlanning, narrative_layers: undefined }).valid, false);
     assert.equal(validateAnalysisResult({ ...requiredPlanning, narrative_layers: { ...narrativeLayers, activity_role: 'foreground' } }).valid, false);
     assert.equal(validateAnalysisResult({ ...requiredPlanning, narrative_layers: { ...narrativeLayers, temporal_scope: 'turn' } }).valid, false);
+});
+
+test('semantic grounding rejects unsupported names even when planner JSON is structurally valid', () => {
+    const contaminated = {
+        ...requiredPlanning,
+        story_frame: { frame: 'grounded', confidence: 'high', basis: 'Slice-of-lifeSophia banter in a quiet Star Wars scene.' },
+        scene: { status: 'active', activity: 'talking', pace: 'steady', intent: 'continue', location: 'waystation', time: 'evening', loop: false },
+        objectives: [], entities: [], possibilities: [], guidance: '', inject: true, reason: 'Keep the scene coherent.',
+    };
+    const prompt = JSON.stringify({
+        current: { storyFrame: { basis: 'Slice-of-lifeSophia banter from an earlier contaminated plan.' } },
+        messages: [{ role: 'user', name: 'Lucia', content: 'I talk with Mara about her Jedi obligations aboard the Star Wars waystation.' }],
+    });
+    assert.equal(validateAnalysisResult(contaminated).valid, true);
+    assert.deepEqual(validateAnalysisGrounding(contaminated, prompt), {
+        valid: false,
+        errors: ['unsupported named terms absent from supplied context: Sophia'],
+    });
+    assert.throws(() => requireGroundedAnalysisResult(contaminated, prompt), AnalysisValidationError);
+});
+
+test('semantic grounding accepts names that occur in supplied planner evidence', () => {
+    const result = {
+        ...requiredPlanning,
+        scene: { status: 'active', activity: 'talking', pace: 'steady', intent: 'continue', location: 'waystation', time: 'evening', loop: false },
+        objectives: [], entities: [], possibilities: [], guidance: '', inject: true, reason: 'Let Mara answer within the Star Wars setting.',
+    };
+    const prompt = JSON.stringify({ messages: [{ role: 'user', name: 'Lucia', content: 'I talk with Mara about her Jedi obligations aboard the Star Wars waystation.' }] });
+    assert.equal(validateAnalysisGrounding(result, prompt).valid, true);
+    assert.equal(requireGroundedAnalysisResult(result, prompt), result);
 });
 
 test('planner keeps a causal possibility pool and adaptive multi-horizon plan', () => {
@@ -357,6 +387,10 @@ test('analysis prompt maintains a lightweight world model', () => {
     const prompt = JSON.parse(buildAnalysisPrompt([{ mes: 'We are inside the Jedi Temple.', is_user: true }], defaultState()));
     assert.match(SYSTEM, /Maintain a compact causal world model from established evidence/);
     assert.match(SYSTEM, /relevant people, factions, locations, knowledge, motives/);
+    assert.match(SYSTEM, /Use past events as causal basis, constraints, changed relationships, accumulated consequences, and unresolved pressure—not as plots to copy/);
+    assert.match(SYSTEM, /Do not echo an earlier scene, incident, reveal, conflict, conversation pattern, joke, emotional beat, or plot structure with renamed parts/);
+    assert.match(SYSTEM, /Prefer synthesis across multiple relevant facts over copying any single past plot/);
+    assert.match(SYSTEM, /Retained planner state is a hypothesis to audit and cannot make its own unsupported name valid/);
     assert.equal('world_model_instruction' in prompt, false);
 });
 

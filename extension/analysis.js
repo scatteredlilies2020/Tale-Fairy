@@ -278,6 +278,90 @@ export function requireValidAnalysisResult(result) {
     return repaired;
 }
 
+const GROUNDING_NAME_ALLOWLIST = new Set([
+    'A', 'An', 'And', 'As', 'At', 'Balanced', 'But', 'By', 'Canon', 'Current', 'Direct', 'For', 'From',
+    'Fun', 'Guide', 'Hold', 'If', 'In', 'Json', 'Keep', 'Light', 'No', 'Not', 'Ooc', 'On', 'Only', 'Or',
+    'Planner', 'Return', 'Scene', 'Story', 'Tale', 'Fairy', 'The', 'Then', 'This', 'Through', 'To', 'Use',
+    'When', 'While', 'With', 'Without', 'World',
+]);
+
+function collectStringValues(value, values = []) {
+    if (typeof value === 'string') values.push(value);
+    else if (Array.isArray(value)) value.forEach(item => collectStringValues(item, values));
+    else if (value && typeof value === 'object') Object.values(value).forEach(item => collectStringValues(item, values));
+    return values;
+}
+
+function groundingEvidenceText(evidence) {
+    if (!evidence) return '';
+    if (typeof evidence !== 'string') return collectStringValues(evidence).join('\n');
+    try {
+        const payload = JSON.parse(evidence);
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return collectStringValues(payload).join('\n');
+        // `current` is retained planner output, so letting it ground a name
+        // would allow a previous hallucination to verify and perpetuate itself.
+        // Use only factual/supporting inputs supplied independently of that
+        // planner state. The planner may retain a name only while one of these
+        // sources still supports it.
+        const { current: _plannerHypotheses, ...independentEvidence } = payload;
+        return collectStringValues(independentEvidence).join('\n');
+    } catch {
+        return evidence;
+    }
+}
+
+function unsupportedNamesInText(text, evidenceText) {
+    const unsupported = new Set();
+    const source = String(text || '');
+    const isSupported = name => new RegExp(`(^|[^\\p{L}\\p{N}])${escapeRegExp(name)}([^\\p{L}\\p{N}]|$)`, 'iu').test(evidenceText);
+    const consider = name => {
+        const normalized = name.replace(/[’']s$/u, '');
+        if (normalized.length < 3 || GROUNDING_NAME_ALLOWLIST.has(normalized) || isSupported(normalized)) return;
+        unsupported.add(normalized);
+    };
+
+    // Catch malformed joins such as "Slice-of-lifeSophia", which are a strong
+    // signal that a name was spliced into otherwise ordinary planner text.
+    for (const match of source.matchAll(/\p{Ll}(\p{Lu}[\p{L}\p{M}'’_-]{2,})/gu)) consider(match[1]);
+
+    // A title-cased word embedded inside a sentence normally denotes a named
+    // person, place, faction, object, or setting term. Sentence-openers remain
+    // unrestricted so ordinary English wording is not mistaken for an entity.
+    for (const match of source.matchAll(/\b\p{Lu}[\p{Ll}\p{M}][\p{L}\p{M}'’_-]{1,}\b/gu)) {
+        const before = source.slice(0, match.index).trimEnd();
+        if (!before || /[.!?;:]$/u.test(before)) continue;
+        consider(match[0]);
+    }
+    return [...unsupported];
+}
+
+/**
+ * Reject named specificity that cannot be found anywhere in the planner's
+ * supplied evidence. This supplements JSON/schema validation: schema-valid
+ * fiction can still be contaminated by a model hallucinating an unrelated
+ * character or setting name.
+ */
+export function validateAnalysisGrounding(result, evidence) {
+    const evidenceText = groundingEvidenceText(evidence);
+    if (!evidenceText.trim()) return { valid: true, errors: [] };
+    const unsupported = new Set();
+    for (const value of collectStringValues(result)) {
+        unsupportedNamesInText(value, evidenceText).forEach(name => unsupported.add(name));
+    }
+    const errors = unsupported.size
+        ? [`unsupported named terms absent from supplied context: ${[...unsupported].sort().join(', ')}`]
+        : [];
+    return { valid: errors.length === 0, errors };
+}
+
+export function requireGroundedAnalysisResult(result, evidence) {
+    const validation = validateAnalysisGrounding(result, evidence);
+    if (!validation.valid) {
+        throw new AnalysisValidationError(`Planner introduced unsupported named specificity: ${validation.errors.join('; ')}. Rebuild using only names present in the supplied context.`);
+    }
+    return result;
+}
+
 const asString = (value, fallback = '') => typeof value === 'string' ? value : fallback;
 const asArray = value => Array.isArray(value) ? value : [];
 const oneOf = (value, allowed, fallback) => allowed.includes(value) ? value : fallback;
@@ -1083,7 +1167,9 @@ Treat the horizon ladder as a provisional upstream/downstream hierarchy, not a r
 Everything in the plan remains changeable. Build fresh, specific future directions by extrapolating from the current roleplay trajectory: active relationships, present motives, live processes, current setting pressures, and plausible new consequences. Do not use horizons as a backlog of memorable past scenes. An old person, object, threat, place, or event may return only when a currently active actor, process, obligation, new evidence, elapsed-time consequence, or other concrete causal bridge makes it realistically relevant again. Mere historical mention, unresolved wording in an old ledger, franchise familiarity, or a desire for continuity is not a bridge. Retire or replace a direction when its only support is distant history, even if it was previously stable or slow; do not silently append omitted old horizons.
 
 Every horizon also retains some effect with a strict distance gradient: near directions may shape the current reply, middle directions bias setup and compatible choices, and distant directions provide only a subtle background pull unless events bring them closer. Never force or foreshadow a distant direction merely to prove it exists. Assign fluid, adaptive, stable, then slow stability as distance grows. Re-evaluate every horizon each run with increasing inertia only while it remains causally supported: fluid may change every turn; adaptive changes with beats or scenes; stable and slow directions resist cosmetic churn but must adjust or be replaced when the trajectory no longer supports them. The latest user direction always wins. Preserve ids only when genuinely keeping or adjusting the same supported direction, use a new id when replacing it, record keep/adjust/replace, and report overall deviation as none, minor, or major.`;
-const CORE_PLANNER_POLICY = `You are Tale Fairy, the authorial story-control layer for SillyTavern roleplay. The roleplay model performs the concrete fiction; you author causal direction, narrative function, timing, scale, and the evolving world without scripting exact prose. Do not write prose or expose reasoning. Return only one JSON object matching the supplied schema.
+const CORE_PLANNER_POLICY = `You are Tale Fairy, the authorial story-control layer for SillyTavern roleplay. The roleplay model performs the concrete fiction; you author causal direction, narrative function, timing, scale, and the evolving world without scripting exact prose. Do not write prose or expose reasoning. Return only one JSON object matching the supplied schema. Keep that JSON concise and under approximately 6,000 visible output tokens; the API's larger completion ceiling exists to accommodate hidden reasoning, not verbose planner state.
+
+Every proper noun and named entity in the returned JSON must be grounded in independently supplied story evidence. Never invent a character, person, place, faction, organization, title, setting, or other proper name merely to make a direction specific. New causal possibilities must remain role- or function-based until the roleplay establishes their names. Before returning, audit every name against supplied messages, bootstrap, and factual supporting context; remove or generalize any unsupported name. Retained planner state is a hypothesis to audit and cannot make its own unsupported name valid. Do not splice an unrelated name into a genre, activity, or story-frame phrase.
 
 Read the newest user turn as authoritative for immediate direction and the temporal scope of the next response, not as automatic evidence of the durable story identity. OOC corrections and explicit user establishments outrank inference. A genuine explicit pivot may change the long-range trajectory; ordinary participation in a temporary activity may not, regardless of how many turns it lasts. The user should never need to prompt Tale Fairy, select a route, or manage immediacy: infer authorial direction automatically from the story state and normal roleplay. When user_instruction contains an AI-assisted note, classify it in this call as suggest, correct, establish, or forbid; return null only when genuinely ambiguous and never rewrite the user's text.
 
@@ -1094,6 +1180,8 @@ Tale Fairy must function independently. Use all supplied story evidence that can
 Treat backward references such as “again,” “the same one,” “last time,” “as before,” “the usual,” and unresolved pronouns conservatively. Resolve their specific referent from any supplied evidence, including raw turns, Tale Fairy state, lore, recaps, and injected summaries. If the referent remains unavailable, do not invent its name, identity, rules, prior result, or history. Keep guides referent-neutral, let an NPC clarify naturally without asserting an answer, or offer a different supported development. If the newest assistant reply supplied unsupported specificity for an older callback, preserve only what visibly happened in the current reply; do not promote its invented backstory to high-confidence established state.
 
 Maintain a compact causal world model from established evidence: relevant people, factions, locations, knowledge, motives, relationships, obligations, resources, constraints, processes, unresolved threads, and elapsed time. Lore is an active causal system, not decoration. A possibility needs an in-world source, route into the scene, timing, and reason; wishes, jokes, hypotheticals, iconic franchise elements, stale historical mentions, and unsupported speculation are not scheduled events. Keep uncertainty where evidence is incomplete. Use one unified possibility pool rather than categories. Prefer fresh, causally grounded developments that grow from the current trajectory. Develop an established thread when it is still live; otherwise create a compatible new consequence or direction instead of recycling the past.
+
+Use past events as causal basis, constraints, changed relationships, accumulated consequences, and unresolved pressure—not as plots to copy. A new idea must transform what came before or follow from it into a genuinely different opportunity. Do not echo an earlier scene, incident, reveal, conflict, conversation pattern, joke, emotional beat, or plot structure with renamed parts. Do not paraphrase old dialogue or replay a memorable event merely because it is available in history. Recurrence is allowed only when the fiction establishes a recurring process and the new occurrence has changed conditions, consequences, meaning, or available choices. Prefer synthesis across multiple relevant facts over copying any single past plot.
 
 Use narrative_events as the compact working causal state, not as a recap or transcript. On every pass, consider what relevant NPCs, institutions, environmental processes, schedules, deadlines, and previously selected developments could have done outside the camera while time and conditions advanced. Preserve concrete timing in timing and update due_state from elapsed story time even when nothing is shown onscreen. A future event remains possible or inferred, latent, and pending until its causal conditions actually occur; only then may an offscreen occurrence become simulated. A due event may progress, remain hidden, be delayed by a concrete blocker, or produce a later consequence without being forced visibly into the current beat. Simulate only developments with a concrete cause and a plausible future consequence; do not fill the world with bookkeeping, routine activity, or unrelated trivia. An onscreen event occurred in supplied story evidence. An offscreen event occurs beyond the player character's direct view. Set epistemic_status precisely: established is explicitly confirmed by factual context; simulated is one causally supported offscreen occurrence selected by Tale Fairy so its later consequences remain coherent; inferred is the best current explanation of observed evidence but may be revised; possible is an unresolved candidate; disproved must not drive future guidance. Previous simulated events remain internally consistent until story evidence contradicts or supersedes them, but they never become user-established canon merely because the planner retained them.
 
