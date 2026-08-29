@@ -13,7 +13,7 @@ import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.9';
+const RUNTIME_VERSION = '0.11.10';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -1012,7 +1012,12 @@ function scratchpadList(items, formatter, fallback) {
 function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const board = document.querySelector(`#${EXTENSION_ID}-board`);
     if (!board) return;
-    const analyzed = state.scene.status !== 'uninitialized';
+    const rebuildPending = state.canonBootstrapPending === true;
+    const boardFallback = fallback => rebuildPending
+        ? 'Rebuild incomplete — no replacement plan has been saved yet.'
+        : fallback;
+    const boardValue = value => rebuildPending ? '' : value;
+    const analyzed = !rebuildPending && state.scene.status !== 'uninitialized';
     const settingsRoot = document.querySelector(`#${EXTENSION_ID}-settings`);
     const guideButton = settingsRoot?.querySelector('[data-action="guide"]');
     const guideLabel = guideButton?.querySelector('[data-role="guide-label"]');
@@ -1021,7 +1026,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         ? 'Analyze again while retaining Tale Fairy\'s accumulated guide state'
         : 'Analyze the current chat and context';
     const analyzedAt = state.lastAnalyzedAt ? new Date(state.lastAnalyzedAt).toLocaleString() : '';
-    scratchpadText(board, 'scratchpad-meta', analyzed ? `${state.mode} mode · updated ${analyzedAt || 'recently'}` : '', 'Not analyzed yet. Use Guide now or continue the chat.');
+    scratchpadText(board, 'scratchpad-meta', analyzed && !rebuildPending ? `${state.mode} mode · updated ${analyzedAt || 'recently'}` : '', boardFallback('Not analyzed yet. Use Guide now or continue the chat.'));
     const continuityStatus = analyzed ? continuityContextState(currentContext()).status : 'unavailable';
     scratchpadText(board, 'scratchpad-continuity', `Continuity: ${continuityStatus}`, 'Continuity: unavailable');
 
@@ -1040,12 +1045,12 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         state.scene.time && `Time: ${state.scene.time}`,
         state.scene.loop && 'Pattern: the scene may be looping or repeating',
     ].filter(Boolean).join('\n');
-    scratchpadText(board, 'scratchpad-scene', scene, 'No scene reading yet.');
+    scratchpadText(board, 'scratchpad-scene', boardValue(scene), boardFallback('No scene reading yet.'));
 
     const frame = state.storyFrame.frame && state.storyFrame.frame !== 'unknown'
         ? `${state.storyFrame.frame}${state.storyFrame.confidence ? ` · ${state.storyFrame.confidence} confidence` : ''}${state.storyFrame.basis ? `\nBasis: ${state.storyFrame.basis}` : ''}`
         : '';
-    scratchpadText(board, 'scratchpad-frame', frame, 'Story frame is still uncertain.');
+    scratchpadText(board, 'scratchpad-frame', boardValue(frame), boardFallback('Story frame is still uncertain.'));
 
     const score = state.directorScore || {};
     const setup = score.futureSetup || {};
@@ -1062,7 +1067,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         score.meaningfulAim && `Meaningful aim: ${score.meaningfulAim}`,
         score.basis && `Basis: ${score.basis}`,
     ].filter(Boolean).join('\n') : '';
-    scratchpadText(board, 'scratchpad-director-score', directorScore, 'No persistent causal narrative control yet.');
+    scratchpadText(board, 'scratchpad-director-score', boardValue(directorScore), boardFallback('No persistent causal narrative control yet.'));
 
     const pathwayLines = (state.pathways || []).map(item => [
         `${item.id} [${item.status}${item.horizon ? ` · ${item.horizon}` : ''}${item.change !== 'keep' ? ` · ${item.change}` : ''}] — ${item.direction}`,
@@ -1070,7 +1075,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         item.responseBias && `If chosen: ${item.responseBias}`,
         item.conditions?.length && `Needs: ${item.conditions.join('; ')}`,
     ].filter(Boolean).join('\n'));
-    scratchpadText(board, 'scratchpad-pathways', pathwayLines.join('\n\n'), 'No conditional pathways yet.');
+    scratchpadText(board, 'scratchpad-pathways', boardValue(pathwayLines.join('\n\n')), boardFallback('No conditional pathways yet.'));
 
     const guideLines = (state.nextGuides || []).map((item, index) => [
         `${index === 0 ? 'Authorial direction' : `Alternative ${index + 1}`} · ${item.id} [${item.strength}] — ${item.direction}`,
@@ -1080,7 +1085,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         `Drop if: ${item.dropWhen}`,
         item.causalRole && `Causal role: ${item.causalRole}`,
     ].filter(Boolean).join('\n'));
-    scratchpadText(board, 'scratchpad-next-guides', guideLines.join('\n\n'), 'No next-guide candidates yet.');
+    scratchpadText(board, 'scratchpad-next-guides', boardValue(guideLines.join('\n\n')), boardFallback('No next-guide candidates yet.'));
 
     const horizonLines = (state.planHorizons?.items || []).map((item, index, items) => {
         const change = item.change && item.change !== 'keep' ? ` · ${item.change}` : '';
@@ -1088,7 +1093,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     });
     const deviation = state.planHorizons?.deviation;
     if (deviation?.level && deviation.level !== 'none') horizonLines.push(`Deviation: ${deviation.level}${deviation.reason ? ` — ${deviation.reason}` : ''}`);
-    scratchpadText(board, 'scratchpad-horizons', horizonLines.join('\n'), 'No plan horizons yet.');
+    scratchpadText(board, 'scratchpad-horizons', boardValue(horizonLines.join('\n')), boardFallback('No plan horizons yet.'));
 
     const audit = state.cueAudit;
     const auditText = audit?.offeredIds?.length
@@ -1099,7 +1104,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         state.lastReason && `Why: ${state.lastReason}`,
         auditText,
     ].filter(Boolean).join('\n\n');
-    scratchpadText(board, 'scratchpad-guidance', decision, 'No extra guidance.');
+    scratchpadText(board, 'scratchpad-guidance', boardValue(decision), boardFallback('No extra guidance.'));
 
     const chatId = String(currentContext().getCurrentChatId?.() || '');
     const verification = pendingRequestVerification?.chatId === chatId
@@ -1119,31 +1124,31 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         : '';
     scratchpadText(board, 'scratchpad-request-verification', verificationText, 'No provider request has been verified yet.');
 
-    scratchpadText(board, 'scratchpad-objectives', scratchpadList(state.objectives, item => {
+    scratchpadText(board, 'scratchpad-objectives', boardValue(scratchpadList(state.objectives, item => {
         if (!item?.title && !item?.detail) return '';
         return `${item.title || 'Open direction'}${item.detail ? ` — ${item.detail}` : ''}${item.status ? ` [${item.status}]` : ''}`;
-    }, ''), 'No active objectives.');
+    }, '')), boardFallback('No active objectives.'));
 
-    scratchpadText(board, 'scratchpad-possibilities', scratchpadList(state.possibilities, item => {
+    scratchpadText(board, 'scratchpad-possibilities', boardValue(scratchpadList(state.possibilities, item => {
         if (!item?.description) return '';
         const conditions = Array.isArray(item.conditions) && item.conditions.length ? ` Conditions: ${item.conditions.join('; ')}.` : '';
         return `${item.description}${conditions}${item.force ? ` Weight: ${item.force}.` : ''}`;
-    }, ''), 'No supported possibilities currently retained.');
+    }, '')), boardFallback('No supported possibilities currently retained.'));
 
-    scratchpadText(board, 'scratchpad-entities', scratchpadList(state.entities, item => {
+    scratchpadText(board, 'scratchpad-entities', boardValue(scratchpadList(state.entities, item => {
         if (!item?.name) return '';
         const details = [item.state, item.location, item.relevance, item.confidence && `${item.confidence} confidence`, item.window].filter(Boolean).join(' · ');
         return `${item.name}${details ? ` — ${details}` : ''}`;
-    }, ''), 'No relevant off-screen entities retained.');
+    }, '')), boardFallback('No relevant off-screen entities retained.'));
 
-    scratchpadText(board, 'scratchpad-ledger', state.contextLedger, 'No narrative ledger yet.');
+    scratchpadText(board, 'scratchpad-ledger', boardValue(state.contextLedger), boardFallback('No narrative ledger yet.'));
 
-    scratchpadText(board, 'scratchpad-events', scratchpadList(state.narrativeEvents, item => {
+    scratchpadText(board, 'scratchpad-events', boardValue(scratchpadList(state.narrativeEvents, item => {
         if (!item?.title) return '';
         const stateLabels = [item.scope, item.epistemicStatus, item.disclosure, item.status].filter(Boolean).join(' · ');
         const effects = Array.isArray(item.consequences) && item.consequences.length ? `\n  Consequences: ${item.consequences.join('; ')}` : '';
         return `${item.title}${stateLabels ? ` [${stateLabels}]` : ''}${item.summary ? ` — ${item.summary}` : ''}${effects}${item.basis ? `\n  Basis: ${item.basis}` : ''}`;
-    }, ''), 'No private causal events retained.');
+    }, '')), boardFallback('No private causal events retained.'));
 
     scratchpadText(board, 'scratchpad-notes', scratchpadList(state.userNotes, item => item?.text ? `[${String(item.kind || 'note').toUpperCase()}] ${item.text}` : '', ''), 'No user notes.');
 }

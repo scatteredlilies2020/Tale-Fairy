@@ -9,9 +9,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.9');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.9');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.9');
+    assert.equal(manifest.version, '0.11.10');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.10');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.10');
 });
 
 test('injection sends layered authorial control while concrete realization and future setup stay private', () => {
@@ -183,6 +183,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /analyzeNow\(\{ messages, force: true, rebuild: true \}\)/);
     assert.match(source, /void upgradeLegacyPlanIfNeeded\(\)/);
     assert.match(source, /rawState\?\.canonBootstrapPending === true/);
+    assert.match(source, /Rebuild incomplete — no replacement plan has been saved yet\./);
     assert.match(source, /!upgradePending/);
     assert.match(source, /CHAT_CHANGED[\s\S]{0,900}void refreshCurrentPlanIfNeeded\(\)/);
     assert.match(source, /startUIMounting\(\);\s*\/\/ CHAT_CHANGED[\s\S]{0,500}setTimeout\(\(\) => void refreshCurrentPlanIfNeeded\(\), 0\)/);
