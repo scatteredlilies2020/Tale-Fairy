@@ -13,7 +13,7 @@ import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.0';
+const RUNTIME_VERSION = '0.11.1';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -632,6 +632,7 @@ function renderAnalysisActivity(message, running = false) {
     if (status) status.textContent = message;
     root.querySelector('[data-action="stop"]')?.toggleAttribute('disabled', !running);
     root.querySelector('[data-action="guide"]')?.toggleAttribute('disabled', running);
+    root.querySelector('[data-action="rebuild"]')?.toggleAttribute('disabled', running);
 }
 
 function cancelRunningAnalysis(reason, status) {
@@ -998,6 +999,13 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const board = document.querySelector(`#${EXTENSION_ID}-board`);
     if (!board) return;
     const analyzed = state.scene.status !== 'uninitialized';
+    const settingsRoot = document.querySelector(`#${EXTENSION_ID}-settings`);
+    const guideButton = settingsRoot?.querySelector('[data-action="guide"]');
+    const guideLabel = guideButton?.querySelector('[data-role="guide-label"]');
+    if (guideLabel) guideLabel.textContent = analyzed ? 'Re-evaluate' : 'Guide now';
+    if (guideButton) guideButton.title = analyzed
+        ? 'Analyze again while retaining Tale Fairy\'s accumulated guide state'
+        : 'Analyze the current chat and context';
     const analyzedAt = state.lastAnalyzedAt ? new Date(state.lastAnalyzedAt).toLocaleString() : '';
     scratchpadText(board, 'scratchpad-meta', analyzed ? `${state.mode} mode · updated ${analyzedAt || 'recently'}` : '', 'Not analyzed yet. Use Guide now or continue the chat.');
     const continuityStatus = analyzed ? continuityContextState(currentContext()).status : 'unavailable';
@@ -1148,6 +1156,10 @@ async function rebuildGuideState() {
     await context.saveMetadata?.();
     renderBoard(defaultState());
     return analyzeNow({ force: true, rebuild: true });
+}
+
+async function reevaluateGuideState() {
+    return analyzeNow({ force: true });
 }
 
 function resetSettingsToDefaults(root = document.querySelector(`#${EXTENSION_ID}-settings`)) {
@@ -1316,6 +1328,10 @@ async function mountUI() {
     root.querySelector('[data-action="fetch-models"]').addEventListener('click', () => void fetchDirectModels(root));
     refreshConnectionProfiles(root);
     root.querySelector('[data-action="guide"]').addEventListener('click', async () => {
+        await reevaluateGuideState();
+        renderBoard();
+    });
+    root.querySelector('[data-action="rebuild"]').addEventListener('click', async () => {
         await rebuildGuideState();
         renderBoard();
     });

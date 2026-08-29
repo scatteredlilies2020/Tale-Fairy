@@ -9,9 +9,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.0');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.0');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.0');
+    assert.equal(manifest.version, '0.11.1');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.1');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.1');
 });
 
 test('injection sends layered authorial control while concrete realization and future setup stay private', () => {
@@ -195,7 +195,12 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.doesNotMatch(source, /rebuilt\.userNotes = previous\.userNotes|rebuilt\.lastRequestVerification = previous\.lastRequestVerification/);
     assert.match(source, /async function rebuildGuideState\(\)[\s\S]{0,500}pendingRequestVerification = null[\s\S]{0,500}clearState\(context\.chatMetadata\)[\s\S]{0,500}analyzeNow\(\{ force: true, rebuild: true \}\)/);
     assert.match(source, /async function resetState\(\)[\s\S]{0,350}pendingRequestVerification = null[\s\S]{0,350}renderBoard\(defaultState\(\)\)/);
-    assert.match(source, /\[data-action="guide"\][\s\S]{0,180}rebuildGuideState\(\)/);
+    assert.match(template, /data-action="guide"[\s\S]{0,180}data-role="guide-label"/);
+    assert.match(template, /data-action="rebuild"/);
+    assert.match(source, /async function reevaluateGuideState\(\) \{\s*return analyzeNow\(\{ force: true \}\);\s*\}/);
+    assert.match(source, /\[data-action="guide"\][\s\S]{0,180}reevaluateGuideState\(\)/);
+    assert.match(source, /\[data-action="rebuild"\][\s\S]{0,180}rebuildGuideState\(\)/);
+    assert.match(source, /guideLabel\.textContent = analyzed \? 'Re-evaluate' : 'Guide now'/);
     assert.doesNotMatch(source, /MESSAGE_SENT[\s\S]{0,250}scheduleBackgroundAnalysis/);
     assert.match(template, /data-action="stop"[^>]*disabled/);
     assert.match(template, /data-action="reset-settings"/);

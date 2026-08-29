@@ -124,12 +124,13 @@
       <div class="living-world-guide-card">
         <h4>Guide controls</h4>
         <div class="living-world-guide-button-row">
-          <button class="menu_button" data-action="guide" type="button" title="Rebuild all guide state from the current chat and context"><i class="fa-solid fa-wand-magic-sparkles"></i> Guide now</button>
+          <button class="menu_button" data-action="guide" type="button" title="Analyze now while retaining Tale Fairy's accumulated guide state"><i class="fa-solid fa-wand-magic-sparkles"></i> <span data-role="guide-label">Guide now</span></button>
+          <button class="menu_button" data-action="rebuild" type="button" title="Delete the accumulated guide state, then reconstruct it from the current chat and context"><i class="fa-solid fa-arrows-rotate"></i> Full rebuild</button>
           <button class="menu_button" data-action="stop" type="button" disabled><i class="fa-solid fa-stop"></i> Stop analysis</button>
           <button class="menu_button" data-action="reset-settings" type="button" title="Restore Tale Fairy configuration defaults without deleting guide state"><i class="fa-solid fa-arrow-rotate-left"></i> Reset settings</button>
           <button class="menu_button" data-action="reset" type="button"><i class="fa-solid fa-trash-can"></i> Delete guide state</button>
         </div>
-        <small>Reset settings restores configuration defaults but keeps the current chat's guide state. Saved API passwords remain in SillyTavern but are no longer selected.</small>
+        <small>Re-evaluate keeps accumulated canon, notes, and long-range planning. Full rebuild discards that guide state and reconstructs it from accessible chat and context. Reset settings keeps guide state; saved API passwords remain in SillyTavern but are no longer selected.</small>
         <div class="living-world-guide-grid living-world-guide-note-grid">
           <label>AI-assisted instruction
             <textarea class="text_pole" data-setting="note" rows="3" placeholder="Write naturally. Tale Fairy will understand whether this is a suggestion, correction, canon detail, or hard exclusion."></textarea>
