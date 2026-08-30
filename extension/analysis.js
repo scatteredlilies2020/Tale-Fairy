@@ -86,6 +86,9 @@ export function validateAnalysisResult(result) {
     if (!storyFrame || typeof storyFrame !== 'object' || Array.isArray(storyFrame)
         || ['frame', 'confidence', 'basis'].some(key => typeof storyFrame[key] !== 'string')) {
         errors.push('story_frame must contain frame, confidence, and basis strings');
+    } else {
+        if (!['grounded', 'heightened', 'surreal'].includes(storyFrame.frame.trim().toLowerCase())) errors.push('story_frame.frame must be a concrete grounded, heightened, or surreal hypothesis');
+        if (!storyFrame.basis.trim() || EMPTY_PLANNING_LANGUAGE.test(storyFrame.basis)) errors.push('story_frame.basis must explain the current concrete hypothesis');
     }
     if (!narrativeLayers || typeof narrativeLayers !== 'object' || Array.isArray(narrativeLayers)) {
         errors.push('narrative_layers must be an object');
@@ -320,6 +323,19 @@ const uniqueStrings = values => [...new Set(asArray(values).map(value => asStrin
 const CAUSAL_OPERATION = /\b(?:hold|seed|advance|converge|payoff|redirect|recover)\b/iu;
 const STYLE_DIRECTIVE = /\b(?:mood|tone|warmth|playful|prose|sentence|rhythm|verbosity|descriptive texture|dialogue delivery|surprise latitude)\b/iu;
 const VACUOUS_CAUSAL_ROLE = /^\s*(?:make|keep)\b[\s\S]*\b(?:interesting|engaging|good|better)\b[.!?]*\s*$/iu;
+const EMPTY_PLANNING_LANGUAGE = /(?:^\s*(?:unknown|uncertain|unresolved|tbd|to be determined)\s*[.!]?\s*$|planner classification was incomplete|overall story identity remains unresolved|current local activity established by the conversation|active social and practical situation surrounding the local activity|established wider world and its ongoing processes|broad open-ended trajectory remains provisional|use the established setting identity rather than generic genre decoration)/iu;
+
+function usablePlanningText(value) {
+    const text = asString(value).trim();
+    return text && !EMPTY_PLANNING_LANGUAGE.test(text) ? text : '';
+}
+
+function inferStoryFrame(result) {
+    const evidence = JSON.stringify(result || {}).slice(0, 24000);
+    if (/\b(?:dream(?:ing)?|hallucination|surreal|impossible geometry|reality warps?|time loop|metafiction)\b/iu.test(evidence)) return 'surreal';
+    if (/\b(?:jedi|sith|the force|magic|spell|wizard|supernatural|superpower|starship|spaceship|galactic|dragon|vampire|cyberpunk|android|alien)\b/iu.test(evidence)) return 'heightened';
+    return 'grounded';
+}
 
 function repairCausalRole(value) {
     const role = asString(value).trim();
@@ -350,14 +366,14 @@ export function repairAnalysisResult(result, { expectedOfferedIds = [] } = {}) {
     const repaired = {
         ...result,
         story_frame: {
-            frame: asString(storySource.frame, 'unknown'),
+            frame: usablePlanningText(storySource.frame).toLowerCase(),
             confidence: asString(storySource.confidence, 'low'),
-            basis: asString(storySource.basis, 'Planner classification was incomplete.'),
+            basis: usablePlanningText(storySource.basis),
         },
         director_score: {
-            story_identity: asString(directorSource.story_identity, 'The established overall story identity remains unresolved and must be inferred from durable evidence.') || 'The established overall story identity remains unresolved and must be inferred from durable evidence.',
-            scene_function: asString(directorSource.scene_function, 'Develop the present interaction without exceeding its boundary.') || 'Develop the present interaction without exceeding its boundary.',
-            setting_identity: asString(directorSource.setting_identity, 'Use the established setting identity rather than generic genre decoration.') || 'Use the established setting identity rather than generic genre decoration.',
+            story_identity: usablePlanningText(directorSource.story_identity),
+            scene_function: usablePlanningText(directorSource.scene_function),
+            setting_identity: usablePlanningText(directorSource.setting_identity),
             setting_forces: uniqueStrings(directorSource.setting_forces).slice(0, 3),
             causal_tempo: oneOf(directorSource.causal_tempo, ['hold', 'seed', 'advance', 'converge', 'payoff', 'redirect', 'recover'], 'hold'),
             arc_direction: asString(directorSource.arc_direction, 'Carry one supported relationship or world process forward across the next few turns.') || 'Carry one supported relationship or world process forward across the next few turns.',
@@ -374,11 +390,11 @@ export function repairAnalysisResult(result, { expectedOfferedIds = [] } = {}) {
             basis: asString(directorSource.basis, 'Recovered from the active scene and retained narrative trajectory.') || 'Recovered from the active scene and retained narrative trajectory.',
         },
         narrative_layers: {
-            immediate_action: asString(layersSource.immediate_action, 'Continue the latest declared action without inventing another player action.') || 'Continue the latest declared action without inventing another player action.',
-            local_activity: asString(layersSource.local_activity, 'The current local activity established by the conversation.') || 'The current local activity established by the conversation.',
-            situation: asString(layersSource.situation, 'The active social and practical situation surrounding the local activity.') || 'The active social and practical situation surrounding the local activity.',
-            wider_world: asString(layersSource.wider_world, 'The established wider world and its ongoing processes remain active.') || 'The established wider world and its ongoing processes remain active.',
-            durable_trajectory: asString(layersSource.durable_trajectory, directorSource.story_identity || 'The broad open-ended trajectory remains provisional.') || 'The broad open-ended trajectory remains provisional.',
+            immediate_action: usablePlanningText(layersSource.immediate_action),
+            local_activity: usablePlanningText(layersSource.local_activity),
+            situation: usablePlanningText(layersSource.situation),
+            wider_world: usablePlanningText(layersSource.wider_world),
+            durable_trajectory: usablePlanningText(layersSource.durable_trajectory),
             activity_role: oneOf(layersSource.activity_role, ['incidental', 'routine', 'developmental', 'central', 'transition'], 'routine'),
             temporal_scope: oneOf(layersSource.temporal_scope, ['moment', 'action', 'activity', 'scene', 'extended'], 'action'),
         },
@@ -554,6 +570,86 @@ export function repairAnalysisResult(result, { expectedOfferedIds = [] } = {}) {
     items.at(-1).stability = 'slow';
     repaired.plan_horizons = { items, deviation: { level: oneOf(horizonSource.deviation?.level, ['none', 'minor', 'major'], 'minor'), reason: asString(horizonSource.deviation?.reason, 'Minor planner structure was normalized without changing its usable narrative direction.') } };
 
+    // A valid plan is never allowed to collapse into an "unknown" card. When
+    // a provider skips a category, derive a low-confidence working hypothesis
+    // from its concrete scene/routes. It remains explicitly revisable, but it
+    // gives the next pass something specific to update instead of a blank.
+    const primaryPath = repaired.pathways[0];
+    const nearHorizon = items[0];
+    const farHorizon = items.at(-1);
+    const sceneActivity = usablePlanningText(repaired.scene.activity) || 'the opening interaction';
+    const sceneLocation = usablePlanningText(repaired.scene.location) || 'the current location';
+    const sceneIntent = usablePlanningText(repaired.scene.intent) || primaryPath?.direction || nearHorizon.direction;
+    const inferredFrame = ['grounded', 'heightened', 'surreal'].includes(repaired.story_frame.frame)
+        ? repaired.story_frame.frame
+        : inferStoryFrame(result);
+    repaired.story_frame.frame = inferredFrame;
+    repaired.story_frame.confidence = /^(?:low|moderate|high)$/iu.test(repaired.story_frame.confidence)
+        ? repaired.story_frame.confidence.toLowerCase()
+        : 'low';
+    repaired.story_frame.basis ||= `Provisional ${inferredFrame} reading from ${sceneActivity} at ${sceneLocation}; revise when new evidence changes it.`;
+
+    repaired.director_score.story_identity ||= `An open-ended ${inferredFrame} story centered on ${sceneActivity}, with ${farHorizon.direction}`.slice(0, 180);
+    repaired.director_score.scene_function ||= `Develop ${sceneActivity} through a concrete NPC or world response without choosing for the player.`.slice(0, 120);
+    repaired.director_score.setting_identity ||= `The ${inferredFrame} world around ${sceneLocation}, treated as an active source of consequences.`.slice(0, 120);
+    if (!repaired.director_score.setting_forces.length) {
+        repaired.director_score.setting_forces = [
+            ...asArray(repaired.entities).map(entity => usablePlanningText(entity?.name)),
+            `Current activity: ${sceneActivity}`,
+            `Open route: ${primaryPath?.direction || nearHorizon.direction}`,
+        ].filter(Boolean).slice(0, 3).map(value => value.slice(0, 140));
+    }
+    repaired.director_score.arc_direction = usablePlanningText(repaired.director_score.arc_direction)
+        || (primaryPath?.direction || nearHorizon.direction).slice(0, 240);
+    repaired.director_score.meaningful_aim = usablePlanningText(repaired.director_score.meaningful_aim)
+        || `Let ${sceneActivity} change the relationships, knowledge, pressures, or choices that matter next.`.slice(0, 200);
+    repaired.director_score.basis = usablePlanningText(repaired.director_score.basis)
+        || `Derived provisionally from ${sceneActivity}, ${sceneIntent}, and the retained conditional routes.`.slice(0, 180);
+    const setup = repaired.director_score.future_setup;
+    setup.id ||= farHorizon.id || 'provisional-future';
+    setup.development ||= farHorizon.direction.slice(0, 220);
+    setup.current_step ||= (nearHorizon.direction || primaryPath?.direction).slice(0, 180);
+    setup.conditions = setup.conditions.length ? setup.conditions : farHorizon.conditions.slice(0, 4);
+    setup.earliest_window ||= farHorizon.timeframe.slice(0, 120);
+
+    repaired.narrative_layers.immediate_action ||= `Continue ${sceneActivity} only within the player’s already declared action.`.slice(0, 140);
+    repaired.narrative_layers.local_activity ||= sceneActivity.slice(0, 180);
+    repaired.narrative_layers.situation ||= `${sceneIntent} at ${sceneLocation}.`.slice(0, 220);
+    repaired.narrative_layers.wider_world ||= (nearHorizon.direction || primaryPath?.direction).slice(0, 240);
+    repaired.narrative_layers.durable_trajectory ||= farHorizon.direction.slice(0, 260);
+
+    if (!repaired.entities.length) {
+        repaired.entities = [{
+            name: 'Active scene process',
+            state: `${sceneActivity}; ${repaired.narrative_layers.situation}`.slice(0, 220),
+            location: sceneLocation.slice(0, 140),
+            relevance: (primaryPath?.direction || nearHorizon.direction).slice(0, 140),
+            confidence: 'moderate',
+            window: (nearHorizon.timeframe || 'current scene').slice(0, 100),
+        }];
+    }
+
+    if (!repaired.narrative_events.length) {
+        const eventDirection = nearHorizon.direction || primaryPath?.direction;
+        repaired.narrative_events = [{
+            id: 'provisional-causal-development',
+            title: 'Current situation develops',
+            summary: eventDirection.slice(0, 300),
+            scope: 'offscreen',
+            epistemic_status: 'possible',
+            disclosure: 'hidden',
+            status: 'latent',
+            confidence: 'low',
+            timing: (nearHorizon.timeframe || 'as current conditions develop').slice(0, 120),
+            due_state: 'pending',
+            cause: repaired.narrative_layers.situation.slice(0, 220),
+            consequences: [`This can change the pressures or choices around ${sceneActivity}.`.slice(0, 160)],
+            basis: (nearHorizon.reason || 'Provisional route derived from the active scene.').slice(0, 160),
+            requirements: nearHorizon.conditions.slice(0, 4),
+            interpretation: 'conditional',
+        }];
+    }
+
     // Older scratchpad sections should reflect the usable modern plan rather
     // than looking like a failed/empty rebuild. These are working directions,
     // not terminal goals or claims that an event already happened.
@@ -566,15 +662,20 @@ export function repairAnalysisResult(result, { expectedOfferedIds = [] } = {}) {
         }));
     }
     if (!repaired.possibilities.length) {
-        repaired.possibilities = repaired.pathways
-            .filter(pathway => pathway.status !== 'blocked')
-            .slice(0, 6)
-            .map(pathway => ({
-                description: pathway.direction.slice(0, 280),
-                conditions: pathway.conditions.slice(0, 4),
+        repaired.possibilities = [
+            ...repaired.pathways.filter(pathway => pathway.status !== 'blocked').map(pathway => ({
+                description: pathway.direction.slice(0, 120),
+                conditions: pathway.conditions.slice(0, 1).map(value => value.slice(0, 90)),
                 force: pathway.status === 'foreground' ? 'strong' : pathway.status === 'latent' ? 'light' : 'moderate',
-            }));
+            })),
+            ...items.map(item => ({
+                description: item.direction.slice(0, 120),
+                conditions: item.conditions.slice(0, 1).map(value => value.slice(0, 90)),
+                force: item.stability === 'fluid' ? 'moderate' : 'light',
+            })),
+        ].filter((item, index, all) => all.findIndex(other => other.description.toLowerCase() === item.description.toLowerCase()) === index).slice(0, 18);
     }
+    repaired.guidance ||= `Leading conditional direction (not a required player action): ${repaired.next_guides[0]?.direction || primaryPath?.direction || nearHorizon.direction}`.slice(0, 700);
     if (!repaired.ledger.trim()) {
         repaired.ledger = [
             `Working scene: ${repaired.scene.activity}.`,
@@ -1280,7 +1381,7 @@ The possibility bench has zero inertia and creates no narrative debt. Rebuild an
 
 Use past events as causal basis, constraints, changed relationships, accumulated consequences, and unresolved pressure—not as plots to copy. A new idea must transform what came before or follow from it into a genuinely different opportunity. Do not echo an earlier scene, incident, reveal, conflict, conversation pattern, joke, emotional beat, or plot structure with renamed parts. Do not paraphrase old dialogue or replay a memorable event merely because it is available in history. Recurrence is allowed only when the fiction establishes a recurring process and the new occurrence has changed conditions, consequences, meaning, or available choices. Prefer synthesis across multiple relevant facts over copying any single past plot.
 
-Use narrative_events as the compact working causal state, not as a recap or transcript. On every pass, actively decide what relevant NPCs, institutions, environmental processes, schedules, deadlines, and newly authored developments are doing beyond the camera while time and conditions advance. In Balanced and Fun modes, normally retain one to three consequential causal developments; an empty list is appropriate only when no context-compatible development could affect later choices, knowledge, relationships, resources, obligations, or stakes. Create new candidates as possible with an explicit plausible cause and consequence. Once their non-player conditions are satisfied, select useful offscreen occurrences as simulated rather than waiting for the user to request movement. Preserve concrete timing in timing and update due_state from elapsed story time even when nothing is shown onscreen. A future event remains possible or inferred, latent, and pending until its causal conditions actually occur; only then may an offscreen occurrence become simulated. A due event may progress, remain hidden, be delayed by a concrete blocker, or produce a later consequence without being forced visibly into the current beat. Do not fill the world with bookkeeping, routine activity, or unrelated trivia, but do not confuse that rule with a ban on invention. An onscreen event occurred in supplied story evidence. An offscreen event occurs beyond the player character's direct view. Set epistemic_status precisely: established is explicitly confirmed by factual context; simulated is one causally supported offscreen occurrence selected by Tale Fairy so its later consequences remain coherent; inferred is the best current explanation of observed evidence but may be revised; possible is an unresolved candidate; disproved must not drive future guidance. Previous simulated events remain internally consistent until story evidence contradicts or supersedes them, but they never become user-established canon merely because the planner retained them.
+Use narrative_events as the compact working causal state, not as a recap or transcript. On every pass, retain at least one relevant causal development and actively decide what relevant NPCs, institutions, environmental processes, schedules, deadlines, and newly authored developments are doing beyond the camera while time and conditions advance. In Balanced and Fun modes, normally retain one to three consequential causal developments. When nothing is ready to occur, keep one context-compatible possible or inferred development latent rather than leaving the category empty. Create new candidates as possible with an explicit plausible cause and consequence. Once their non-player conditions are satisfied, select useful offscreen occurrences as simulated rather than waiting for the user to request movement. Preserve concrete timing in timing and update due_state from elapsed story time even when nothing is shown onscreen. A future event remains possible or inferred, latent, and pending until its causal conditions actually occur; only then may an offscreen occurrence become simulated. A due event may progress, remain hidden, be delayed by a concrete blocker, or produce a later consequence without being forced visibly into the current beat. Do not fill the world with bookkeeping, routine activity, or unrelated trivia, but do not confuse that rule with a ban on invention. An onscreen event occurred in supplied story evidence. An offscreen event occurs beyond the player character's direct view. Set epistemic_status precisely: established is explicitly confirmed by factual context; simulated is one causally supported offscreen occurrence selected by Tale Fairy so its later consequences remain coherent; inferred is the best current explanation of observed evidence but may be revised; possible is an unresolved candidate; disproved must not drive future guidance. Previous simulated events remain internally consistent until story evidence contradicts or supersedes them, but they never become user-established canon merely because the planner retained them.
 
 Keep occurrence separate from disclosure. hidden means neither the event nor its cause has reached the current scene; signaled means a consequence or clue is perceivable while the cause remains unknown; revealed means an in-world channel has actually exposed the cause. A visible consequence can make an offscreen event narratively real without narrating, summarizing, confirming, or flashing back to the hidden cause. For example, a child may return from school with a black eye while the school incident remains private causal state. Preserve competing explanations when evidence does not justify selecting one. Advance disclosure only through a supported in-world observation, report, admission, discovery, or investigation—not because the planner knows the event.
 
@@ -1294,7 +1395,9 @@ Keep thread referents exact. A condition, deadline, refusal, or timing statement
 
 Message kind recent is live trajectory evidence. Message kind directive preserves explicit user/OOC authority. Message kind anchor is older orientation only: its index shows its distance, and it cannot by itself justify reviving a person, event, place, threat, objective, or horizon.
 
-Classify the story frame as grounded, heightened, surreal, or unknown. Match the supplied pacing and mode policies. Player silence is not a veto on supported NPC or world activity, but never invent the player's choices, dialogue, voluntary actions, thoughts, or feelings. When a consequential player choice remains open, keep the world moving through independent NPC reactions, deadlines, environmental change, or other supported consequences that do not decide that choice. Do not freeze the reply at a permission prompt, repeatedly ask for the decision, pressure the player toward one branch, or make an NPC choose on the player's behalf. Avoid recency loops and arbitrary escalation.
+Every planning category must contain a concrete working hypothesis from the first pass onward. Sparse evidence lowers confidence; it never justifies unknown, uncertain, unresolved, "use the established setting," "the current activity," or similar non-answers. Infer the best provisional frame, story identity, setting, scene layers, active forces, future setup, objectives, entities or processes, idea bench, pathways, guides, horizons, ledger, and at least one relevant latent causal development. Treat every inference as editable planning state: update, replace, or reverse it immediately when later evidence changes the story. This requirement is planning initiative, not permission to invent player actions or to promote private possibilities into canon.
+
+Classify the story frame as grounded, heightened, or surreal; choose the best provisional classification even at the opening. Match the supplied pacing and mode policies. Player silence is not a veto on supported NPC or world activity, but never invent the player's choices, dialogue, voluntary actions, thoughts, or feelings. When a consequential player choice remains open, keep the world moving through independent NPC reactions, deadlines, environmental change, or other supported consequences that do not decide that choice. Do not freeze the reply at a permission prompt, repeatedly ask for the decision, pressure the player toward one branch, or make an NPC choose on the player's behalf. Avoid recency loops and arbitrary escalation.
 
 Every next guide must be fulfillable without inventing a new player action. It may author clean completion of an action or activity the user already declared, depth within the current situation, or an NPC/world development. A guide's use_when condition is a gate to evaluate from supplied evidence, never an instruction to make that condition true. Unless the newest user turn declares travel or arrival, keep the player at the current location. Never make the player join, follow, settle somewhere, agree, answer, or otherwise bridge a route; leave concrete realization to NPC/world behavior and the already-authorized player action. If an unresolved player decision blocks one route, prefer a parallel NPC/world development that changes the situation while preserving every still-open player option.
 
@@ -1342,7 +1445,7 @@ Use direction for binding authorial intent rather than a screenplay: name the re
 
 Link a next guide to any narrative_events it realizes through causal_event_ids. Set disclosure to none when no hidden causal state is involved. Use consequence-only when the scene should show an effect but keep its cause wholly offscreen; in that case direction and world_delta must contain only what can be perceived now and must not name, confirm, summarize, or flash back to the hidden cause. Use partial-clue for one supported clue without confirmation, and reveal-cause only when an established in-world channel makes disclosure timely. This controls narrative information, not prose style: never prescribe wording, sentence shape, tone imitation, formatting, or stylistic technique.
 
-Pathways, possibilities, objectives, entities, schedules, narrative events, future_setup, arc_direction, meaningful_aim, plan horizons, audit details, and the general guidance field are private planning material and are never copied wholesale into the roleplay prompt. The roleplay request may receive a compact layered authorial frame, the causal operation, and one conditional authorial direction expressed only as narrative function and impact envelope. Tale Fairy is authoritative about function when the condition holds; the roleplay model remains authoritative about concrete realization. Always return inject=true, director_score, narrative_layers, three to four contrasting authorial directions in next_guides, one to five pathways, six to ten plan horizons, cue_audit, and a compact guidance string for the private scratchpad; guidance may be empty. Keep the ledger compact.`;
+Pathways, possibilities, objectives, entities, schedules, narrative events, future_setup, arc_direction, meaningful_aim, plan horizons, audit details, and the general guidance field are private planning material and are never copied wholesale into the roleplay prompt. The roleplay request may receive a compact layered authorial frame, the causal operation, and one conditional authorial direction expressed only as narrative function and impact envelope. Tale Fairy is authoritative about function when the condition holds; the roleplay model remains authoritative about concrete realization. Always return inject=true, director_score, narrative_layers, three to four contrasting authorial directions in next_guides, one to five pathways, six to ten plan horizons, cue_audit, and a compact non-empty guidance string for the private scratchpad. Keep the ledger compact.`;
 const PLANNER_SYSTEM = `${CORE_PLANNER_POLICY}\n${EVIDENCE_FIRST_POLICY}`;
 
 export { PLANNER_SYSTEM as SYSTEM, extractJson };

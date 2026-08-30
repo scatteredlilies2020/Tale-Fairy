@@ -80,6 +80,9 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /never rewrite the user's text/);
     assert.match(SYSTEM, /Lore is an active causal system/);
     assert.match(SYSTEM, /Use narrative_events as the compact working causal state, not as a recap or transcript/);
+    assert.match(SYSTEM, /Every planning category must contain a concrete working hypothesis from the first pass onward/);
+    assert.match(SYSTEM, /Classify the story frame as grounded, heightened, or surreal/);
+    assert.doesNotMatch(SYSTEM, /story frame as grounded, heightened, surreal, or unknown/);
     assert.match(SYSTEM, /Preserve concrete timing in timing and update due_state/);
     assert.match(SYSTEM, /simulated is one causally supported offscreen occurrence selected by Tale Fairy/);
     assert.match(SYSTEM, /A visible consequence can make an offscreen event narratively real without narrating/);
@@ -267,10 +270,36 @@ test('planner salvages incomplete structured output before using fallback', () =
     assert.equal(repaired.pathways.length, 1, 'a missing route is recovered from the usable movement');
     assert.equal(repaired.plan_horizons.items.length, 6);
     assert.equal(repaired.plan_horizons.items.at(-1).stability, 'slow');
+    assert.equal(repaired.story_frame.frame, 'grounded');
+    assert.match(repaired.story_frame.basis, /Provisional grounded reading/);
+    assert.doesNotMatch(repaired.director_score.story_identity, /uncertain|unresolved/i);
+    assert.match(repaired.narrative_layers.local_activity, /talking/i);
+    assert.ok(repaired.director_score.future_setup.development);
+    assert.ok(repaired.director_score.setting_forces.length);
+    assert.ok(repaired.entities.length);
+    assert.ok(repaired.narrative_events.length);
+    assert.ok(repaired.guidance);
     assert.ok(repaired.objectives.length, 'legacy objective display is derived from the open-ended horizon plan');
     assert.ok(repaired.possibilities.length, 'legacy possibility display is derived from conditional pathways');
     assert.match(repaired.ledger, /Working scene:/);
     assert.equal(repaired.inject, true);
+    assert.equal(validateAnalysisResult(repaired).valid, true);
+});
+
+test('planner replaces vague provider placeholders with a concrete provisional genre frame', () => {
+    const repaired = requireValidAnalysisResult({
+        ...requiredPlanning,
+        story_frame: { frame: 'unknown', confidence: 'low', basis: 'Planner classification was incomplete.' },
+        director_score: { ...directorScore, story_identity: 'The established overall story identity remains unresolved and must be inferred from durable evidence.', setting_identity: 'Use the established setting identity rather than generic genre decoration.' },
+        narrative_layers: { ...narrativeLayers, local_activity: 'The current local activity established by the conversation.', wider_world: 'The established wider world and its ongoing processes remain active.', durable_trajectory: 'The broad open-ended trajectory remains provisional.' },
+        scene: { status: 'active', activity: 'petitioning the Jedi Council', pace: 'steady', intent: 'seek permission', location: 'Jedi Temple', time: 'afternoon', loop: false },
+    });
+    assert.equal(repaired.story_frame.frame, 'heightened');
+    assert.match(repaired.story_frame.basis, /Jedi Temple/i);
+    assert.match(repaired.director_score.story_identity, /heightened story/i);
+    assert.match(repaired.director_score.setting_identity, /Jedi Temple/i);
+    assert.equal(repaired.narrative_layers.local_activity, 'petitioning the Jedi Council');
+    assert.doesNotMatch(JSON.stringify(repaired), /story identity remains unresolved|current local activity established|broad open-ended trajectory remains provisional/i);
     assert.equal(validateAnalysisResult(repaired).valid, true);
 });
 
