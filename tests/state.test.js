@@ -29,6 +29,9 @@ test('state normalizes caps and invalid mode', () => {
     assert.ok(state.possibilities.every(item => item.description.length <= 120 && item.conditions.length <= 1));
     assert.ok(state.possibilities.every(item => item.description.endsWith('…')), 'long ideas should end cleanly instead of mid-word');
     assert.ok(state.possibilities.every(item => item.horizon === ''));
+    const repairedLegacyIdea = normalizeState({ possibilities: [{ description: 'x'.repeat(120) }] }).possibilities[0].description;
+    assert.match(repairedLegacyIdea, /…$/, 'legacy cards saved at the old hard limit should be marked as truncated');
+    assert.ok(repairedLegacyIdea.length <= 120);
     const promptIdeas = stateForPrompt(state).possibilities;
     assert.equal(promptIdeas.length, 18);
     assert.ok(promptIdeas.every(item => typeof item === 'string' && item.length <= 180));
