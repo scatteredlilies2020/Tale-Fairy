@@ -273,13 +273,17 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(stale, /OPTIONAL SUGGESTION: A quiet meal could happen/);
     assert.match(stale, /HARD EXCLUSION: No time travel/);
     assert.doesNotMatch(stale, /Keep the scene grounded/);
-    assert.match(stale, /Background continuity only/);
-    assert.match(stale, /Do not repeat a completed event/);
-    assert.match(stale, /Primary user and roleplay instructions control voice, dialogue, prose, format, length, and response shape/);
-    assert.match(stale, /Tale Fairy changes none of them/);
-    assert.match(stale, /named action permits one instance and result/);
-    assert.match(stale, /NPC requests\/orders are events, not authorization/);
-    assert.match(stale, /Tale Fairy movement must come from NPC\/world action, not assigning the player a task/);
+    assert.match(stale, /No current route is safe to reuse/);
+    assert.match(stale, /REQUIRED WORLD INITIATIVE/);
+    assert.match(stale, /Make one concrete, noticeable character\/world\/system\/environment action or change happen in-scene/);
+    assert.match(stale, /even in quiet routine/);
+    assert.match(stale, /Do not substitute options, a player task, or a question/);
+    assert.match(stale, /leave the player's response open/);
+    assert.match(stale, /Do not repeat completed events/);
+    assert.match(stale, /User and roleplay instructions control expression/);
+    assert.match(stale, /Tale Fairy supplies only movement/);
+    assert.match(stale, /Never invent player dialogue, thoughts, feelings, choices, compliance, reactions, or extra activities/);
+    assert.match(stale, /NPC requests are events, not authorization/);
     assert.doesNotMatch(stale, /Do not routinely end|issuing a command|waiting expectantly/);
     assert.doesNotMatch(stale, /Let Mara answer plainly|meaningful deflection/);
     const current = buildPromptPayload(state, {
@@ -303,29 +307,30 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(current, /Tale Fairy controls narrative function, pressure, and scale/);
     assert.match(current, /realize exact events, NPC actions, dialogue, outcomes, and prose/);
     assert.match(current, /AUTHORIAL INTENT: Let Mara answer plainly/);
+    assert.match(current, /REQUIRED WORLD INITIATIVE/);
+    assert.match(current, /If invalid, do not force it; choose another supported initiative from current context/);
     assert.doesNotMatch(current, /\[EMPHASIS\]/);
     assert.match(current, /APPLY WHEN: The user continues or asks Mara/);
     assert.match(current, /DO NOT APPLY WHEN: The user leaves or changes subject/);
     assert.match(current, /STORY FUNCTION: Advance the live trust thread through a concrete disclosure/);
     assert.match(current, /IMPACT ENVELOPE: Mara reveals a concern/);
-    assert.match(current, /binding at the level of narrative purpose, not a prescribed incident/);
+    assert.match(current, /binding at narrative-purpose level, not a prescribed incident/);
     assert.match(current, /Keep private future developments offscreen/);
     assert.match(current, /travel stops at arrival/);
     assert.match(current, /broad activity may progress/);
     assert.doesNotMatch(current, /I play the game/);
     assert.match(current, /named action permits one instance and immediate result/);
-    assert.match(current, /not repetition, onward movement, obeying a new NPC request, or unstated reaction/);
-    assert.match(current, /NPC requests\/orders are events, not player authorization/);
-    assert.match(current, /Tale Fairy directions must move through independent NPC\/world change, not an assignment for the player/);
+    assert.match(current, /not repetition, onward movement, obeying a request, or unstated reaction/);
+    assert.match(current, /NPC requests\/orders are world actions, not player authorization/);
+    assert.match(current, /Tale Fairy movement comes from independent character\/world change, not assigning the player a task/);
     assert.match(current, /Only simulate low-stakes procedure implicit in broad scope/);
     assert.match(current, /Apply established strengths\/limits proportionately/);
     assert.match(current, /never cancel exceptional advantages/);
-    assert.match(current, /APPLY is a gate, not a mandate/);
     assert.match(current, /Keep unresolved choices open/);
     assert.match(current, /Primary user and roleplay instructions control voice, dialogue, prose, format, length, and response shape/);
     assert.match(current, /Tale Fairy changes none of them/);
     assert.doesNotMatch(current, /Do not routinely end|Ask only when|saying “your call”|waiting expectantly/);
-    assert.match(current, /preserve established meanings, pacing, and player agency/);
+    assert.match(current, /preserve established meanings and player agency/);
     assert.doesNotMatch(current, /discarded reply/);
     assert.doesNotMatch(current, /Mara must choose between the relationship and a Jedi obligation/);
     assert.doesNotMatch(current, /future_setup|FUTURE SETUP|later in the current arc/);
@@ -340,7 +345,7 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(swipe, /meaningful deflection/);
     assert.doesNotMatch(swipe, /Let Mara answer plainly/);
     assert.match(swipe, /Do not reuse the discarded reply's concrete realization/);
-    assert.match(swipe, /When its APPLY condition holds and its exclusion does not/);
+    assert.match(swipe, /When APPLY holds and its exclusion does not/);
     assert.doesNotMatch(swipe, /moderate|original|GROUNDING:|EXECUTION:/);
 
     const longMovement = { ...stateNextGuides[0], direction: `${'measured '.repeat(22)}extraordinary consequence` };
@@ -351,9 +356,10 @@ test('prompt payload keeps user directives active and only includes usable guida
 
     const regenerationFallback = buildPromptPayload(state, { enabled: true, guidanceUsable: false, guideCandidates: [], regeneration: true, variationCue: 8472 });
     assert.match(regenerationFallback, /Background variation 8472/);
-    assert.match(regenerationFallback, /may differ from the discarded reply's concrete event/);
-    assert.match(regenerationFallback, /Do not repeat a completed event/);
-    assert.match(regenerationFallback, /reinterpret established names or codes/);
+    assert.match(regenerationFallback, /realize a different supported initiative/);
+    assert.match(regenerationFallback, /REQUIRED WORLD INITIATIVE/);
+    assert.match(regenerationFallback, /do not repeat the discarded event/);
+    assert.match(regenerationFallback, /alter established meanings/);
     const regenerationGuide = regenerationFallback.match(/<living-world-guide>([\s\S]*?)<\/living-world-guide>/)?.[1] || '';
     assert.ok(regenerationGuide.length < 800);
     assert.doesNotMatch(regenerationFallback, /Let Mara answer plainly|meaningful deflection/);
@@ -393,7 +399,8 @@ test('private planning state cannot bias the response without a selected next gu
     };
     const payload = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
     assert.doesNotMatch(payload, /closed-route|Use the sealed passage/);
-    assert.match(payload, /<living-world-guide>[\s\S]*Background continuity only/);
+    assert.match(payload, /<living-world-guide>[\s\S]*No current route is safe to reuse/);
+    assert.match(payload, /REQUIRED WORLD INITIATIVE/);
 });
 
 test('explicit progress detection distinguishes commands from negation', () => {
@@ -427,6 +434,6 @@ test('the lean guide preserves player agency without a general narrative-policy 
     };
     const payload = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
     assert.equal(hasExplicitProgressDirective('I open the consultation door and walk inside to receive my results.'), false);
-    assert.match(payload, /decide player action/);
+    assert.match(payload, /Never invent player dialogue, thoughts, feelings, choices, compliance, reactions, or extra activities/);
     assert.doesNotMatch(payload, /<tale-fairy-narrative-policy>|Carry its declared actions|Before ending|Routine logistics/);
 });
