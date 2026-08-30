@@ -1,5 +1,5 @@
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 25;
+export const STATE_VERSION = 26;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -286,9 +286,12 @@ export function normalizeState(input = {}) {
     // v21 rebuilt event-prescriptive guides, v22 added a dramatic score, and
     // v23 replaces that style-adjacent score with causal narrative control;
     // v24 separates layered authorial intent from concrete scene realization;
-    // v25 rebuilds canon after embedded OOC assertions became auditable.
+    // v25 rebuilds canon after embedded OOC assertions became auditable;
+    // v26 rebuilds plans whose recovery could clone one local beat across
+    // every horizon or misclassify that beat as an offscreen event.
     const unsafePlannerUpgrade = inputVersion > 0 && inputVersion < 18;
-    const movementUpgrade = inputVersion > 0 && inputVersion < 24;
+    const movementUpgrade = inputVersion > 0 && inputVersion < STATE_VERSION;
+    const recoveryUpgrade = inputVersion > 0 && inputVersion < 26;
     const state = {
         ...base,
         ...value,
@@ -300,26 +303,26 @@ export function normalizeState(input = {}) {
         narrativeLayers: normalizeNarrativeLayers(value.narrativeLayers),
         storyFrame: { ...base.storyFrame, ...(value.storyFrame || {}) },
         directorScore: normalizeDirectorScore(value.directorScore),
-        objectives: cap(value.objectives, MAX_OBJECTIVES).map(normalizeObjective).filter(item => item.title || item.detail),
+        objectives: recoveryUpgrade ? [] : cap(value.objectives, MAX_OBJECTIVES).map(normalizeObjective).filter(item => item.title || item.detail),
         entities: cap(value.entities).map(normalizeEntity).filter(item => item.name),
         possibilities: cap(value.possibilities, MAX_POSSIBILITIES).map(normalizePossibility).filter(item => item.description),
         pathways: cap(value.pathways, MAX_PATHWAYS).map(normalizePathway).filter(item => item.id && item.direction && item.when),
         nextGuides: movementUpgrade ? [] : (Array.isArray(value.nextGuides) ? value.nextGuides.slice(0, MAX_GUIDES) : []).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen && item.causalRole && item.worldDelta && item.basis),
         activeBeat: normalizeBeat(value.activeBeat),
         beatHistory: cap(value.beatHistory, 6).map(normalizeBeat).filter(beat => beat.objective),
-        planHorizons: normalizePlanHorizons(value.planHorizons),
+        planHorizons: recoveryUpgrade ? base.planHorizons : normalizePlanHorizons(value.planHorizons),
         // Older migrated states have no reliable pre-response canon snapshot.
         // v18 already has one, so retain it until the upgrade pass refreshes it.
         canonConstraints: unsafePlannerUpgrade ? [] : cap(value.canonConstraints).map(item => text(item).slice(0, 500)).filter(Boolean),
         canonBootstrapPending: value.canonBootstrapPending === true || plannerUpgradePending,
         userNotes: cap(value.userNotes).map(normalizeNote).filter(note => note.text),
-        guidance: text(value.guidance).slice(0, 700),
-        lastInject: value.lastInject === true,
+        guidance: recoveryUpgrade ? '' : text(value.guidance).slice(0, 700),
+        lastInject: recoveryUpgrade ? false : value.lastInject === true,
         lastReason: text(value.lastReason).slice(0, 500),
         contextLedger: text(value.contextLedger).slice(0, 3000),
         ledgerMessageCount: Math.max(0, Number(value.ledgerMessageCount) || 0),
         ledgerUpdatedAt: Number(value.ledgerUpdatedAt) || 0,
-        narrativeEvents: cap(value.narrativeEvents, MAX_EVENTS).map(normalizeEvent).filter(event => event.title && event.summary),
+        narrativeEvents: recoveryUpgrade ? [] : cap(value.narrativeEvents, MAX_EVENTS).map(normalizeEvent).filter(event => event.title && event.summary),
         cueAudit: normalizeCueAudit(value.cueAudit),
         lastAnalysisFingerprint: text(value.lastAnalysisFingerprint),
         sourceMessageCount: Math.max(0, Number(value.sourceMessageCount) || 0),
