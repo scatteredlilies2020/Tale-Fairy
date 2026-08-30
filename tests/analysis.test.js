@@ -194,6 +194,8 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /future_setup is private planning state/);
     assert.match(SYSTEM, /it is not the complete future plan/);
     assert.match(SYSTEM, /Other major long-range possibilities remain as conditional objectives and horizons/);
+    assert.match(SYSTEM, /durable trajectory must affect causal selection rather than remain decorative/);
+    assert.match(SYSTEM, /Do not chain HOLD or “no wider change” across successive turns/);
     assert.match(SYSTEM, /high-volume, ultra-compact brainstorming bench/);
     assert.match(SYSTEM, /twelve to eighteen distinct one-clause idea cards/);
     assert.match(SYSTEM, /major setting figure may notice exceptional potential, seek a meeting, recruit, oppose, exploit, protect, or ignore/);

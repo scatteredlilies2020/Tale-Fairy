@@ -275,10 +275,10 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.doesNotMatch(stale, /Keep the scene grounded/);
     assert.match(stale, /No current route is safe to reuse/);
     assert.match(stale, /REQUIRED WORLD INITIATIVE/);
-    assert.match(stale, /Make one concrete, noticeable character\/world\/system\/environment action or change happen in-scene/);
-    assert.match(stale, /even in quiet routine/);
+    assert.match(stale, /Make one noticeable NPC\/world\/environment change in-scene/);
+    assert.match(stale, /even in routine/);
     assert.match(stale, /Do not substitute options, a player task, or a question/);
-    assert.match(stale, /leave the player's response open/);
+    assert.match(stale, /leave response open/);
     assert.match(stale, /Do not repeat completed events/);
     assert.match(stale, /User and roleplay instructions control expression/);
     assert.match(stale, /Tale Fairy supplies only movement/);
@@ -314,6 +314,7 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(current, /DO NOT APPLY WHEN: The user leaves or changes subject/);
     assert.match(current, /STORY FUNCTION: Advance the live trust thread through a concrete disclosure/);
     assert.match(current, /IMPACT ENVELOPE: Mara reveals a concern/);
+    assert.match(current, /long-range influence accumulates/);
     assert.match(current, /binding at narrative-purpose level, not a prescribed incident/);
     assert.match(current, /Keep private future developments offscreen/);
     assert.match(current, /travel stops at arrival/);
