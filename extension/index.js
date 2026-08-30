@@ -14,7 +14,7 @@ import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlErr
 import { compactContinuityPrompt, readContinuityBridge, waitForContinuityBridge } from './continuity.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.24';
+const RUNTIME_VERSION = '0.11.25';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -1239,7 +1239,11 @@ async function resetState() {
     const context = currentContext();
     stopAnalysis();
     pendingRequestVerification = null;
-    context.updateChatMetadata(clearState(context.chatMetadata));
+    // SillyTavern merges chat metadata by default. Omitting STATE_KEY from a
+    // normal update therefore leaves the previous Tale Fairy state intact.
+    // Replacement mode removes only our key from the complete current
+    // metadata snapshot while preserving every other chat/extension field.
+    context.updateChatMetadata(clearState(context.chatMetadata), true);
     clearPromptManagerInjection(promptManager);
     setExtensionPrompt(PROMPT_KEY, '', 0, 0);
     await context.saveMetadata?.();
