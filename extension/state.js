@@ -1,5 +1,5 @@
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 30;
+export const STATE_VERSION = 31;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -293,11 +293,12 @@ export function normalizeState(input = {}) {
     // also preserves upstream plans through incomplete provider output and
     // makes depicted chronology an explicit planning boundary; v29 stops
     // generated status summaries from manufacturing elapsed time; v30 strips
-    // plain leading statboxes and discards local state they may have tainted.
+    // plain leading statboxes and discards local state they may have tainted;
+    // v31 excludes fenced code and XML/HTML-style blocks from chat evidence.
     const unsafePlannerUpgrade = inputVersion > 0 && inputVersion < 18;
     const movementUpgrade = inputVersion > 0 && inputVersion < STATE_VERSION;
     const recoveryUpgrade = inputVersion > 0 && inputVersion < 26;
-    const chronologyAuditUpgrade = inputVersion > 0 && inputVersion < 30;
+    const chronologyAuditUpgrade = inputVersion > 0 && inputVersion < 31;
     const normalizedLayers = normalizeNarrativeLayers(value.narrativeLayers);
     const state = {
         ...base,

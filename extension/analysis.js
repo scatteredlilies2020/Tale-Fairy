@@ -790,7 +790,7 @@ function explicitCanonClaims(messages = []) {
     const claims = [];
     for (const message of messages) {
         if (!message?.is_user) continue;
-        const claim = metaDirectiveText(message?.mes);
+        const claim = metaDirectiveText(stripStructuredEvidence(message?.mes));
         if (isExplicitDurableCanonClaim(claim) && !claims.includes(claim)) claims.push(claim.slice(0, 500));
     }
     return claims.slice(-12);
@@ -928,8 +928,21 @@ function stripLeadingGeneratedStatusSummary(value) {
     return sections.slice(1).join('\n\n');
 }
 
+function stripStructuredEvidence(value) {
+    let cleaned = String(value || '')
+        .replace(/```[\s\S]*?```/gu, ' ')
+        .replace(/~~~[\s\S]*?~~~/gu, ' ');
+    const pairedElement = /<([A-Za-z_][\w:.-]*)(?:\s[^<>]*?)?>[\s\S]*?<\/\1\s*>/giu;
+    for (let pass = 0; pass < 8; pass++) {
+        const next = cleaned.replace(pairedElement, ' ');
+        if (next === cleaned) break;
+        cleaned = next;
+    }
+    return cleaned.replace(/<[A-Za-z_][\w:.-]*(?:\s[^<>]*?)?\s*\/>/gu, ' ');
+}
+
 function compactMessageContent(value, limit, { latest = false } = {}) {
-    const cleaned = stripLeadingGeneratedStatusSummary(value)
+    const cleaned = stripStructuredEvidence(stripLeadingGeneratedStatusSummary(value))
         .replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/giu, ' ')
         .replace(/<stat>[\s\S]*?<\/stat>/giu, ' ')
         .replace(/<background_updates>[\s\S]*?<\/background_updates>/giu, ' ')

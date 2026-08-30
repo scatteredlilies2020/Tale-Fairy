@@ -10,9 +10,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.49');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.49');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.49');
+    assert.equal(manifest.version, '0.11.50');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.50');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.50');
 });
 
 test('injection sends layered authorial control while concrete realization and future outcomes stay private', () => {

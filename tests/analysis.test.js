@@ -910,6 +910,14 @@ test('planner excerpts strip plain generated statboxes but retain the depicted s
     assert.match(prompt.messages[0].content, /walk home and then dinner decisions, in that order/);
 });
 
+test('planner evidence ignores fenced code and paired XML blocks', () => {
+    const message = `Visible beginning.\n\n\`\`\`status\nTime = 9:00 PM\nDinner completed.\n\`\`\`\n<scene_state><location>False room</location><activity>False event</activity></scene_state>\n<self-closing value="ignored" />\nVisible ending.`;
+    const prompt = JSON.parse(buildAnalysisPrompt([{ mes: message, is_user: false }], defaultState()));
+    assert.doesNotMatch(prompt.messages[0].content, /9:00 PM|Dinner completed|False room|False event|self-closing|scene_state/);
+    assert.match(prompt.messages[0].content, /Visible beginning/);
+    assert.match(prompt.messages[0].content, /Visible ending/);
+});
+
 test('empty optional context is omitted from the planner payload', () => {
     const prompt = JSON.parse(buildAnalysisPrompt([{ mes: 'Tea', is_user: true }], defaultState()));
     assert.equal('user_instruction' in prompt, false);
