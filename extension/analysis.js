@@ -331,6 +331,16 @@ const STYLE_DIRECTIVE = /\b(?:mood|tone|warmth|playful|prose|sentence|rhythm|ver
 const VACUOUS_CAUSAL_ROLE = /^\s*(?:make|keep)\b[\s\S]*\b(?:interesting|engaging|good|better)\b[.!?]*\s*$/iu;
 const EMPTY_PLANNING_LANGUAGE = /(?:^\s*(?:unknown|uncertain|unresolved|tbd|to be determined)\s*[.!]?\s*$|planner classification was incomplete|overall story identity remains unresolved|current local activity established by the conversation|active social and practical situation surrounding the local activity|established wider world and its ongoing processes|broad open-ended trajectory remains provisional|use the established setting identity rather than generic genre decoration)/iu;
 
+function normalizePossibilityForce(value) {
+    const force = asString(value).trim().toLowerCase();
+    if (['light', 'moderate', 'strong'].includes(force)) return force;
+    if (/^(?:low|weak|soft|faint|minimal|minor|latent|tentative)$/u.test(force)) return 'light';
+    if (/^(?:high|firm|intense|major|foreground|likely)$/u.test(force)) return 'strong';
+    // Force is a compact display weight, not narrative evidence. A provider's
+    // unfamiliar label must not discard an otherwise usable possibility bench.
+    return 'moderate';
+}
+
 function usablePlanningText(value) {
     const text = asString(value).trim();
     return text && !EMPTY_PLANNING_LANGUAGE.test(text) ? text : '';
@@ -418,6 +428,7 @@ export function repairAnalysisResult(result, { expectedOfferedIds = [] } = {}) {
         possibilities: asArray(result.possibilities).map((item, index) => ({
             ...item,
             horizon: oneOf(item?.horizon, ['local', 'near', 'mid', 'far', 'wildcard'], index < 3 ? 'local' : index < 6 ? 'near' : index < 9 ? 'mid' : index < 13 ? 'far' : 'wildcard'),
+            force: normalizePossibilityForce(item?.force),
         })),
         canon_constraints: uniqueStrings(result.canon_constraints),
         ledger: asString(result.ledger),

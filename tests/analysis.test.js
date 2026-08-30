@@ -51,6 +51,25 @@ test('planner validation rejects empty or incomplete structured output', () => {
     assert.equal(validateAnalysisResult({ ...requiredPlanning, narrative_layers: { ...narrativeLayers, temporal_scope: 'turn' } }).valid, false);
 });
 
+test('planner repairs provider-specific possibility force labels without discarding the bench', () => {
+    const result = requireValidAnalysisResult({
+        ...requiredPlanning,
+        scene: { status: 'active', activity: 'Tea', pace: 'slow', intent: 'Talk', location: 'home', time: 'evening', loop: false },
+        objectives: [],
+        entities: [],
+        possibilities: [
+            { description: 'A faint concern surfaces.', horizon: 'local', conditions: [], force: 'low' },
+            { description: 'An obligation complicates the week.', horizon: 'near', conditions: [], force: 'medium' },
+            { description: 'A major faction takes notice.', horizon: 'far', conditions: [], force: 'high' },
+            { description: 'An unfamiliar alternate path remains possible.', horizon: 'wildcard', conditions: [], force: 'speculative' },
+        ],
+        guidance: 'Continue with one causally supported development.',
+        inject: true,
+        reason: 'The scene supports forward movement.',
+    });
+    assert.deepEqual(result.possibilities.map(item => item.force), ['light', 'moderate', 'strong', 'moderate']);
+});
+
 test('finalization never rejects authored names and deterministically retains explicit OOC canon', () => {
     const evidence = JSON.stringify({ required_canon_claims: [
         'I have an abnormally high Midichlorian count, probably one of the highest in history.',
