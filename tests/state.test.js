@@ -309,7 +309,7 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(current, /realize exact events, NPC actions, dialogue, outcomes, and prose/);
     assert.match(current, /AUTHORIAL INTENT: Let Mara answer plainly/);
     assert.match(current, /BEAT REALIZATION/);
-    assert.match(current, /If invalid, do not force it; choose another supported initiative from current context/);
+    assert.match(current, /If invalid, do not force it; choose another supported beat function from current context/);
     assert.doesNotMatch(current, /\[EMPHASIS\]/);
     assert.match(current, /APPLY WHEN: The user continues or asks Mara/);
     assert.match(current, /DO NOT APPLY WHEN: The user leaves or changes subject/);
@@ -358,7 +358,7 @@ test('prompt payload keeps user directives active and only includes usable guida
 
     const regenerationFallback = buildPromptPayload(state, { enabled: true, guidanceUsable: false, guideCandidates: [], regeneration: true, variationCue: 8472 });
     assert.match(regenerationFallback, /Background variation 8472/);
-    assert.match(regenerationFallback, /realize a different supported initiative/);
+    assert.match(regenerationFallback, /realize a different supported beat function/);
     assert.match(regenerationFallback, /BEAT REALIZATION/);
     assert.match(regenerationFallback, /do not repeat the discarded event/);
     assert.match(regenerationFallback, /alter established meanings/);

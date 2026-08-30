@@ -14,7 +14,7 @@ import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlErr
 import { compactContinuityPrompt, readContinuityBridge, waitForContinuityBridge } from './continuity.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.42';
+const RUNTIME_VERSION = '0.11.43';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -1111,7 +1111,7 @@ function scratchpadList(items, formatter, fallback) {
 }
 
 function readableScratchpadGuidance(state) {
-    let value = String(state.guidance || 'Begin with a concrete world response to the player’s first action; preserve player agency and revise every route as evidence arrives.');
+    let value = String(state.guidance || 'Choose a concrete beat from current evidence; deepen the present activity unless a supported horizon or due event justifies wider change.');
     const routes = [...(state.pathways || []), ...(state.nextGuides || [])]
         .filter(item => item?.id && item?.direction)
         .sort((a, b) => String(b.id).length - String(a.id).length);
@@ -1167,7 +1167,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         state.scene.time && `Time: ${state.scene.time}`,
         state.scene.loop && 'Pattern: the scene may be looping or repeating',
     ].filter(Boolean).join('\n');
-    scratchpadText(board, 'scratchpad-scene', generatedValue(scene), boardFallback('Immediate action: Await the first declared player action.\nLocal activity: Opening situation [transition]\nSituation: Establish the initial people, place, and pressures from the first story evidence.\nWider world: Let the setting begin acting as soon as its first concrete detail appears.\nDurable trajectory: Grow an open-ended path from the player’s choices without deciding those choices.', 'No generated scene state yet.'));
+    scratchpadText(board, 'scratchpad-scene', generatedValue(scene), boardFallback('Immediate action: Await the first declared player action.\nLocal activity: Opening situation [transition]\nSituation: Establish the initial people, place, and pressures from the first story evidence.\nWider world: Track only pressures with a credible route toward the scene.\nDurable trajectory: Grow an open-ended path from the player’s choices without deciding those choices.', 'No generated scene state yet.'));
 
     const frame = state.storyFrame.frame && state.storyFrame.frame !== 'unknown'
         ? `${state.storyFrame.frame}${state.storyFrame.confidence ? ` · ${state.storyFrame.confidence} confidence` : ''}${state.storyFrame.basis ? `\nBasis: ${state.storyFrame.basis}` : ''}`
@@ -1189,29 +1189,38 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         score.meaningfulAim && `Meaningful aim: ${score.meaningfulAim}`,
         score.basis && `Basis: ${score.basis}`,
     ].filter(Boolean).join('\n') : '';
-    scratchpadText(board, 'scratchpad-director-score', generatedValue(directorScore), boardFallback('Overall story: An open-ended character story that will specialize around the first concrete action.\nCurrent scene function: Establish a playable situation while preserving every player choice.\nSetting: The opening location as an active source of people, opportunities, and consequences.\nCausal tempo: SEED\nNear-term arc: Turn the first established detail into several revisable routes.\nPrivate future setup: Keep one distant transformation available without making it canon.\nMeaningful aim: Change knowledge, relationships, pressures, or available choices without controlling the player.', 'No generated director plan yet.'));
+    scratchpadText(board, 'scratchpad-director-score', generatedValue(directorScore), boardFallback('Overall story: An open-ended character story that will specialize around the first concrete action.\nCurrent scene function: Establish and deepen a playable situation while preserving every player choice.\nSetting: The opening location as a source of sensory context and causally supported possibilities.\nCausal tempo: HOLD\nNear-term arc: Let current evidence determine whether to sustain, advance, reveal, introduce, or pay off.\nPrivate future setup: Keep one distant transformation available without making it canon.\nMeaningful aim: Change knowledge, relationships, pressures, or available choices without controlling the player.', 'No generated director plan yet.'));
 
     const pathwayLines = (state.pathways || []).map(item => [
         `${item.id} [${item.status}${item.horizon ? ` · ${item.horizon}` : ''}${item.change !== 'keep' ? ` · ${item.change}` : ''}] — ${item.direction}`,
         `Use when: ${item.when}`,
         item.responseBias && `If chosen: ${item.responseBias}`,
         item.conditions?.length && `Needs: ${item.conditions.join('; ')}`,
+        item.reason && `Basis: ${item.reason}`,
     ].filter(Boolean).join('\n'));
-    scratchpadText(board, 'scratchpad-pathways', generatedValue(pathwayLines.join('\n\n')), boardFallback('opening-local [foreground · first scene] — Develop the first declared activity through NPC or world response.\nUse when: The first story action establishes a local situation.\n\nopening-world [available · early scenes] — Let one setting-compatible person, process, or opportunity begin moving independently.\nUse when: The setting provides a credible causal route.', 'No generated pathways yet.'));
+    scratchpadText(board, 'scratchpad-pathways', generatedValue(pathwayLines.join('\n\n')), boardFallback('opening-depth [foreground · first scene] — Develop the first declared activity through its own actions, sensory state, and immediate consequences.\nUse when: No wider development has a supported route into the beat.\n\nopening-horizon [available · early scenes] — Prepare a setting-compatible reaction, process, or opportunity.\nUse when: Current evidence provides a credible causal bridge.', 'No generated pathways yet.'));
 
     const guideLines = (state.nextGuides || []).map((item, index) => [
-        `${index === 0 ? 'Authorial direction' : `Alternative ${index + 1}`} · ${item.id} [${item.strength}] — ${item.direction}`,
+        `${index === 0 ? 'Preferred current beat' : `Alternative ${index + 1}`} · ${item.id} [${item.strength}] — ${item.direction}`,
         `Impact envelope: ${item.worldDelta}`,
         `Grounding: ${item.origin} — ${item.basis}`,
         `Use if: ${item.useWhen}`,
         `Drop if: ${item.dropWhen}`,
         item.causalRole && `Causal role: ${item.causalRole}`,
+        item.sourcePathways?.length && `Source pathways: ${item.sourcePathways.join('; ')}`,
+        item.causalEventIds?.length && `Causal events: ${item.causalEventIds.join('; ')}`,
+        item.disclosure && item.disclosure !== 'none' && `Disclosure: ${item.disclosure}`,
+        item.reason && `Why ranked here: ${item.reason}`,
     ].filter(Boolean).join('\n'));
-    scratchpadText(board, 'scratchpad-next-guides', generatedValue(guideLines.join('\n\n')), boardFallback('Authorial direction · opening-response [moderate] — Let the first established action receive a concrete NPC or world response.\nImpact envelope: The situation changes while every consequential player choice remains open.\n\nAlternative 2 · opening-depth [light] — Deepen the current activity through a relevant detail or relationship reaction.\nImpact envelope: The scene gains meaning without forcing escalation.\n\nAlternative 3 · opening-seed [light] — Seed one setting-compatible route for later development.\nImpact envelope: A future option becomes possible, not promised.', 'No generated next guides yet.'));
+    scratchpadText(board, 'scratchpad-next-guides', generatedValue(guideLines.join('\n\n')), boardFallback('Preferred current beat · opening-depth [moderate] — Deepen the first established activity through its own concrete process and sensory state.\nImpact envelope: The activity progresses while every consequential player choice remains open.\n\nAlternative 2 · opening-reaction [light] — Show a reaction or consequence only if current evidence supports it.\nImpact envelope: The scene gains meaning without forced escalation.\n\nAlternative 3 · opening-horizon [light] — Prepare one setting-compatible route without inserting it into the scene.\nImpact envelope: A future option becomes possible, not promised.', 'No generated next guides yet.'));
 
     const horizonLines = (state.planHorizons?.items || []).map((item, index, items) => {
         const change = item.change && item.change !== 'keep' ? ` · ${item.change}` : '';
-        return `${item.timeframe || 'Future'} [${item.stability || 'adaptive'} · ${horizonInfluence(index, items.length)} influence${change}] — ${item.direction}`;
+        return [
+            `${item.timeframe || 'Future'} [${item.stability || 'adaptive'} · ${horizonInfluence(index, items.length)} influence${change}] — ${item.direction}`,
+            item.conditions?.length && `Needs: ${item.conditions.join('; ')}`,
+            item.reason && `Basis: ${item.reason}`,
+        ].filter(Boolean).join('\n');
     });
     const deviation = state.planHorizons?.deviation;
     if (deviation?.level && deviation.level !== 'none') horizonLines.push(`Deviation: ${deviation.level}${deviation.reason ? ` — ${deviation.reason}` : ''}`);
@@ -1229,7 +1238,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
             : `Why: ${state.lastReason}`),
         auditText,
     ].filter(Boolean).join('\n\n');
-    scratchpadText(board, 'scratchpad-guidance', generatedValue(decision), boardFallback('Begin with a concrete world response to the player’s first action; preserve player agency and revise every route as evidence arrives.', 'No generated response guidance yet.'));
+    scratchpadText(board, 'scratchpad-guidance', generatedValue(decision), boardFallback('Choose the current beat from present evidence. Deepen the authorized activity unless a selected horizon or due event provides a concrete reason for wider change.', 'No generated response guidance yet.'));
 
     const chatId = String(currentContext().getCurrentChatId?.() || '');
     const verification = pendingRequestVerification?.chatId === chatId
@@ -1292,8 +1301,11 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     scratchpadText(board, 'scratchpad-events', analyzed ? scratchpadList(state.narrativeEvents, item => {
         if (!item?.title) return '';
         const stateLabels = [item.scope, item.epistemicStatus, item.disclosure, item.status].filter(Boolean).join(' · ');
+        const timing = [item.timing, item.dueState].filter(Boolean).join(' · ');
+        const cause = item.cause ? `\n  Cause: ${item.cause}` : '';
+        const requirements = Array.isArray(item.requirements) && item.requirements.length ? `\n  Needs: ${item.requirements.join('; ')}` : '';
         const effects = Array.isArray(item.consequences) && item.consequences.length ? `\n  Consequences: ${item.consequences.join('; ')}` : '';
-        return `${item.title}${stateLabels ? ` [${stateLabels}]` : ''}${item.summary ? ` — ${item.summary}` : ''}${effects}${item.basis ? `\n  Basis: ${item.basis}` : ''}`;
+        return `${item.title}${stateLabels ? ` [${stateLabels}]` : ''}${item.summary ? ` — ${item.summary}` : ''}${timing ? `\n  Timing: ${timing}` : ''}${cause}${requirements}${effects}${item.basis ? `\n  Basis: ${item.basis}` : ''}`;
     }, '') : '', boardFallback('Opening development [offscreen · possible · hidden · latent] — The first concrete setting detail can begin an independent NPC or world process.', 'No generated narrative events yet.'));
 
     scratchpadText(board, 'scratchpad-notes', scratchpadList(state.userNotes, item => item?.text ? `[${String(item.kind || 'note').toUpperCase()}] ${item.text}` : '', ''), 'No user notes.');

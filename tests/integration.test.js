@@ -10,9 +10,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.42');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.42');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.42');
+    assert.equal(manifest.version, '0.11.43');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.43');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.43');
 });
 
 test('injection sends layered authorial control while concrete realization and future outcomes stay private', () => {
@@ -242,6 +242,11 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(template, /data-setting="injection-depth"[^>]*value="1"/);
     assert.match(template, /data-setting="injection-role"/);
     assert.match(template, /Planner Scratchpad/);
+    assert.match(template, /Current beat and alternatives/);
+    assert.match(template, /first entry is the preferred current beat/);
+    assert.match(template, /Private planner summary/);
+    assert.match(template, /not copied wholesale into the roleplay request/);
+    assert.match(template, /Timing, readiness, causes, and requirements/);
     assert.match(template, /Use Continuity context when available/);
     assert.match(template, /data-role="scratchpad-continuity"/);
     assert.match(template, /data-role="scratchpad-scene"/);
@@ -260,6 +265,12 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(template, /No generated planning horizons yet\./);
     assert.match(source, /const generatedValue = value => analyzed \? value : ''/);
     assert.match(source, /No generated narrative events yet\./);
+    assert.match(source, /Preferred current beat/);
+    assert.match(source, /Source pathways:/);
+    assert.match(source, /Causal events:/);
+    assert.match(source, /Why ranked here:/);
+    assert.match(source, /Timing:/);
+    assert.match(source, /Cause:/);
     assert.match(template, /AI-assisted instruction/);
     assert.match(template, /Tale Fairy will understand whether this is a suggestion, correction, canon detail, or hard exclusion/);
     assert.doesNotMatch(template, /data-setting="note-kind"/);

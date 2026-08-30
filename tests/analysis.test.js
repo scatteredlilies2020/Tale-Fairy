@@ -496,13 +496,14 @@ test('planner modes provide materially distinct intervention policies', () => {
     assert.match(prompts.balanced.mode_instruction, /Maintain distinct supported possibilities/);
     assert.match(prompts.balanced.mode_instruction, /Moderate intervention/);
     assert.match(prompts.balanced.mode_instruction, /active co-author, not a continuity clerk/);
-    assert.match(prompts.balanced.mode_instruction, /introduce one focused setting-compatible/);
+    assert.match(prompts.balanced.mode_instruction, /selected horizon, or a due event/);
+    assert.match(prompts.balanced.mode_instruction, /deepen the authorized activity and advance one compatible condition privately/);
     assert.match(prompts.fun.mode_instruction, /Search boldly across distinct actors and live threads/);
     assert.match(prompts.fun.mode_instruction, /Prefer the strongest causally ready function/);
-    assert.match(prompts.fun.mode_instruction, /do not prescribe which mechanism/);
     assert.match(prompts.fun.mode_instruction, /never pacing or control of the player/);
-    assert.match(prompts.fun.mode_instruction, /actively invent compatible causes/);
-    assert.match(prompts.fun.mode_instruction, /multiple interacting actors, pressures, opportunities, or consequences/);
+    assert.match(prompts.fun.mode_instruction, /may invent compatible routes, actors, pressures, opportunities, or consequences in private causal state/);
+    assert.match(prompts.fun.mode_instruction, /may introduce one onstage only when/);
+    assert.match(prompts.fun.mode_instruction, /without manufacturing an intrusion/);
     assert.notEqual(prompts.light.mode_instruction, prompts.balanced.mode_instruction);
     assert.notEqual(prompts.balanced.mode_instruction, prompts.fun.mode_instruction);
 });
