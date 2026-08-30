@@ -14,7 +14,7 @@ import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlErr
 import { compactContinuityPrompt, readContinuityBridge, waitForContinuityBridge } from './continuity.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.25';
+const RUNTIME_VERSION = '0.11.26';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -665,13 +665,17 @@ function cancelRunningAnalysis(reason, status) {
     return true;
 }
 
-function stopAnalysis() {
+function interruptAnalysis(reason, status) {
     generationGuideSelection = null;
     analysisStopSequence++;
     generationRevision++;
-    if (!cancelRunningAnalysis('Tale Fairy analysis stopped by the user.', 'Stopped')) {
-        renderAnalysisActivity('Stopped', false);
+    if (!cancelRunningAnalysis(reason, status)) {
+        renderAnalysisActivity(status, false);
     }
+}
+
+function stopAnalysis() {
+    interruptAnalysis('Tale Fairy analysis stopped by the user.', 'Stopped');
 }
 
 function parseAnalysisResponse(value, evidence = '') {
@@ -1235,9 +1239,13 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     scratchpadText(board, 'scratchpad-notes', scratchpadList(state.userNotes, item => item?.text ? `[${String(item.kind || 'note').toUpperCase()}] ${item.text}` : '', ''), 'No user notes.');
 }
 
-async function resetState() {
+async function resetState({ rebuilding = false } = {}) {
     const context = currentContext();
-    stopAnalysis();
+    if (rebuilding) {
+        interruptAnalysis('A Full Rebuild replaced the previous Tale Fairy analysis.', 'Clearing old guide…');
+    } else {
+        stopAnalysis();
+    }
     pendingRequestVerification = null;
     // SillyTavern merges chat metadata by default. Omitting STATE_KEY from a
     // normal update therefore leaves the previous Tale Fairy state intact.
@@ -1246,16 +1254,16 @@ async function resetState() {
     context.updateChatMetadata(clearState(context.chatMetadata), true);
     clearPromptManagerInjection(promptManager);
     setExtensionPrompt(PROMPT_KEY, '', 0, 0);
-    await context.saveMetadata?.();
-    renderAnalysisActivity('Guide state deleted', false);
     renderBoard(defaultState());
+    renderAnalysisActivity(rebuilding ? 'Old guide cleared · saving…' : 'Guide state deleted', rebuilding);
+    await context.saveMetadata?.();
 }
 
 async function rebuildGuideState() {
     // Run the actual Delete guide state operation first so these actions cannot
     // drift apart. A failed rebuild must leave the explicitly deleted state empty.
-    await resetState();
-    renderAnalysisActivity('Guide state deleted · rebuilding', true);
+    await resetState({ rebuilding: true });
+    renderAnalysisActivity('Old guide cleared · starting planner…', true);
     return analyzeNow({ force: true, rebuild: true, waitForContinuity: true });
 }
 
