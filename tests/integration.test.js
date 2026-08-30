@@ -10,9 +10,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.43');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.43');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.43');
+    assert.equal(manifest.version, '0.11.44');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.44');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.44');
 });
 
 test('injection sends layered authorial control while concrete realization and future outcomes stay private', () => {
@@ -271,6 +271,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /Why ranked here:/);
     assert.match(source, /Timing:/);
     assert.match(source, /Cause:/);
+    assert.match(source, /No independent causal event is currently supported/);
     assert.match(template, /AI-assisted instruction/);
     assert.match(template, /Tale Fairy will understand whether this is a suggestion, correction, canon detail, or hard exclusion/);
     assert.doesNotMatch(template, /data-setting="note-kind"/);

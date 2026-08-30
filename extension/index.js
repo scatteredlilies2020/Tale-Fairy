@@ -14,7 +14,7 @@ import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlErr
 import { compactContinuityPrompt, readContinuityBridge, waitForContinuityBridge } from './continuity.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.43';
+const RUNTIME_VERSION = '0.11.44';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -1306,7 +1306,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         const requirements = Array.isArray(item.requirements) && item.requirements.length ? `\n  Needs: ${item.requirements.join('; ')}` : '';
         const effects = Array.isArray(item.consequences) && item.consequences.length ? `\n  Consequences: ${item.consequences.join('; ')}` : '';
         return `${item.title}${stateLabels ? ` [${stateLabels}]` : ''}${item.summary ? ` — ${item.summary}` : ''}${timing ? `\n  Timing: ${timing}` : ''}${cause}${requirements}${effects}${item.basis ? `\n  Basis: ${item.basis}` : ''}`;
-    }, '') : '', boardFallback('Opening development [offscreen · possible · hidden · latent] — The first concrete setting detail can begin an independent NPC or world process.', 'No generated narrative events yet.'));
+    }, '') : '', boardFallback('No independent causal event is currently supported.', 'No generated narrative events yet.'));
 
     scratchpadText(board, 'scratchpad-notes', scratchpadList(state.userNotes, item => item?.text ? `[${String(item.kind || 'note').toUpperCase()}] ${item.text}` : '', ''), 'No user notes.');
 }

@@ -199,6 +199,8 @@ export function validateAnalysisResult(result) {
             if (!['fluid', 'adaptive', 'stable', 'slow'].includes(horizon?.stability)) errors.push(`plan_horizons.items[${index}].stability is invalid`);
             if (!['keep', 'adjust', 'replace'].includes(horizon?.change)) errors.push(`plan_horizons.items[${index}].change must be keep, adjust, or replace`);
         }
+        const horizonDirections = (Array.isArray(horizons.items) ? horizons.items : []).map(item => String(item?.direction || '').trim().toLocaleLowerCase());
+        if (new Set(horizonDirections).size !== horizonDirections.length) errors.push('plan_horizons.items must not clone one direction across multiple timeframes');
         const farthest = Array.isArray(horizons.items) ? horizons.items.at(-1) : null;
         if (farthest && farthest.stability !== 'slow') errors.push('the highest plan horizon must use slow stability');
         if (!horizons.deviation || !['none', 'minor', 'major'].includes(horizons.deviation.level) || typeof horizons.deviation.reason !== 'string') {
@@ -515,16 +517,24 @@ export function repairAnalysisResult(result, { expectedOfferedIds = [] } = {}) {
                 && !STYLE_DIRECTIVE.test(impact)
                 && !delayedSubstance.test(impact)
                 && !trivialDelta.test(impact);
+            const futureRoute = pathway.status === 'latent' || /\b(?:near|mid|far|later|future|arc)\b/iu.test(pathway.horizon);
             const worldDelta = usableImpact
                 ? impact
-                : `${direction} This changes the active situation or available choices now.`;
+                : futureRoute
+                    ? `${direction} This prepares a revisable future change without forcing it into the current beat.`
+                    : `${direction} This changes the active situation or available choices now.`;
+            const causalRole = pathway.status === 'latent'
+                ? 'seed — prepare this route privately until its stated condition is met.'
+                : futureRoute
+                    ? 'advance — use this route only when its stated condition becomes true.'
+                    : `${repaired.director_score.causal_tempo} — deepen or complete the current activity within player scope.`;
             promotedDeltas.add(worldDelta.slice(0, 140).trim().toLocaleLowerCase());
             return [{
                 id: `recovered-guide-${index + 1}`,
                 direction,
                 use_when: useWhen,
                 drop_when: 'Drop when new story evidence contradicts or supersedes this route.',
-                causal_role: `${repaired.director_score.causal_tempo} — follow this supported conditional route.`.slice(0, 130),
+                causal_role: causalRole.slice(0, 130),
                 world_delta: worldDelta.slice(0, 140).trim(),
                 origin: 'inferred',
                 basis: pathway.reason || 'Recovered from a grounded planner pathway.',
@@ -573,7 +583,13 @@ export function repairAnalysisResult(result, { expectedOfferedIds = [] } = {}) {
     }
 
     const horizonSource = result.plan_horizons && typeof result.plan_horizons === 'object' ? result.plan_horizons : {};
-    const sourceItems = asArray(horizonSource.items).slice(0, 10);
+    const seenSourceHorizonDirections = new Set();
+    const sourceItems = asArray(horizonSource.items).filter(item => {
+        const direction = asString(item?.direction).trim().toLocaleLowerCase();
+        if (!direction || seenSourceHorizonDirections.has(direction)) return false;
+        seenSourceHorizonDirections.add(direction);
+        return true;
+    }).slice(0, 10);
     const inferredTimeframe = index => index >= sourceItems.length - 1
         ? 'distant / open-ended'
         : (['next response', 'next few turns', 'current scene', 'next scene', 'several scenes', 'current arc'][index] || 'later arcs');
@@ -589,9 +605,38 @@ export function repairAnalysisResult(result, { expectedOfferedIds = [] } = {}) {
         reason: asString(item?.reason, 'Recovered while preserving the usable narrative direction.') || 'Recovered while preserving the usable narrative direction.',
     }));
     const timeframeDefaults = ['next few turns', 'current scene', 'next scene', 'several scenes', 'current arc', 'later arcs / open-ended'];
+    const fallbackDirections = [
+        'Deepen the current activity through immediate consequences while preserving player choice.',
+        'Let the current scene establish which unresolved relationship or process matters next.',
+        'Carry the most relevant supported consequence into the next scene without fixing its outcome.',
+        'Let accumulated choices reshape active relationships, institutions, or opportunities across several scenes.',
+        'Develop the strongest supported unresolved thread through the current arc while allowing redirection.',
+        'Let accumulated choices reshape long-term relationships, obligations, and possibilities without fixing an ending.',
+    ];
+    const horizonRank = pathway => {
+        const label = `${pathway?.horizon || ''} ${pathway?.status || ''}`;
+        if (/\b(?:far|distant|later|wildcard)\b/iu.test(label)) return 5;
+        if (/\b(?:mid|arc|several)\b/iu.test(label)) return 3;
+        if (/\b(?:near|next)\b/iu.test(label)) return 2;
+        return 0;
+    };
+    const usedHorizonDirections = new Set(items.map(item => item.direction.trim().toLocaleLowerCase()));
+    const unusedPathways = () => repaired.pathways.filter(pathway => pathway.status !== 'blocked'
+        && !usedHorizonDirections.has(pathway.direction.trim().toLocaleLowerCase()));
     while (items.length < 6) {
         const index = items.length;
-        items.push({ id: `recovered-horizon-${index + 1}`, direction: items.at(-1)?.direction || repaired.pathways[0]?.direction || 'Keep the current trajectory revisable as events develop.', timeframe: timeframeDefaults[index], stability: index < 1 ? 'fluid' : index < 3 ? 'adaptive' : index < 5 ? 'stable' : 'slow', conditions: [], change: 'adjust', reason: 'Added as a flexible planning horizon rather than discarding the usable movement.' });
+        const candidate = unusedPathways().sort((left, right) => Math.abs(horizonRank(left) - index) - Math.abs(horizonRank(right) - index))[0];
+        const direction = candidate?.direction || fallbackDirections[index];
+        usedHorizonDirections.add(direction.trim().toLocaleLowerCase());
+        items.push({
+            id: candidate?.id ? `horizon-${candidate.id}` : `recovered-horizon-${index + 1}`,
+            direction,
+            timeframe: timeframeDefaults[index],
+            stability: index < 1 ? 'fluid' : index < 3 ? 'adaptive' : index < 5 ? 'stable' : 'slow',
+            conditions: candidate?.conditions?.length ? candidate.conditions.slice(0, 3) : [],
+            change: 'adjust',
+            reason: candidate?.reason || 'No distinct farther development survived recovery, so this remains a broad revisable direction.',
+        });
     }
     items.at(-1).stability = 'slow';
     repaired.plan_horizons = { items, deviation: { level: oneOf(horizonSource.deviation?.level, ['none', 'minor', 'major'], 'minor'), reason: asString(horizonSource.deviation?.reason, 'Minor planner structure was normalized without changing its usable narrative direction.') } };
@@ -652,27 +697,6 @@ export function repairAnalysisResult(result, { expectedOfferedIds = [] } = {}) {
             relevance: (primaryPath?.direction || nearHorizon.direction).slice(0, 140),
             confidence: 'moderate',
             window: (nearHorizon.timeframe || 'current scene').slice(0, 100),
-        }];
-    }
-
-    if (!repaired.narrative_events.length) {
-        const eventDirection = nearHorizon.direction || primaryPath?.direction;
-        repaired.narrative_events = [{
-            id: 'provisional-causal-development',
-            title: 'Current situation develops',
-            summary: eventDirection.slice(0, 300),
-            scope: 'offscreen',
-            epistemic_status: 'possible',
-            disclosure: 'hidden',
-            status: 'latent',
-            confidence: 'low',
-            timing: (nearHorizon.timeframe || 'as current conditions develop').slice(0, 120),
-            due_state: 'pending',
-            cause: repaired.narrative_layers.situation.slice(0, 220),
-            consequences: [`This can change the pressures or choices around ${sceneActivity}.`.slice(0, 160)],
-            basis: (nearHorizon.reason || 'Provisional route derived from the active scene.').slice(0, 160),
-            requirements: nearHorizon.conditions.slice(0, 4),
-            interpretation: 'conditional',
         }];
     }
 

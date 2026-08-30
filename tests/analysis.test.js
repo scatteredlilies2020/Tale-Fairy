@@ -287,6 +287,21 @@ test('planner requires a distant but open-ended highest horizon', () => {
     assert.equal(validateAnalysisResult(repaired).valid, true);
 });
 
+test('planner rejects and repairs a single beat cloned across every horizon', () => {
+    const repeated = {
+        ...requiredPlanning,
+        plan_horizons: {
+            ...planHorizons,
+            items: planHorizons.items.map(item => ({ ...item, direction: 'Complete the current departure.' })),
+        },
+    };
+    assert.equal(validateAnalysisResult(repeated).valid, false);
+    const repaired = requireValidAnalysisResult(repeated);
+    assert.equal(repaired.plan_horizons.items.length, 6);
+    assert.equal(new Set(repaired.plan_horizons.items.map(item => item.direction.toLowerCase())).size, 6);
+    assert.equal(validateAnalysisResult(repaired).valid, true);
+});
+
 test('planner salvages incomplete structured output before using fallback', () => {
     const partial = {
         scene: { status: 'active', activity: 'talking' },
@@ -304,6 +319,7 @@ test('planner salvages incomplete structured output before using fallback', () =
     assert.equal(repaired.pathways.length, 1, 'a missing route is recovered from the usable movement');
     assert.equal(repaired.plan_horizons.items.length, 6);
     assert.equal(repaired.plan_horizons.items.at(-1).stability, 'slow');
+    assert.equal(new Set(repaired.plan_horizons.items.map(item => item.direction)).size, 6, 'recovery does not clone one local beat into every horizon');
     assert.equal(repaired.story_frame.frame, 'grounded');
     assert.match(repaired.story_frame.basis, /Provisional grounded reading/);
     assert.doesNotMatch(repaired.director_score.story_identity, /uncertain|unresolved/i);
@@ -311,7 +327,7 @@ test('planner salvages incomplete structured output before using fallback', () =
     assert.ok(repaired.director_score.future_setup.development);
     assert.ok(repaired.director_score.setting_forces.length);
     assert.ok(repaired.entities.length);
-    assert.ok(repaired.narrative_events.length);
+    assert.equal(repaired.narrative_events.length, 0, 'recovery does not mislabel the local beat as a hidden offscreen event');
     assert.ok(repaired.guidance);
     assert.ok(repaired.objectives.length, 'legacy objective display is derived from the open-ended horizon plan');
     assert.ok(repaired.possibilities.length, 'legacy possibility display is derived from conditional pathways');
@@ -360,6 +376,24 @@ test('planner preserves contrasting pathways when generic response biases repeat
     assert.equal(repaired.next_guides.length, 3);
     assert.equal(new Set(repaired.next_guides.map(guide => guide.world_delta)).size, 3);
     assert.deepEqual(repaired.next_guides.map(guide => guide.source_pathways[0]), routes.map(route => route.id));
+    assert.equal(validateAnalysisResult(repaired).valid, true);
+});
+
+test('recovered future routes remain conditional and do not become invented events', () => {
+    const routes = [
+        { ...pathways[0], id: 'finish-departure', direction: 'Complete the current departure without choosing the next destination.', horizon: 'local', status: 'foreground', response_bias: 'Describe only the causal step this pathway enables.' },
+        { ...pathways[0], id: 'petition-review', direction: 'Let an institutional petition receive later review.', horizon: 'near', status: 'available', when: 'When the petition reaches the appropriate reviewers.', response_bias: 'Describe only the causal step this pathway enables.' },
+        { ...pathways[0], id: 'private-assessment', direction: 'Let a private assessment shape a later choice.', horizon: 'mid arc', status: 'latent', when: 'When the assessing party gains enough evidence.', response_bias: 'Describe only the causal step this pathway enables.' },
+    ];
+    const repaired = requireValidAnalysisResult({ ...requiredPlanning, pathways: routes, next_guides: [], narrative_events: [] });
+    const local = repaired.next_guides.find(guide => guide.source_pathways.includes('finish-departure'));
+    const near = repaired.next_guides.find(guide => guide.source_pathways.includes('petition-review'));
+    const latent = repaired.next_guides.find(guide => guide.source_pathways.includes('private-assessment'));
+    assert.match(local.causal_role, /within player scope/i);
+    assert.match(near.causal_role, /^advance/i);
+    assert.match(near.world_delta, /without forcing it into the current beat/i);
+    assert.match(latent.causal_role, /^seed/i);
+    assert.equal(repaired.narrative_events.length, 0, 'a conditional path is not evidence that an offscreen event has begun');
     assert.equal(validateAnalysisResult(repaired).valid, true);
 });
 
