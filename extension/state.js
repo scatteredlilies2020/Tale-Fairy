@@ -70,7 +70,7 @@ function normalizeEntity(value = {}) {
 }
 function normalizePossibility(value = {}) {
     const horizon = text(value.horizon).toLowerCase();
-    return { description: text(value.description).slice(0, 120), horizon: ['local', 'near', 'mid', 'far', 'wildcard'].includes(horizon) ? horizon : '', conditions: cap(value.conditions, 1).map(item => text(item).slice(0, 90)).filter(Boolean), force: text(value.force).slice(0, 20) };
+    return { description: clippedText(value.description, 120), horizon: ['local', 'near', 'mid', 'far', 'wildcard'].includes(horizon) ? horizon : '', conditions: cap(value.conditions, 1).map(item => clippedText(item, 90)).filter(Boolean), force: text(value.force).slice(0, 20) };
 }
 function normalizeDirectorScore(value = {}) {
     const causalTempo = text(value.causalTempo ?? value.causal_tempo, 'hold').toLowerCase();
