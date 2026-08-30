@@ -1,5 +1,5 @@
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 29;
+export const STATE_VERSION = 30;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -292,10 +292,13 @@ export function normalizeState(input = {}) {
     // rebuilds once with an explicit newest-message recency boundary. v28
     // also preserves upstream plans through incomplete provider output and
     // makes depicted chronology an explicit planning boundary; v29 stops
-    // generated status summaries from manufacturing elapsed time.
+    // generated status summaries from manufacturing elapsed time; v30 strips
+    // plain leading statboxes and discards local state they may have tainted.
     const unsafePlannerUpgrade = inputVersion > 0 && inputVersion < 18;
     const movementUpgrade = inputVersion > 0 && inputVersion < STATE_VERSION;
     const recoveryUpgrade = inputVersion > 0 && inputVersion < 26;
+    const chronologyAuditUpgrade = inputVersion > 0 && inputVersion < 30;
+    const normalizedLayers = normalizeNarrativeLayers(value.narrativeLayers);
     const state = {
         ...base,
         ...value,
@@ -303,16 +306,18 @@ export function normalizeState(input = {}) {
         enabled: value.enabled !== false,
         mode: MODES.has(value.mode) ? value.mode : base.mode,
         analysisModel: { ...base.analysisModel, ...(value.analysisModel || {}) },
-        scene: { ...base.scene, ...(value.scene || {}) },
-        narrativeLayers: normalizeNarrativeLayers(value.narrativeLayers),
+        scene: chronologyAuditUpgrade ? base.scene : { ...base.scene, ...(value.scene || {}) },
+        narrativeLayers: chronologyAuditUpgrade
+            ? { ...base.narrativeLayers, widerWorld: normalizedLayers.widerWorld, durableTrajectory: normalizedLayers.durableTrajectory }
+            : normalizedLayers,
         storyFrame: { ...base.storyFrame, ...(value.storyFrame || {}) },
         directorScore: normalizeDirectorScore(value.directorScore),
         objectives: recoveryUpgrade ? [] : cap(value.objectives, MAX_OBJECTIVES).map(normalizeObjective).filter(item => item.title || item.detail),
         entities: cap(value.entities).map(normalizeEntity).filter(item => item.name),
         possibilities: cap(value.possibilities, MAX_POSSIBILITIES).map(normalizePossibility).filter(item => item.description),
-        pathways: cap(value.pathways, MAX_PATHWAYS).map(normalizePathway).filter(item => item.id && item.direction && item.when),
+        pathways: chronologyAuditUpgrade ? [] : cap(value.pathways, MAX_PATHWAYS).map(normalizePathway).filter(item => item.id && item.direction && item.when),
         nextGuides: movementUpgrade ? [] : (Array.isArray(value.nextGuides) ? value.nextGuides.slice(0, MAX_GUIDES) : []).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen && item.causalRole && item.worldDelta && item.basis),
-        activeBeat: normalizeBeat(value.activeBeat),
+        activeBeat: chronologyAuditUpgrade ? base.activeBeat : normalizeBeat(value.activeBeat),
         beatHistory: cap(value.beatHistory, 6).map(normalizeBeat).filter(beat => beat.objective),
         planHorizons: recoveryUpgrade ? base.planHorizons : normalizePlanHorizons(value.planHorizons),
         // Older migrated states have no reliable pre-response canon snapshot.
@@ -323,10 +328,10 @@ export function normalizeState(input = {}) {
         guidance: recoveryUpgrade ? '' : text(value.guidance).slice(0, 700),
         lastInject: recoveryUpgrade ? false : value.lastInject === true,
         lastReason: text(value.lastReason).slice(0, 500),
-        contextLedger: text(value.contextLedger).slice(0, 3000),
+        contextLedger: chronologyAuditUpgrade ? '' : text(value.contextLedger).slice(0, 3000),
         ledgerMessageCount: Math.max(0, Number(value.ledgerMessageCount) || 0),
         ledgerUpdatedAt: Number(value.ledgerUpdatedAt) || 0,
-        narrativeEvents: recoveryUpgrade ? [] : cap(value.narrativeEvents, MAX_EVENTS).map(normalizeEvent).filter(event => event.title && event.summary),
+        narrativeEvents: recoveryUpgrade || chronologyAuditUpgrade ? [] : cap(value.narrativeEvents, MAX_EVENTS).map(normalizeEvent).filter(event => event.title && event.summary),
         cueAudit: normalizeCueAudit(value.cueAudit),
         lastAnalysisFingerprint: text(value.lastAnalysisFingerprint),
         sourceMessageCount: Math.max(0, Number(value.sourceMessageCount) || 0),

@@ -903,6 +903,13 @@ test('planner excerpts remove generated scaffolding and preserve both ends of lo
     assert.match(prompt.messages[0].content, /crucial ending$/);
 });
 
+test('planner excerpts strip plain generated statboxes but retain the depicted scene', () => {
+    const message = `Time & Weather = 6:42 PM\nLocation = Residential wing\nCurrent Beat = Walking after dinner\nPositions = Group at doors\nActive Threads = return home\n\nVekk says nobody answers anything tonight. It is a walk home and then dinner decisions, in that order.`;
+    const prompt = JSON.parse(buildAnalysisPrompt([{ mes: message, is_user: false }], defaultState()));
+    assert.doesNotMatch(prompt.messages[0].content, /6:42 PM|Walking after dinner|Active Threads/);
+    assert.match(prompt.messages[0].content, /walk home and then dinner decisions, in that order/);
+});
+
 test('empty optional context is omitted from the planner payload', () => {
     const prompt = JSON.parse(buildAnalysisPrompt([{ mes: 'Tea', is_user: true }], defaultState()));
     assert.equal('user_instruction' in prompt, false);

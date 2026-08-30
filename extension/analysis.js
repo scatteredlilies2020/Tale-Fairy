@@ -918,8 +918,18 @@ function compactPromptStateForBudget(current = {}) {
     };
 }
 
+function stripLeadingGeneratedStatusSummary(value) {
+    const source = String(value || '').replace(/^\uFEFF/u, '');
+    const sections = source.split(/\r?\n\s*\r?\n/u);
+    const lines = String(sections[0] || '').split(/\r?\n/u).map(line => line.trim()).filter(Boolean);
+    const statusLine = /^(?:time(?:\s*&\s*weather)?|date|day|weather|location|current\s+beat|positions?|inventory(?:\s*&\s*objects)?|objects?|physical\s+state|emotions?|psyche|characters?|active\s+threads?)\s*=\s*\S/iu;
+    const contentLines = lines.filter(line => !/^```(?:[\p{L}\p{N}_-]+)?$/u.test(line));
+    if (contentLines.length < 3 || !contentLines.every(line => statusLine.test(line))) return source;
+    return sections.slice(1).join('\n\n');
+}
+
 function compactMessageContent(value, limit, { latest = false } = {}) {
-    const cleaned = String(value || '')
+    const cleaned = stripLeadingGeneratedStatusSummary(value)
         .replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/giu, ' ')
         .replace(/<stat>[\s\S]*?<\/stat>/giu, ' ')
         .replace(/<background_updates>[\s\S]*?<\/background_updates>/giu, ' ')

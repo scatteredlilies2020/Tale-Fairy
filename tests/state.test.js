@@ -36,7 +36,7 @@ test('state normalizes caps and invalid mode', () => {
     assert.equal(promptIdeas.length, 18);
     assert.ok(promptIdeas.every(item => typeof item === 'string' && item.length <= 180));
     assert.ok(JSON.stringify(promptIdeas).length < 3400, 'the complete idea bank should remain token-cheap');
-    assert.equal(state.version, 29);
+    assert.equal(state.version, 30);
 });
 
 test('offscreen causes persist privately while injection exposes only their consequence', () => {
@@ -230,7 +230,7 @@ test('pre-canon-ledger state requests one bounded bootstrap rescan', () => {
 
 test('pre-momentum guides and request verification cannot remain injectable after an upgrade', () => {
     const migrated = normalizeState({ version: 16, ...currentPlan, nextGuides: stateNextGuides, canonConstraints: ['Fact from a discarded response.'], lastInject: true, lastRequestVerification: { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides } });
-    assert.equal(migrated.version, 29);
+    assert.equal(migrated.version, 30);
     assert.equal(migrated.canonBootstrapPending, true);
     assert.deepEqual(migrated.nextGuides, []);
     assert.deepEqual(migrated.canonConstraints, []);
@@ -241,7 +241,7 @@ test('pre-momentum guides and request verification cannot remain injectable afte
 test('pre-v24 candidates are rebuilt with layered authorial control while established canon survives', () => {
     const verification = { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides };
     const migrated = normalizeState({ version: 22, ...currentPlan, nextGuides: stateNextGuides, canonConstraints: ['Established fact.'], lastRequestVerification: verification });
-    assert.equal(migrated.version, 29);
+    assert.equal(migrated.version, 30);
     assert.equal(migrated.canonBootstrapPending, true);
     assert.deepEqual(migrated.nextGuides, []);
     assert.deepEqual(migrated.canonConstraints, ['Established fact.']);
@@ -254,7 +254,7 @@ test('v25 plans rebuild once after duplicate-horizon recovery changes while cano
         deviation: { level: 'none', reason: 'Old recovery.' },
     };
     const migrated = normalizeState({ version: 25, ...currentPlan, planHorizons: repeatedHorizons, objectives: [{ title: 'Old cloned objective.' }], narrativeEvents: [{ title: 'Current situation develops', summary: 'Complete the current departure.' }], nextGuides: stateNextGuides, guidance: 'Old recovered guidance.', lastInject: true, canonConstraints: ['Established fact.'], lastRequestVerification: { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides } });
-    assert.equal(migrated.version, 29);
+    assert.equal(migrated.version, 30);
     assert.equal(migrated.canonBootstrapPending, true);
     assert.deepEqual(migrated.nextGuides, []);
     assert.deepEqual(migrated.planHorizons.items, []);
@@ -264,6 +264,27 @@ test('v25 plans rebuild once after duplicate-horizon recovery changes while cano
     assert.equal(migrated.lastInject, false);
     assert.deepEqual(migrated.canonConstraints, ['Established fact.']);
     assert.equal(migrated.lastRequestVerification, null);
+});
+
+test('v29 migration clears statbox-tainted local chronology but preserves upstream direction', () => {
+    const migrated = normalizeState({
+        version: 29,
+        scene: { status: 'active', activity: 'after dinner', time: '6:42 PM' },
+        narrativeLayers: { immediateAction: 'Walking after dinner', localActivity: 'Return after meal', situation: 'At home', widerWorld: 'A council review is pending.', durableTrajectory: 'Training remains open.' },
+        pathways: [{ id: 'stale', direction: 'Finish the post-dinner return.', when: 'now' }],
+        contextLedger: 'The meal has ended.',
+        narrativeEvents: [{ id: 'stale-event', title: 'Dinner completed', summary: 'Dinner is over.' }],
+        planHorizons: { items: [{ id: 'upstream', direction: 'Training remains open.', timeframe: 'later arcs', stability: 'slow', change: 'keep' }] },
+    });
+    assert.equal(migrated.scene.activity, '');
+    assert.equal(migrated.scene.time, '');
+    assert.equal(migrated.narrativeLayers.localActivity, '');
+    assert.equal(migrated.narrativeLayers.widerWorld, 'A council review is pending.');
+    assert.equal(migrated.narrativeLayers.durableTrajectory, 'Training remains open.');
+    assert.deepEqual(migrated.pathways, []);
+    assert.equal(migrated.contextLedger, '');
+    assert.deepEqual(migrated.narrativeEvents, []);
+    assert.equal(migrated.planHorizons.items[0].direction, 'Training remains open.');
 });
 
 test('prompt payload keeps user directives active and only includes usable guidance', () => {
