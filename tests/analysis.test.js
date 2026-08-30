@@ -204,7 +204,10 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /twelve to eighteen distinct one-clause idea cards/);
     assert.match(SYSTEM, /major setting figure may notice exceptional potential, seek a meeting, recruit, oppose, exploit, protect, or ignore/);
     assert.match(SYSTEM, /departure or return to a formative place/);
-    assert.match(SYSTEM, /named major setting figure/);
+    assert.match(SYSTEM, /interest from an important setting force or figure/);
+    assert.match(SYSTEM, /Most cards should state the causal role or kind of world reaction without inventing names or exact props/);
+    assert.match(SYSTEM, /do not force named cameos into every plan/);
+    assert.match(SYSTEM, /Prefer a compact reaction model/);
     assert.match(SYSTEM, /radical moral, allegiance, vocation, or identity 180/);
     assert.match(SYSTEM, /Calibrate the bench to the actual genre, activity, and scale instead of privileging adventure or high stakes/);
     assert.match(SYSTEM, /Slice-of-life, romance, domestic, school, workplace, travel, hobby, and social simulations are fully valid stories/);
@@ -528,11 +531,13 @@ test('every planner mode leaves narrative pacing under user control', () => {
 test('analysis prompt maintains a lightweight world model', () => {
     const prompt = JSON.parse(buildAnalysisPrompt([{ mes: 'We are inside the Jedi Temple.', is_user: true }], defaultState()));
     assert.match(SYSTEM, /Maintain a compact causal world model from established evidence/);
-    assert.match(SYSTEM, /relevant people, factions, locations, knowledge, motives/);
+    assert.match(SYSTEM, /relevant actors, institutions, locations, knowledge, motives/);
+    assert.match(SYSTEM, /Track what each active force notices, wants, resists, permits, changes, or prepares/);
     assert.match(SYSTEM, /Use past events as causal basis, constraints, changed relationships, accumulated consequences, and unresolved pressure—not as plots to copy/);
     assert.match(SYSTEM, /Do not echo an earlier scene, incident, reveal, conflict, conversation pattern, joke, emotional beat, or plot structure with renamed parts/);
     assert.match(SYSTEM, /Prefer synthesis across multiple relevant facts over copying any single past plot/);
-    assert.match(SYSTEM, /You may invent contextually appropriate people, places, factions, titles, and other names/);
+    assert.match(SYSTEM, /Prefer causal roles, relationships, systems, forces, and reactions over pre-casting future developments with proper nouns/);
+    assert.match(SYSTEM, /do not invent a proper noun for a placeholder/);
     assert.match(SYSTEM, /do not copy an unrelated name, fragment, preset artifact, or malformed splice/);
     assert.match(SYSTEM, /Do not confuse player agency with procedural micromanagement/);
     assert.match(SYSTEM, /must not merely announce success or hand control back after one move/);
