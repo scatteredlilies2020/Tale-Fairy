@@ -275,6 +275,9 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.doesNotMatch(stale, /Keep the scene grounded/);
     assert.match(stale, /Background continuity only/);
     assert.match(stale, /Do not repeat a completed event/);
+    assert.match(stale, /Linger on engaged emotional, relational, revelatory, conflict, discovery, or consequential beats/);
+    assert.match(stale, /Do not routinely end by asking, offering choices/);
+    assert.match(stale, /player agency open/);
     assert.doesNotMatch(stale, /Let Mara answer plainly|meaningful deflection/);
     const current = buildPromptPayload(state, {
         enabled: true,
@@ -302,18 +305,21 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(current, /DO NOT APPLY WHEN: The user leaves or changes subject/);
     assert.match(current, /STORY FUNCTION: Advance the live trust thread through a concrete disclosure/);
     assert.match(current, /IMPACT ENVELOPE: Mara reveals a concern/);
-    assert.match(current, /binding at the level of narrative purpose, not at the level of a prescribed incident/);
+    assert.match(current, /binding at the level of narrative purpose, not a prescribed incident/);
     assert.match(current, /Keep private future developments offscreen/);
     assert.match(current, /travel ends at arrival/);
-    assert.match(current, /broad bounded activity permits representative progression/);
+    assert.match(current, /Broad bounded activities may progress/);
     assert.doesNotMatch(current, /I play the game/);
     assert.match(current, /Simulate routine micro-actions without prompting/);
-    assert.match(current, /show concrete progress and authorized results/);
+    assert.match(current, /show concrete progress/);
     assert.match(current, /Apply established strengths\/limitations proportionately/);
     assert.match(current, /never cancel exceptional advantages/);
     assert.match(current, /APPLY is a gate, not an order to make it true/);
-    assert.match(current, /Keep unresolved player choices open/);
-    assert.match(current, /independent NPC\/world action instead of choosing, pressure, repeated prompts, or waiting/);
+    assert.match(current, /Keep unresolved choices open/);
+    assert.match(current, /advance independent NPC\/world action rather than choosing or prompting/);
+    assert.match(current, /compress repetitive procedure and menus unless engaged/);
+    assert.match(current, /Ask only when naturally necessary/);
+    assert.match(current, /end on concrete story movement/);
     assert.match(current, /preserve established meanings, pacing, and player agency/);
     assert.doesNotMatch(current, /discarded reply/);
     assert.doesNotMatch(current, /Mara must choose between the relationship and a Jedi obligation/);

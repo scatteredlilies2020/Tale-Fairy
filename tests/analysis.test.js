@@ -510,6 +510,10 @@ test('every planner mode leaves narrative pacing under user control', () => {
         assert.match(prompt.pacing_instruction, /mode changes pressure, not speed/);
         assert.match(prompt.pacing_instruction, /without inventing undelegated player choices/);
         assert.match(prompt.pacing_instruction, /Complete the declared endpoint/);
+        assert.match(prompt.pacing_instruction, /Allocate attention by user engagement and narrative yield/);
+        assert.match(prompt.pacing_instruction, /protect emotionally rich, relational, revelatory, conflict, discovery, and consequential beats/);
+        assert.match(prompt.pacing_instruction, /compress repetitive procedure, confirmation, travel, and option menus/);
+        assert.match(prompt.pacing_instruction, /Do not create a question merely to hand the turn back/);
     }
     assert.match(MODE_INSTRUCTIONS.light, /must not artificially prolong a beat or slow a user/);
     assert.match(MODE_INSTRUCTIONS.balanced, /does not change the user's narrative speed/);
