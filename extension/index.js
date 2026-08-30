@@ -12,9 +12,10 @@ import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, req
 import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 import { compactContinuityPrompt, readContinuityBridge, waitForContinuityBridge } from './continuity.js';
+import { plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.50';
+const RUNTIME_VERSION = '0.11.51';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -25,6 +26,8 @@ let analysisPromise = null;
 let analysisAbortController = null;
 let analysisRequestFingerprint = '';
 let analysisRunId = 0;
+let analysisRetryTimer = null;
+let analysisRetryAttempt = 0;
 let generationRevision = 0;
 let analysisStopSequence = 0;
 let lastAnalysisError = '';
@@ -39,6 +42,7 @@ const directModelCache = new Map();
 // Reasoning providers may count hidden thinking against this ceiling. The
 // planner prompt and schema separately target a concise visible JSON result.
 const PLANNER_RESPONSE_TOKENS = 32768;
+const PLANNER_REQUEST_TIMEOUT_MS = 240000;
 const UI_MOUNT_TIMEOUT_MS = 30000;
 const LEGACY_UPGRADE_MAX_ATTEMPTS = 1;
 const INTERNAL_PLANNER_MARKER = 'You are Tale Fairy, a narrative planning layer for SillyTavern roleplay.';
@@ -668,10 +672,47 @@ function cancelRunningAnalysis(reason, status) {
     return true;
 }
 
+function cancelAnalysisRetry({ resetAttempt = true } = {}) {
+    if (analysisRetryTimer) clearTimeout(analysisRetryTimer);
+    analysisRetryTimer = null;
+    if (resetAttempt) analysisRetryAttempt = 0;
+}
+
+function scheduleAnalysisRetry(error, options, chatId) {
+    cancelAnalysisRetry({ resetAttempt: false });
+    const attempt = ++analysisRetryAttempt;
+    const delay = plannerRetryDelay(attempt);
+    const stopSequence = analysisStopSequence;
+    const seconds = Math.max(1, Math.round(delay / 1000));
+    const status = `Connection interrupted · retrying in ${seconds}s (attempt ${attempt})`;
+    renderAnalysisActivity(status, false);
+    analysisRetryTimer = setTimeout(() => {
+        analysisRetryTimer = null;
+        const context = currentContext();
+        if (!getSettings().enabled
+            || analysisStopSequence !== stopSequence
+            || String(context.getCurrentChatId?.() || '') !== chatId) return;
+        const messages = messagesFromChat(context.chat || []);
+        if (!messages.length) return;
+        renderAnalysisActivity(`Retrying planner · attempt ${attempt}`, true);
+        void analyzeNow({
+            ...options,
+            force: true,
+            messages,
+            allowOneUserAppend: true,
+            allowStaleContinuity: true,
+            retryAttempt: attempt,
+        });
+    }, delay);
+    console.warn(`[${EXTENSION_ID}] planner request failed; ${status.toLowerCase()}`, error);
+    return status;
+}
+
 function interruptAnalysis(reason, status) {
     generationGuideSelection = null;
     analysisStopSequence++;
     generationRevision++;
+    cancelAnalysisRetry();
     if (!cancelRunningAnalysis(reason, status)) {
         renderAnalysisActivity(status, false);
     }
@@ -835,6 +876,7 @@ function rebuildState() {
 
 async function requestAnalysisOnce(prompt, externalSignal) {
     const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(new DOMException('Tale Fairy planner request timed out.', 'TimeoutError')), PLANNER_REQUEST_TIMEOUT_MS);
     const forwardAbort = () => controller.abort(externalSignal?.reason || new DOMException('Tale Fairy analysis stopped.', 'AbortError'));
     if (externalSignal?.aborted) forwardAbort();
     else externalSignal?.addEventListener('abort', forwardAbort, { once: true });
@@ -1008,6 +1050,7 @@ async function requestAnalysisOnce(prompt, externalSignal) {
             }
         }
     } finally {
+        clearTimeout(timeout);
         externalSignal?.removeEventListener('abort', forwardAbort);
     }
 }
@@ -1024,10 +1067,11 @@ async function requestAnalysis(prompt, externalSignal) {
     }
 }
 
-export async function analyzeNow({ note = null, force = false, messages = null, rebuild = false, allowOneUserAppend = false, allowStaleContinuity = false, waitForContinuity = false } = {}) {
+export async function analyzeNow({ note = null, force = false, messages = null, rebuild = false, allowOneUserAppend = false, allowStaleContinuity = false, waitForContinuity = false, retryAttempt = 0 } = {}) {
     const context = currentContext();
     const s = getSettings();
     if (!s.enabled) return loadState(context.chatMetadata);
+    if (!retryAttempt) cancelAnalysisRetry();
     const chat = messages || messagesFromChat(context.chat || []);
     const savedState = loadState(context.chatMetadata);
     const state = rebuild ? rebuildState(savedState) : savedState;
@@ -1078,6 +1122,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         if (resolvedNote) next.userNotes = [...next.userNotes, { ...resolvedNote, at: Date.now() }].slice(-12);
         next.noteNeedsClarification = Boolean(userNote && !resolvedNote);
         await persist(next, { chatId, fingerprint, messageCount: chat.length, allowOneUserAppend });
+        cancelAnalysisRetry();
         lastAnalysisError = '';
         finalStatus = userNote && !resolvedNote
             ? 'Note not applied · try again'
@@ -1085,10 +1130,15 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         renderBoard(next);
         return next;
     })().catch(error => {
-        const stopped = error?.name === 'AbortError';
+        const stopped = controller.signal.aborted;
         if (!stopped) lastAnalysisError = analysisErrorMessage(error);
-        finalStatus = stopped ? 'Stopped' : `Analysis failed · ${lastAnalysisError}`;
-        if (!stopped) console.warn(`[${EXTENSION_ID}] analysis skipped`, error);
+        const retryable = shouldRetryPlannerError(error, stopped);
+        finalStatus = stopped
+            ? 'Stopped'
+            : retryable
+                ? scheduleAnalysisRetry(error, { note, rebuild, waitForContinuity }, chatId)
+                : `Analysis failed · ${lastAnalysisError}`;
+        if (!stopped && !retryable) console.warn(`[${EXTENSION_ID}] analysis skipped`, error);
         renderBoard(loadState(context.chatMetadata));
         return loadState(context.chatMetadata);
     }).finally(() => {

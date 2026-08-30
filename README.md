@@ -4,7 +4,7 @@ Tale Fairy is a standalone SillyTavern extension that acts as an **adaptive auth
 
 ## What it does
 
-- Replans in the background after each completed assistant response. The next roleplay request never waits for the planner and never makes an extra AI call; sending a new turn cancels any unfinished background pass so the roleplay request takes priority.
+- Replans in the background after each completed assistant response. The next roleplay request never waits for the planner and never makes an extra AI call. An unfinished pass may complete after one appended user turn, and transient planner or network failures retry automatically with capped exponential backoff until the connection recovers.
 - Separates authorial purpose from scene realization: Tale Fairy chooses the relevant narrative function, causal source, and impact scale; the roleplay model chooses the exact event, NPC behavior, dialogue, outcome, and prose.
 - Tracks nested layers from immediate action through local activity, situation, wider world, and durable open-ended trajectory. A hundred turns of homework can remain one routine academy activity inside a much larger life.
 - Automatically classifies the latest turn's temporal scope. The user can linger inside one moment or breeze through an entire declared activity without prompts, permission checkpoints, or manufactured obstacles.
