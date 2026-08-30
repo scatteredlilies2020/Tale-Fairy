@@ -1,5 +1,5 @@
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 28;
+export const STATE_VERSION = 29;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -291,7 +291,8 @@ export function normalizeState(input = {}) {
     // every horizon or misclassify that beat as an offscreen event; v27
     // rebuilds once with an explicit newest-message recency boundary. v28
     // also preserves upstream plans through incomplete provider output and
-    // makes depicted chronology an explicit planning boundary.
+    // makes depicted chronology an explicit planning boundary; v29 stops
+    // generated status summaries from manufacturing elapsed time.
     const unsafePlannerUpgrade = inputVersion > 0 && inputVersion < 18;
     const movementUpgrade = inputVersion > 0 && inputVersion < STATE_VERSION;
     const recoveryUpgrade = inputVersion > 0 && inputVersion < 26;

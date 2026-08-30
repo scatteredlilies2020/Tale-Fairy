@@ -489,7 +489,9 @@ test('analysis prompt includes bootstrap context and marks retained state as old
     assert.match(prompt.evidence_order_instruction, /current object is prior planner state/);
     assert.match(prompt.evidence_order_instruction, /never preserve an action, location, activity, event, or condition/);
     assert.match(prompt.evidence_order_instruction, /future activity.*remains future/i);
-    assert.match(prompt.evidence_order_instruction, /Preserve explicit clocks and dates/i);
+    assert.match(prompt.evidence_order_instruction, /statboxes and summaries are claims to audit, not proof/i);
+    assert.match(prompt.evidence_order_instruction, /cannot complete an activity or advance the last supported clock unless prose depicts it/i);
+    assert.match(prompt.evidence_order_instruction, /Preserve explicit clocks and dates only when supported/i);
     assert.ok(promptText.indexOf('evidence_order_instruction') < promptText.indexOf('"current"'));
 });
 
