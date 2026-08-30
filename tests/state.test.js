@@ -267,9 +267,12 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(current, /travel ends at arrival/);
     assert.match(current, /“I play the game” authorizes representative progression/);
     assert.match(current, /Simulate routine micro-actions without prompting/);
-    assert.match(current, /show concrete progress and any authorized result/);
-    assert.match(current, /Apply established strengths and limitations proportionately/);
-    assert.match(current, /never cancel an exceptional advantage/);
+    assert.match(current, /show concrete progress and authorized results/);
+    assert.match(current, /Apply established strengths\/limitations proportionately/);
+    assert.match(current, /never cancel exceptional advantages/);
+    assert.match(current, /APPLY is a gate, not an order to make it true/);
+    assert.match(current, /Keep unresolved player choices open/);
+    assert.match(current, /independent NPC\/world action instead of choosing, pressure, repeated prompts, or waiting/);
     assert.match(current, /preserve established meanings, pacing, and player agency/);
     assert.doesNotMatch(current, /discarded reply/);
     assert.doesNotMatch(current, /Mara must choose between the relationship and a Jedi obligation/);

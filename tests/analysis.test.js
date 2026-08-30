@@ -85,7 +85,11 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /A visible consequence can make an offscreen event narratively real without narrating/);
     assert.match(SYSTEM, /Preserve competing explanations when evidence does not justify selecting one/);
     assert.match(SYSTEM, /Player silence is not a veto/);
+    assert.match(SYSTEM, /keep the world moving through independent NPC reactions/);
+    assert.match(SYSTEM, /Do not freeze the reply at a permission prompt/);
     assert.match(SYSTEM, /Every next guide must be fulfillable without inventing a new player action/);
+    assert.match(SYSTEM, /use_when condition is a gate to evaluate from supplied evidence/);
+    assert.match(SYSTEM, /prefer a parallel NPC\/world development/);
     assert.match(SYSTEM, /Unless the newest user turn declares travel or arrival, keep the player at the current location/);
     assert.match(SYSTEM, /A routine action, activity, or transition may be the entire temporal scope/);
     assert.match(SYSTEM, /Never finish a subsequent activity or jump to a later task/);
@@ -260,6 +264,7 @@ test('planner recovers missing next guides from grounded pathways', () => {
     assert.deepEqual(repaired.next_guides[0].source_pathways, ['tea-talk']);
     assert.match(repaired.guidance, new RegExp(pathways[0].direction, 'i'));
     assert.doesNotMatch(repaired.guidance, /tea-talk|next response/i);
+    assert.match(repaired.guidance, /not a required player action/i);
     assert.match(repaired.reason, /next_guides was omitted/);
     assert.equal(validateAnalysisResult(repaired).valid, true);
 });
