@@ -10,9 +10,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.26');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.26');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.26');
+    assert.equal(manifest.version, '0.11.27');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.27');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.27');
 });
 
 test('injection sends layered authorial control while concrete realization and future setup stay private', () => {
@@ -248,6 +248,13 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(template, /data-role="scratchpad-objectives"/);
     assert.match(template, /data-role="scratchpad-possibilities"/);
     assert.match(template, /data-role="scratchpad-ledger"/);
+    assert.match(template, /No generated scene state yet\./);
+    assert.match(template, /No generated story frame yet\./);
+    assert.match(template, /No generated next guides yet\./);
+    assert.match(template, /No generated pathways yet\./);
+    assert.match(template, /No generated planning horizons yet\./);
+    assert.match(source, /const generatedValue = value => analyzed \? value : ''/);
+    assert.match(source, /No generated narrative events yet\./);
     assert.match(template, /AI-assisted instruction/);
     assert.match(template, /Tale Fairy will understand whether this is a suggestion, correction, canon detail, or hard exclusion/);
     assert.doesNotMatch(template, /data-setting="note-kind"/);

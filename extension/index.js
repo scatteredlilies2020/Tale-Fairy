@@ -14,7 +14,7 @@ import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlErr
 import { compactContinuityPrompt, readContinuityBridge, waitForContinuityBridge } from './continuity.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.26';
+const RUNTIME_VERSION = '0.11.27';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -1074,10 +1074,13 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const board = document.querySelector(`#${EXTENSION_ID}-board`);
     if (!board) return;
     const rebuildPending = state.canonBootstrapPending === true;
-    const boardFallback = fallback => rebuildPending
-        ? 'Not populated in the retained plan — the requested refresh has not produced a valid saved result yet.'
-        : fallback;
     const analyzed = state.scene.status !== 'uninitialized';
+    const generatedValue = value => analyzed ? value : '';
+    const boardFallback = (fallback, empty = 'No generated value yet.') => !analyzed
+        ? empty
+        : (rebuildPending
+            ? 'Not populated in the retained plan — the requested refresh has not produced a valid saved result yet.'
+            : fallback);
     const settingsRoot = document.querySelector(`#${EXTENSION_ID}-settings`);
     const guideButton = settingsRoot?.querySelector('[data-action="guide"]');
     const guideLabel = guideButton?.querySelector('[data-role="guide-label"]');
@@ -1089,7 +1092,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const meta = rebuildPending
         ? `Refresh pending · showing retained plan from ${analyzedAt || 'the previous version'} · not injected until refreshed`
         : (analyzed ? `${state.mode} mode · updated ${analyzedAt || 'recently'}` : '');
-    scratchpadText(board, 'scratchpad-meta', meta, 'Not analyzed yet. Use Guide now or continue the chat.');
+    scratchpadText(board, 'scratchpad-meta', meta, 'No planner result yet. Run Guide now or Full rebuild.');
     const continuityStatus = analyzed ? continuityContextState(currentContext()).status : 'unavailable';
     scratchpadText(board, 'scratchpad-continuity', `Continuity: ${continuityStatus}`, 'Continuity: unavailable');
 
@@ -1108,12 +1111,12 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         state.scene.time && `Time: ${state.scene.time}`,
         state.scene.loop && 'Pattern: the scene may be looping or repeating',
     ].filter(Boolean).join('\n');
-    scratchpadText(board, 'scratchpad-scene', scene, boardFallback('Immediate action: Await the first declared player action.\nLocal activity: Opening situation [transition]\nSituation: Establish the initial people, place, and pressures from the first story evidence.\nWider world: Let the setting begin acting as soon as its first concrete detail appears.\nDurable trajectory: Grow an open-ended path from the player’s choices without deciding those choices.'));
+    scratchpadText(board, 'scratchpad-scene', generatedValue(scene), boardFallback('Immediate action: Await the first declared player action.\nLocal activity: Opening situation [transition]\nSituation: Establish the initial people, place, and pressures from the first story evidence.\nWider world: Let the setting begin acting as soon as its first concrete detail appears.\nDurable trajectory: Grow an open-ended path from the player’s choices without deciding those choices.', 'No generated scene state yet.'));
 
     const frame = state.storyFrame.frame && state.storyFrame.frame !== 'unknown'
         ? `${state.storyFrame.frame}${state.storyFrame.confidence ? ` · ${state.storyFrame.confidence} confidence` : ''}${state.storyFrame.basis ? `\nBasis: ${state.storyFrame.basis}` : ''}`
         : '';
-    scratchpadText(board, 'scratchpad-frame', frame, boardFallback('grounded · low confidence\nBasis: Provisional opening classification; replace it immediately when the first story evidence supports heightened or surreal.'));
+    scratchpadText(board, 'scratchpad-frame', generatedValue(frame), boardFallback('grounded · low confidence\nBasis: Provisional opening classification; replace it immediately when the first story evidence supports heightened or surreal.', 'No generated story frame yet.'));
 
     const score = state.directorScore || {};
     const setup = score.futureSetup || {};
@@ -1130,7 +1133,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         score.meaningfulAim && `Meaningful aim: ${score.meaningfulAim}`,
         score.basis && `Basis: ${score.basis}`,
     ].filter(Boolean).join('\n') : '';
-    scratchpadText(board, 'scratchpad-director-score', directorScore, boardFallback('Overall story: An open-ended character story that will specialize around the first concrete action.\nCurrent scene function: Establish a playable situation while preserving every player choice.\nSetting: The opening location as an active source of people, opportunities, and consequences.\nCausal tempo: SEED\nNear-term arc: Turn the first established detail into several revisable routes.\nPrivate future setup: Keep one distant transformation available without making it canon.\nMeaningful aim: Change knowledge, relationships, pressures, or available choices without controlling the player.'));
+    scratchpadText(board, 'scratchpad-director-score', generatedValue(directorScore), boardFallback('Overall story: An open-ended character story that will specialize around the first concrete action.\nCurrent scene function: Establish a playable situation while preserving every player choice.\nSetting: The opening location as an active source of people, opportunities, and consequences.\nCausal tempo: SEED\nNear-term arc: Turn the first established detail into several revisable routes.\nPrivate future setup: Keep one distant transformation available without making it canon.\nMeaningful aim: Change knowledge, relationships, pressures, or available choices without controlling the player.', 'No generated director plan yet.'));
 
     const pathwayLines = (state.pathways || []).map(item => [
         `${item.id} [${item.status}${item.horizon ? ` · ${item.horizon}` : ''}${item.change !== 'keep' ? ` · ${item.change}` : ''}] — ${item.direction}`,
@@ -1138,7 +1141,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         item.responseBias && `If chosen: ${item.responseBias}`,
         item.conditions?.length && `Needs: ${item.conditions.join('; ')}`,
     ].filter(Boolean).join('\n'));
-    scratchpadText(board, 'scratchpad-pathways', pathwayLines.join('\n\n'), boardFallback('opening-local [foreground · first scene] — Develop the first declared activity through NPC or world response.\nUse when: The first story action establishes a local situation.\n\nopening-world [available · early scenes] — Let one setting-compatible person, process, or opportunity begin moving independently.\nUse when: The setting provides a credible causal route.'));
+    scratchpadText(board, 'scratchpad-pathways', generatedValue(pathwayLines.join('\n\n')), boardFallback('opening-local [foreground · first scene] — Develop the first declared activity through NPC or world response.\nUse when: The first story action establishes a local situation.\n\nopening-world [available · early scenes] — Let one setting-compatible person, process, or opportunity begin moving independently.\nUse when: The setting provides a credible causal route.', 'No generated pathways yet.'));
 
     const guideLines = (state.nextGuides || []).map((item, index) => [
         `${index === 0 ? 'Authorial direction' : `Alternative ${index + 1}`} · ${item.id} [${item.strength}] — ${item.direction}`,
@@ -1148,7 +1151,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         `Drop if: ${item.dropWhen}`,
         item.causalRole && `Causal role: ${item.causalRole}`,
     ].filter(Boolean).join('\n'));
-    scratchpadText(board, 'scratchpad-next-guides', guideLines.join('\n\n'), boardFallback('Authorial direction · opening-response [moderate] — Let the first established action receive a concrete NPC or world response.\nImpact envelope: The situation changes while every consequential player choice remains open.\n\nAlternative 2 · opening-depth [light] — Deepen the current activity through a relevant detail or relationship reaction.\nImpact envelope: The scene gains meaning without forcing escalation.\n\nAlternative 3 · opening-seed [light] — Seed one setting-compatible route for later development.\nImpact envelope: A future option becomes possible, not promised.'));
+    scratchpadText(board, 'scratchpad-next-guides', generatedValue(guideLines.join('\n\n')), boardFallback('Authorial direction · opening-response [moderate] — Let the first established action receive a concrete NPC or world response.\nImpact envelope: The situation changes while every consequential player choice remains open.\n\nAlternative 2 · opening-depth [light] — Deepen the current activity through a relevant detail or relationship reaction.\nImpact envelope: The scene gains meaning without forcing escalation.\n\nAlternative 3 · opening-seed [light] — Seed one setting-compatible route for later development.\nImpact envelope: A future option becomes possible, not promised.', 'No generated next guides yet.'));
 
     const horizonLines = (state.planHorizons?.items || []).map((item, index, items) => {
         const change = item.change && item.change !== 'keep' ? ` · ${item.change}` : '';
@@ -1156,7 +1159,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     });
     const deviation = state.planHorizons?.deviation;
     if (deviation?.level && deviation.level !== 'none') horizonLines.push(`Deviation: ${deviation.level}${deviation.reason ? ` — ${deviation.reason}` : ''}`);
-    scratchpadText(board, 'scratchpad-horizons', horizonLines.join('\n'), boardFallback('First action [fluid · immediate influence] — Establish the opening activity and its direct response.\nCurrent scene [adaptive · strong influence] — Let relationships or practical conditions begin changing.\nNext scene [adaptive · moderate influence] — Carry forward one consequence or opportunity.\nSeveral scenes [stable · light influence] — Develop a recurring person, place, activity, or pressure.\nCurrent arc [stable · background influence] — Let accumulated choices reshape the character’s circumstances.\nLater arcs / open-ended [slow · background influence] — Keep multiple major life directions available and fully revisable.'));
+    scratchpadText(board, 'scratchpad-horizons', generatedValue(horizonLines.join('\n')), boardFallback('First action [fluid · immediate influence] — Establish the opening activity and its direct response.\nCurrent scene [adaptive · strong influence] — Let relationships or practical conditions begin changing.\nNext scene [adaptive · moderate influence] — Carry forward one consequence or opportunity.\nSeveral scenes [stable · light influence] — Develop a recurring person, place, activity, or pressure.\nCurrent arc [stable · background influence] — Let accumulated choices reshape the character’s circumstances.\nLater arcs / open-ended [slow · background influence] — Keep multiple major life directions available and fully revisable.', 'No generated planning horizons yet.'));
 
     const audit = state.cueAudit;
     const auditText = audit?.offeredIds?.length
@@ -1170,7 +1173,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
             : `Why: ${state.lastReason}`),
         auditText,
     ].filter(Boolean).join('\n\n');
-    scratchpadText(board, 'scratchpad-guidance', decision, boardFallback('Begin with a concrete world response to the player’s first action; preserve player agency and revise every route as evidence arrives.'));
+    scratchpadText(board, 'scratchpad-guidance', generatedValue(decision), boardFallback('Begin with a concrete world response to the player’s first action; preserve player agency and revise every route as evidence arrives.', 'No generated response guidance yet.'));
 
     const chatId = String(currentContext().getCurrentChatId?.() || '');
     const verification = pendingRequestVerification?.chatId === chatId
@@ -1197,10 +1200,10 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
             detail: item.direction,
             status: item.stability,
         }));
-    scratchpadText(board, 'scratchpad-objectives', scratchpadList(displayedObjectives, item => {
+    scratchpadText(board, 'scratchpad-objectives', analyzed ? scratchpadList(displayedObjectives, item => {
         if (!item?.title && !item?.detail) return '';
         return `${item.title || 'Open direction'}${item.detail ? ` — ${item.detail}` : ''}${item.status ? ` [${item.status}]` : ''}`;
-    }, ''), boardFallback('Opening objective — Establish what the character is doing, what can respond, and which choices remain open. [provisional]'));
+    }, '') : '', boardFallback('Opening objective — Establish what the character is doing, what can respond, and which choices remain open. [provisional]', 'No generated objectives yet.'));
 
     const displayedPossibilities = state.possibilities?.length
         ? state.possibilities
@@ -1209,17 +1212,17 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
             conditions: item.conditions,
             force: item.status === 'foreground' ? 'strong' : item.status === 'latent' ? 'light' : 'moderate',
         }));
-    scratchpadText(board, 'scratchpad-possibilities', scratchpadList(displayedPossibilities, item => {
+    scratchpadText(board, 'scratchpad-possibilities', analyzed ? scratchpadList(displayedPossibilities, item => {
         if (!item?.description) return '';
         const conditions = Array.isArray(item.conditions) && item.conditions.length ? ` Conditions: ${item.conditions.join('; ')}.` : '';
         return `${item.description}${conditions}${item.force ? ` Weight: ${item.force}.` : ''}`;
-    }, ''), boardFallback('A relationship becomes important. Weight: moderate.\nA routine develops into a recurring source of change. Weight: light.\nA new ally, rival, mentor, neighbor, colleague, or institution takes interest. Weight: light.\nA practical opportunity opens. Weight: light.\nA misunderstanding creates quiet conflict. Weight: light.\nA success changes expectations. Weight: light.\nA setback redirects the current route. Weight: light.\nAn invitation opens a different social path. Weight: light.\nA hidden motive later becomes relevant. Weight: light.\nA departure or return changes a relationship. Weight: light.\nA moral or allegiance choice becomes possible. Weight: light.\nA distant transformation emerges from accumulated choices. Weight: light.'));
+    }, '') : '', boardFallback('A relationship becomes important. Weight: moderate.\nA routine develops into a recurring source of change. Weight: light.\nA new ally, rival, mentor, neighbor, colleague, or institution takes interest. Weight: light.\nA practical opportunity opens. Weight: light.\nA misunderstanding creates quiet conflict. Weight: light.\nA success changes expectations. Weight: light.\nA setback redirects the current route. Weight: light.\nAn invitation opens a different social path. Weight: light.\nA hidden motive later becomes relevant. Weight: light.\nA departure or return changes a relationship. Weight: light.\nA moral or allegiance choice becomes possible. Weight: light.\nA distant transformation emerges from accumulated choices. Weight: light.', 'No generated possibilities yet.'));
 
-    scratchpadText(board, 'scratchpad-entities', scratchpadList(state.entities, item => {
+    scratchpadText(board, 'scratchpad-entities', analyzed ? scratchpadList(state.entities, item => {
         if (!item?.name) return '';
         const details = [item.state, item.location, item.relevance, item.confidence && `${item.confidence} confidence`, item.window].filter(Boolean).join(' · ');
         return `${item.name}${details ? ` — ${details}` : ''}`;
-    }, ''), boardFallback('Opening situation — Waiting to replace this provisional process with the first concrete people, institutions, places, and ongoing activities.'));
+    }, '') : '', boardFallback('Opening situation — Waiting to replace this provisional process with the first concrete people, institutions, places, and ongoing activities.', 'No generated entities or processes yet.'));
 
     const displayedLedger = state.contextLedger || [
         state.scene?.activity && `Working scene: ${state.scene.activity}.`,
@@ -1227,14 +1230,14 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         state.narrativeLayers?.widerWorld && `Wider context: ${state.narrativeLayers.widerWorld}`,
         state.narrativeLayers?.durableTrajectory && `Durable trajectory: ${state.narrativeLayers.durableTrajectory}`,
     ].filter(Boolean).join('\n');
-    scratchpadText(board, 'scratchpad-ledger', displayedLedger, boardFallback('Opening state: no story facts have been established yet. First evidence will replace this line with concrete continuity.'));
+    scratchpadText(board, 'scratchpad-ledger', generatedValue(displayedLedger), boardFallback('Opening state: no story facts have been established yet. First evidence will replace this line with concrete continuity.', 'No generated context ledger yet.'));
 
-    scratchpadText(board, 'scratchpad-events', scratchpadList(state.narrativeEvents, item => {
+    scratchpadText(board, 'scratchpad-events', analyzed ? scratchpadList(state.narrativeEvents, item => {
         if (!item?.title) return '';
         const stateLabels = [item.scope, item.epistemicStatus, item.disclosure, item.status].filter(Boolean).join(' · ');
         const effects = Array.isArray(item.consequences) && item.consequences.length ? `\n  Consequences: ${item.consequences.join('; ')}` : '';
         return `${item.title}${stateLabels ? ` [${stateLabels}]` : ''}${item.summary ? ` — ${item.summary}` : ''}${effects}${item.basis ? `\n  Basis: ${item.basis}` : ''}`;
-    }, ''), boardFallback('Opening development [offscreen · possible · hidden · latent] — The first concrete setting detail can begin an independent NPC or world process.'));
+    }, '') : '', boardFallback('Opening development [offscreen · possible · hidden · latent] — The first concrete setting detail can begin an independent NPC or world process.', 'No generated narrative events yet.'));
 
     scratchpadText(board, 'scratchpad-notes', scratchpadList(state.userNotes, item => item?.text ? `[${String(item.kind || 'note').toUpperCase()}] ${item.text}` : '', ''), 'No user notes.');
 }
