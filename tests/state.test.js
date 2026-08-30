@@ -296,6 +296,7 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.doesNotMatch(current, /Keep the scene grounded/);
     assert.match(current, /Conditional authorial direction/);
     assert.match(current, /TALE FAIRY AUTHORIAL FRAME/);
+    assert.match(current, /CURRENT CAUSE: Establish the obligation as a real constraint/);
     assert.match(current, /DURABLE CONTEXT: An open-ended survival and institutional-conflict story/);
     assert.match(current, /CURRENT SITUATION: An intimate home exchange constrained by Jedi obligations/);
     assert.match(current, /LOCAL ACTIVITY: A quiet tea conversation with Mara\. \[DEVELOPMENTAL\]/);

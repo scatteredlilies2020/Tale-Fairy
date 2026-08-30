@@ -140,8 +140,12 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /six to ten concise plan_horizons\.items ordered from the next few turns to a distant story horizon/);
     assert.match(SYSTEM, /some later arc or meaningful future time/);
     assert.match(SYSTEM, /Everything in the plan remains changeable/);
-    assert.match(SYSTEM, /Every horizon also retains some effect with a strict distance gradient/);
-    assert.match(SYSTEM, /distant directions provide only a subtle background pull/);
+    assert.match(SYSTEM, /Every supported horizon also retains some effect with a strict distance gradient/);
+    assert.match(SYSTEM, /its causality starts now/);
+    assert.match(SYSTEM, /present NPC motive, secret, private preparation, relationship pressure/);
+    assert.match(SYSTEM, /unselected possibility cards remain inert/);
+    assert.match(SYSTEM, /Future motivations, secrets, events, relationships, and world changes must grow from present causal state/);
+    assert.match(SYSTEM, /distant directions provide a subtle background pull/);
     assert.match(SYSTEM, /stable and slow directions resist cosmetic churn but must adjust or be replaced/);
     assert.match(SYSTEM, /not a story ending, final resolution, or predetermined outcome/);
     assert.match(SYSTEM, /Build fresh, specific future directions by extrapolating from the current roleplay trajectory/);
@@ -211,7 +215,7 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /complete 180-degree replacement immediately/);
     assert.match(SYSTEM, /Merely listing an idea must not bias a next guide, horizon, simulated event, or roleplay response/);
     assert.match(SYSTEM, /Balanced and Fun must include at least one active inventive route/);
-    assert.match(SYSTEM, /Hidden setup stays out of roleplay guidance/);
+    assert.match(SYSTEM, /Keep the hidden outcome out of roleplay guidance/);
     assert.match(SYSTEM, /must never mention mood, emotional tone, prose tempo, dialogue delivery/);
     assert.match(SYSTEM, /compact layered authorial frame, the causal operation, and one conditional authorial direction/);
     assert.match(SYSTEM, /Use consequence-only when the scene should show an effect but keep its cause wholly offscreen/);
