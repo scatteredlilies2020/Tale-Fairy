@@ -154,6 +154,10 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /open-ended roleplay, not a quest with a terminal win condition/);
     assert.match(SYSTEM, /Plan toward, through, and beyond a milestone without inventing a fixed ending/);
     assert.match(SYSTEM, /distant horizon should preserve room for continued life and new arcs/);
+    assert.match(SYSTEM, /preserve two or three distinct major future paths/);
+    assert.match(SYSTEM, /private, speculative, headcanon-like possibility/);
+    assert.match(SYSTEM, /Competing paths may coexist; do not turn alternatives into a mandatory sequence/);
+    assert.match(SYSTEM, /Never force or repeatedly foreshadow present events to serve them, manufacture fate debt/);
     assert.match(SYSTEM, /provisional upstream\/downstream hierarchy, not a rigid sequence/);
     assert.match(SYSTEM, /Every level is editable/);
     assert.match(SYSTEM, /Downstream levels must change fastest/);
@@ -166,6 +170,8 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /causal_tempo controls only the rate of story-state change/);
     assert.match(SYSTEM, /It never controls prose speed, dialogue cadence, mood, sentence rhythm, verbosity, descriptive density, or response length/);
     assert.match(SYSTEM, /future_setup is private planning state/);
+    assert.match(SYSTEM, /it is not the complete future plan/);
+    assert.match(SYSTEM, /Other major long-range possibilities remain as conditional objectives and horizons/);
     assert.match(SYSTEM, /Balanced and Fun must include at least one active inventive route/);
     assert.match(SYSTEM, /Hidden setup stays out of roleplay guidance/);
     assert.match(SYSTEM, /must never mention mood, emotional tone, prose tempo, dialogue delivery/);
