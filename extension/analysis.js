@@ -25,7 +25,7 @@ export const ANALYSIS_SCHEMA_VALUE = {
         }, required: ['status','activity','pace','intent','location','time','loop'] },
         objectives: { type: 'array', maxItems: 10, items: { type: 'object', additionalProperties: false, properties: { title: { type: 'string', maxLength: 120 }, detail: { type: 'string', maxLength: 300 }, status: { type: 'string', maxLength: 40 }, source: { type: 'string', maxLength: 120 } }, required: ['title','detail','status','source'] } },
         entities: { type: 'array', maxItems: 8, items: { type: 'object', additionalProperties: false, properties: { name: { type: 'string', maxLength: 100 }, state: { type: 'string', maxLength: 220 }, location: { type: 'string', maxLength: 140 }, relevance: { type: 'string', maxLength: 140 }, confidence: { type: 'string', maxLength: 40 }, window: { type: 'string', maxLength: 100 } }, required: ['name','state','location','relevance','confidence','window'] } },
-        possibilities: { type: 'array', minItems: 12, maxItems: 18, items: { type: 'object', additionalProperties: false, properties: { description: { type: 'string', maxLength: 120 }, conditions: { type: 'array', maxItems: 1, items: { type: 'string', maxLength: 90 } }, force: { type: 'string', enum: ['light','moderate','strong'] } }, required: ['description','conditions','force'] } },
+        possibilities: { type: 'array', minItems: 12, maxItems: 18, items: { type: 'object', additionalProperties: false, properties: { description: { type: 'string', maxLength: 120 }, horizon: { type: 'string', enum: ['local','near','mid','far','wildcard'] }, conditions: { type: 'array', maxItems: 1, items: { type: 'string', maxLength: 90 } }, force: { type: 'string', enum: ['light','moderate','strong'] } }, required: ['description','horizon','conditions','force'] } },
         pathways: { type: 'array', minItems: 1, maxItems: 5, items: { type: 'object', additionalProperties: false, properties: {
             id: { type: 'string', maxLength: 100 }, direction: { type: 'string', maxLength: 320 }, when: { type: 'string', maxLength: 240 }, response_bias: { type: 'string', maxLength: 300 }, horizon: { type: 'string', maxLength: 80 }, status: { type: 'string', enum: ['foreground','available','latent','blocked'] }, conditions: { type: 'array', maxItems: 3, items: { type: 'string', maxLength: 140 } }, change: { type: 'string', enum: ['keep','adjust','activate','deactivate','replace','retire'] }, reason: { type: 'string', maxLength: 220 },
         }, required: ['id','direction','when','response_bias','horizon','status','conditions','change','reason'] } },
@@ -132,6 +132,12 @@ export function validateAnalysisResult(result) {
     }
     for (const key of ['objectives', 'entities', 'possibilities']) {
         if (!Array.isArray(result[key])) errors.push(`${key} must be an array`);
+    }
+    for (const [index, possibility] of (Array.isArray(result.possibilities) ? result.possibilities : []).entries()) {
+        if (typeof possibility?.description !== 'string' || !possibility.description.trim()) errors.push(`possibilities[${index}].description must be a non-empty string`);
+        if (!['local', 'near', 'mid', 'far', 'wildcard'].includes(possibility?.horizon)) errors.push(`possibilities[${index}].horizon is invalid`);
+        if (!Array.isArray(possibility?.conditions)) errors.push(`possibilities[${index}].conditions must be an array`);
+        if (!['light', 'moderate', 'strong'].includes(possibility?.force)) errors.push(`possibilities[${index}].force is invalid`);
     }
     if (!Array.isArray(result.pathways) || result.pathways.length < 1 || result.pathways.length > 5) {
         errors.push('pathways must contain 1 to 5 conditional routes');
@@ -409,7 +415,10 @@ export function repairAnalysisResult(result, { expectedOfferedIds = [] } = {}) {
         },
         objectives: asArray(result.objectives),
         entities: asArray(result.entities),
-        possibilities: asArray(result.possibilities),
+        possibilities: asArray(result.possibilities).map((item, index) => ({
+            ...item,
+            horizon: oneOf(item?.horizon, ['local', 'near', 'mid', 'far', 'wildcard'], index < 3 ? 'local' : index < 6 ? 'near' : index < 9 ? 'mid' : index < 13 ? 'far' : 'wildcard'),
+        })),
         canon_constraints: uniqueStrings(result.canon_constraints),
         ledger: asString(result.ledger),
         guidance: asString(result.guidance),
@@ -665,11 +674,13 @@ export function repairAnalysisResult(result, { expectedOfferedIds = [] } = {}) {
         repaired.possibilities = [
             ...repaired.pathways.filter(pathway => pathway.status !== 'blocked').map(pathway => ({
                 description: pathway.direction.slice(0, 120),
+                horizon: pathway.status === 'foreground' ? 'local' : pathway.status === 'latent' ? 'mid' : 'near',
                 conditions: pathway.conditions.slice(0, 1).map(value => value.slice(0, 90)),
                 force: pathway.status === 'foreground' ? 'strong' : pathway.status === 'latent' ? 'light' : 'moderate',
             })),
-            ...items.map(item => ({
+            ...items.map((item, index) => ({
                 description: item.direction.slice(0, 120),
+                horizon: index < 2 ? 'near' : index < 4 ? 'mid' : 'far',
                 conditions: item.conditions.slice(0, 1).map(value => value.slice(0, 90)),
                 force: item.stability === 'fluid' ? 'moderate' : 'light',
             })),
@@ -1373,7 +1384,7 @@ Treat backward references such as “again,” “the same one,” “last time,
 
 Maintain a compact causal world model from established evidence and active invention: relevant people, factions, locations, knowledge, motives, relationships, obligations, resources, constraints, processes, unresolved threads, and elapsed time. Lore is an active causal system and a source of new pressure, opportunity, and consequence, not decoration. Populate entities with the two to five people, institutions, factions, or active processes most capable of affecting what follows, whether currently onscreen or offscreen; do not leave it empty while such actors are named in the scene or ledger. A possibility needs an in-world source, route into the scene, timing, and reason, but Tale Fairy may author that source when it fits the setting and established facts. Wishes, jokes, hypotheticals, stale historical mentions, and disconnected franchise cameos are not scheduled events. Keep uncertainty where evidence is incomplete. Use one unified possibility pool rather than categories. Prefer fresh, causally grounded developments that grow from the current trajectory. Develop an established thread when it is still live; otherwise create a compatible new consequence, actor, motive, or direction instead of recycling the past or returning only summary.
 
-Use possibilities as a high-volume, ultra-compact brainstorming bench. Return twelve to eighteen distinct one-clause idea cards, each with at most one short activation condition and a light, moderate, or strong plausibility weight. Range across compatible allies, enemies, institutions, relationships, temptations, discoveries, reversals, meetings, departures, returns, victories, failures, and long-range transformations; include mutually exclusive and directionally opposite futures when the setting supports them. A major setting figure may notice exceptional potential, seek a meeting, recruit, oppose, exploit, protect, or ignore the player character when a credible information and access route exists. Such ideas may include allegiance changes or morally extreme paths, but are non-canon options rather than predictions.
+Use possibilities as a high-volume, ultra-compact brainstorming bench. Return twelve to eighteen distinct one-clause idea cards, each tagged with a visible horizon (local, near, mid, far, or wildcard), at most one short activation condition, and a light, moderate, or strong plausibility weight. Make the spread unmistakable rather than clustering around the current scene: normally include 2–3 local cards, 2–3 near cards, 2–3 mid cards, 3–5 far cards, and 1–3 wildcard cards. Order them by horizon. Local means the current activity or scene; near means the next few scenes; mid means the current arc; far means later arcs or life-changing outcomes; wildcard means a sharp but setting-compatible 180-degree alternate future. Range across compatible allies, enemies, institutions, relationships, temptations, discoveries, reversals, meetings, departures, returns, victories, failures, allegiance changes, and long-range transformations. Include mutually exclusive and directionally opposite futures when the setting supports them. A major setting figure may notice exceptional potential, seek a meeting, recruit, oppose, exploit, protect, or ignore the player character when a credible information and access route can exist; include at least one such major-figure or major-faction idea among the far or wildcard cards. Morally extreme paths are welcome as non-canon options rather than predictions. This distribution is breadth for Tale Fairy's private bench, not a schedule, foreshadowing instruction, or pressure on the present scene.
 
 Calibrate the bench to the actual genre, activity, and scale instead of privileging adventure or high stakes. Slice-of-life, romance, domestic, school, workplace, travel, hobby, and social simulations are fully valid stories: generate paths and events from friendships, affection, family, neighbors, routines, invitations, celebrations, errands, schedules, work, study, money, small mistakes, missed timing, misunderstandings, rivalry, repair, opportunities, personal change, and ordinary external circumstances. Include conflict when plausible, including quiet interpersonal or practical conflict, but do not manufacture villains, danger, crises, or melodrama merely to create movement. Peaceful developments, successes, bonding, humor, discoveries, choices, and gradual change are equally useful. For any other roleplay or simulation, explore its own natural sources of change, decisions, consequences, setbacks, and opportunities rather than forcing it into a preferred genre.
 

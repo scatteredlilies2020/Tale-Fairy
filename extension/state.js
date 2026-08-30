@@ -69,7 +69,8 @@ function normalizeEntity(value = {}) {
     return { name: text(value.name).slice(0, 100), state: text(value.state).slice(0, 220), location: text(value.location).slice(0, 140), relevance: text(value.relevance).slice(0, 140), confidence: text(value.confidence).slice(0, 40), window: text(value.window).slice(0, 100) };
 }
 function normalizePossibility(value = {}) {
-    return { description: text(value.description).slice(0, 120), conditions: cap(value.conditions, 1).map(item => text(item).slice(0, 90)).filter(Boolean), force: text(value.force).slice(0, 20) };
+    const horizon = text(value.horizon).toLowerCase();
+    return { description: text(value.description).slice(0, 120), horizon: ['local', 'near', 'mid', 'far', 'wildcard'].includes(horizon) ? horizon : '', conditions: cap(value.conditions, 1).map(item => text(item).slice(0, 90)).filter(Boolean), force: text(value.force).slice(0, 20) };
 }
 function normalizeDirectorScore(value = {}) {
     const causalTempo = text(value.causalTempo ?? value.causal_tempo, 'hold').toLowerCase();
@@ -350,7 +351,7 @@ export function stateForPrompt(state) {
         possibilities: s.possibilities.map(item => [
             item.description.slice(0, 100),
             item.conditions[0] ? `if ${item.conditions[0].slice(0, 60)}` : '',
-            item.force ? `[${item.force.slice(0, 12)}]` : '',
+            `[${item.horizon || 'unscoped'}, ${item.force.slice(0, 12) || 'light'}]`,
         ].filter(Boolean).join(' | ')),
         pathways: s.pathways.map(item => ({ id: item.id, direction: item.direction.slice(0, 220), when: item.when.slice(0, 180), responseBias: item.responseBias.slice(0, 200), horizon: item.horizon, status: item.status, conditions: item.conditions.slice(0, 2), change: item.change })),
         nextGuides: s.nextGuides.map(item => ({ id: item.id, direction: item.direction.slice(0, 240), useWhen: item.useWhen.slice(0, 160), dropWhen: item.dropWhen.slice(0, 160), causalRole: item.causalRole.slice(0, 180), worldDelta: item.worldDelta.slice(0, 180), origin: item.origin, basis: item.basis.slice(0, 140), strength: item.strength, sourcePathways: item.sourcePathways, causalEventIds: item.causalEventIds, disclosure: item.disclosure })),

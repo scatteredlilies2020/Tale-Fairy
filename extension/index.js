@@ -14,7 +14,7 @@ import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlErr
 import { compactContinuityPrompt, readContinuityBridge, waitForContinuityBridge } from './continuity.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.27';
+const RUNTIME_VERSION = '0.11.28';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -1209,13 +1209,14 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         ? state.possibilities
         : (state.pathways || []).filter(item => item?.status !== 'blocked').slice(0, 6).map(item => ({
             description: item.direction,
+            horizon: item.status === 'foreground' ? 'local' : item.status === 'latent' ? 'mid' : 'near',
             conditions: item.conditions,
             force: item.status === 'foreground' ? 'strong' : item.status === 'latent' ? 'light' : 'moderate',
         }));
     scratchpadText(board, 'scratchpad-possibilities', analyzed ? scratchpadList(displayedPossibilities, item => {
         if (!item?.description) return '';
         const conditions = Array.isArray(item.conditions) && item.conditions.length ? ` Conditions: ${item.conditions.join('; ')}.` : '';
-        return `${item.description}${conditions}${item.force ? ` Weight: ${item.force}.` : ''}`;
+        return `${item.horizon ? `[${item.horizon}] ` : ''}${item.description}${conditions}${item.force ? ` Weight: ${item.force}.` : ''}`;
     }, '') : '', boardFallback('A relationship becomes important. Weight: moderate.\nA routine develops into a recurring source of change. Weight: light.\nA new ally, rival, mentor, neighbor, colleague, or institution takes interest. Weight: light.\nA practical opportunity opens. Weight: light.\nA misunderstanding creates quiet conflict. Weight: light.\nA success changes expectations. Weight: light.\nA setback redirects the current route. Weight: light.\nAn invitation opens a different social path. Weight: light.\nA hidden motive later becomes relevant. Weight: light.\nA departure or return changes a relationship. Weight: light.\nA moral or allegiance choice becomes possible. Weight: light.\nA distant transformation emerges from accumulated choices. Weight: light.', 'No generated possibilities yet.'));
 
     scratchpadText(board, 'scratchpad-entities', analyzed ? scratchpadList(state.entities, item => {

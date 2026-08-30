@@ -27,6 +27,7 @@ test('state normalizes caps and invalid mode', () => {
     assert.match(state.nextGuides[0].causalRole, /advance…$/);
     assert.equal(state.possibilities.length, 18);
     assert.ok(state.possibilities.every(item => item.description.length <= 120 && item.conditions.length <= 1));
+    assert.ok(state.possibilities.every(item => item.horizon === ''));
     const promptIdeas = stateForPrompt(state).possibilities;
     assert.equal(promptIdeas.length, 18);
     assert.ok(promptIdeas.every(item => typeof item === 'string' && item.length <= 180));

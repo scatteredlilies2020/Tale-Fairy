@@ -374,6 +374,7 @@ test('planner schema uses SillyTavern structured-output packaging', () => {
     assert.equal(ANALYSIS_SCHEMA.value.properties.inject.const, true);
     assert.equal(ANALYSIS_SCHEMA.value.properties.possibilities.minItems, 12);
     assert.equal(ANALYSIS_SCHEMA.value.properties.possibilities.maxItems, 18);
+    assert.deepEqual(ANALYSIS_SCHEMA.value.properties.possibilities.items.properties.horizon.enum, ['local', 'near', 'mid', 'far', 'wildcard']);
     assert.equal(ANALYSIS_SCHEMA.returnInvalid, true);
     assert.equal(ANALYSIS_SCHEMA.strict, true);
     assert.equal(ANALYSIS_SCHEMA.type, undefined);
