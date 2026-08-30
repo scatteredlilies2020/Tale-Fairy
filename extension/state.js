@@ -207,14 +207,24 @@ export function normalizeBeat(value = {}) {
     };
 }
 
-function normalizeHorizon(value = {}) {
+const GENERIC_HORIZON_TIMEFRAME = /^(?:future|open[- ]ended future|unknown|uncertain|tbd)$/iu;
+
+function inferredHorizonTimeframe(index, total) {
+    if (index >= total - 1) return 'distant / open-ended';
+    return ['next response', 'next few turns', 'current scene', 'next scene', 'several scenes', 'current arc'][index] || 'later arcs';
+}
+
+function normalizeHorizon(value = {}, index = 0, items = [value]) {
     const change = text(value.change, 'replace').toLowerCase();
     const rawStability = text(value.stability).toLowerCase();
     const stability = rawStability === 'anchored' ? 'slow' : rawStability;
+    const rawTimeframe = text(value.timeframe);
     return {
         id: text(value.id).slice(0, 100),
         direction: text(value.direction).slice(0, 360),
-        timeframe: text(value.timeframe).slice(0, 120),
+        timeframe: (!rawTimeframe || GENERIC_HORIZON_TIMEFRAME.test(rawTimeframe)
+            ? inferredHorizonTimeframe(index, items.length)
+            : rawTimeframe).slice(0, 120),
         stability: ['fluid', 'adaptive', 'stable', 'slow'].includes(stability) ? stability : 'adaptive',
         conditions: cap(value.conditions, 3).map(item => text(item).slice(0, 140)).filter(Boolean),
         change: ['keep', 'adjust', 'replace'].includes(change) ? change : 'replace',
@@ -317,6 +327,11 @@ export function normalizeState(input = {}) {
         plannerSeed: Number.isInteger(value.plannerSeed) ? value.plannerSeed : 0,
         lastRequestVerification: movementUpgrade ? null : normalizeRequestVerification(value.lastRequestVerification),
     };
+    state.objectives = state.objectives.map((objective, index) => {
+        if (!/^Open direction · open[- ]ended future$/iu.test(objective.title)) return objective;
+        const timeframe = state.planHorizons.items[index]?.timeframe;
+        return timeframe ? { ...objective, title: `Open direction · ${timeframe}`.slice(0, 120) } : objective;
+    });
     return state;
 }
 

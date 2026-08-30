@@ -573,10 +573,16 @@ export function repairAnalysisResult(result, { expectedOfferedIds = [] } = {}) {
     }
 
     const horizonSource = result.plan_horizons && typeof result.plan_horizons === 'object' ? result.plan_horizons : {};
-    const items = asArray(horizonSource.items).slice(0, 10).map((item, index) => ({
+    const sourceItems = asArray(horizonSource.items).slice(0, 10);
+    const inferredTimeframe = index => index >= sourceItems.length - 1
+        ? 'distant / open-ended'
+        : (['next response', 'next few turns', 'current scene', 'next scene', 'several scenes', 'current arc'][index] || 'later arcs');
+    const items = sourceItems.map((item, index) => ({
         id: asString(item?.id, `recovered-horizon-${index + 1}`) || `recovered-horizon-${index + 1}`,
         direction: asString(item?.direction, 'Keep the current trajectory revisable as events develop.') || 'Keep the current trajectory revisable as events develop.',
-        timeframe: asString(item?.timeframe, 'open-ended future') || 'open-ended future',
+        timeframe: /^(?:future|open[- ]ended future|unknown|uncertain|tbd)?$/iu.test(asString(item?.timeframe).trim())
+            ? inferredTimeframe(index)
+            : asString(item.timeframe).trim(),
         stability: oneOf(item?.stability, ['fluid', 'adaptive', 'stable', 'slow'], index < 1 ? 'fluid' : index < 3 ? 'adaptive' : 'stable'),
         conditions: uniqueStrings(item?.conditions).slice(0, 3),
         change: oneOf(item?.change, ['keep', 'adjust', 'replace'], 'adjust'),

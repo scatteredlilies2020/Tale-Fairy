@@ -124,6 +124,30 @@ test('state retains a bounded horizon ladder with increasing planning detail', (
     assert.equal(state.planHorizons.deviation.level, 'minor');
 });
 
+test('state replaces repeated generic horizon labels with a readable distance ladder', () => {
+    const items = Array.from({ length: 8 }, (_, index) => ({
+        id: `h${index}`,
+        direction: `Direction ${index}`,
+        timeframe: 'open-ended future',
+        stability: index < 2 ? 'fluid' : index < 4 ? 'adaptive' : index < 6 ? 'stable' : 'slow',
+        conditions: [],
+        change: 'adjust',
+        reason: 'Provider omitted a useful label.',
+    }));
+    const state = normalizeState({
+        objectives: items.slice(0, 4).map(() => ({ title: 'Open direction · open-ended future' })),
+        planHorizons: { items, deviation: { level: 'minor', reason: 'Normalized.' } },
+    });
+    assert.deepEqual(state.planHorizons.items.map(item => item.timeframe), [
+        'next response', 'next few turns', 'current scene', 'next scene',
+        'several scenes', 'current arc', 'later arcs', 'distant / open-ended',
+    ]);
+    assert.deepEqual(state.objectives.map(item => item.title), [
+        'Open direction · next response', 'Open direction · next few turns',
+        'Open direction · current scene', 'Open direction · next scene',
+    ]);
+});
+
 test('horizon influence decreases but never disappears with distance', () => {
     assert.deepEqual(Array.from({ length: 6 }, (_, index) => horizonInfluence(index, 6)), ['strong', 'moderate', 'light', 'light', 'background', 'background']);
 });
