@@ -274,11 +274,11 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(stale, /HARD EXCLUSION: No time travel/);
     assert.doesNotMatch(stale, /Keep the scene grounded/);
     assert.match(stale, /No current route is safe to reuse/);
-    assert.match(stale, /REQUIRED WORLD INITIATIVE/);
-    assert.match(stale, /Make one noticeable NPC\/world\/environment change in-scene/);
-    assert.match(stale, /even in routine/);
-    assert.match(stale, /Do not substitute options, a player task, or a question/);
-    assert.match(stale, /leave response open/);
+    assert.match(stale, /BEAT REALIZATION/);
+    assert.match(stale, /Introduce an event, actor, object, or world change only when/);
+    assert.match(stale, /calm may remain calm/);
+    assert.match(stale, /Never invent intrusion or player tasks to prove movement/);
+    assert.match(stale, /leave choices open/);
     assert.match(stale, /Do not repeat completed events/);
     assert.match(stale, /User and roleplay instructions control expression/);
     assert.match(stale, /Tale Fairy supplies only movement/);
@@ -308,14 +308,14 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(current, /Tale Fairy controls narrative function, pressure, and scale/);
     assert.match(current, /realize exact events, NPC actions, dialogue, outcomes, and prose/);
     assert.match(current, /AUTHORIAL INTENT: Let Mara answer plainly/);
-    assert.match(current, /REQUIRED WORLD INITIATIVE/);
+    assert.match(current, /BEAT REALIZATION/);
     assert.match(current, /If invalid, do not force it; choose another supported initiative from current context/);
     assert.doesNotMatch(current, /\[EMPHASIS\]/);
     assert.match(current, /APPLY WHEN: The user continues or asks Mara/);
     assert.match(current, /DO NOT APPLY WHEN: The user leaves or changes subject/);
     assert.match(current, /STORY FUNCTION: Advance the live trust thread through a concrete disclosure/);
     assert.match(current, /IMPACT ENVELOPE: Mara reveals a concern/);
-    assert.match(current, /long-range influence accumulates/);
+    assert.match(current, /direction or active horizon supports it/);
     assert.match(current, /binding at narrative-purpose level, not a prescribed incident/);
     assert.match(current, /Keep private future developments offscreen/);
     assert.match(current, /travel stops at arrival/);
@@ -359,7 +359,7 @@ test('prompt payload keeps user directives active and only includes usable guida
     const regenerationFallback = buildPromptPayload(state, { enabled: true, guidanceUsable: false, guideCandidates: [], regeneration: true, variationCue: 8472 });
     assert.match(regenerationFallback, /Background variation 8472/);
     assert.match(regenerationFallback, /realize a different supported initiative/);
-    assert.match(regenerationFallback, /REQUIRED WORLD INITIATIVE/);
+    assert.match(regenerationFallback, /BEAT REALIZATION/);
     assert.match(regenerationFallback, /do not repeat the discarded event/);
     assert.match(regenerationFallback, /alter established meanings/);
     const regenerationGuide = regenerationFallback.match(/<living-world-guide>([\s\S]*?)<\/living-world-guide>/)?.[1] || '';
@@ -402,7 +402,7 @@ test('private planning state cannot bias the response without a selected next gu
     const payload = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
     assert.doesNotMatch(payload, /closed-route|Use the sealed passage/);
     assert.match(payload, /<living-world-guide>[\s\S]*No current route is safe to reuse/);
-    assert.match(payload, /REQUIRED WORLD INITIATIVE/);
+    assert.match(payload, /BEAT REALIZATION/);
 });
 
 test('explicit progress detection distinguishes commands from negation', () => {

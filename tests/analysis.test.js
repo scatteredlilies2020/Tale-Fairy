@@ -110,6 +110,9 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /keep the world moving through independent NPC reactions/);
     assert.match(SYSTEM, /Do not freeze the reply at a permission prompt/);
     assert.match(SYSTEM, /Every next guide must be fulfillable without inventing a new player action/);
+    assert.match(SYSTEM, /Choose the beat function from current evidence before writing guides/);
+    assert.match(SYSTEM, /A calm night doing an assignment may remain calm/);
+    assert.match(SYSTEM, /repeated HOLD is valid while the current activity and active horizons supply no causal reason for an outward intrusion/);
     assert.match(SYSTEM, /use_when condition is a gate to evaluate from supplied evidence/);
     assert.match(SYSTEM, /prefer a parallel NPC\/world development/);
     assert.match(SYSTEM, /Unless the newest user turn declares travel or arrival, keep the player at the current location/);
@@ -199,7 +202,7 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /it is not the complete future plan/);
     assert.match(SYSTEM, /Other major long-range possibilities remain as conditional objectives and horizons/);
     assert.match(SYSTEM, /durable trajectory must affect causal selection rather than remain decorative/);
-    assert.match(SYSTEM, /Do not chain HOLD or “no wider change” across successive turns/);
+    assert.match(SYSTEM, /Do not chain HOLD or “no wider change” merely by default/);
     assert.match(SYSTEM, /high-volume, ultra-compact brainstorming bench/);
     assert.match(SYSTEM, /twelve to eighteen distinct one-clause idea cards/);
     assert.match(SYSTEM, /major setting figure may notice exceptional potential, seek a meeting, recruit, oppose, exploit, protect, or ignore/);
