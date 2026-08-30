@@ -14,7 +14,7 @@ import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlErr
 import { compactContinuityPrompt, readContinuityBridge, waitForContinuityBridge } from './continuity.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.29';
+const RUNTIME_VERSION = '0.11.30';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -714,15 +714,43 @@ function waitForAbortable(promise, signal) {
     ]);
 }
 
-function isolatePlannerGenerationData(generateData, reasoningMode, temperature = plannerTemperature()) {
+function isUnsupportedTemperatureError(error) {
+    let serialized = '';
+    try { serialized = JSON.stringify(error); } catch { /* best effort */ }
+    const text = [error?.message, error?.error?.message, error?.cause?.message, serialized, String(error || '')]
+        .filter(Boolean)
+        .join('\n');
+    return /(?:unsupported parameter.{0,160}temperature|temperature.{0,160}(?:not supported|unsupported))/is.test(text);
+}
+
+async function retryWithoutUnsupportedTemperature(run, disableSampling) {
+    try {
+        return await run();
+    } catch (error) {
+        if (!isUnsupportedTemperatureError(error)) throw error;
+        disableSampling();
+        console.warn(`[${EXTENSION_ID}] planner model rejected temperature; retrying with provider-default sampling`);
+        return await run();
+    }
+}
+
+function plannerTemperaturePayload(temperature, samplingEnabled) {
+    return samplingEnabled ? { temperature: normalizePlannerTemperature(temperature) } : {};
+}
+
+function isolatePlannerGenerationData(generateData, reasoningMode, temperature = plannerTemperature(), samplingEnabled = true) {
     if (!generateData || typeof generateData !== 'object') return;
     generateData.stream = false;
     generateData.n = 1;
-    generateData.temperature = normalizePlannerTemperature(temperature);
-    generateData.top_p = 1;
-    generateData.frequency_penalty = 0;
-    generateData.presence_penalty = 0;
-    generateData.repetition_penalty = 1;
+    if (samplingEnabled) {
+        generateData.temperature = normalizePlannerTemperature(temperature);
+        generateData.top_p = 1;
+        generateData.frequency_penalty = 0;
+        generateData.presence_penalty = 0;
+        generateData.repetition_penalty = 1;
+    } else {
+        for (const key of ['temperature', 'top_p', 'frequency_penalty', 'presence_penalty', 'repetition_penalty']) delete generateData[key];
+    }
     generateData.custom_prompt_post_processing = '';
     const responseLengthKeys = ['max_tokens', 'max_completion_tokens', 'max_length', 'max_new_tokens', 'max_output_tokens', 'n_predict'];
     let responseLengthSet = false;
@@ -814,7 +842,8 @@ async function requestAnalysisOnce(prompt, externalSignal) {
                 profileName: profile.name,
             });
             let reasoningPayload = reasoning.payload;
-            const sendProfile = (structured, systemPrompt = SYSTEM) => ConnectionManagerRequestService.sendRequest(
+            let samplingEnabled = true;
+            const sendProfileRaw = (structured, systemPrompt = SYSTEM) => ConnectionManagerRequestService.sendRequest(
                 model.profileId,
                 [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }],
                 PLANNER_RESPONSE_TOKENS,
@@ -822,9 +851,13 @@ async function requestAnalysisOnce(prompt, externalSignal) {
                 {
                     ...(structured ? { json_schema: ANALYSIS_SCHEMA } : {}),
                     custom_prompt_post_processing: '',
-                    temperature,
+                    ...plannerTemperaturePayload(temperature, samplingEnabled),
                     ...reasoningPayload,
                 },
+            );
+            const sendProfile = (structured, systemPrompt = SYSTEM) => retryWithoutUnsupportedTemperature(
+                () => sendProfileRaw(structured, systemPrompt),
+                () => { samplingEnabled = false; },
             );
             try {
                 const response = await sendProfile(true);
@@ -855,12 +888,13 @@ async function requestAnalysisOnce(prompt, externalSignal) {
         }
         if (model.active) {
             let activeReasoningMode = plannerReasoningMode();
+            let samplingEnabled = true;
             const runActive = structured => {
                 const mainApi = currentContext().mainApi;
                 const seedEvent = mainApi === 'openai' ? event_types.CHAT_COMPLETION_SETTINGS_READY : event_types.GENERATE_AFTER_DATA;
                 const configurePlanner = generateData => {
                     if (!containsPlannerMarker(generateData)) return;
-                    isolatePlannerGenerationData(generateData, activeReasoningMode, temperature);
+                    isolatePlannerGenerationData(generateData, activeReasoningMode, temperature, samplingEnabled);
                 };
                 eventSource.on(seedEvent, configurePlanner);
                 return waitForAbortable(generateRaw({
@@ -874,14 +908,18 @@ async function requestAnalysisOnce(prompt, externalSignal) {
                     trimNames: false,
                 }), controller.signal).finally(() => eventSource.removeListener(seedEvent, configurePlanner));
             };
+            const runActiveCompatible = structured => retryWithoutUnsupportedTemperature(
+                () => runActive(structured),
+                () => { samplingEnabled = false; },
+            );
             try {
                 const activeSource = String(currentContext().chatCompletionSettings?.chat_completion_source || '');
                 if (activeSource === 'openrouter') {
-                    const raw = await runActive(false);
+                    const raw = await runActiveCompatible(false);
                     controller.signal.throwIfAborted();
                     return parseAnalysisResponse(raw, prompt);
                 }
-                const raw = await runActive(true);
+                const raw = await runActiveCompatible(true);
                 controller.signal.throwIfAborted();
                 return parseAnalysisResponse(raw, prompt);
             } catch (error) {
@@ -891,7 +929,7 @@ async function requestAnalysisOnce(prompt, externalSignal) {
                     activeReasoningMode = isMandatoryReasoningError(error) ? 'minimum' : 'default';
                     try {
                         const activeSource = String(currentContext().chatCompletionSettings?.chat_completion_source || '');
-                        const raw = await runActive(activeSource !== 'openrouter');
+                        const raw = await runActiveCompatible(activeSource !== 'openrouter');
                         controller.signal.throwIfAborted();
                         return parseAnalysisResponse(raw, prompt);
                     } catch (retryError) {
@@ -900,7 +938,7 @@ async function requestAnalysisOnce(prompt, externalSignal) {
                     }
                 }
                 console.warn(`[${EXTENSION_ID}] active model structured request failed; retrying with a JSON-only prompt`, error);
-                const raw = await runActive(false);
+                const raw = await runActiveCompatible(false);
                 controller.signal.throwIfAborted();
                 return parseAnalysisResponse(raw, prompt);
             }
@@ -913,9 +951,10 @@ async function requestAnalysisOnce(prompt, externalSignal) {
             url: model.url,
         });
         let reasoningPayload = reasoning.payload;
-        const send = async structured => {
+        let samplingEnabled = true;
+        const sendRaw = async structured => {
             const systemPrompt = structured ? SYSTEM : fallbackSystemPrompt();
-            const body = { chat_completion_source: model.provider, model: model.model, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }], max_tokens: PLANNER_RESPONSE_TOKENS, stream: false, temperature, ...reasoningPayload, ...(structured ? { response_format: { type: 'json_object' } } : {}), ...(model.provider === 'openrouter' ? { api_url: model.url.replace(/\/$/, '') } : { custom_url: model.url.replace(/\/$/, '') }) };
+            const body = { chat_completion_source: model.provider, model: model.model, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }], max_tokens: PLANNER_RESPONSE_TOKENS, stream: false, ...plannerTemperaturePayload(temperature, samplingEnabled), ...reasoningPayload, ...(structured ? { response_format: { type: 'json_object' } } : {}), ...(model.provider === 'openrouter' ? { api_url: model.url.replace(/\/$/, '') } : { custom_url: model.url.replace(/\/$/, '') }) };
             if (model.secretId) body.secret_id = model.secretId;
             const response = await fetch('/api/backends/chat-completions/generate', { method: 'POST', headers: currentContext().getRequestHeaders?.() || getRequestHeaders?.() || { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
             const payload = await response.json();
@@ -923,6 +962,10 @@ async function requestAnalysisOnce(prompt, externalSignal) {
             controller.signal.throwIfAborted();
             return parseAnalysisResponse(payload, prompt);
         };
+        const send = structured => retryWithoutUnsupportedTemperature(
+            () => sendRaw(structured),
+            () => { samplingEnabled = false; },
+        );
         const structured = model.provider !== 'openrouter';
         try {
             return await send(structured);
