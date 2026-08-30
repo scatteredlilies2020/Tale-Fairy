@@ -275,9 +275,12 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.doesNotMatch(stale, /Keep the scene grounded/);
     assert.match(stale, /Background continuity only/);
     assert.match(stale, /Do not repeat a completed event/);
-    assert.match(stale, /Linger on engaged emotional, relational, revelatory, conflict, discovery, or consequential beats/);
-    assert.match(stale, /Do not routinely end by asking, offering choices/);
-    assert.match(stale, /player agency open/);
+    assert.match(stale, /Primary user and roleplay instructions control voice, dialogue, prose, format, length, and response shape/);
+    assert.match(stale, /Tale Fairy changes none of them/);
+    assert.match(stale, /named action permits one instance and result/);
+    assert.match(stale, /NPC requests\/orders are events, not authorization/);
+    assert.match(stale, /Tale Fairy movement must come from NPC\/world action, not assigning the player a task/);
+    assert.doesNotMatch(stale, /Do not routinely end|issuing a command|waiting expectantly/);
     assert.doesNotMatch(stale, /Let Mara answer plainly|meaningful deflection/);
     const current = buildPromptPayload(state, {
         enabled: true,
@@ -307,19 +310,21 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(current, /IMPACT ENVELOPE: Mara reveals a concern/);
     assert.match(current, /binding at the level of narrative purpose, not a prescribed incident/);
     assert.match(current, /Keep private future developments offscreen/);
-    assert.match(current, /travel ends at arrival/);
-    assert.match(current, /Broad bounded activities may progress/);
+    assert.match(current, /travel stops at arrival/);
+    assert.match(current, /broad activity may progress/);
     assert.doesNotMatch(current, /I play the game/);
-    assert.match(current, /Simulate routine micro-actions without prompting/);
-    assert.match(current, /show concrete progress/);
-    assert.match(current, /Apply established strengths\/limitations proportionately/);
+    assert.match(current, /named action permits one instance and immediate result/);
+    assert.match(current, /not repetition, onward movement, obeying a new NPC request, or unstated reaction/);
+    assert.match(current, /NPC requests\/orders are events, not player authorization/);
+    assert.match(current, /Tale Fairy directions must move through independent NPC\/world change, not an assignment for the player/);
+    assert.match(current, /Only simulate low-stakes procedure implicit in broad scope/);
+    assert.match(current, /Apply established strengths\/limits proportionately/);
     assert.match(current, /never cancel exceptional advantages/);
-    assert.match(current, /APPLY is a gate, not an order to make it true/);
+    assert.match(current, /APPLY is a gate, not a mandate/);
     assert.match(current, /Keep unresolved choices open/);
-    assert.match(current, /advance independent NPC\/world action rather than choosing or prompting/);
-    assert.match(current, /compress repetitive procedure and menus unless engaged/);
-    assert.match(current, /Ask only when naturally necessary/);
-    assert.match(current, /end on concrete story movement/);
+    assert.match(current, /Primary user and roleplay instructions control voice, dialogue, prose, format, length, and response shape/);
+    assert.match(current, /Tale Fairy changes none of them/);
+    assert.doesNotMatch(current, /Do not routinely end|Ask only when|saying “your call”|waiting expectantly/);
     assert.match(current, /preserve established meanings, pacing, and player agency/);
     assert.doesNotMatch(current, /discarded reply/);
     assert.doesNotMatch(current, /Mara must choose between the relationship and a Jedi obligation/);
