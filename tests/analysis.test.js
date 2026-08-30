@@ -172,6 +172,12 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /future_setup is private planning state/);
     assert.match(SYSTEM, /it is not the complete future plan/);
     assert.match(SYSTEM, /Other major long-range possibilities remain as conditional objectives and horizons/);
+    assert.match(SYSTEM, /high-volume, ultra-compact brainstorming bench/);
+    assert.match(SYSTEM, /twelve to eighteen distinct one-clause idea cards/);
+    assert.match(SYSTEM, /major setting figure may notice exceptional potential, seek a meeting, recruit, oppose, exploit, protect, or ignore/);
+    assert.match(SYSTEM, /possibility bench has zero inertia and creates no narrative debt/);
+    assert.match(SYSTEM, /complete 180-degree replacement immediately/);
+    assert.match(SYSTEM, /Merely listing an idea must not bias a next guide, horizon, simulated event, or roleplay response/);
     assert.match(SYSTEM, /Balanced and Fun must include at least one active inventive route/);
     assert.match(SYSTEM, /Hidden setup stays out of roleplay guidance/);
     assert.match(SYSTEM, /must never mention mood, emotional tone, prose tempo, dialogue delivery/);
@@ -332,6 +338,8 @@ test('planner schema uses SillyTavern structured-output packaging', () => {
     assert.equal(ANALYSIS_SCHEMA.value, ANALYSIS_SCHEMA_VALUE);
     assert.equal(ANALYSIS_SCHEMA.value.type, 'object');
     assert.equal(ANALYSIS_SCHEMA.value.properties.inject.const, true);
+    assert.equal(ANALYSIS_SCHEMA.value.properties.possibilities.minItems, 12);
+    assert.equal(ANALYSIS_SCHEMA.value.properties.possibilities.maxItems, 18);
     assert.equal(ANALYSIS_SCHEMA.returnInvalid, true);
     assert.equal(ANALYSIS_SCHEMA.strict, true);
     assert.equal(ANALYSIS_SCHEMA.type, undefined);

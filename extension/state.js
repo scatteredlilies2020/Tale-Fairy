@@ -5,6 +5,7 @@ const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
 const MAX_EVENTS = 10;
 const MAX_OBJECTIVES = 10;
+const MAX_POSSIBILITIES = 18;
 const MAX_HORIZONS = 10;
 const MAX_PATHWAYS = 5;
 const MAX_GUIDES = 4;
@@ -68,7 +69,7 @@ function normalizeEntity(value = {}) {
     return { name: text(value.name).slice(0, 100), state: text(value.state).slice(0, 220), location: text(value.location).slice(0, 140), relevance: text(value.relevance).slice(0, 140), confidence: text(value.confidence).slice(0, 40), window: text(value.window).slice(0, 100) };
 }
 function normalizePossibility(value = {}) {
-    return { description: text(value.description).slice(0, 280), conditions: cap(value.conditions, 4).map(item => text(item).slice(0, 140)).filter(Boolean), force: text(value.force).slice(0, 40) };
+    return { description: text(value.description).slice(0, 120), conditions: cap(value.conditions, 1).map(item => text(item).slice(0, 90)).filter(Boolean), force: text(value.force).slice(0, 20) };
 }
 function normalizeDirectorScore(value = {}) {
     const causalTempo = text(value.causalTempo ?? value.causal_tempo, 'hold').toLowerCase();
@@ -288,7 +289,7 @@ export function normalizeState(input = {}) {
         directorScore: normalizeDirectorScore(value.directorScore),
         objectives: cap(value.objectives, MAX_OBJECTIVES).map(normalizeObjective).filter(item => item.title || item.detail),
         entities: cap(value.entities).map(normalizeEntity).filter(item => item.name),
-        possibilities: cap(value.possibilities, 6).map(normalizePossibility).filter(item => item.description),
+        possibilities: cap(value.possibilities, MAX_POSSIBILITIES).map(normalizePossibility).filter(item => item.description),
         pathways: cap(value.pathways, MAX_PATHWAYS).map(normalizePathway).filter(item => item.id && item.direction && item.when),
         nextGuides: movementUpgrade ? [] : (Array.isArray(value.nextGuides) ? value.nextGuides.slice(0, MAX_GUIDES) : []).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen && item.causalRole && item.worldDelta && item.basis),
         activeBeat: normalizeBeat(value.activeBeat),
@@ -344,7 +345,13 @@ export function stateForPrompt(state) {
         narrativeLayers: { ...s.narrativeLayers },
         objectives: s.objectives.slice(-8).map(item => ({ title: item.title, detail: item.detail.slice(0, 180), status: item.status })),
         entities: s.entities.filter(e => e && e.relevance !== 'ambient').slice(-3).map(item => ({ name: item.name, state: item.state.slice(0, 120), location: item.location.slice(0, 80), relevance: item.relevance.slice(0, 80) })),
-        possibilities: s.possibilities.slice(-3).map(item => ({ description: item.description.slice(0, 160), conditions: item.conditions.slice(0, 1).map(condition => condition.slice(0, 100)), force: item.force })),
+        // The large brainstorming bench stays cheap in the next planner prompt:
+        // one compact string per idea instead of repeating JSON field names.
+        possibilities: s.possibilities.map(item => [
+            item.description.slice(0, 100),
+            item.conditions[0] ? `if ${item.conditions[0].slice(0, 60)}` : '',
+            item.force ? `[${item.force.slice(0, 12)}]` : '',
+        ].filter(Boolean).join(' | ')),
         pathways: s.pathways.map(item => ({ id: item.id, direction: item.direction.slice(0, 220), when: item.when.slice(0, 180), responseBias: item.responseBias.slice(0, 200), horizon: item.horizon, status: item.status, conditions: item.conditions.slice(0, 2), change: item.change })),
         nextGuides: s.nextGuides.map(item => ({ id: item.id, direction: item.direction.slice(0, 240), useWhen: item.useWhen.slice(0, 160), dropWhen: item.dropWhen.slice(0, 160), causalRole: item.causalRole.slice(0, 180), worldDelta: item.worldDelta.slice(0, 180), origin: item.origin, basis: item.basis.slice(0, 140), strength: item.strength, sourcePathways: item.sourcePathways, causalEventIds: item.causalEventIds, disclosure: item.disclosure })),
         // Carry the old live beat only long enough for a v9 state to be

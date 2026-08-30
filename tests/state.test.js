@@ -17,13 +17,20 @@ const currentPlan = {
 test('state normalizes caps and invalid mode', () => {
     const guides = Array.from({ length: 4 }, (_, index) => ({ ...stateNextGuides[0], id: `guide-${index}`, direction: `Direction ${index}` }));
     guides[0].causalRole = 'advance '.repeat(40);
-    const state = normalizeState({ mode: 'hard', objectives: Array.from({ length: 9 }, (_, i) => ({ title: String(i) })), nextGuides: guides, enabled: false });
+    const possibilities = Array.from({ length: 24 }, (_, index) => ({ description: `Idea ${index} ${'x'.repeat(160)}`, conditions: ['one condition', 'discarded condition'], force: 'moderate' }));
+    const state = normalizeState({ mode: 'hard', objectives: Array.from({ length: 9 }, (_, i) => ({ title: String(i) })), possibilities, nextGuides: guides, enabled: false });
     assert.equal(state.mode, 'balanced');
     assert.equal(state.enabled, false);
     assert.equal(state.objectives.length, 9);
     assert.deepEqual(state.nextGuides.map(item => item.id), ['guide-0', 'guide-1', 'guide-2', 'guide-3']);
     assert.ok(state.nextGuides[0].causalRole.length <= 130);
     assert.match(state.nextGuides[0].causalRole, /advance…$/);
+    assert.equal(state.possibilities.length, 18);
+    assert.ok(state.possibilities.every(item => item.description.length <= 120 && item.conditions.length <= 1));
+    const promptIdeas = stateForPrompt(state).possibilities;
+    assert.equal(promptIdeas.length, 18);
+    assert.ok(promptIdeas.every(item => typeof item === 'string' && item.length <= 180));
+    assert.ok(JSON.stringify(promptIdeas).length < 3400, 'the complete idea bank should remain token-cheap');
     assert.equal(state.version, 25);
 });
 
