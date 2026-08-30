@@ -1151,8 +1151,9 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     const retrievedHistoricalEvidence = retrieveOlderHistoricalEvidence(messages, state, recentStart, new Set(selected.map(item => item.index)));
     const payload = {
         task: 'update_narrative_context',
-        current: useSpecificPlayerName(stateForPrompt(state), playerName),
+        evidence_order_instruction: 'Messages are ordered oldest to newest. The highest-index message is the completed current story state. Derive the present scene, local activity, foreground pathways, and next guides from it after applying every visible change it contains. The current object is prior planner state from before that message: preserve durable supported trajectories, but never preserve an action, location, activity, event, or condition that the newest message completed, changed, or superseded.',
         messages: compact,
+        current: useSpecificPlayerName(stateForPrompt(state), playerName),
     };
     const canonClaims = explicitCanonClaims(messages);
     if (canonClaims.length) {

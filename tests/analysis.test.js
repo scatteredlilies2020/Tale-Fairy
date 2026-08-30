@@ -449,10 +449,18 @@ test('planner schema uses SillyTavern structured-output packaging', () => {
     assert.deepEqual(ANALYSIS_SCHEMA.value.required, Object.keys(ANALYSIS_SCHEMA.value.properties));
 });
 
-test('analysis prompt includes bootstrap context and current state', () => {
-    const prompt = buildAnalysisPrompt([{ mes: 'I make tea', is_user: true }], defaultState(), '', { scenario: 'A quiet apartment' });
-    assert.match(prompt, /A quiet apartment/);
-    assert.match(prompt, /update_narrative_context/);
+test('analysis prompt includes bootstrap context and marks retained state as older than the newest message', () => {
+    const promptText = buildAnalysisPrompt([
+        { mes: 'I make tea', is_user: true },
+        { mes: 'The tea is finished and the group enters the garden.', is_user: false },
+    ], { ...defaultState(), scene: { ...defaultState().scene, activity: 'Making tea', location: 'Kitchen' } }, '', { scenario: 'A quiet apartment' });
+    const prompt = JSON.parse(promptText);
+    assert.equal(prompt.task, 'update_narrative_context');
+    assert.match(prompt.bootstrap.scenario, /A quiet apartment/);
+    assert.match(prompt.evidence_order_instruction, /highest-index message is the completed current story state/);
+    assert.match(prompt.evidence_order_instruction, /current object is prior planner state/);
+    assert.match(prompt.evidence_order_instruction, /never preserve an action, location, activity, event, or condition/);
+    assert.ok(promptText.indexOf('evidence_order_instruction') < promptText.indexOf('"current"'));
 });
 
 test('planner receives and consistently uses the named player character identity', () => {

@@ -36,7 +36,7 @@ test('state normalizes caps and invalid mode', () => {
     assert.equal(promptIdeas.length, 18);
     assert.ok(promptIdeas.every(item => typeof item === 'string' && item.length <= 180));
     assert.ok(JSON.stringify(promptIdeas).length < 3400, 'the complete idea bank should remain token-cheap');
-    assert.equal(state.version, 26);
+    assert.equal(state.version, 27);
 });
 
 test('offscreen causes persist privately while injection exposes only their consequence', () => {
@@ -230,7 +230,7 @@ test('pre-canon-ledger state requests one bounded bootstrap rescan', () => {
 
 test('pre-momentum guides and request verification cannot remain injectable after an upgrade', () => {
     const migrated = normalizeState({ version: 16, ...currentPlan, nextGuides: stateNextGuides, canonConstraints: ['Fact from a discarded response.'], lastInject: true, lastRequestVerification: { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides } });
-    assert.equal(migrated.version, 26);
+    assert.equal(migrated.version, 27);
     assert.equal(migrated.canonBootstrapPending, true);
     assert.deepEqual(migrated.nextGuides, []);
     assert.deepEqual(migrated.canonConstraints, []);
@@ -241,7 +241,7 @@ test('pre-momentum guides and request verification cannot remain injectable afte
 test('pre-v24 candidates are rebuilt with layered authorial control while established canon survives', () => {
     const verification = { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides };
     const migrated = normalizeState({ version: 22, ...currentPlan, nextGuides: stateNextGuides, canonConstraints: ['Established fact.'], lastRequestVerification: verification });
-    assert.equal(migrated.version, 26);
+    assert.equal(migrated.version, 27);
     assert.equal(migrated.canonBootstrapPending, true);
     assert.deepEqual(migrated.nextGuides, []);
     assert.deepEqual(migrated.canonConstraints, ['Established fact.']);
@@ -254,7 +254,7 @@ test('v25 plans rebuild once after duplicate-horizon recovery changes while cano
         deviation: { level: 'none', reason: 'Old recovery.' },
     };
     const migrated = normalizeState({ version: 25, ...currentPlan, planHorizons: repeatedHorizons, objectives: [{ title: 'Old cloned objective.' }], narrativeEvents: [{ title: 'Current situation develops', summary: 'Complete the current departure.' }], nextGuides: stateNextGuides, guidance: 'Old recovered guidance.', lastInject: true, canonConstraints: ['Established fact.'], lastRequestVerification: { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides } });
-    assert.equal(migrated.version, 26);
+    assert.equal(migrated.version, 27);
     assert.equal(migrated.canonBootstrapPending, true);
     assert.deepEqual(migrated.nextGuides, []);
     assert.deepEqual(migrated.planHorizons.items, []);

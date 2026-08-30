@@ -1,5 +1,5 @@
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 26;
+export const STATE_VERSION = 27;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -288,7 +288,8 @@ export function normalizeState(input = {}) {
     // v24 separates layered authorial intent from concrete scene realization;
     // v25 rebuilds canon after embedded OOC assertions became auditable;
     // v26 rebuilds plans whose recovery could clone one local beat across
-    // every horizon or misclassify that beat as an offscreen event.
+    // every horizon or misclassify that beat as an offscreen event; v27
+    // rebuilds once with an explicit newest-message recency boundary.
     const unsafePlannerUpgrade = inputVersion > 0 && inputVersion < 18;
     const movementUpgrade = inputVersion > 0 && inputVersion < STATE_VERSION;
     const recoveryUpgrade = inputVersion > 0 && inputVersion < 26;
