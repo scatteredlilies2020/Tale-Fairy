@@ -178,6 +178,9 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /high-volume, ultra-compact brainstorming bench/);
     assert.match(SYSTEM, /twelve to eighteen distinct one-clause idea cards/);
     assert.match(SYSTEM, /major setting figure may notice exceptional potential, seek a meeting, recruit, oppose, exploit, protect, or ignore/);
+    assert.match(SYSTEM, /departure or return to a formative place/);
+    assert.match(SYSTEM, /named major setting figure/);
+    assert.match(SYSTEM, /radical moral, allegiance, vocation, or identity 180/);
     assert.match(SYSTEM, /Calibrate the bench to the actual genre, activity, and scale instead of privileging adventure or high stakes/);
     assert.match(SYSTEM, /Slice-of-life, romance, domestic, school, workplace, travel, hobby, and social simulations are fully valid stories/);
     assert.match(SYSTEM, /do not manufacture villains, danger, crises, or melodrama merely to create movement/);
