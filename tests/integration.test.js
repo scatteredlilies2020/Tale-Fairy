@@ -10,9 +10,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.35');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.35');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.35');
+    assert.equal(manifest.version, '0.11.36');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.36');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.36');
 });
 
 test('injection sends layered authorial control while concrete realization and future setup stay private', () => {
@@ -25,7 +25,8 @@ test('injection sends layered authorial control while concrete realization and f
     assert.match(stateSource, /binding at the level of narrative purpose/);
     assert.match(stateSource, /Tale Fairy controls narrative function, pressure, and scale/);
     assert.match(stateSource, /realize exact events, NPC actions, dialogue, outcomes, and prose/);
-    assert.match(stateSource, /IMMEDIATE ACTION:/);
+    assert.match(stateSource, /LATEST USER ACTION/);
+    assert.match(stateSource, /IMMEDIATE CONTEXT/);
     assert.match(stateSource, /AUTHORIZED SCOPE:/);
     assert.doesNotMatch(stateSource, /DYNAMIC SCORE:|DRAMATIC SCORE:|SURPRISE LATITUDE:/);
     assert.match(stateSource, /HOLD may complete the activity naturally/);

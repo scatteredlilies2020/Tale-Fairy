@@ -497,12 +497,14 @@ function authorialDirective(guide) {
     return `AUTHORIAL INTENT: ${clippedText(guide.direction, 180)}\nAPPLY WHEN: ${clippedText(guide.useWhen, 90)}\nDO NOT APPLY WHEN: ${clippedText(guide.dropWhen, 80)}\nSTORY FUNCTION: ${clippedText(guide.causalRole, 110)}\nIMPACT ENVELOPE: ${clippedText(guide.worldDelta, 110)}${boundary ? `\nINFORMATION BOUNDARY: ${boundary}` : ''}`;
 }
 
-function narrativeConductor(score, layers) {
+function narrativeConductor(score, layers, latestUserAction = '') {
     const forces = score.settingForces.length ? score.settingForces.map(item => clippedText(item, 110).replace(/[.;:,]+$/u, '')).join('; ') : 'Use only setting forces established by the supplied context.';
     const durable = layers.durableTrajectory || score.storyIdentity || 'Preserve the broad trajectory established in the complete context.';
     const situation = layers.situation || score.sceneFunction || 'Use the current situation established in the latest conversation.';
     const widerWorld = layers.widerWorld || score.settingIdentity || 'Keep established world processes coherent without forcing them onscreen.';
-    return `TALE FAIRY AUTHORIAL FRAME:\nDURABLE CONTEXT: ${clippedText(durable, 160)}\nCURRENT SITUATION: ${clippedText(situation, 130)}\nLOCAL ACTIVITY: ${clippedText(layers.localActivity || 'Use the activity established in the latest conversation.', 120)} [${layers.activityRole.toUpperCase()}]\nIMMEDIATE ACTION: ${clippedText(layers.immediateAction || 'Follow the action authorized by the latest user turn.', 110)}\nAUTHORIZED SCOPE: ${layers.temporalScope.toUpperCase()} (a ceiling, not a quota)\nWIDER WORLD: ${clippedText(widerWorld, 150)}\nACTIVE CAUSAL FORCES: ${forces}\nSTORY OPERATION: ${score.causalTempo.toUpperCase()}\nTale Fairy controls narrative function, pressure, and scale; realize exact events, NPC actions, dialogue, outcomes, and prose from full context. Do not literalize planning or force a routine incident. HOLD may complete the activity naturally. The latest user turn sets scope. Never invent undeclared player dialogue, feelings, or consequential choices; low-stakes procedural steps in a broadly authorized activity are execution, not new decisions.`;
+    const currentAction = clippedText(latestUserAction || layers.immediateAction || 'Follow the action authorized by the latest user turn.', 140);
+    const actionLabel = latestUserAction ? 'LATEST USER ACTION' : 'IMMEDIATE CONTEXT';
+    return `TALE FAIRY AUTHORIAL FRAME:\nDURABLE CONTEXT: ${clippedText(durable, 160)}\nCURRENT SITUATION: ${clippedText(situation, 130)}\nLOCAL ACTIVITY: ${clippedText(layers.localActivity || 'Use the activity established in the latest conversation.', 120)} [${layers.activityRole.toUpperCase()}]\n${actionLabel}: ${currentAction}\nAUTHORIZED SCOPE: ${layers.temporalScope.toUpperCase()} (a ceiling, not a quota)\nWIDER WORLD: ${clippedText(widerWorld, 150)}\nACTIVE CAUSAL FORCES: ${forces}\nSTORY OPERATION: ${score.causalTempo.toUpperCase()}\nTale Fairy controls narrative function, pressure, and scale; realize exact events, NPC actions, dialogue, outcomes, and prose from full context. Do not literalize planning or force a routine incident. HOLD may complete the activity naturally. The latest user turn sets scope. Never invent undeclared player dialogue, feelings, or consequential choices; low-stakes procedural steps in a broadly authorized activity are execution, not new decisions.`;
 }
 
 function boundedPromptLines(items, prefix, perItem, total) {
@@ -518,7 +520,7 @@ function boundedPromptLines(items, prefix, perItem, total) {
     return items.map(item => `${prefix}${compact(item)}`).join('\n').slice(0, total);
 }
 
-export function buildPromptPayload(state, { enabled = true, guidanceUsable = false, guideCandidates = null, guideIndex = 0, regeneration = false, variationCue = 0, canonConstraints = null } = {}) {
+export function buildPromptPayload(state, { enabled = true, guidanceUsable = false, guideCandidates = null, guideIndex = 0, regeneration = false, variationCue = 0, canonConstraints = null, latestUserAction = '' } = {}) {
     if (!enabled) return '';
     const s = normalizeState(state);
     const noteLabels = { suggest: 'OPTIONAL SUGGESTION', correct: 'USER CORRECTION', establish: 'USER-ESTABLISHED CANON', forbid: 'HARD EXCLUSION' };
@@ -536,8 +538,8 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
         : s.nextGuides;
     const selectedIndex = candidates.length ? Math.max(0, Math.min(candidates.length - 1, Number(guideIndex) || 0)) : 0;
     const selectedCandidate = candidates[selectedIndex] || null;
-    const conductorPrompt = guidanceUsable ? `${narrativeConductor(s.directorScore, s.narrativeLayers)}\n\n` : '';
-    const pacingBoundary = 'PACING: User scope is a ceiling; travel ends at arrival. “I play the game” authorizes representative progression; named moves stay narrow. Simulate routine micro-actions without prompting; show concrete progress and authorized results. Apply established strengths/limitations proportionately; never cancel exceptional advantages. Never invent player dialogue, feelings, consequential choices, or new activities. APPLY is a gate, not an order to make it true. Keep unresolved player choices open; use independent NPC/world action instead of choosing, pressure, repeated prompts, or waiting.';
+    const conductorPrompt = guidanceUsable ? `${narrativeConductor(s.directorScore, s.narrativeLayers, latestUserAction)}\n\n` : '';
+    const pacingBoundary = 'PACING: User scope is a ceiling; travel ends at arrival. A broad bounded activity permits representative progression; a specifically named move stays narrow. Simulate routine micro-actions without prompting; show concrete progress and authorized results. Apply established strengths/limitations proportionately; never cancel exceptional advantages. Never invent player dialogue, feelings, consequential choices, or new activities. APPLY is a gate, not an order to make it true. Keep unresolved player choices open; use independent NPC/world action instead of choosing, pressure, repeated prompts, or waiting.';
     const fallbackPacingBoundary = 'PACING: Stay within the latest user scope. Never invent player dialogue, feelings, choices, or activities. Keep unresolved choices open; advance independent NPC/world action instead of choosing, prompting, or waiting.';
     const routePrompt = guidanceUsable && selectedCandidate
         ? `${conductorPrompt}Conditional authorial direction${regeneration ? ' for a different regeneration' : ''}:\n${authorialDirective(selectedCandidate)}\nWhen its APPLY condition holds and its exclusion does not, fulfill the STORY FUNCTION and stay inside the IMPACT ENVELOPE. This direction is binding at the level of narrative purpose, not at the level of a prescribed incident. Choose the concrete realization yourself from the full conversation; do not merely paraphrase these notes or treat the stated impact as a predetermined outcome. If its condition no longer holds, preserve the authorial frame and use the most coherent realization available instead.${regeneration ? ' Do not reuse the discarded reply\'s concrete realization.' : ''} Keep private future developments offscreen and preserve established meanings, pacing, and player agency.\n${pacingBoundary}`

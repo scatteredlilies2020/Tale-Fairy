@@ -502,9 +502,10 @@ test('every planner mode leaves narrative pacing under user control', () => {
         assert.match(prompt.pacing_instruction, /ceiling, not a quota/);
         assert.match(prompt.pacing_instruction, /travel and arrival only/);
         assert.match(prompt.pacing_instruction, /not the activity there/);
-        assert.match(prompt.pacing_instruction, /“I play the game,”/);
-        assert.match(prompt.pacing_instruction, /“I take my turn” or a specific move authorizes one action/);
-        assert.match(prompt.pacing_instruction, /changing game state, tactics, counterplay, reversals, and any authorized outcome/);
+        assert.match(prompt.pacing_instruction, /broad declaration to complete a bounded activity authorizes representative progression/);
+        assert.match(prompt.pacing_instruction, /specific move authorizes one action/);
+        assert.match(prompt.pacing_instruction, /changing state, tactics, counterplay, reversals, and any authorized outcome/);
+        assert.doesNotMatch(prompt.pacing_instruction, /I play the game/);
         assert.match(prompt.pacing_instruction, /not dialogue, feelings, consequential decisions/);
         assert.match(prompt.pacing_instruction, /mode changes pressure, not speed/);
         assert.match(prompt.pacing_instruction, /without inventing undelegated player choices/);

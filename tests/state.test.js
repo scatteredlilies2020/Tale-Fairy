@@ -276,7 +276,11 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(stale, /Background continuity only/);
     assert.match(stale, /Do not repeat a completed event/);
     assert.doesNotMatch(stale, /Let Mara answer plainly|meaningful deflection/);
-    const current = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
+    const current = buildPromptPayload(state, {
+        enabled: true,
+        guidanceUsable: true,
+        latestUserAction: 'I ask Mara what comes next.',
+    });
     assert.match(current, /^<tale-fairy-context>/);
     assert.match(current, /<\/tale-fairy-context>$/);
     assert.doesNotMatch(current, /Keep the scene grounded/);
@@ -285,7 +289,7 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(current, /DURABLE CONTEXT: An open-ended survival and institutional-conflict story/);
     assert.match(current, /CURRENT SITUATION: An intimate home exchange constrained by Jedi obligations/);
     assert.match(current, /LOCAL ACTIVITY: A quiet tea conversation with Mara\. \[DEVELOPMENTAL\]/);
-    assert.match(current, /IMMEDIATE ACTION: Continue the tea conversation/);
+    assert.match(current, /LATEST USER ACTION: I ask Mara what comes next/);
     assert.match(current, /AUTHORIZED SCOPE: ACTION \(a ceiling, not a quota\)/);
     assert.match(current, /WIDER WORLD: Star Wars institutions, droids, duties/);
     assert.match(current, /ACTIVE CAUSAL FORCES: Jedi obligations constrain time and candor; Droids participate in domestic routine/);
@@ -301,7 +305,8 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(current, /binding at the level of narrative purpose, not at the level of a prescribed incident/);
     assert.match(current, /Keep private future developments offscreen/);
     assert.match(current, /travel ends at arrival/);
-    assert.match(current, /“I play the game” authorizes representative progression/);
+    assert.match(current, /broad bounded activity permits representative progression/);
+    assert.doesNotMatch(current, /I play the game/);
     assert.match(current, /Simulate routine micro-actions without prompting/);
     assert.match(current, /show concrete progress and authorized results/);
     assert.match(current, /Apply established strengths\/limitations proportionately/);

@@ -14,7 +14,7 @@ import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlErr
 import { compactContinuityPrompt, readContinuityBridge, waitForContinuityBridge } from './continuity.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.35';
+const RUNTIME_VERSION = '0.11.36';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -400,6 +400,8 @@ function bootstrapContext(context) {
 
 function guideSelectionOptions(state, context = currentContext()) {
     const chatId = String(context.getCurrentChatId?.() || '');
+    const chat = messagesFromChat(context.chat || []);
+    const latestUserAction = [...chat].reverse().find(message => message.is_user)?.mes || '';
     if (generationGuideSelection?.chatId === chatId) {
         return {
             guidanceUsable: generationGuideSelection.usable,
@@ -408,15 +410,16 @@ function guideSelectionOptions(state, context = currentContext()) {
             regeneration: generationGuideSelection.regeneration,
             variationCue: generationGuideSelection.variationCue,
             canonConstraints: generationGuideSelection.canonConstraints,
+            latestUserAction,
         };
     }
-    const chat = messagesFromChat(context.chat || []);
     return {
         guidanceUsable: isGuidanceUsable(state, chat, chatId),
         guideCandidates: null,
         guideIndex: 0,
         regeneration: false,
         variationCue: 0,
+        latestUserAction,
     };
 }
 
