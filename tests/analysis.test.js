@@ -365,6 +365,34 @@ test('planner recovers missing next guides from grounded pathways', () => {
     assert.equal(validateAnalysisResult(repaired).valid, true);
 });
 
+test('incomplete planner output retains only upstream layers and horizons from prior state', () => {
+    const priorPlannerState = {
+        narrativeLayers: {
+            widerWorld: 'The academy review continues beyond the current conversation.',
+            durableTrajectory: 'Mara may join, reform, or leave the academy as her relationships and choices develop.',
+        },
+        planHorizons: {
+            items: [
+                { id: 'old-local', direction: 'Finish walking through the old doorway.', timeframe: 'next response', stability: 'fluid', conditions: [], change: 'keep', reason: 'Old local beat.' },
+                { id: 'several', direction: 'Let daily academy life reshape Mara’s friendships.', timeframe: 'several scenes', stability: 'stable', conditions: [], change: 'keep', reason: 'Supported relationship direction.' },
+                { id: 'arc', direction: 'Let the academy review create new obligations and opportunities.', timeframe: 'current arc', stability: 'stable', conditions: [], change: 'keep', reason: 'The review remains active.' },
+                { id: 'far', direction: 'Keep joining, reforming, and leaving as distinct future paths.', timeframe: 'later arcs / open-ended', stability: 'slow', conditions: [], change: 'keep', reason: 'The outcome remains open.' },
+            ],
+        },
+    };
+    const repaired = requireValidAnalysisResult({
+        ...requiredPlanning,
+        narrative_layers: { ...narrativeLayers, wider_world: '', durable_trajectory: '' },
+        plan_horizons: { items: planHorizons.items.slice(0, 3), deviation: { level: 'minor', reason: 'The local situation changed.' } },
+    }, { priorPlannerState });
+    assert.equal(repaired.narrative_layers.wider_world, priorPlannerState.narrativeLayers.widerWorld);
+    assert.equal(repaired.narrative_layers.durable_trajectory, priorPlannerState.narrativeLayers.durableTrajectory);
+    assert.ok(repaired.plan_horizons.items.some(item => item.id === 'far'));
+    assert.ok(!repaired.plan_horizons.items.some(item => item.id === 'old-local'), 'stale local beats are never recovered');
+    assert.equal(repaired.plan_horizons.items.at(-1).stability, 'slow');
+    assert.equal(validateAnalysisResult(repaired).valid, true);
+});
+
 test('planner preserves contrasting pathways when generic response biases repeat', () => {
     const repeatedBias = 'Describe only the causal step this pathway enables.';
     const routes = [
@@ -460,6 +488,8 @@ test('analysis prompt includes bootstrap context and marks retained state as old
     assert.match(prompt.evidence_order_instruction, /highest-index message is the completed current story state/);
     assert.match(prompt.evidence_order_instruction, /current object is prior planner state/);
     assert.match(prompt.evidence_order_instruction, /never preserve an action, location, activity, event, or condition/);
+    assert.match(prompt.evidence_order_instruction, /future activity.*remains future/i);
+    assert.match(prompt.evidence_order_instruction, /Preserve explicit clocks and dates/i);
     assert.ok(promptText.indexOf('evidence_order_instruction') < promptText.indexOf('"current"'));
 });
 
@@ -855,7 +885,7 @@ test('hard budget also compacts a fully populated long-running planner state', (
     };
     const messages = Array.from({ length: 80 }, (_, index) => ({ mes: long.repeat(4) + index, is_user: index % 2 === 0 }));
     const prompt = buildAnalysisPrompt(messages, state, long, { scenario: long }, { messageWindow: 80, messageCharLimit: 4000, maxPromptChars: 8000, continuityContext: long.repeat(6), hostContext: long.repeat(8), bootstrapScan: true });
-    assert.ok(prompt.length <= 8000);
+    assert.ok(prompt.length <= 8000, `expected hard budget, got ${prompt.length} characters`);
     const parsed = JSON.parse(prompt);
     assert.equal(parsed.messages.at(-1).index, 79);
     assert.equal(parsed.current.lastOfferedCues[0].id, sentCue.id);

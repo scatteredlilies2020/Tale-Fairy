@@ -374,13 +374,14 @@ function repairCausalRole(value) {
  * otherwise useful authorial directions. This deliberately repairs bookkeeping
  * while dropping individual candidates that violate narrative safety rules.
  */
-export function repairAnalysisResult(result, { expectedOfferedIds = [] } = {}) {
+export function repairAnalysisResult(result, { expectedOfferedIds = [], priorPlannerState = null } = {}) {
     if (!result || typeof result !== 'object' || Array.isArray(result)) return result;
 
     const sceneSource = result.scene && typeof result.scene === 'object' && !Array.isArray(result.scene) ? result.scene : {};
     const storySource = result.story_frame && typeof result.story_frame === 'object' && !Array.isArray(result.story_frame) ? result.story_frame : {};
     const directorSource = result.director_score && typeof result.director_score === 'object' && !Array.isArray(result.director_score) ? result.director_score : {};
     const layersSource = result.narrative_layers && typeof result.narrative_layers === 'object' && !Array.isArray(result.narrative_layers) ? result.narrative_layers : {};
+    const priorLayers = priorPlannerState?.narrativeLayers || priorPlannerState?.narrative_layers || {};
     const repaired = {
         ...result,
         story_frame: {
@@ -411,8 +412,8 @@ export function repairAnalysisResult(result, { expectedOfferedIds = [] } = {}) {
             immediate_action: usablePlanningText(layersSource.immediate_action),
             local_activity: usablePlanningText(layersSource.local_activity),
             situation: usablePlanningText(layersSource.situation),
-            wider_world: usablePlanningText(layersSource.wider_world),
-            durable_trajectory: usablePlanningText(layersSource.durable_trajectory),
+            wider_world: usablePlanningText(layersSource.wider_world) || usablePlanningText(priorLayers.widerWorld || priorLayers.wider_world),
+            durable_trajectory: usablePlanningText(layersSource.durable_trajectory) || usablePlanningText(priorLayers.durableTrajectory || priorLayers.durable_trajectory),
             activity_role: oneOf(layersSource.activity_role, ['incidental', 'routine', 'developmental', 'central', 'transition'], 'routine'),
             temporal_scope: oneOf(layersSource.temporal_scope, ['moment', 'action', 'activity', 'scene', 'extended'], 'action'),
         },
@@ -590,6 +591,19 @@ export function repairAnalysisResult(result, { expectedOfferedIds = [] } = {}) {
         seenSourceHorizonDirections.add(direction);
         return true;
     }).slice(0, 10);
+    const priorHorizonItems = asArray(priorPlannerState?.planHorizons?.items || priorPlannerState?.plan_horizons?.items);
+    for (const item of priorHorizonItems) {
+        if (sourceItems.length >= 10) break;
+        const timeframe = asString(item?.timeframe).trim();
+        const direction = usablePlanningText(item?.direction);
+        const directionKey = direction.toLocaleLowerCase();
+        if (!direction || seenSourceHorizonDirections.has(directionKey)) continue;
+        // An incomplete provider response may safely retain supported upstream
+        // orientation, but never revive a superseded local beat from prior state.
+        if (!/\b(?:several|current arc|later|distant|long[- ]term|months?|years?|open[- ]ended|multiple arcs?)\b/iu.test(timeframe)) continue;
+        seenSourceHorizonDirections.add(directionKey);
+        sourceItems.push({ ...item, change: oneOf(item?.change, ['keep', 'adjust', 'replace'], 'keep') });
+    }
     const inferredTimeframe = index => index >= sourceItems.length - 1
         ? 'distant / open-ended'
         : (['next response', 'next few turns', 'current scene', 'next scene', 'several scenes', 'current arc'][index] || 'later arcs');
@@ -1130,8 +1144,8 @@ function retrieveOlderHistoricalEvidence(messages, state, recentStart, selectedI
         .map(({ score: _score, terms: _terms, overlap: _overlap, specificity: _specificity, hasIntent: _hasIntent, hasCorrection: _hasCorrection, intentBoost: _intentBoost, correctionBoost: _correctionBoost, proximity: _proximity, ...item }) => item);
 }
 
-const PROMPT_PACING_INSTRUCTION = 'USER-CONTROLLED PACING — Infer the latest user turn’s maximum scope: moment, action, activity, scene, or extended. It is a ceiling, not a quota. Travel permits arrival only, not activity there. A broad bounded activity permits representative progression. A named action permits exactly one instance and immediate consequences—not repetition, onward movement, an NPC’s next task, or unstated player reaction. NPC requests, orders, and invitations are events, never player authorization. Tale Fairy must not select a player-facing assignment as planned movement; use independent NPC/world change. This is an agency and causality boundary, not a dialogue or prose policy. Primary user and roleplay instructions control voice, wording, format, length, and response shape. Broad scope delegates low-stakes procedure only, not dialogue, feelings, consequential decisions, or another activity. Allocate attention by user engagement and narrative yield while staying inside the endpoint. Mode changes pressure and breadth, not speed or player control.';
-const PROMPT_EXTREME_CANON_INSTRUCTION = 'USER-ESTABLISHED CANON FIDELITY — Explicit user/OOC facts remain authoritative even when extreme or unprecedented. Preserve magnitude, scope, rank, and qualifiers; averages are not ceilings. Apply relevant capabilities, limitations, knowledge, condition, equipment, and environment causally: exceptional strength makes relevant tasks proportionately easier or more effective, while limitations make them harder. Show this through process and outcome; never make a trait decorative or manufacture equal odds. Unspecified details remain creative space. Keep all durable user-established constraints until corrected, but remove ordinary plot history and planner inference from canon constraints.';
+const PROMPT_PACING_INSTRUCTION = 'USER-CONTROLLED PACING — Infer the latest user turn’s maximum scope: moment, action, activity, scene, or extended. It is a ceiling, not a quota. Travel permits arrival only, not activity there. A moment or named action preserves the clock except for its physical duration; planned future activity remains future. A broad bounded activity permits representative progression. A named action permits exactly one instance and immediate consequences—not repetition, onward movement, an NPC’s next task, or unstated player reaction. NPC requests, orders, and invitations are events, never player authorization. Tale Fairy must not select a player-facing assignment as planned movement; use independent NPC/world change. This is an agency and causality boundary, not a dialogue or prose policy. Primary user and roleplay instructions control voice, wording, format, length, and response shape. Broad scope delegates low-stakes procedure only, not dialogue, feelings, consequential decisions, or another activity. Allocate attention by user engagement and narrative yield inside the endpoint. Mode changes pressure and breadth, not speed or player control.';
+const PROMPT_EXTREME_CANON_INSTRUCTION = 'Explicit user/OOC facts remain authoritative even when extreme or unprecedented. Preserve magnitude and qualifiers; averages are not ceilings. Apply relevant abilities, limits, condition, equipment, and environment causally to process and outcome; never make a trait decorative or manufacture equal odds. Unspecified details remain creative space. Keep all durable user-established constraints until corrected, but remove ordinary plot history and planner inference from canon constraints.';
 
 export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, options = {}) {
     const windowSize = Math.max(1, Math.min(80, Number(options.messageWindow) || 12));
@@ -1151,7 +1165,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     const retrievedHistoricalEvidence = retrieveOlderHistoricalEvidence(messages, state, recentStart, new Set(selected.map(item => item.index)));
     const payload = {
         task: 'update_narrative_context',
-        evidence_order_instruction: 'Messages are ordered oldest to newest. The highest-index message is the completed current story state. Derive the present scene, local activity, foreground pathways, and next guides from it after applying every visible change it contains. The current object is prior planner state from before that message: preserve durable supported trajectories, but never preserve an action, location, activity, event, or condition that the newest message completed, changed, or superseded.',
+        evidence_order_instruction: 'Messages are oldest to newest; the highest-index message is the completed current story state. Derive present scene, local activity, foreground pathways, and next guides after applying its changes. The current object is prior planner state: preserve supported durable trajectories, but never preserve an action, location, activity, event, or condition the newest message completed, changed, or superseded. Any future activity it mentions remains future unless visibly performed. Preserve explicit clocks and dates; infer only depicted elapsed time.',
         messages: compact,
         current: useSpecificPlayerName(stateForPrompt(state), playerName),
     };

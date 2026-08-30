@@ -1,5 +1,5 @@
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 27;
+export const STATE_VERSION = 28;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -289,7 +289,9 @@ export function normalizeState(input = {}) {
     // v25 rebuilds canon after embedded OOC assertions became auditable;
     // v26 rebuilds plans whose recovery could clone one local beat across
     // every horizon or misclassify that beat as an offscreen event; v27
-    // rebuilds once with an explicit newest-message recency boundary.
+    // rebuilds once with an explicit newest-message recency boundary. v28
+    // also preserves upstream plans through incomplete provider output and
+    // makes depicted chronology an explicit planning boundary.
     const unsafePlannerUpgrade = inputVersion > 0 && inputVersion < 18;
     const movementUpgrade = inputVersion > 0 && inputVersion < STATE_VERSION;
     const recoveryUpgrade = inputVersion > 0 && inputVersion < 26;
@@ -502,14 +504,14 @@ function authorialDirective(guide) {
 }
 
 function narrativeConductor(score, layers, latestUserAction = '') {
-    const forces = score.settingForces.length ? score.settingForces.map(item => clippedText(item, 110).replace(/[.;:,]+$/u, '')).join('; ') : 'Use only setting forces established by the supplied context.';
+    const forces = score.settingForces.length ? score.settingForces.map(item => clippedText(item, 55).replace(/[.;:,]+$/u, '')).join('; ') : 'Use only setting forces established by context.';
     const durable = layers.durableTrajectory || score.storyIdentity || 'Preserve the broad trajectory established in the complete context.';
     const situation = layers.situation || score.sceneFunction || 'Use the current situation established in the latest conversation.';
     const widerWorld = layers.widerWorld || score.settingIdentity || 'Keep established world processes coherent without forcing them onscreen.';
     const presentPressure = score.futureSetup?.currentStep || score.arcDirection || 'Let the durable trajectory shape one current non-player cause without predetermining its outcome.';
-    const currentAction = clippedText(latestUserAction || layers.immediateAction || 'Follow the action authorized by the latest user turn.', 140);
+    const currentAction = clippedText(latestUserAction || layers.immediateAction || 'Follow the latest authorized action.', 110);
     const actionLabel = latestUserAction ? 'LATEST USER ACTION' : 'IMMEDIATE CONTEXT';
-    return `TALE FAIRY AUTHORIAL FRAME:\nDURABLE CONTEXT: ${clippedText(durable, 150)}\nCURRENT CAUSE: ${clippedText(presentPressure, 110)}\nCURRENT SITUATION: ${clippedText(situation, 120)}\nLOCAL ACTIVITY: ${clippedText(layers.localActivity || 'Use the activity established in the latest conversation.', 110)} [${layers.activityRole.toUpperCase()}]\n${actionLabel}: ${currentAction}\nAUTHORIZED SCOPE: ${layers.temporalScope.toUpperCase()} (a ceiling, not a quota)\nWIDER WORLD: ${clippedText(widerWorld, 140)}\nACTIVE CAUSAL FORCES: ${forces}\nSTORY OPERATION: ${score.causalTempo.toUpperCase()}\nTale Fairy controls narrative function, pressure, and scale—not outcomes or player action; realize exact events, NPC actions, dialogue, outcomes, and prose from context.`;
+    return `TALE FAIRY AUTHORIAL FRAME:\nDURABLE CONTEXT: ${clippedText(durable, 75)}\nCURRENT CAUSE: ${clippedText(presentPressure, 90)}\nCURRENT SITUATION: ${clippedText(situation, 100)}\nLOCAL ACTIVITY: ${clippedText(layers.localActivity || 'Use the latest established activity.', 90)} [${layers.activityRole.toUpperCase()}]\n${actionLabel}: ${currentAction}\nAUTHORIZED SCOPE: ${layers.temporalScope.toUpperCase()} (a ceiling, not a quota)\nWIDER WORLD: ${clippedText(widerWorld, 65)}\nACTIVE CAUSAL FORCES: ${forces}\nSTORY OPERATION: ${score.causalTempo.toUpperCase()}\nTale Fairy controls narrative function, pressure, and scale—not outcomes or player action; realize exact events, NPC actions, dialogue, outcomes, and prose from context.`;
 }
 
 function boundedPromptLines(items, prefix, perItem, total) {
@@ -530,11 +532,11 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
     const s = normalizeState(state);
     const noteLabels = { suggest: 'OPTIONAL SUGGESTION', correct: 'USER CORRECTION', establish: 'USER-ESTABLISHED CANON', forbid: 'HARD EXCLUSION' };
     const promptCanon = Array.isArray(canonConstraints) ? canonConstraints : s.canonConstraints;
-    const canon = boundedPromptLines(promptCanon, '- ', 300, 1650);
+    const canon = boundedPromptLines(promptCanon, '- ', 300, 1550);
     const canonPrompt = canon
         ? `\n<user-established-canon>\nBinding user-established facts; preserve their stated magnitude, scope, and qualifiers. Use relevant abilities, limitations, knowledge, condition, equipment, and circumstances as causal modifiers to ease, difficulty, process, and outcome; do not flatten an exceptional advantage or inflate opposition to cancel it. Unstated details remain creative space.\n${canon}\n</user-established-canon>`
         : '';
-    const notes = boundedPromptLines(s.userNotes.map(note => `${noteLabels[note.kind]}: ${note.text}`), '- ', 300, 1650);
+    const notes = boundedPromptLines(s.userNotes.map(note => `${noteLabels[note.kind]}: ${note.text}`), '- ', 300, 1550);
     const notePrompt = notes
         ? `\n<tale-fairy-user-notes>\nUser directives: exclusions, corrections, and canon are binding; suggestions are optional.\n${notes}\n</tale-fairy-user-notes>`
         : '';
@@ -544,8 +546,8 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
     const selectedIndex = candidates.length ? Math.max(0, Math.min(candidates.length - 1, Number(guideIndex) || 0)) : 0;
     const selectedCandidate = candidates[selectedIndex] || null;
     const conductorPrompt = guidanceUsable ? `${narrativeConductor(s.directorScore, s.narrativeLayers, latestUserAction)}\n\n` : '';
-    const beatRealization = 'BEAT REALIZATION: Make this beat concrete. Introduce an event, actor, object, or world change only when the direction or active horizon supports it. Otherwise deepen existing activity through action, sensory state, progress, or consequence; calm may remain calm. Never invent intrusion or player tasks to prove movement; leave choices open.';
-    const pacingBoundary = 'AUTHORITY: Primary user and roleplay instructions control voice, dialogue, prose, format, length, and response shape; Tale Fairy changes none of them. PLAYER AGENCY: User scope is a ceiling; travel stops at arrival. A broad activity may progress, but a named action permits one instance and immediate result—not repetition, onward movement, obeying a request, or unstated reaction. Never invent player dialogue, thoughts, feelings, choices, compliance, reactions, or activities. NPC requests/orders are world actions, not player authorization. Tale Fairy movement comes from independent character/world change, not assigning the player a task. Only simulate low-stakes procedure implicit in broad scope. Apply established strengths/limits proportionately; never cancel exceptional advantages. Keep unresolved choices open.';
+    const beatRealization = 'BEAT REALIZATION: Realize the beat. Introduce an event, actor, object, or world change only when the direction or active horizon supports it. Otherwise deepen the activity through action, sensory state, progress, or consequence; calm may remain calm. Never invent intrusion or player tasks to prove movement; leave choices open.';
+    const pacingBoundary = 'Primary user and roleplay instructions control voice, dialogue, prose, format, length, and response shape; Tale Fairy changes none of them; travel stops at arrival. A moment or named action preserves the established clock except for its immediate duration; never treat a future activity as completed. A broad activity may progress, but a named action permits one instance and immediate result—not repetition, onward movement, obeying a request, or unstated reaction. Never invent player dialogue, thoughts, feelings, choices, compliance, reactions, or activities. NPC requests/orders are world actions, not player authorization. Tale Fairy movement comes from independent character/world change, not assigning the player a task. Only simulate low-stakes procedure implicit in broad scope. Apply established strengths/limits proportionately; never cancel exceptional advantages. Keep unresolved choices open.';
     const fallbackPacingBoundary = 'AUTHORITY: User and roleplay instructions control expression; Tale Fairy supplies only movement. PLAYER AGENCY: Stay within latest user scope. Never invent player dialogue, thoughts, feelings, choices, compliance, reactions, or extra activities. NPC requests are events, not authorization.';
     const routePrompt = guidanceUsable && selectedCandidate
         ? `${conductorPrompt}Conditional authorial direction${regeneration ? ' for a different regeneration' : ''}:\n${authorialDirective(selectedCandidate)}\nWhen APPLY holds and its exclusion does not, fulfill STORY FUNCTION within IMPACT ENVELOPE. This direction is binding at narrative-purpose level, not a prescribed incident. If invalid, do not force it; choose another supported beat function from current context.${regeneration ? ' Do not reuse the discarded reply\'s concrete realization.' : ''} Keep private future developments offscreen and preserve established meanings and player agency.\n${beatRealization}\n${pacingBoundary}`

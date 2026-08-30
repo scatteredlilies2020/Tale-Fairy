@@ -14,7 +14,7 @@ import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlErr
 import { compactContinuityPrompt, readContinuityBridge, waitForContinuityBridge } from './continuity.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.46';
+const RUNTIME_VERSION = '0.11.47';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -684,8 +684,10 @@ function stopAnalysis() {
 function parseAnalysisResponse(value, evidence = '') {
     try {
         let expectedOfferedIds = [];
+        let priorPlannerState = null;
         try {
             const prompt = JSON.parse(evidence);
+            priorPlannerState = prompt?.current || null;
             expectedOfferedIds = (Array.isArray(prompt?.current?.lastOfferedCues) ? prompt.current.lastOfferedCues : [])
                 .filter(cue => cue?.requestConfirmed === true && typeof cue?.id === 'string' && cue.id.trim())
                 .map(cue => cue.id.trim());
@@ -694,9 +696,9 @@ function parseAnalysisResponse(value, evidence = '') {
         }
         let result;
         if (value && typeof value === 'object' && !Array.isArray(value) && value.scene) {
-            result = requireValidAnalysisResult(value, { expectedOfferedIds });
+            result = requireValidAnalysisResult(value, { expectedOfferedIds, priorPlannerState });
         } else {
-            result = requireValidAnalysisResult(extractJson(completionText(value)), { expectedOfferedIds });
+            result = requireValidAnalysisResult(extractJson(completionText(value)), { expectedOfferedIds, priorPlannerState });
         }
         return finalizeAnalysisResult(result, evidence);
     } catch (error) {
