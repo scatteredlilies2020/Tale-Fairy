@@ -14,7 +14,7 @@ import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlErr
 import { compactContinuityPrompt, readContinuityBridge, waitForContinuityBridge } from './continuity.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.30';
+const RUNTIME_VERSION = '0.11.31';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -738,6 +738,13 @@ function plannerTemperaturePayload(temperature, samplingEnabled) {
     return samplingEnabled ? { temperature: normalizePlannerTemperature(temperature) } : {};
 }
 
+function plannerModelRejectsTemperature(model) {
+    const id = String(model || '').trim();
+    // OpenAI reasoning/Responses models reject sampling controls. Match both
+    // native ids and proxy-prefixed ids such as openai/gpt-5.6-terra.
+    return /(?:^|\/)(?:gpt-5(?:[.\-]|$)|o[134](?:[.\-]|$))/i.test(id);
+}
+
 function isolatePlannerGenerationData(generateData, reasoningMode, temperature = plannerTemperature(), samplingEnabled = true) {
     if (!generateData || typeof generateData !== 'object') return;
     generateData.stream = false;
@@ -842,7 +849,7 @@ async function requestAnalysisOnce(prompt, externalSignal) {
                 profileName: profile.name,
             });
             let reasoningPayload = reasoning.payload;
-            let samplingEnabled = true;
+            let samplingEnabled = !plannerModelRejectsTemperature(profile.model);
             const sendProfileRaw = (structured, systemPrompt = SYSTEM) => ConnectionManagerRequestService.sendRequest(
                 model.profileId,
                 [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }],
@@ -894,7 +901,10 @@ async function requestAnalysisOnce(prompt, externalSignal) {
                 const seedEvent = mainApi === 'openai' ? event_types.CHAT_COMPLETION_SETTINGS_READY : event_types.GENERATE_AFTER_DATA;
                 const configurePlanner = generateData => {
                     if (!containsPlannerMarker(generateData)) return;
-                    isolatePlannerGenerationData(generateData, activeReasoningMode, temperature, samplingEnabled);
+                    const requestSamplingEnabled = samplingEnabled
+                        && Object.hasOwn(generateData, 'temperature')
+                        && !plannerModelRejectsTemperature(generateData.model);
+                    isolatePlannerGenerationData(generateData, activeReasoningMode, temperature, requestSamplingEnabled);
                 };
                 eventSource.on(seedEvent, configurePlanner);
                 return waitForAbortable(generateRaw({
@@ -951,7 +961,7 @@ async function requestAnalysisOnce(prompt, externalSignal) {
             url: model.url,
         });
         let reasoningPayload = reasoning.payload;
-        let samplingEnabled = true;
+        let samplingEnabled = !plannerModelRejectsTemperature(model.model);
         const sendRaw = async structured => {
             const systemPrompt = structured ? SYSTEM : fallbackSystemPrompt();
             const body = { chat_completion_source: model.provider, model: model.model, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }], max_tokens: PLANNER_RESPONSE_TOKENS, stream: false, ...plannerTemperaturePayload(temperature, samplingEnabled), ...reasoningPayload, ...(structured ? { response_format: { type: 'json_object' } } : {}), ...(model.provider === 'openrouter' ? { api_url: model.url.replace(/\/$/, '') } : { custom_url: model.url.replace(/\/$/, '') }) };

@@ -10,9 +10,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.30');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.30');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.30');
+    assert.equal(manifest.version, '0.11.31');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.31');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.31');
 });
 
 test('injection sends layered authorial control while concrete realization and future setup stay private', () => {
@@ -107,7 +107,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /function plannerReasoningMode/);
     assert.match(source, /openai_setting_names,[\s\S]*openai_settings,[\s\S]*oai_settings\?\.reasoning_effort/);
     assert.match(source, /\.\.\.reasoningPayload/);
-    assert.match(source, /isolatePlannerGenerationData\(generateData, activeReasoningMode, temperature, samplingEnabled\)/);
+    assert.match(source, /isolatePlannerGenerationData\(generateData, activeReasoningMode, temperature, requestSamplingEnabled\)/);
     assert.match(source, /isGuidanceUsable\(state, messages/);
     assert.match(source, /buildPromptPayload\(state/);
     assert.match(source, /function renderBoard/);
@@ -172,9 +172,11 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /analysisTemperature: 1/);
     assert.match(source, /function isUnsupportedTemperatureError/);
     assert.match(source, /function retryWithoutUnsupportedTemperature/);
+    assert.match(source, /function plannerModelRejectsTemperature/);
+    assert.match(source, /gpt-5/);
     assert.match(source, /plannerTemperaturePayload\(temperature, samplingEnabled\)/);
     assert.match(source, /\['temperature', 'top_p', 'frequency_penalty', 'presence_penalty', 'repetition_penalty'\]/);
-    assert.match(source, /isolatePlannerGenerationData\(generateData, activeReasoningMode, temperature, samplingEnabled\)/);
+    assert.match(source, /isolatePlannerGenerationData\(generateData, activeReasoningMode, temperature, requestSamplingEnabled\)/);
     assert.doesNotMatch(source, /generateData\.seed\s*=|generateData\.sampler_seed\s*=|seed:\s*variation/);
     assert.match(source, /generateData\.custom_prompt_post_processing = ''/);
     assert.match(source, /generateData\[key\] = PLANNER_RESPONSE_TOKENS/);
