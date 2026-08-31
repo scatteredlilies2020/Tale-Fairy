@@ -5,15 +5,16 @@ import test from 'node:test';
 const source = await readFile(new URL('../extension/index.js', import.meta.url), 'utf8');
 const continuitySource = await readFile(new URL('../extension/continuity.js', import.meta.url), 'utf8');
 const summarySource = await readFile(new URL('../extension/summary-context.js', import.meta.url), 'utf8');
+const outputNegotiationSource = await readFile(new URL('../extension/output-negotiation.js', import.meta.url), 'utf8');
 const stateSource = await readFile(new URL('../extension/state.js', import.meta.url), 'utf8');
 const template = await readFile(new URL('../extension/settings.html', import.meta.url), 'utf8');
 const styles = await readFile(new URL('../extension/style.css', import.meta.url), 'utf8');
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.101');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.101');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.101');
+    assert.equal(manifest.version, '0.11.102');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.102');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.102');
     assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.100'/);
     assert.match(source, /from '\.\/state\.js\?v=0\.11\.101'/);
     assert.match(source, /from '\.\/author-board\.js\?v=0\.11\.101'/);
@@ -21,7 +22,7 @@ test('manifest identifies the adaptive planning release', () => {
     assert.match(source, /from '\.\/pacing\.js\?v=0\.11\.101'/);
     assert.match(source, /from '\.\/planner-scheduler\.js\?v=0\.11\.101'/);
     assert.match(source, /from '\.\/completion-response\.js\?v=0\.11\.100'/);
-    assert.match(source, /from '\.\/output-negotiation\.js\?v=0\.11\.100'/);
+    assert.match(source, /from '\.\/output-negotiation\.js\?v=0\.11\.102'/);
     assert.match(source, /from '\.\/planner-lifecycle\.js\?v=0\.11\.100'/);
 });
 
@@ -106,7 +107,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /returned unusable \$\{mode\} output; retrying with \$\{nextMode\} compatibility/);
     assert.match(source, /PLANNER_OUTPUT_MODE\.JSON_SCHEMA, PLANNER_OUTPUT_MODE\.JSON_OBJECT, PLANNER_OUTPUT_MODE\.PROMPT_ONLY/);
     assert.match(source, /cache: plannerOutputModeCache/);
-    assert.match(source, /function isUnsupportedStructuredOutputError/);
+    assert.match(outputNegotiationSource, /export function isUnsupportedStructuredOutputError/);
     assert.doesNotMatch(source, /REPAIR REQUIRED|incomplete after deterministic recovery/);
     assert.match(source, /async function requestAnalysisOnce/);
     assert.match(source, /async function requestAnalysis\([^)]*\)\s*{\s*return requestAnalysisOnce\(prompt, externalSignal, detachedMeta\);\s*}/s);

@@ -20,11 +20,11 @@ import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } fro
 import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.100';
 import { estimateTokenCount } from './token-budget.js?v=0.11.100';
 import { completionText } from './completion-response.js?v=0.11.100';
-import { customOutputPayload, negotiateOutputModes, plannerMessages, plannerPrompt, PLANNER_OUTPUT_MODE } from './output-negotiation.js?v=0.11.100';
+import { customOutputPayload, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerPrompt, PLANNER_OUTPUT_MODE } from './output-negotiation.js?v=0.11.102';
 import { clearPlannerPending, markPlannerPending, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.100';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.101';
+const RUNTIME_VERSION = '0.11.102';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -1357,21 +1357,6 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null) 
     } finally {
         externalSignal?.removeEventListener('abort', forwardAbort);
     }
-}
-
-function plannerErrorText(error) {
-    let serialized = '';
-    try { serialized = JSON.stringify(error); } catch { /* best effort */ }
-    return [error?.message, error?.error?.message, error?.cause?.message, serialized, String(error || '')]
-        .filter(Boolean)
-        .join('\n');
-}
-
-function isUnsupportedStructuredOutputError(error) {
-    const text = plannerErrorText(error);
-    const namesStructuredControl = /(?:json[_ -]?schema|response[_ -]?format|structured outputs?)/i.test(text);
-    const describesRejection = /(?:not supported|unsupported|unknown|unrecognized|invalid (?:parameter|argument|request|schema)|not permitted|extra inputs?|forbidden)/i.test(text);
-    return namesStructuredControl && describesRejection;
 }
 
 async function requestAnalysis(prompt, externalSignal, detachedMeta) {

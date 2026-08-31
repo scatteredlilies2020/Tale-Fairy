@@ -4,6 +4,21 @@ export const PLANNER_OUTPUT_MODE = Object.freeze({
     PROMPT_ONLY: 'prompt-only',
 });
 
+function outputErrorText(error) {
+    let serialized = '';
+    try { serialized = JSON.stringify(error); } catch { /* best effort */ }
+    return [error?.message, error?.error?.message, error?.cause?.message, serialized, String(error || '')]
+        .filter(Boolean)
+        .join('\n');
+}
+
+export function isUnsupportedStructuredOutputError(error) {
+    const text = outputErrorText(error);
+    const namesStructuredControl = /(?:json[_ -]?schema|response[_ -]?format|structured outputs?)/i.test(text);
+    const describesRejection = /(?:not supported|unsupported|unavailable|not available|does not support|unknown|unrecognized|invalid (?:parameter|argument|request|schema)|not permitted|extra inputs?|forbidden|disabled)/i.test(text);
+    return namesStructuredControl && describesRejection;
+}
+
 function schemaInstruction(schema) {
     return `JSON schema for the response:\n${JSON.stringify(schema.value, null, 2)}`;
 }

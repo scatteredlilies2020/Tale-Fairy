@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { customOutputPayload, negotiateOutputModes, plannerMessages, plannerPrompt, PLANNER_OUTPUT_MODE } from '../extension/output-negotiation.js';
+import { customOutputPayload, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerPrompt, PLANNER_OUTPUT_MODE } from '../extension/output-negotiation.js';
 
 const schema = { value: { type: 'object', required: ['contract_version'] } };
 
@@ -72,4 +72,27 @@ test('negotiation never masks non-compatible failures', async () => {
         modes: [PLANNER_OUTPUT_MODE.JSON_SCHEMA, PLANNER_OUTPUT_MODE.PROMPT_ONLY],
         canFallback: () => false,
     }), permanent);
+});
+
+test('DeepSeek proxy response-format unavailability triggers prompt-only fallback', async () => {
+    const proxyError = new Error('Chat completion request error: Bad Request {"error":{"message":"This response_format type is unavailable now","type":"invalid_request_error"}}');
+    assert.equal(isUnsupportedStructuredOutputError(proxyError), true);
+
+    const calls = [];
+    const result = await negotiateOutputModes({
+        run: async mode => {
+            calls.push(mode);
+            if (mode !== PLANNER_OUTPUT_MODE.PROMPT_ONLY) throw proxyError;
+            return 'valid prompt JSON';
+        },
+        modes: [PLANNER_OUTPUT_MODE.JSON_SCHEMA, PLANNER_OUTPUT_MODE.JSON_OBJECT, PLANNER_OUTPUT_MODE.PROMPT_ONLY],
+        canFallback: isUnsupportedStructuredOutputError,
+    });
+
+    assert.equal(result, 'valid prompt JSON');
+    assert.deepEqual(calls, [PLANNER_OUTPUT_MODE.JSON_SCHEMA, PLANNER_OUTPUT_MODE.JSON_OBJECT, PLANNER_OUTPUT_MODE.PROMPT_ONLY]);
+});
+
+test('generic provider unavailability is not mistaken for structured-output rejection', () => {
+    assert.equal(isUnsupportedStructuredOutputError(new Error('The model is unavailable now')), false);
 });
