@@ -20,11 +20,11 @@ import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } fro
 import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.100';
 import { estimateTokenCount } from './token-budget.js?v=0.11.100';
 import { completionText } from './completion-response.js?v=0.11.100';
-import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.11.104';
+import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.11.105';
 import { clearPlannerPending, markPlannerPending, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.100';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.104';
+const RUNTIME_VERSION = '0.11.105';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -1350,11 +1350,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null) 
             }
         };
         const glmTarget = model.provider === 'custom' && /^(?:.*\/)?glm[-_.]/i.test(model.model);
-        const modes = model.provider === 'custom'
-            ? (glmTarget
-                ? [PLANNER_OUTPUT_MODE.JSON_OBJECT, PLANNER_OUTPUT_MODE.PROMPT_ONLY]
-                : [PLANNER_OUTPUT_MODE.JSON_SCHEMA, PLANNER_OUTPUT_MODE.JSON_OBJECT, PLANNER_OUTPUT_MODE.PROMPT_ONLY])
-            : [PLANNER_OUTPUT_MODE.JSON_SCHEMA, PLANNER_OUTPUT_MODE.PROMPT_ONLY];
+        const modes = plannerOutputModes(model);
         return negotiatePlannerOutput(
             runDirectMode,
             modes,

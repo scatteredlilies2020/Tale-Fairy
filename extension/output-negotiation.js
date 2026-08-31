@@ -4,6 +4,23 @@ export const PLANNER_OUTPUT_MODE = Object.freeze({
     PROMPT_ONLY: 'prompt-only',
 });
 
+export function plannerOutputModes({ provider = '', model = '', url = '' } = {}) {
+    const identity = `${provider} ${model} ${url}`;
+    // DeepSeek's OpenAI-compatible routes currently reject response_format,
+    // including json_object. Do not make a knowingly invalid capability probe
+    // on every page load; prompt instructions plus deterministic validation are
+    // the compatible structured-output mechanism for these routes.
+    if (String(provider).toLowerCase() === 'custom' && /deepseek/i.test(identity)) {
+        return [PLANNER_OUTPUT_MODE.PROMPT_ONLY];
+    }
+    if (String(provider).toLowerCase() === 'custom') {
+        return /^(?:.*\/)?glm[-_.]/i.test(String(model))
+            ? [PLANNER_OUTPUT_MODE.JSON_OBJECT, PLANNER_OUTPUT_MODE.PROMPT_ONLY]
+            : [PLANNER_OUTPUT_MODE.JSON_SCHEMA, PLANNER_OUTPUT_MODE.JSON_OBJECT, PLANNER_OUTPUT_MODE.PROMPT_ONLY];
+    }
+    return [PLANNER_OUTPUT_MODE.JSON_SCHEMA, PLANNER_OUTPUT_MODE.PROMPT_ONLY];
+}
+
 function outputErrorText(error) {
     let serialized = '';
     try { serialized = JSON.stringify(error); } catch { /* best effort */ }

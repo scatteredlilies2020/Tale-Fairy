@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from '../extension/output-negotiation.js';
+import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from '../extension/output-negotiation.js';
 
 const schema = { value: { type: 'object', required: ['contract_version'] } };
 
@@ -133,4 +133,28 @@ test('detached transport preserves the DeepSeek rejection hidden by SillyTavern'
 
 test('generic provider unavailability is not mistaken for structured-output rejection', () => {
     assert.equal(isUnsupportedStructuredOutputError(new Error('The model is unavailable now')), false);
+});
+
+test('direct DeepSeek routes never send an unsupported response format probe', () => {
+    assert.deepEqual(plannerOutputModes({
+        provider: 'custom',
+        model: 'deepseek-v4-pro',
+        url: 'http://127.0.0.1:17777/cute/deepseek',
+    }), [PLANNER_OUTPUT_MODE.PROMPT_ONLY]);
+});
+
+test('other direct and profile routes retain negotiated output modes', () => {
+    assert.deepEqual(plannerOutputModes({ provider: 'custom', model: 'glm-5' }), [
+        PLANNER_OUTPUT_MODE.JSON_OBJECT,
+        PLANNER_OUTPUT_MODE.PROMPT_ONLY,
+    ]);
+    assert.deepEqual(plannerOutputModes({ provider: 'custom', model: 'qwen3' }), [
+        PLANNER_OUTPUT_MODE.JSON_SCHEMA,
+        PLANNER_OUTPUT_MODE.JSON_OBJECT,
+        PLANNER_OUTPUT_MODE.PROMPT_ONLY,
+    ]);
+    assert.deepEqual(plannerOutputModes({ provider: 'openrouter', model: 'deepseek/deepseek-r1' }), [
+        PLANNER_OUTPUT_MODE.JSON_SCHEMA,
+        PLANNER_OUTPUT_MODE.PROMPT_ONLY,
+    ]);
 });
