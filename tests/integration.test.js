@@ -11,14 +11,14 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.98');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.98');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.98');
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.98'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.98'/);
-    assert.match(source, /from '\.\/completion-response\.js\?v=0\.11\.98'/);
-    assert.match(source, /from '\.\/output-negotiation\.js\?v=0\.11\.98'/);
-    assert.match(source, /from '\.\/planner-lifecycle\.js\?v=0\.11\.98'/);
+    assert.equal(manifest.version, '0.11.99');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.99');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.99');
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.99'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.99'/);
+    assert.match(source, /from '\.\/completion-response\.js\?v=0\.11\.99'/);
+    assert.match(source, /from '\.\/output-negotiation\.js\?v=0\.11\.99'/);
+    assert.match(source, /from '\.\/planner-lifecycle\.js\?v=0\.11\.99'/);
 });
 
 test('injection sends layered authorial control while concrete realization and future outcomes stay private', () => {
@@ -220,7 +220,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /function retryWithoutUnsupportedTemperature/);
     assert.match(source, /function plannerModelRejectsTemperature/);
     assert.match(source, /gpt-5/);
-    assert.match(source, /plannerTemperaturePayload\(temperature, samplingEnabled,/);
+    assert.match(source, /plannerTemperaturePayload\(temperature, samplingEnabled\)/);
     assert.match(source, /glmTarget[\s\S]{0,300}PLANNER_OUTPUT_MODE\.JSON_OBJECT, PLANNER_OUTPUT_MODE\.PROMPT_ONLY/);
     assert.match(source, /retryInvalidOutput: !glmTarget/);
     assert.match(source, /\['temperature', 'top_p', 'frequency_penalty', 'presence_penalty', 'repetition_penalty'\]/);
