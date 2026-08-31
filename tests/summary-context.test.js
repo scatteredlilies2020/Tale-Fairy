@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { collectSummarySources, compactSummarySources, summarySourceAudit } from '../extension/summary-context.js';
+import { collectSummarySources, compactSummarySources, summarySourceAudit, worldInfoActivationContext } from '../extension/summary-context.js';
 import { estimateTokenCount } from '../extension/token-budget.js';
 
 test('summary discovery integrates continuity, extension prompts, metadata, message memory, recaps, and World Info', async () => {
@@ -90,4 +90,27 @@ test('disabled Continuity integration does not re-enter through extension-prompt
         extensionPrompts: { continuity_memory_context: { value: 'Continuity Chronicle: private snapshot' } },
     }, [], { includeContinuity: false, tokenBudget: 500 });
     assert.equal(sources.length, 0);
+});
+
+test('World Info activation uses a newest-first token window rather than the entire raw chat', async () => {
+    const messages = Array.from({ length: 80 }, (_, index) => ({
+        mes: `turn-${index} ${`evidence-${index} `.repeat(80)}`,
+        extra: index === 0 ? { session_summary: 'Old summary metadata is still discovered across the complete chat.' } : {},
+    }));
+    const activation = worldInfoActivationContext(messages, 1000);
+    assert.ok(activation.length > 0 && activation.length < messages.length);
+    assert.ok(activation.reduce((sum, text) => sum + estimateTokenCount(text), 0) <= 1000);
+    assert.match(activation[0], /turn-79/);
+    assert.doesNotMatch(activation.join('\n'), /turn-0\b/);
+
+    let received = [];
+    const sources = await collectSummarySources({
+        chat: messages,
+        async getWorldInfoPrompt(chat) {
+            received = chat;
+            return { worldInfoString: 'World Info: A token-bounded activation still found relevant lore.' };
+        },
+    }, messages, { tokenBudget: 1000, worldInfoActivationTokens: 1000 });
+    assert.deepEqual(received, activation);
+    assert.match(sources.map(source => source.text).join('\n'), /Old summary metadata is still discovered/);
 });

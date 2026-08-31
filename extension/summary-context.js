@@ -224,7 +224,7 @@ export async function collectSummarySources(context = {}, messages = [], options
 
     if (typeof context.getWorldInfoPrompt === 'function' && messages.length) {
         try {
-            const chatForWorldInfo = messages.map(message => String(message?.mes || '')).filter(Boolean).reverse();
+            const chatForWorldInfo = worldInfoActivationContext(messages, options.worldInfoActivationTokens || 12000);
             const result = await context.getWorldInfoPrompt(chatForWorldInfo, Number(context.maxContext) || 100000, true);
             appendLeaves(discovered, result?.worldInfoString || result, { label: 'Active World Info', kind: 'world-info', priority: 1 });
         } catch (error) {
@@ -233,6 +233,29 @@ export async function collectSummarySources(context = {}, messages = [], options
     }
 
     return compactSummarySources(discovered, options.tokenBudget || 4000, { maxSources: options.maxSources || 24 });
+}
+
+/**
+ * World Info activation only needs a bounded recent evidence window. Summary
+ * discovery above still scans every message's metadata and recap fields, while
+ * this prevents very long chats from making SillyTavern rescan the entire raw
+ * transcript before every planner call. The limit is token-based, never a
+ * scenario-specific message count.
+ */
+export function worldInfoActivationContext(messages = [], requestedBudget = 12000) {
+    const budget = Math.max(1000, Math.floor(Number(requestedBudget) || 12000));
+    const selected = [];
+    let used = 0;
+    for (let index = messages.length - 1; index >= 0 && used < budget; index--) {
+        const body = cleanText(messages[index]?.mes);
+        if (!body) continue;
+        const remaining = budget - used;
+        const text = truncateToTokenBudget(body, remaining, { fromEnd: true });
+        if (!text) continue;
+        selected.push(text);
+        used += estimateTokenCount(text);
+    }
+    return selected;
 }
 
 export function summarySourceAudit(sources) {

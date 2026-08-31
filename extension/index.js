@@ -12,11 +12,11 @@ import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, req
 import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
 import { readContinuityBridge, waitForContinuityBridge } from './continuity.js';
-import { plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js';
 import { collectSummarySources, summarySourceAudit } from './summary-context.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.74';
+const RUNTIME_VERSION = '0.11.75';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -29,6 +29,7 @@ let analysisRequestFingerprint = '';
 let analysisRunId = 0;
 let analysisRetryTimer = null;
 let analysisRetryAttempt = 0;
+let analysisPhaseTimer = null;
 let generationRevision = 0;
 let analysisStopSequence = 0;
 let lastAnalysisError = '';
@@ -43,8 +44,9 @@ const legacyUpgradeAttempts = new Set();
 const directModelCache = new Map();
 // Reasoning providers may count hidden thinking against this ceiling. The
 // planner prompt and schema separately target a concise visible JSON result.
-const PLANNER_RESPONSE_TOKENS = 32768;
-const PLANNER_REQUEST_TIMEOUT_MS = 240000;
+const PLANNER_RESPONSE_TOKENS = 16384;
+const PLANNER_REQUEST_TIMEOUT_MS = 300000;
+const PLANNER_MAX_AUTO_RETRIES = 2;
 const UI_MOUNT_TIMEOUT_MS = 30000;
 const LEGACY_UPGRADE_MAX_ATTEMPTS = 1;
 const INTERNAL_PLANNER_MARKER = 'You are Tale Fairy, a narrative planning layer for SillyTavern roleplay.';
@@ -662,7 +664,20 @@ function analysisErrorMessage(error) {
     return (messages.join(' → ') || 'Unknown planner failure').slice(0, 220);
 }
 
+function elapsedLabel(milliseconds) {
+    const seconds = Math.max(0, Math.floor(Number(milliseconds) / 1000) || 0);
+    const minutes = Math.floor(seconds / 60);
+    const remainder = seconds % 60;
+    return minutes ? `${minutes}m ${String(remainder).padStart(2, '0')}s` : `${seconds}s`;
+}
+
+function clearAnalysisPhase() {
+    if (analysisPhaseTimer) clearInterval(analysisPhaseTimer);
+    analysisPhaseTimer = null;
+}
+
 function renderAnalysisActivity(message, running = false) {
+    if (!running) clearAnalysisPhase();
     const root = document.querySelector(`#${EXTENSION_ID}-settings`);
     if (!root) return;
     const status = root.querySelector('[data-role="analysis-status"]');
@@ -670,6 +685,34 @@ function renderAnalysisActivity(message, running = false) {
     root.querySelector('[data-action="stop"]')?.toggleAttribute('disabled', !running);
     root.querySelector('[data-action="guide"]')?.toggleAttribute('disabled', running);
     root.querySelector('[data-action="rebuild"]')?.toggleAttribute('disabled', running);
+}
+
+function showAnalysisPhase(label, runId, startedAt) {
+    clearAnalysisPhase();
+    const update = () => {
+        if (runId !== analysisRunId) {
+            clearAnalysisPhase();
+            return;
+        }
+        renderAnalysisActivity(`${label} · ${elapsedLabel(Date.now() - startedAt)}`, true);
+    };
+    update();
+    analysisPhaseTimer = setInterval(update, 1000);
+}
+
+class PlannerBusyInAnotherTabError extends Error {
+    constructor() {
+        super('Planner is already active for this chat in another SillyTavern tab.');
+        this.name = 'PlannerBusyInAnotherTabError';
+    }
+}
+
+async function withPlannerTabLock(chatId, task) {
+    if (!chatId || typeof globalThis.navigator?.locks?.request !== 'function') return task();
+    return globalThis.navigator.locks.request(`${EXTENSION_ID}:planner:${chatId}`, { mode: 'exclusive', ifAvailable: true }, lock => {
+        if (!lock) throw new PlannerBusyInAnotherTabError();
+        return task();
+    });
 }
 
 function cancelRunningAnalysis(reason, status) {
@@ -1096,12 +1139,13 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
     const revision = ++generationRevision;
     const runId = ++analysisRunId;
     const variationNonce = randomVariationNonce();
+    const startedAt = Date.now();
     const controller = new AbortController();
     analysisAbortController = controller;
     analysisRequestFingerprint = fingerprint;
-    renderAnalysisActivity('Analyzing…', true);
+    showAnalysisPhase('Waiting for planner slot', runId, startedAt);
     let finalStatus = 'Updated';
-    const promise = (async () => {
+    const runAnalysis = async () => {
         const latestSaved = loadState(context.chatMetadata);
         const current = rebuild ? rebuildState(latestSaved) : latestSaved;
         current.mode = s.mode;
@@ -1111,23 +1155,29 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
             model: s.analysisModel,
             url: s.analysisUrl,
         };
+        if (waitForContinuity) showAnalysisPhase('Waiting for Continuity Memory', runId, startedAt);
         const continuityContext = waitForContinuity
             ? await optionalContinuityContextWhenReady(context, allowStaleContinuity, controller.signal)
             : optionalContinuityContext(context, allowStaleContinuity);
         controller.signal.throwIfAborted();
+        showAnalysisPhase('Reading summaries and World Info', runId, startedAt);
         const summarySources = await collectSummarySources(context, chat, {
             continuityContext,
             includeContinuity: s.continuityIntegration,
             ownPromptKey: PROMPT_KEY,
             tokenBudget: s.summaryContextTokens,
+            worldInfoActivationTokens: s.maxPromptTokens,
             onWarning: (message, error) => console.warn(`[${EXTENSION_ID}] ${message}`, error),
         });
         lastSummaryAudit = summarySourceAudit(summarySources);
         controller.signal.throwIfAborted();
+        showAnalysisPhase(`Building ${Number(s.maxPromptTokens).toLocaleString()}-token planner context`, runId, startedAt);
         const plannerPrompt = await buildTokenBudgetedAnalysisPrompt(chat, current, noteInstruction(userNote), bootstrapContext(context), { recentContextTokens: s.recentContextTokens, messageTokenLimit: s.messageTokenLimit, summaryContextTokens: s.summaryContextTokens, summarySources, bootstrapScan: rebuild || current.canonBootstrapPending || current.scene.status === 'uninitialized' || !current.contextLedger, maxPromptTokens: s.maxPromptTokens, variationNonce });
         const finalizationEvidence = buildFinalizationEvidence(chat, plannerPrompt);
+        showAnalysisPhase('Waiting for planner model', runId, startedAt);
         const result = await requestAnalysis(plannerPrompt, controller.signal, finalizationEvidence);
         controller.signal.throwIfAborted();
+        showAnalysisPhase('Validating and saving planner result', runId, startedAt);
         const resolvedNote = resolveUserNote(result, userNote);
         if (revision !== generationRevision) {
             finalStatus = 'Skipped · chat changed';
@@ -1144,19 +1194,24 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         lastAnalysisError = '';
         finalStatus = userNote && !resolvedNote
             ? 'Note not applied · try again'
-            : 'Pathways ready';
+            : `Pathways ready · ${elapsedLabel(Date.now() - startedAt)}`;
         renderBoard(next);
         return next;
-    })().catch(error => {
+    };
+    const promise = withPlannerTabLock(chatId, runAnalysis).catch(error => {
         const stopped = controller.signal.aborted;
         if (!stopped) lastAnalysisError = analysisErrorMessage(error);
         const retryable = shouldRetryPlannerError(error, stopped);
         finalStatus = stopped
             ? 'Stopped'
-            : retryable
+            : error?.name === 'PlannerBusyInAnotherTabError'
+                ? 'Planner active in another tab'
+                : isPlannerTimeoutError(error)
+                    ? `Planner timed out after ${elapsedLabel(Date.now() - startedAt)} · automatic retry stopped`
+                    : retryable && analysisRetryAttempt < PLANNER_MAX_AUTO_RETRIES
                 ? scheduleAnalysisRetry(error, { note, rebuild, waitForContinuity }, chatId)
                 : `Analysis failed · ${lastAnalysisError}`;
-        if (!stopped && !retryable) console.warn(`[${EXTENSION_ID}] analysis skipped`, error);
+        if (!stopped && (!retryable || analysisRetryAttempt >= PLANNER_MAX_AUTO_RETRIES)) console.warn(`[${EXTENSION_ID}] analysis skipped`, error);
         renderBoard(loadState(context.chatMetadata));
         return loadState(context.chatMetadata);
     }).finally(() => {
