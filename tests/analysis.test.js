@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, AnalysisValidationError, MODE_INSTRUCTIONS, applyAnalysis, buildAnalysisPrompt, extractJson, finalizeAnalysisResult, requireValidAnalysisResult, SYSTEM, validateAnalysisResult } from '../extension/analysis.js';
+import { ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, AnalysisValidationError, MODE_INSTRUCTIONS, applyAnalysis, buildAnalysisPrompt, buildFinalizationEvidence, extractJson, finalizeAnalysisResult, requireValidAnalysisResult, SYSTEM, validateAnalysisResult } from '../extension/analysis.js';
 import { defaultState } from '../extension/state.js';
 
 const pathways = [{ id: 'tea-talk', direction: 'Let the tea conversation reveal a useful tension.', when: 'The user continues the conversation or asks Mara directly.', response_bias: 'Have Mara answer plainly and expose one concrete concern.', horizon: 'next few turns', status: 'foreground', conditions: [], change: 'replace', reason: 'The current exchange supports this route.' }];
@@ -76,6 +76,29 @@ test('planner repairs provider-specific possibility force labels without discard
     assert.deepEqual(result.possibilities.map(item => item.force), ['light', 'moderate', 'strong', 'moderate']);
 });
 
+test('planner repairs aliased possibility cards without discarding ranked guides', () => {
+    const possibilities = Array.from({ length: 15 }, (_, index) => {
+        if (index === 0) return 'A filed petition may receive an independent institutional response.';
+        if (index === 1) return { title: 'A placement review changes which help remains available.', timeframe: 'near-term', when: 'When the panel convenes.', strength: 'high' };
+        if (index === 2) return { direction: 'A scientific inquiry opens a separate long-range path.', range: 'mid-arc', condition: 'When new evidence is examined.', weight: 'low' };
+        return { idea: `Distinct route ${index + 1} develops from established world activity.`, horizon: index > 12 ? 'outlier' : 'long-term', trigger: `When route ${index + 1} gains support.`, intensity: 'medium' };
+    });
+    const result = requireValidAnalysisResult({ ...requiredPlanning, possibilities });
+    assert.equal(result.possibilities.length, 15);
+    assert.deepEqual(result.possibilities[0], {
+        description: 'A filed petition may receive an independent institutional response.',
+        horizon: 'local',
+        conditions: [],
+        force: 'moderate',
+    });
+    assert.equal(result.possibilities[1].horizon, 'near');
+    assert.deepEqual(result.possibilities[1].conditions, ['When the panel convenes.']);
+    assert.equal(result.possibilities[1].force, 'strong');
+    assert.equal(result.possibilities[2].horizon, 'mid');
+    assert.deepEqual(result.next_guides.map(guide => guide.id), nextGuides.map(guide => guide.id));
+    assert.equal(validateAnalysisResult(result).valid, true);
+});
+
 test('finalization never rejects authored names and deterministically retains explicit OOC canon', () => {
     const evidence = JSON.stringify({ required_canon_claims: [
         'I have an abnormally high Midichlorian count, probably one of the highest in history.',
@@ -92,6 +115,49 @@ test('finalization never rejects authored names and deterministically retains ex
         'I have an abnormally high Midichlorian count, probably one of the highest in history.',
         'If I am tested, my Midichlorian count should be off the charts.',
     ]);
+});
+
+test('finalization restores a filed Chancellor route when the planner drops durable full-chat evidence', () => {
+    const result = requireValidAnalysisResult({
+        ...requiredPlanning,
+        scene: { status: 'active', activity: 'Quiet reading', pace: 'slow', intent: 'Wait for Lucia', location: 'Room 12-14', time: 'evening', loop: false },
+        objectives: [], continuity_threads: [], entities: [],
+        possibilities: Array.from({ length: 14 }, (_, index) => ({ description: `Local or institutional route ${index + 1}.`, horizon: index < 3 ? 'local' : index < 7 ? 'near' : index < 10 ? 'mid' : 'far', conditions: [], force: 'moderate' })),
+        guidance: 'Preserve the quiet room moment while keeping future routes conditional.',
+        inject: true,
+        reason: 'The current action is narrow.',
+    });
+    const evidence = JSON.stringify({ candidate_dormant_hooks: [{
+        index: 654,
+        role: 'assistant',
+        hook_type: 'correspondence-or-petition',
+        content: 'C-5-2214 — RECEIVED / CHANCELLOR’S AIDE OFFICE. The filed petition remains in routing; a substantive response is indeterminate.',
+    }] });
+    finalizeAnalysisResult(result, evidence);
+    assert.ok(result.continuity_threads.some(item => item.id === 'chancellor-petition' && /awaits a substantive response/iu.test(item.state)));
+    assert.ok(result.objectives.some(item => item.title === 'Chancellor petition'));
+    assert.ok(result.possibilities.some(item => /Chancellor petition/iu.test(item.description)));
+    assert.ok(result.pathways.some(item => item.id === 'continuity-chancellor-petition' && item.status === 'latent'));
+    assert.ok(result.next_guides.some(item => item.id === 'continuity-chancellor-petition-guide' && item.origin === 'established'));
+    assert.ok(result.plan_horizons.items.some(item => item.branch === 'chancellor-petition'));
+    assert.match(result.self_challenge.decision, /independent conditional future route/iu);
+    const restoredValidation = validateAnalysisResult(result);
+    assert.deepEqual(restoredValidation.errors, []);
+});
+
+test('finalization evidence retains dormant routes independently of the provider prompt budget', () => {
+    const messages = Array.from({ length: 30 }, (_, index) => ({
+        is_user: index % 2 === 0,
+        name: index % 2 === 0 ? 'Lucia' : 'Narrator',
+        mes: index === 4
+            ? 'The sealed petition was filed and accepted for routing to the Chancellor’s aide. Tracking C-5-2214; its response remains pending.'
+            : `Ordinary scene message ${index}.`,
+    }));
+    const evidence = JSON.parse(buildFinalizationEvidence(messages, '{"task":"update_narrative_context"}', 12));
+    assert.equal(evidence.task, 'update_narrative_context');
+    assert.ok(evidence.candidate_dormant_hooks.some(item => item.index === 4
+        && item.hook_type === 'correspondence-or-petition'
+        && /Chancellor/iu.test(item.content)));
 });
 
 test('planner keeps a causal possibility pool and adaptive multi-horizon plan', () => {
@@ -114,6 +180,8 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /Preserve competing explanations when evidence does not justify selecting one/);
     assert.match(SYSTEM, /Player silence is not a veto/);
     assert.match(SYSTEM, /keep the world moving through independent NPC reactions/);
+    assert.match(SYSTEM, /Country, nation, political, historical, and grand-strategy simulations are equally valid/);
+    assert.match(SYSTEM, /never collapse a country simulation into one protagonist's scene or one predetermined victory path/);
     assert.match(SYSTEM, /Do not freeze the reply at a permission prompt/);
     assert.match(SYSTEM, /Every next guide must be fulfillable without inventing a new player action/);
     assert.match(SYSTEM, /Choose the beat function from current evidence before writing guides/);
@@ -225,9 +293,9 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /Prefer a compact reaction model/);
     assert.match(SYSTEM, /radical moral, allegiance, vocation, or identity 180/);
     assert.match(SYSTEM, /Calibrate the bench to the actual genre, activity, and scale instead of privileging adventure or high stakes/);
-    assert.match(SYSTEM, /Slice-of-life, romance, domestic, school, workplace, travel, hobby, and social simulations are fully valid stories/);
-    assert.match(SYSTEM, /do not manufacture villains, danger, crises, or melodrama merely to create movement/);
-    assert.match(SYSTEM, /Peaceful developments, successes, bonding, humor, discoveries, choices, and gradual change are equally useful/);
+    assert.match(SYSTEM, /Life, slice-of-life, romance, domestic, school, workplace, travel, hobby, and social simulations are fully valid stories/);
+    assert.match(SYSTEM, /do not manufacture villains, danger, crises, wars, or melodrama merely to create movement/);
+    assert.match(SYSTEM, /Peaceful developments, successes, bonding, humor, discoveries, choices, reform, growth, decline, and gradual change are equally useful/);
     assert.match(SYSTEM, /For any other roleplay or simulation, explore its own natural sources of change/);
     assert.match(SYSTEM, /possibility bench has zero inertia and creates no narrative debt/);
     assert.match(SYSTEM, /complete 180-degree replacement immediately/);
@@ -258,7 +326,7 @@ test('planner requires distinct alternatives for swipe variety', () => {
         scene: { status: 'active', activity: 'talking', pace: 'slow', intent: 'understand', location: 'home', time: 'evening', loop: false },
         objectives: [], entities: [], possibilities: [], guidance: '', inject: true, reason: 'Prepare contrasting continuations.',
     };
-    assert.equal(validateAnalysisResult({ ...result, next_guides: [nextGuides[0]] }).valid, true);
+    assert.equal(validateAnalysisResult({ ...result, next_guides: [nextGuides[0]] }).valid, false);
     assert.equal(validateAnalysisResult({ ...result, next_guides: [nextGuides[0], { ...nextGuides[0] }] }).valid, false);
     assert.equal(validateAnalysisResult({ ...result, next_guides: nextGuides.map((guide, index) => index ? { ...guide, world_delta: nextGuides[0].world_delta } : guide) }).valid, false);
     assert.equal(validateAnalysisResult({ ...result, next_guides: nextGuides.map(({ world_delta, ...guide }) => guide) }).valid, false);
@@ -329,20 +397,27 @@ test('planner rejects and repairs a single beat cloned across every horizon', ()
 });
 
 test('planner salvages incomplete structured output before using fallback', () => {
+    const recoveryRoutes = [
+        { ...pathways[0], id: 'direct-answer', direction: nextGuides[0].direction },
+        { ...pathways[0], id: 'outside-accountability', direction: 'Let a pending institutional response create an independent constraint.', when: 'When the institution has reason to act.', response_bias: 'Expose one concrete institutional consequence.' },
+        { ...pathways[0], id: 'private-assessment', direction: 'Let an established private assessment alter what help remains available.', when: 'When the assessing party reaches a supported conclusion.', response_bias: 'Expose only the consequence the assessment now supports.' },
+    ];
     const partial = {
         scene: { status: 'active', activity: 'talking' },
         next_guides: [
             { ...nextGuides[0], use_when: 'Use for the preferred next response.', origin: 'uncertain', strength: 'high' },
             { ...nextGuides[1], direction: 'Mara promises to explain tomorrow.', world_delta: 'Mara schedules the explanation for later.' },
         ],
+        pathways: recoveryRoutes,
         plan_horizons: { items: [{ id: 'near', direction: 'Let the answer change the exchange.', timeframe: 'now', stability: 'fluid' }] },
     };
     const repaired = requireValidAnalysisResult(partial);
-    assert.equal(repaired.next_guides.length, 1, 'one safe movement is retained instead of losing the whole plan');
+    assert.equal(repaired.next_guides.length, 3, 'the safe movement is retained and missing alternatives are recovered');
     assert.doesNotMatch(repaired.next_guides[0].use_when, /preferred|next response/i);
     assert.equal(repaired.next_guides[0].origin, 'inferred');
     assert.equal(repaired.next_guides[0].strength, 'moderate');
-    assert.equal(repaired.pathways.length, 1, 'a missing route is recovered from the usable movement');
+    assert.equal(repaired.pathways.length, 3);
+    assert.deepEqual(repaired.next_guides.slice(1).map(guide => guide.source_pathways[0]), ['outside-accountability', 'private-assessment']);
     assert.equal(repaired.plan_horizons.items.length, 6);
     assert.equal(repaired.plan_horizons.items.at(-1).stability, 'slow');
     assert.equal(new Set(repaired.plan_horizons.items.map(item => item.direction)).size, 6, 'recovery does not clone one local beat into every horizon');
@@ -380,11 +455,16 @@ test('planner replaces vague provider placeholders with a concrete provisional g
 });
 
 test('planner recovers missing next guides from grounded pathways', () => {
-    const repaired = requireValidAnalysisResult({ ...requiredPlanning, next_guides: [], guidance: 'Prefer tea-talk for the next response.' });
-    assert.equal(repaired.next_guides.length, 1);
-    assert.equal(repaired.next_guides[0].direction, pathways[0].direction);
-    assert.deepEqual(repaired.next_guides[0].source_pathways, ['tea-talk']);
-    assert.match(repaired.guidance, new RegExp(pathways[0].direction, 'i'));
+    const routes = [
+        pathways[0],
+        { ...pathways[0], id: 'petition-review', direction: 'Let a filed petition receive an independent institutional review.', when: 'When the petition reaches the appropriate office.', response_bias: 'Expose one concrete procedural consequence.' },
+        { ...pathways[0], id: 'placement-decision', direction: 'Let a pending placement decision alter the available relationships.', when: 'When the reviewing panel reaches a decision.', response_bias: 'Expose one concrete consequence of the review.' },
+    ];
+    const repaired = requireValidAnalysisResult({ ...requiredPlanning, pathways: routes, next_guides: [], guidance: 'Prefer tea-talk for the next response.' });
+    assert.equal(repaired.next_guides.length, 3);
+    assert.deepEqual(repaired.next_guides.map(guide => guide.direction), routes.map(route => route.direction));
+    assert.deepEqual(repaired.next_guides.map(guide => guide.source_pathways[0]), routes.map(route => route.id));
+    assert.match(repaired.guidance, new RegExp(routes[0].direction, 'i'));
     assert.doesNotMatch(repaired.guidance, /tea-talk|next response/i);
     assert.match(repaired.guidance, /not a required player action/i);
     assert.match(repaired.reason, /next_guides was omitted/);
@@ -943,6 +1023,21 @@ test('analysis prompt independently recovers dormant formal hooks for future-rou
     assert.ok(prompt.candidate_dormant_hooks.some(item => item.hook_type === 'scheduled-decision' && /placement panel/iu.test(item.content)));
     assert.match(prompt.dormant_hook_instruction, /retain it in continuity_threads and objectives even while offscreen/);
     assert.match(prompt.dormant_hook_instruction, /distinct future-route family/);
+});
+
+test('repeated schedules cannot crowd a filed petition out of dormant-hook retrieval', () => {
+    const messages = Array.from({ length: 120 }, (_, index) => ({ mes: `Ordinary Temple routine ${index}.`, is_user: index % 2 === 0 }));
+    messages[15] = { mes: 'The Chancellor letter was filed and remains pending.', is_user: false };
+    for (const index of [55, 68, 81, 94, 107]) {
+        messages[index] = { mes: `A routine appointment ${index} is scheduled for tomorrow and remains due.`, is_user: false };
+    }
+    messages[118] = { mes: 'The night passes quietly.', is_user: false };
+    messages[119] = { mes: 'Continue while I sleep.', is_user: true };
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { messageWindow: 8, maxPromptChars: 12000 }));
+    assert.ok(prompt.candidate_dormant_hooks.some(item => item.hook_type === 'correspondence-or-petition' && /Chancellor letter/iu.test(item.content)));
+    assert.ok(prompt.candidate_dormant_hooks.some(item => item.hook_type === 'scheduled-decision'));
+    const constrained = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { messageWindow: 8, maxPromptChars: 8000, bootstrapScan: true }));
+    assert.ok(constrained.candidate_dormant_hooks.some(item => item.hook_type === 'correspondence-or-petition'), 'durable correspondence survives the minimum prompt budget');
 });
 
 test('planner excerpts strip plain generated statboxes but retain the depicted scene', () => {

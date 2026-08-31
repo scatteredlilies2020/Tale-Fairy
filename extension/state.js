@@ -1,5 +1,5 @@
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 34;
+export const STATE_VERSION = 36;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -318,7 +318,8 @@ export function normalizeState(input = {}) {
     // v31 excludes fenced code and XML/HTML-style blocks from chat evidence;
     // v32 gives future horizons explicit branches; v33 rebuilds once to seed
     // the durable established-open-thread inventory; v34 requires the planner
-    // to challenge its preferred route before committing to it.
+    // to challenge its preferred route before committing to it; v35 rebuilds
+    // ranked alternatives with durable-hook diversity and tolerant schema repair.
     const unsafePlannerUpgrade = inputVersion > 0 && inputVersion < 18;
     const movementUpgrade = inputVersion > 0 && inputVersion < STATE_VERSION;
     const recoveryUpgrade = inputVersion > 0 && inputVersion < 26;

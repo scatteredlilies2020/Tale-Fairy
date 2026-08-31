@@ -4,7 +4,7 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, finalizeAnalysisResult, requireValidAnalysisResult, SYSTEM } from './analysis.js';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_SCHEMA, buildAnalysisPrompt, buildFinalizationEvidence, extractJson, finalizeAnalysisResult, requireValidAnalysisResult, SYSTEM } from './analysis.js';
 import { buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js';
 import { resolveInjectionPlacement } from './injection-placement.js';
 import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js';
@@ -15,7 +15,7 @@ import { compactContinuityPrompt, readContinuityBridge, waitForContinuityBridge 
 import { plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.51';
+const RUNTIME_VERSION = '0.11.56';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -874,7 +874,7 @@ function rebuildState() {
     return defaultState();
 }
 
-async function requestAnalysisOnce(prompt, externalSignal) {
+async function requestAnalysisOnce(prompt, externalSignal, finalizationEvidence = prompt) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(new DOMException('Tale Fairy planner request timed out.', 'TimeoutError')), PLANNER_REQUEST_TIMEOUT_MS);
     const forwardAbort = () => controller.abort(externalSignal?.reason || new DOMException('Tale Fairy analysis stopped.', 'AbortError'));
@@ -916,7 +916,7 @@ async function requestAnalysisOnce(prompt, externalSignal) {
             try {
                 const response = await sendProfile(true);
                 controller.signal.throwIfAborted();
-                return parseAnalysisResponse(response, prompt);
+                return parseAnalysisResponse(response, finalizationEvidence);
             } catch (error) {
                 controller.signal.throwIfAborted();
                 // A completed planner response that fails our deterministic
@@ -937,7 +937,7 @@ async function requestAnalysisOnce(prompt, externalSignal) {
                     response = await sendProfile(false, fallbackSystem);
                 }
                 controller.signal.throwIfAborted();
-                return parseAnalysisResponse(response, prompt);
+                return parseAnalysisResponse(response, finalizationEvidence);
             }
         }
         if (model.active) {
@@ -974,11 +974,11 @@ async function requestAnalysisOnce(prompt, externalSignal) {
                 if (activeSource === 'openrouter') {
                     const raw = await runActiveCompatible(false);
                     controller.signal.throwIfAborted();
-                    return parseAnalysisResponse(raw, prompt);
+                    return parseAnalysisResponse(raw, finalizationEvidence);
                 }
                 const raw = await runActiveCompatible(true);
                 controller.signal.throwIfAborted();
-                return parseAnalysisResponse(raw, prompt);
+                return parseAnalysisResponse(raw, finalizationEvidence);
             } catch (error) {
                 controller.signal.throwIfAborted();
                 if (error instanceof AnalysisValidationError) throw error;
@@ -988,7 +988,7 @@ async function requestAnalysisOnce(prompt, externalSignal) {
                         const activeSource = String(currentContext().chatCompletionSettings?.chat_completion_source || '');
                         const raw = await runActiveCompatible(activeSource !== 'openrouter');
                         controller.signal.throwIfAborted();
-                        return parseAnalysisResponse(raw, prompt);
+                        return parseAnalysisResponse(raw, finalizationEvidence);
                     } catch (retryError) {
                         controller.signal.throwIfAborted();
                         error = retryError;
@@ -997,7 +997,7 @@ async function requestAnalysisOnce(prompt, externalSignal) {
                 console.warn(`[${EXTENSION_ID}] active model structured request failed; retrying with a JSON-only prompt`, error);
                 const raw = await runActiveCompatible(false);
                 controller.signal.throwIfAborted();
-                return parseAnalysisResponse(raw, prompt);
+                return parseAnalysisResponse(raw, finalizationEvidence);
             }
         }
         const reasoningMode = plannerReasoningMode();
@@ -1017,7 +1017,7 @@ async function requestAnalysisOnce(prompt, externalSignal) {
             const payload = await response.json();
             if (!response.ok || payload?.error) throw new Error(payload?.error?.message || payload?.error || `Analysis request failed (${response.status}).`);
             controller.signal.throwIfAborted();
-            return parseAnalysisResponse(payload, prompt);
+            return parseAnalysisResponse(payload, finalizationEvidence);
         };
         const send = structured => retryWithoutUnsupportedTemperature(
             () => sendRaw(structured),
@@ -1055,15 +1055,15 @@ async function requestAnalysisOnce(prompt, externalSignal) {
     }
 }
 
-async function requestAnalysis(prompt, externalSignal) {
+async function requestAnalysis(prompt, externalSignal, finalizationEvidence = prompt) {
     try {
-        return await requestAnalysisOnce(prompt, externalSignal);
+        return await requestAnalysisOnce(prompt, externalSignal, finalizationEvidence);
     } catch (error) {
         externalSignal?.throwIfAborted?.();
         if (!(error instanceof AnalysisValidationError)) throw error;
         console.warn(`[${EXTENSION_ID}] planner JSON was incomplete after deterministic recovery; retrying once with explicit correction`, error);
-        const correction = `\n\n[REPAIR REQUIRED]\nThe prior planner response was rejected: ${analysisErrorMessage(error)}\nReturn one complete JSON object. Include 3 or 4 distinct, grounded next_guides; each must specify an immediate direction, use/drop conditions, a causal operation, and a distinct world_delta. Do not omit required fields.`;
-        return requestAnalysisOnce(`${prompt}${correction}`, externalSignal);
+        const correction = `\n\n[REPAIR REQUIRED]\nThe prior planner response was rejected: ${analysisErrorMessage(error)}\nReturn one complete JSON object matching every required schema field. possibilities must contain 12–18 objects with description, horizon, conditions (an array), and force. Include 3 or 4 distinct, grounded next_guides; each must specify an immediate direction, use/drop conditions, a causal operation, and a distinct world_delta. Return continuity_threads as an array and self_challenge with weakness, counter_route, and decision. Do not omit required fields or replace field names with aliases.`;
+        return requestAnalysisOnce(`${prompt}${correction}`, externalSignal, finalizationEvidence);
     }
 }
 
@@ -1108,7 +1108,8 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
             : optionalContinuityContext(context, allowStaleContinuity);
         controller.signal.throwIfAborted();
         const plannerPrompt = buildAnalysisPrompt(chat, current, noteInstruction(userNote), bootstrapContext(context), { messageWindow: s.messageWindow, messageCharLimit: s.messageCharLimit, continuityContext, hostContext, bootstrapScan: rebuild || current.canonBootstrapPending || current.scene.status === 'uninitialized' || !current.contextLedger, maxPromptChars: s.maxPromptChars, variationNonce });
-        const result = await requestAnalysis(plannerPrompt, controller.signal);
+        const finalizationEvidence = buildFinalizationEvidence(chat, plannerPrompt, s.messageWindow);
+        const result = await requestAnalysis(plannerPrompt, controller.signal, finalizationEvidence);
         controller.signal.throwIfAborted();
         const resolvedNote = resolveUserNote(result, userNote);
         if (revision !== generationRevision) {

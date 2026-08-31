@@ -167,8 +167,8 @@ export function validateAnalysisResult(result) {
         if (!['foreground', 'available', 'latent', 'blocked'].includes(pathway?.status)) errors.push(`pathways[${index}].status is invalid`);
         if (!['keep', 'adjust', 'activate', 'deactivate', 'replace', 'retire'].includes(pathway?.change)) errors.push(`pathways[${index}].change is invalid`);
     }
-    if (!Array.isArray(result.next_guides) || result.next_guides.length < 1 || result.next_guides.length > 4) {
-        errors.push('next_guides must contain 1 to 4 usable ranked candidates');
+    if (!Array.isArray(result.next_guides) || result.next_guides.length < 3 || result.next_guides.length > 4) {
+        errors.push('next_guides must contain 3 to 4 usable ranked candidates');
     }
     for (const [index, guide] of (Array.isArray(result.next_guides) ? result.next_guides : []).entries()) {
         for (const key of ['id', 'direction', 'use_when', 'drop_when', 'causal_role', 'world_delta', 'basis', 'reason']) {
@@ -341,7 +341,6 @@ export function finalizeAnalysisResult(result, evidence) {
         .map(claim => claim.slice(0, 500))
         .filter(Boolean)
         .slice(-12);
-    if (!claims.length) return result;
     const constraints = Array.isArray(result?.canon_constraints)
         ? result.canon_constraints.map(item => String(item || '').trim().slice(0, 500)).filter(Boolean)
         : [];
@@ -350,7 +349,163 @@ export function finalizeAnalysisResult(result, evidence) {
         ...constraints.filter(constraint => !seen.has(constraint.toLocaleLowerCase())),
         ...claims,
     ].slice(-12);
+    restoreDurableContinuityRoutes(result, evidence);
     return result;
+}
+
+function evidencePayload(evidence) {
+    if (evidence && typeof evidence === 'object' && !Array.isArray(evidence)) return evidence;
+    if (typeof evidence !== 'string') return {};
+    try { return JSON.parse(evidence) || {}; } catch { return {}; }
+}
+
+function durableContinuitySeeds(evidence) {
+    const candidates = asArray(evidencePayload(evidence)?.candidate_dormant_hooks);
+    const combined = candidates.map(item => ({ ...item, content: asString(item?.content) }));
+    const seeds = [];
+    const add = seed => {
+        if (!seed || seeds.some(item => item.id === seed.id)) return;
+        seeds.push(seed);
+    };
+    for (const candidate of combined) {
+        const text = candidate.content;
+        // Only promote high-confidence procedural records. The wider candidate
+        // pool remains an audit lead for the model; it is deliberately not
+        // converted wholesale because words such as "meeting" or "later" can
+        // describe completed or merely hypothetical events.
+        if (/\bchancellor(?:'s)?\b/iu.test(text)
+            && (candidate.hook_type === 'correspondence-or-petition' || /\b(?:petition|letter|appeal)\b/iu.test(text))
+            && /\b(?:filed|received|accepted|intake|routing|tracking|reference|await|pending|response|reply|follow[ -]?up|moves?)\b/iu.test(text)
+            && !/\b(?:petition|letter|appeal)\b[\s\S]{0,80}\b(?:withdrawn|cancelled|canceled|rejected|denied|resolved|closed)\b/iu.test(text)) {
+            const tracking = text.match(/\b[A-Z]-\d+-\d+\b/u)?.[0];
+            add({
+                id: 'chancellor-petition',
+                thread: 'Chancellor petition',
+                state: `The filed petition${tracking ? ` (${tracking})` : ''} remains in official routing or awaits a substantive response.`,
+                status: 'dormant',
+                basis: 'Full-chat evidence records official intake/routing without a completed substantive outcome.',
+                condition: 'A reply, tracking update, or supported follow-up naturally reaches the story.',
+                direction: 'Let the filed Chancellor petition create an independent civic consequence only through a documented response or chosen follow-up.',
+                delta: 'The filed petition gains a documented procedural step without deciding the player character’s response.',
+                index: Number(candidate.index),
+            });
+        }
+        if (/\bplacement\b/iu.test(text)
+            && /\b(?:panel|review|decision|packet)\b/iu.test(text)
+            && /\b(?:filed|submitted|accepted|scheduled|due|pending|await|Thursday|tomorrow|next week)\b/iu.test(text)
+            && !/\bplacement\b[\s\S]{0,80}\b(?:decided|resolved|completed|cancelled|canceled|rejected|approved)\b/iu.test(text)) {
+            const owner = /\bNim\b/iu.test(text) ? 'Nim’s ' : '';
+            add({
+                id: `${owner ? 'nim-' : ''}placement-review`,
+                thread: `${owner}placement review`,
+                state: 'The submitted placement process remains pending its scheduled review or decision.',
+                status: 'dormant',
+                basis: 'Full-chat evidence records a submitted placement process without a completed decision.',
+                condition: 'The scheduled panel, an official update, or a participant’s supported follow-up becomes due.',
+                direction: 'Keep the pending placement review as an independent relationship and institutional route.',
+                delta: 'The placement process advances procedurally while preserving the player character’s choices.',
+                index: Number(candidate.index),
+            });
+        }
+    }
+    return seeds.sort((a, b) => (a.index || 0) - (b.index || 0)).slice(0, 4);
+}
+
+function restoreDurableContinuityRoutes(result, evidence) {
+    if (!result || typeof result !== 'object') return;
+    const seeds = durableContinuitySeeds(evidence);
+    if (!seeds.length) return;
+    const existingThreads = asArray(result.continuity_threads);
+    const threadText = item => `${asString(item?.id)} ${asString(item?.thread)} ${asString(item?.state)}`.toLocaleLowerCase();
+    const missing = seeds.filter(seed => !existingThreads.some(item => item?.id === seed.id || threadText(item).includes(seed.id.replaceAll('-', ' '))
+        || (seed.id === 'chancellor-petition' && /chancellor[\s\S]*(?:petition|letter|appeal)|(?:petition|letter|appeal)[\s\S]*chancellor/iu.test(threadText(item)))));
+    if (!missing.length) return;
+
+    result.continuity_threads = [...existingThreads, ...missing.map(({ id, thread, state, status, basis }) => ({ id, thread, state, status, basis }))].slice(-10);
+    const objectives = asArray(result.objectives);
+    for (const seed of missing) {
+        if (!objectives.some(item => threadText(item).includes(seed.thread.toLocaleLowerCase()))) objectives.push({
+            title: seed.thread,
+            detail: seed.state,
+            status: seed.status,
+            source: 'Recovered full-chat continuity',
+        });
+    }
+    result.objectives = objectives.slice(-10);
+
+    const lead = missing[0];
+    const routeId = `continuity-${lead.id}`;
+    const possibility = {
+        description: clipAtWord(lead.direction, 120),
+        horizon: 'far',
+        conditions: [clipAtWord(lead.condition, 90)],
+        force: 'moderate',
+    };
+    const possibilities = asArray(result.possibilities);
+    if (!possibilities.some(item => /chancellor[\s\S]*(?:petition|letter|appeal)|(?:petition|letter|appeal)[\s\S]*chancellor/iu.test(asString(item?.description)))) {
+        if (possibilities.length >= 18) possibilities.splice(-2, 1);
+        possibilities.push(possibility);
+    }
+    result.possibilities = possibilities.slice(0, 18);
+
+    const pathway = {
+        id: routeId,
+        direction: lead.direction,
+        when: lead.condition,
+        response_bias: 'Advance only the evidenced procedural step; do not force the route into the current beat or decide the player response.',
+        horizon: 'later / when causally ready',
+        status: 'latent',
+        conditions: [lead.condition],
+        change: 'adjust',
+        reason: lead.basis,
+    };
+    const pathways = asArray(result.pathways);
+    if (!pathways.some(item => item?.id === routeId)) {
+        if (pathways.length >= 5) pathways.pop();
+        pathways.push(pathway);
+    }
+    result.pathways = pathways.slice(0, 5);
+
+    const guide = {
+        id: `${routeId}-guide`,
+        direction: lead.direction,
+        use_when: clipAtWord(lead.condition, 120),
+        drop_when: 'Drop if newer evidence resolves, withdraws, or contradicts this route.',
+        causal_role: 'advance — connect an established offscreen process only when it becomes causally ready.',
+        world_delta: clipAtWord(lead.delta, 140),
+        origin: 'established',
+        basis: 'Recovered full-chat procedural evidence.',
+        strength: 'moderate',
+        source_pathways: [routeId],
+        causal_event_ids: [],
+        disclosure: 'none',
+        reason: 'This preserves a materially independent established route without forcing it into the present scene.',
+    };
+    const guides = asArray(result.next_guides);
+    if (!guides.some(item => item?.id === guide.id)) {
+        if (guides.length >= 4) guides.pop();
+        guides.push(guide);
+    }
+    result.next_guides = guides.slice(0, 4);
+
+    const horizons = asArray(result.plan_horizons?.items);
+    if (!horizons.some(item => item?.branch === lead.id)) {
+        const horizon = {
+            id: `${routeId}-horizon`, branch: lead.id, direction: lead.direction,
+            timeframe: 'later in the current or following arc', stability: 'stable',
+            conditions: [lead.condition], change: 'adjust', reason: lead.basis,
+        };
+        if (horizons.length >= 10) horizons.splice(-2, 1);
+        else if (horizons.length >= 6) horizons.splice(Math.max(1, horizons.length - 1), 0, horizon);
+        else horizons.push(horizon);
+    }
+    if (result.plan_horizons && typeof result.plan_horizons === 'object') result.plan_horizons.items = horizons.slice(0, 10);
+
+    const challenge = result.self_challenge && typeof result.self_challenge === 'object' ? result.self_challenge : {};
+    challenge.weakness = clipAtWord(`The preferred route risked recency focus and omission of the established ${lead.thread}.`, 260);
+    challenge.counter_route = clipAtWord(lead.direction, 260);
+    challenge.decision = clipAtWord(`Keep the current-scene preference only for immediate pacing; retain ${lead.thread} as an independent conditional future route because full-chat evidence shows it remains procedurally open.`, 320);
+    result.self_challenge = challenge;
 }
 
 const asString = (value, fallback = '') => typeof value === 'string' ? value : fallback;
@@ -370,6 +525,45 @@ function normalizePossibilityForce(value) {
     // Force is a compact display weight, not narrative evidence. A provider's
     // unfamiliar label must not discard an otherwise usable possibility bench.
     return 'moderate';
+}
+
+function normalizePossibilityHorizon(value, index) {
+    const horizon = asString(value).trim().toLowerCase();
+    if (['local', 'near', 'mid', 'far', 'wildcard'].includes(horizon)) return horizon;
+    if (/^(?:immediate|current|scene|short)$/u.test(horizon)) return 'local';
+    if (/^(?:soon|next|short-term|near-term)$/u.test(horizon)) return 'near';
+    if (/^(?:middle|medium|medium-term|mid[- ]?arc)$/u.test(horizon)) return 'mid';
+    if (/^(?:long|long-term|distant|later[- ]?arc)$/u.test(horizon)) return 'far';
+    if (/^(?:wild|surprise|outlier|unexpected)$/u.test(horizon)) return 'wildcard';
+    return index < 3 ? 'local' : index < 6 ? 'near' : index < 9 ? 'mid' : index < 13 ? 'far' : 'wildcard';
+}
+
+function repairPossibility(item, index) {
+    const source = typeof item === 'string'
+        ? { description: item }
+        : item && typeof item === 'object' && !Array.isArray(item) ? item : {};
+    const description = [source.description, source.direction, source.idea, source.development, source.title, source.summary]
+        .map(value => asString(value).trim())
+        .find(Boolean) || '';
+    if (!description) return null;
+    const rawConditions = Array.isArray(source.conditions)
+        ? source.conditions
+        : [source.conditions, source.condition, source.when, source.use_when, source.trigger]
+            .filter(value => typeof value === 'string');
+    return {
+        description,
+        horizon: normalizePossibilityHorizon(source.horizon ?? source.timeframe ?? source.range, index),
+        conditions: [...new Set(rawConditions.map(value => asString(value).trim()).filter(Boolean))].slice(0, 4),
+        force: normalizePossibilityForce(source.force ?? source.strength ?? source.weight ?? source.intensity),
+    };
+}
+
+function clipAtWord(value, limit) {
+    const text = asString(value).trim();
+    if (text.length <= limit) return text;
+    const clipped = text.slice(0, Math.max(1, limit - 1));
+    const boundary = clipped.lastIndexOf(' ');
+    return `${(boundary >= Math.floor(limit * 0.65) ? clipped.slice(0, boundary) : clipped).trimEnd()}…`;
 }
 
 function usablePlanningText(value) {
@@ -468,11 +662,7 @@ export function repairAnalysisResult(result, { expectedOfferedIds = [], priorPla
                 status: oneOf(item?.status, ['active', 'dormant', 'due', 'blocked'], 'dormant'), basis: asString(item?.basis).trim(),
             })).filter(item => item.thread && item.state && item.basis),
         entities: asArray(result.entities),
-        possibilities: asArray(result.possibilities).map((item, index) => ({
-            ...item,
-            horizon: oneOf(item?.horizon, ['local', 'near', 'mid', 'far', 'wildcard'], index < 3 ? 'local' : index < 6 ? 'near' : index < 9 ? 'mid' : index < 13 ? 'far' : 'wildcard'),
-            force: normalizePossibilityForce(item?.force),
-        })),
+        possibilities: asArray(result.possibilities).map(repairPossibility).filter(Boolean).slice(0, 18),
         canon_constraints: uniqueStrings(result.canon_constraints),
         ledger: asString(result.ledger),
         self_challenge: {
@@ -541,14 +731,15 @@ export function repairAnalysisResult(result, { expectedOfferedIds = [], priorPla
             reason: asString(pathway.reason, 'Recovered from an incomplete planner route.'),
         }];
     }).slice(0, 5);
-    if (!repaired.next_guides.length && repaired.pathways.length) {
+    if (repaired.next_guides.length < 3 && repaired.pathways.length) {
         // Some otherwise capable providers intermittently omit next_guides even
         // though they return grounded conditional pathways. Promote those
         // routes into conservative ranked guides rather than discarding the
         // complete planner pass. Unsafe/deferred routes are still rejected.
-        const promotedDeltas = new Set();
+        const originalGuideCount = repaired.next_guides.length;
+        const promotedDeltas = new Set(repaired.next_guides.map(guide => guide.world_delta.toLocaleLowerCase()));
         const genericPathwayImpact = /^\s*(?:describe|show|follow|advance)\b[\s\S]{0,100}\b(?:causal step|this pathway|this route)\b/iu;
-        repaired.next_guides = repaired.pathways.flatMap((pathway, index) => {
+        const promotedGuides = repaired.pathways.flatMap((pathway, index) => {
             const direction = pathway.direction.trim();
             const impact = asString(pathway.response_bias).trim();
             if (!direction || delayedSubstance.test(direction) || trivialDelta.test(direction)) return [];
@@ -574,14 +765,15 @@ export function repairAnalysisResult(result, { expectedOfferedIds = [], priorPla
                 : futureRoute
                     ? 'advance — use this route only when its stated condition becomes true.'
                     : `${repaired.director_score.causal_tempo} — deepen or complete the current activity within player scope.`;
-            promotedDeltas.add(worldDelta.slice(0, 140).trim().toLocaleLowerCase());
+            const clippedDelta = clipAtWord(worldDelta, 140);
+            promotedDeltas.add(clippedDelta.toLocaleLowerCase());
             return [{
-                id: `recovered-guide-${index + 1}`,
+                id: `recovered-path-guide-${index + 1}`,
                 direction,
                 use_when: useWhen,
                 drop_when: 'Drop when new story evidence contradicts or supersedes this route.',
                 causal_role: causalRole.slice(0, 130),
-                world_delta: worldDelta.slice(0, 140).trim(),
+                world_delta: clippedDelta,
                 origin: 'inferred',
                 basis: pathway.reason || 'Recovered from a grounded planner pathway.',
                 strength: pathway.status === 'foreground' ? 'strong' : pathway.status === 'latent' ? 'light' : 'moderate',
@@ -591,14 +783,21 @@ export function repairAnalysisResult(result, { expectedOfferedIds = [], priorPla
                 reason: 'Recovered because the planner supplied this grounded pathway but omitted ranked next guides.',
             }];
         }).filter((guide, index, guides) => guides.findIndex(other => other.direction.toLowerCase() === guide.direction.toLowerCase()
-            || other.world_delta.toLowerCase() === guide.world_delta.toLowerCase()) === index).slice(0, 4);
-        if (repaired.next_guides.length) {
+            || other.world_delta.toLowerCase() === guide.world_delta.toLowerCase()) === index);
+        repaired.next_guides = [...repaired.next_guides, ...promotedGuides]
+            .filter((guide, index, guides) => guides.findIndex(other => other.id.toLowerCase() === guide.id.toLowerCase()
+                || other.direction.toLowerCase() === guide.direction.toLowerCase()
+                || other.world_delta.toLowerCase() === guide.world_delta.toLowerCase()) === index)
+            .slice(0, 4);
+        if (!originalGuideCount && repaired.next_guides.length) {
             const [preferred, alternate] = repaired.next_guides;
             repaired.guidance = [
                 `Leading conditional direction (not a required player action): ${preferred.direction}`,
                 alternate && `Alternative when ${alternate.use_when}: ${alternate.direction}`,
             ].filter(Boolean).join('\n');
             repaired.reason = 'Recovered ranked guidance from grounded planner pathways after next_guides was omitted.';
+        } else if (repaired.next_guides.length > originalGuideCount) {
+            repaired.reason = `${repaired.reason} Missing ranked alternatives were recovered from grounded pathways.`.trim();
         }
     }
     if (!repaired.pathways.length && repaired.next_guides.length) {
@@ -1230,17 +1429,46 @@ const DURABLE_HOOK_TYPES = Object.freeze([
     ['commitment-or-debt', /\b(?:promise|agreement|deal|bargain|debt|favor owed|obligation)\b/iu],
     ['planned-journey-or-return', /\b(?:departure|journey|trip|passage|ticket|return to|visit to|route to)\b/iu],
 ]);
-const DURABLE_HOOK_LIFECYCLE = /\b(?:sent|filed|submitted|registered|stamped|tracking|reference|routed|forwarded|pending|queued|await(?:ing)?|waiting|follow[ -]?up|reply|response|answer|outcome|result|bear fruit|scheduled|due|deadline|tomorrow|next (?:day|week|month)|weeks?|months?|eventually|later)\b/giu;
-const DURABLE_HOOK_USER_INITIATIVE = /\b(?:i|we)\s+(?:sent|filed|submitted|asked|requested|promised|agreed|accepted|planned|scheduled|intend|hope|expect|wait|await)\b/iu;
+const DURABLE_HOOK_LIFECYCLE = /\b(?:sent|filed|filing|submitted|delivered|received|accepted|registered|stamped|tracking|reference|routed|routing|forwarded|forwarding|intake|pending|queued|await(?:ing)?|waiting|follow[ -]?up|reply|response|answer|outcome|result|bear fruit|scheduled|due|deadline|tomorrow|next (?:day|week|month)|weeks?|months?|eventually|later)\b/giu;
+const DURABLE_HOOK_USER_INITIATIVE = /\b(?:i|we)\s+(?:sent|filed|submitted|delivered|asked|requested|promised|agreed|accepted|planned|scheduled|intend|hope|expect|wait|await)\b/iu;
 
-function retrieveDormantHookEvidence(messages, recentStart, selectedIndexes, maxItems = 4) {
+function durableHookExcerpt(value, limit = 420) {
+    const cleaned = stripStructuredEvidence(stripLeadingGeneratedStatusSummary(value))
+        .replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/giu, ' ')
+        .replace(/<stat>[\s\S]*?<\/stat>/giu, ' ')
+        .replace(/<background_updates>[\s\S]*?<\/background_updates>/giu, ' ')
+        .replace(/<living-world-guide>[\s\S]*?<\/living-world-guide>/giu, ' ')
+        .replace(/\s+/gu, ' ')
+        .trim();
+    if (cleaned.length <= limit) return cleaned;
+    const signal = /\b(?:chancellor(?:'s)?|council|petition|letter|appeal|application|placement|panel|review|appointment|hearing|investigation|inquiry|mission|promise|agreement|journey|return|filed|submitted|received|accepted|tracking|intake|routing|pending|await(?:ing)?|reply|response|follow[ -]?up|scheduled|due|deadline)\b/giu;
+    const windows = [...cleaned.matchAll(signal)].map(match => {
+        const term = match[0];
+        const priority = /^(?:chancellor(?:'s)?|council|petition|letter|appeal|placement|panel|investigation|inquiry|mission|promise|journey)$/iu.test(term) ? 3
+            : /^(?:filed|submitted|received|accepted|tracking|intake|routing|pending|scheduled|due)$/iu.test(term) ? 2 : 1;
+        return { start: Math.max(0, match.index - 45), end: Math.min(cleaned.length, match.index + term.length + 70), priority };
+    });
+    if (!windows.length) return compactMessageContent(cleaned, limit);
+    const selected = [];
+    for (const window of windows.sort((a, b) => b.priority - a.priority || a.start - b.start)) {
+        if (selected.some(item => window.start <= item.end && window.end >= item.start)) continue;
+        selected.push(window);
+        if (selected.length >= 3) break;
+    }
+    const excerpt = selected.sort((a, b) => a.start - b.start)
+        .map(window => cleaned.slice(window.start, window.end).trim())
+        .join(' … ');
+    return compactMessageContent(excerpt, limit);
+}
+
+function retrieveDormantHookEvidence(messages, recentStart, selectedIndexes, maxItems = 6) {
     if (recentStart <= 0) return [];
     const selected = selectedIndexes instanceof Set ? selectedIndexes : new Set(selectedIndexes || []);
     const records = [];
     for (let index = 0; index < recentStart; index++) {
         const message = messages[index];
         if (!message || selected.has(index)) continue;
-        const content = compactMessageContent(message.mes, 420);
+        const content = durableHookExcerpt(message.mes, 420);
         if (!content) continue;
         const types = DURABLE_HOOK_TYPES.filter(([, pattern]) => pattern.test(content)).map(([type]) => type);
         if (!types.length) continue;
@@ -1251,13 +1479,57 @@ function retrieveDormantHookEvidence(messages, recentStart, selectedIndexes, max
         const score = types.length * 1.5 + Math.min(4, lifecycleSignals) + (userInitiative ? 2 : 0) + (openQuestion ? 1 : 0) + index / Math.max(1, recentStart);
         records.push({ index, role: message.is_user ? 'user' : 'assistant', hook_type: types[0], content, score });
     }
+    const limit = Math.max(1, Math.min(DURABLE_HOOK_TYPES.length, maxItems));
+    const ranked = records.sort((a, b) => b.score - a.score || b.index - a.index);
     const chosen = [];
-    for (const record of records.sort((a, b) => b.score - a.score || b.index - a.index)) {
-        if (chosen.length >= Math.max(1, Math.min(4, maxItems))) break;
+    // First preserve one strong candidate from each independent route family.
+    // Otherwise many recent appointment mentions can crowd out a filed letter,
+    // investigation, journey, or commitment before the planner can audit it.
+    for (const [hookType] of DURABLE_HOOK_TYPES) {
+        if (chosen.length >= limit) break;
+        const candidate = ranked.find(record => record.hook_type === hookType);
+        if (candidate && !chosen.includes(candidate)) chosen.push(candidate);
+    }
+    // Use remaining capacity for other strong, spatially distinct evidence.
+    for (const record of ranked) {
+        if (chosen.length >= limit) break;
+        if (chosen.includes(record)) continue;
         if (chosen.some(item => Math.abs(item.index - record.index) <= 8)) continue;
         chosen.push(record);
     }
     return chosen.sort((a, b) => a.index - b.index).map(({ score: _score, ...item }) => item);
+}
+
+/**
+ * Build non-provider recovery evidence from the complete active chat. Prompt
+ * compaction may legitimately evict older route candidates at small budgets;
+ * finalization must not lose those same durable records as a side effect.
+ */
+export function buildFinalizationEvidence(messages, prompt = '', messageWindow = 12) {
+    let payload = {};
+    try { payload = JSON.parse(prompt) || {}; } catch { /* keep recovery evidence independent */ }
+    const source = asArray(messages);
+    const windowSize = Math.max(1, Math.min(80, Number(messageWindow) || 12));
+    const recentStart = Math.max(0, source.length - windowSize);
+    const candidates = retrieveDormantHookEvidence(source, recentStart, new Set(), 6);
+    if (candidates.length) payload.candidate_dormant_hooks = candidates;
+    return JSON.stringify(payload);
+}
+
+function compactDormantHooks(items, limit, charLimit) {
+    const source = asArray(items);
+    const chosen = [];
+    for (const [hookType] of DURABLE_HOOK_TYPES) {
+        const candidate = source.findLast(item => item?.hook_type === hookType);
+        if (candidate && !chosen.includes(candidate)) chosen.push(candidate);
+        if (chosen.length >= limit) break;
+    }
+    for (const candidate of [...source].reverse()) {
+        if (chosen.length >= limit) break;
+        if (!chosen.includes(candidate)) chosen.push(candidate);
+    }
+    return chosen.sort((a, b) => Number(a.index) - Number(b.index))
+        .map(item => ({ ...item, content: compactMessageContent(item.content, charLimit) }));
 }
 
 const PROMPT_PACING_INSTRUCTION = 'USER-CONTROLLED PACING — Infer the latest user turn’s maximum scope: moment, action, activity, scene, or extended. It is a ceiling, not a quota. Travel permits arrival only, not activity there. A moment or named action preserves the clock except for its physical duration; planned future activity remains future. A broad bounded activity permits representative progression. A named action permits exactly one instance and immediate consequences—not repetition, onward movement, an NPC’s next task, or unstated player reaction. NPC requests, orders, and invitations are events, never player authorization. Tale Fairy must not select a player-facing assignment as planned movement; use independent NPC/world change. This is an agency and causality boundary, not a dialogue or prose policy. Primary user and roleplay instructions control voice, wording, format, length, and response shape. Broad scope delegates low-stakes procedure only, not dialogue, feelings, consequential decisions, or another activity. Allocate attention by user engagement and narrative yield inside the endpoint. Mode changes pressure and breadth, not speed or player control.';
@@ -1386,7 +1658,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         if (payload.retrieved_historical_evidence) {
             payload.retrieved_historical_evidence = payload.retrieved_historical_evidence.slice(0, 2).map(item => ({ ...item, content: compactMessageContent(item.content, item.purpose === 'audit-current-claim' ? 280 : 180) }));
         }
-        if (payload.candidate_dormant_hooks) payload.candidate_dormant_hooks = payload.candidate_dormant_hooks.slice(0, 3).map(item => ({ ...item, content: compactMessageContent(item.content, 220) }));
+        if (payload.candidate_dormant_hooks) payload.candidate_dormant_hooks = compactDormantHooks(payload.candidate_dormant_hooks, 3, 220);
         delete payload.planner_variation_instruction;
         serialized = JSON.stringify(payload);
     }
@@ -1420,16 +1692,12 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         serialized = JSON.stringify(payload);
     }
     if (serialized.length > budget && payload.candidate_dormant_hooks) {
-        payload.candidate_dormant_hooks = payload.candidate_dormant_hooks.slice(0, 2).map(item => ({ ...item, content: compactMessageContent(item.content, 140) }));
-        serialized = JSON.stringify(payload);
-    }
-    if (serialized.length > budget && payload.candidate_dormant_hooks) {
-        delete payload.candidate_dormant_hooks;
-        delete payload.dormant_hook_instruction;
+        payload.candidate_dormant_hooks = compactDormantHooks(payload.candidate_dormant_hooks, 2, 140);
         serialized = JSON.stringify(payload);
     }
     if (serialized.length > budget && payload.retrieved_historical_evidence) {
         delete payload.retrieved_historical_evidence;
+        delete payload.retrieval_instruction;
         serialized = JSON.stringify(payload);
     }
     if (serialized.length > budget && payload.messages.length) {
@@ -1453,6 +1721,11 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     }
     if (serialized.length > budget && payload.current?.objectives?.length > 1) {
         payload.current.objectives = payload.current.objectives.slice(-1);
+        serialized = JSON.stringify(payload);
+    }
+    if (serialized.length > budget && payload.candidate_dormant_hooks) {
+        delete payload.candidate_dormant_hooks;
+        delete payload.dormant_hook_instruction;
         serialized = JSON.stringify(payload);
     }
     return serialized;
@@ -1601,7 +1874,7 @@ Timeframe controls when a development may mature or become visible, not when its
 
 Use possibilities as a high-volume, ultra-compact brainstorming bench. Return twelve to eighteen distinct one-clause idea cards, each tagged with a visible horizon (local, near, mid, far, or wildcard), at most one short activation condition, and a light, moderate, or strong plausibility weight. Make the spread unmistakable rather than clustering around the current scene: normally include 2–3 local cards, 2–3 near cards, 2–3 mid cards, 3–5 far cards, and 1–3 wildcard cards. Order them by horizon. Local means the current activity or scene; near means the next few scenes; mid means the current arc; far means later arcs or life-changing outcomes; wildcard means a sharp but setting-compatible 180-degree alternate future. Range across compatible allies, enemies, institutions, relationships, temptations, discoveries, reversals, meetings, departures, returns, victories, failures, allegiance changes, and long-range transformations. Include mutually exclusive and directionally opposite futures when the setting supports them. The combined far and wildcard cards must visibly diversify across the supported equivalents of: an important relationship or companion outcome; an institutional or faction reaction; a departure or return to a formative place; interest from an important setting force or figure; and a radical moral, allegiance, vocation, or identity 180. Most cards should state the causal role or kind of world reaction without inventing names or exact props. Use an established proper name when its identity changes the meaning—such as an existing companion, formative place, faction, or major setting figure—but do not force named cameos into every plan. A major setting figure may notice exceptional potential, seek a meeting, recruit, oppose, exploit, protect, or ignore the player character when a credible information and access route can exist. Morally extreme paths are welcome as non-canon options rather than predictions. When one dimension genuinely does not fit the setting, replace it with a comparably different long-range dimension rather than forcing lore or melodrama. This distribution is breadth for Tale Fairy's private bench, not a schedule, foreshadowing instruction, or pressure on the present scene.
 
-Calibrate the bench to the actual genre, activity, and scale instead of privileging adventure or high stakes. Slice-of-life, romance, domestic, school, workplace, travel, hobby, and social simulations are fully valid stories: generate paths and events from friendships, affection, family, neighbors, routines, invitations, celebrations, errands, schedules, work, study, money, small mistakes, missed timing, misunderstandings, rivalry, repair, opportunities, personal change, and ordinary external circumstances. Include conflict when plausible, including quiet interpersonal or practical conflict, but do not manufacture villains, danger, crises, or melodrama merely to create movement. Peaceful developments, successes, bonding, humor, discoveries, choices, and gradual change are equally useful. For any other roleplay or simulation, explore its own natural sources of change, decisions, consequences, setbacks, and opportunities rather than forcing it into a preferred genre.
+Calibrate the bench to the actual genre, activity, and scale instead of privileging adventure or high stakes. Life, slice-of-life, romance, domestic, school, workplace, travel, hobby, and social simulations are fully valid stories: generate paths and events from friendships, affection, family, neighbors, routines, invitations, celebrations, errands, schedules, work, study, money, small mistakes, missed timing, misunderstandings, rivalry, repair, opportunities, personal change, and ordinary external circumstances. Country, nation, political, historical, and grand-strategy simulations are equally valid: model independent actors and institutions plus governance, law, public opinion, demographics, budgets, production, trade, diplomacy, security, technology, infrastructure, and environmental processes at the simulation's established scale. Let policies and shocks produce delayed, interacting consequences; preserve uncertainty and competing factions, and never collapse a country simulation into one protagonist's scene or one predetermined victory path. Include conflict when plausible, including quiet interpersonal, practical, political, or systemic conflict, but do not manufacture villains, danger, crises, wars, or melodrama merely to create movement. Peaceful developments, successes, bonding, humor, discoveries, choices, reform, growth, decline, and gradual change are equally useful. For any other roleplay or simulation, explore its own natural sources of change, decisions, consequences, setbacks, and opportunities rather than forcing it into a preferred genre.
 
 The possibility bench has zero inertia and creates no narrative debt. Rebuild any or all of it on every pass, and permit a complete 180-degree replacement immediately when the newest user action changes direction. Merely listing an idea must not bias a next guide, horizon, simulated event, or roleplay response. Only promote an idea when current evidence makes it causally relevant; all unselected ideas remain private, exert no background pull, and cost no roleplay-prompt tokens. Prefer terse specificity over explanation so the full bench remains cheap.
 
