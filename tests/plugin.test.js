@@ -67,7 +67,7 @@ test('planner finishes on the server and remains recoverable after the browser d
     await router.routes.get('POST /planner-jobs/generate')(request(plannerBody()), downstream);
 
     assert.equal(forwarded._taleFairyPlanner, undefined);
-    assert.equal(forwarded.stream, false);
+    assert.equal(forwarded.stream, true);
     const listed = responseMock();
     router.routes.get('GET /planner-jobs')(request({}, { query: { chatId: 'chat-1' } }), listed);
     assert.equal(listed.payload.jobs.length, 1);
@@ -88,6 +88,39 @@ test('successful live response is unchanged and can be acknowledged after metada
     const acknowledged = responseMock();
     router.routes.get('POST /planner-jobs/:id/ack')(request({}, { params: { id } }), acknowledged);
     assert.equal(acknowledged.payload.job.acknowledged, true);
+});
+
+test('streaming planner keeps the request alive and returns only final content, not reasoning', async () => {
+    let forwarded;
+    const encoder = new TextEncoder();
+    const chunks = [
+        'data: {"choices":[{"delta":{"reasoning_content":"hidden thought"}}]}\n\n' +
+            'data: {"choices":[{"delta":{"content":"{\\"contract_"}}]}\n',
+        '\ndata: {"choices":[{"delta":{"content":"version\\":2}"}}]}\n\n' +
+            'data: [DONE]\n\n',
+    ];
+    const stream = new ReadableStream({
+        start(controller) {
+            for (const chunk of chunks) controller.enqueue(encoder.encode(chunk));
+            controller.close();
+        },
+    });
+    const router = routerMock();
+    await init(router, {
+        fetchImpl: async (_url, options) => {
+            forwarded = JSON.parse(options.body);
+            // SillyTavern's stream forwarder does not preserve the upstream content type.
+            return new Response(stream, { status: 200 });
+        },
+    });
+    const downstream = responseMock();
+    await router.routes.get('POST /planner-jobs/generate')(request(plannerBody('streamed')), downstream);
+
+    assert.equal(forwarded.stream, true);
+    const payload = JSON.parse(Buffer.from(downstream.value).toString('utf8'));
+    assert.equal(payload.choices[0].message.content, '{"contract_version":2}');
+    assert.equal(Buffer.from(downstream.value).includes(Buffer.from('hidden thought')), false);
+    assert.match(downstream.headers['Content-Type'], /^application\/json/);
 });
 
 test('jobs are private to the current SillyTavern user', async () => {

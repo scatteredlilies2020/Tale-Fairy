@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 
 const PLUGIN = 'tale-fairy';
-const VERSION = '0.11.100';
+const VERSION = '0.11.114';
 const jobs = new Map();
 const MAX_FINISHED_JOBS = 40;
 const MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
@@ -75,6 +75,70 @@ function completionText(payload) {
     return '';
 }
 
+function streamCompletionText(payload) {
+    const choice = payload?.choices?.[0];
+    const choiceText = contentText(choice?.delta?.content)
+        || contentText(choice?.message?.content)
+        || contentText(choice?.text);
+    if (choiceText) return choiceText;
+    if (payload?.type === 'response.output_text.delta' && typeof payload.delta === 'string') return payload.delta;
+    const parts = payload?.candidates?.[0]?.content?.parts;
+    if (Array.isArray(parts)) return parts.filter(part => !part?.thought).map(part => part?.text || '').join('');
+    return '';
+}
+
+function jsonCompletionResponse(text) {
+    return Buffer.from(JSON.stringify({
+        choices: [{ message: { role: 'assistant', content: text }, finish_reason: 'stop' }],
+    }));
+}
+
+async function readEventStream(upstream, job, touchTimeout) {
+    const decoder = new TextDecoder();
+    let pending = '';
+    let output = '';
+    let fallbackRaw = '';
+    let sawEventData = false;
+    let totalBytes = 0;
+
+    const consume = (event) => {
+        const dataLines = event.split(/\r?\n/).filter(line => line.startsWith('data:'));
+        if (!dataLines.length) return;
+        sawEventData = true;
+        const data = dataLines
+            .map(line => line.slice(5).trimStart())
+            .join('\n')
+            .trim();
+        if (!data || data === '[DONE]') return;
+        let payload;
+        try { payload = JSON.parse(data); }
+        catch { return; }
+        if (payload?.error) throw new Error(payload.error?.message || String(payload.error));
+        output += streamCompletionText(payload);
+    };
+
+    for await (const chunk of upstream.body) {
+        const bytes = Buffer.from(chunk);
+        totalBytes += bytes.byteLength;
+        if (totalBytes > MAX_RESPONSE_BYTES) throw new Error('Tale Fairy planner response exceeded the 32 MB safety limit.');
+        job.receivedBytes = totalBytes;
+        job.lastActivityAt = new Date().toISOString();
+        touchTimeout();
+        const decoded = decoder.decode(bytes, { stream: true });
+        if (!sawEventData) fallbackRaw += decoded;
+        pending += decoded;
+        const events = pending.split(/\r?\n\r?\n/);
+        pending = events.pop() || '';
+        for (const event of events) consume(event);
+        if (sawEventData) fallbackRaw = '';
+    }
+    const finalDecoded = decoder.decode();
+    if (!sawEventData) fallbackRaw += finalDecoded;
+    pending += finalDecoded;
+    if (pending.trim()) consume(pending);
+    return { text: output.trim(), fallbackRaw: sawEventData ? '' : fallbackRaw };
+}
+
 function trimJobs() {
     const finished = [...jobs.values()]
         .filter(job => ['complete', 'error', 'cancelled'].includes(job.status))
@@ -84,7 +148,12 @@ function trimJobs() {
 
 async function run(job, res) {
     job.status = 'processing';
-    const timer = setTimeout(() => job.controller.abort(new Error('Tale Fairy planner request timed out.')), REQUEST_TIMEOUT_MS);
+    let timer;
+    const touchTimeout = () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => job.controller.abort(new Error('Tale Fairy planner request timed out after ten minutes without data.')), REQUEST_TIMEOUT_MS);
+    };
+    touchTimeout();
     try {
         const upstream = await job.fetchImpl(job.backendUrl, {
             method: 'POST',
@@ -92,11 +161,42 @@ async function run(job, res) {
             body: JSON.stringify(job.request),
             signal: job.controller.signal,
         });
+        const contentType = upstream.headers.get('content-type') || 'application/json';
+        if (!upstream.ok) {
+            const bytes = Buffer.from(await upstream.arrayBuffer());
+            const raw = bytes.toString('utf8');
+            throw Object.assign(new Error(`Planner backend returned HTTP ${upstream.status}: ${raw.slice(0, 500)}`), { status: upstream.status });
+        }
+
+        if (job.request.stream || /text\/event-stream/i.test(contentType)) {
+            const streamed = await readEventStream(upstream, job, touchTimeout);
+            job.text = streamed.text;
+            let responseBytes;
+            if (!job.text && streamed.fallbackRaw.trim()) {
+                let payload;
+                try { payload = JSON.parse(streamed.fallbackRaw); }
+                catch { throw new Error('Planner backend returned neither an event stream nor JSON.'); }
+                if (payload?.error) throw new Error(payload.error?.message || payload.error);
+                job.text = completionText(payload);
+                responseBytes = Buffer.from(streamed.fallbackRaw);
+            }
+            if (!job.text) throw new Error('Planner stream completed without a recoverable response.');
+            job.status = 'complete';
+            const bytes = responseBytes || jsonCompletionResponse(job.text);
+            if (!res.destroyed && !res.headersSent) {
+                res.status(upstream.status);
+                res.setHeader('Content-Type', responseBytes ? contentType : 'application/json; charset=utf-8');
+                res.setHeader('Cache-Control', 'no-store');
+                res.setHeader('X-Tale-Fairy-Job-Id', job.id);
+                res.setHeader('Access-Control-Expose-Headers', 'X-Tale-Fairy-Job-Id');
+            }
+            if (!res.destroyed && !res.writableEnded) res.end(bytes);
+            return;
+        }
+
         const bytes = Buffer.from(await upstream.arrayBuffer());
         if (bytes.byteLength > MAX_RESPONSE_BYTES) throw new Error('Tale Fairy planner response exceeded the 32 MB safety limit.');
-        const contentType = upstream.headers.get('content-type') || 'application/json';
         const raw = bytes.toString('utf8');
-        if (!upstream.ok) throw Object.assign(new Error(`Planner backend returned HTTP ${upstream.status}: ${raw.slice(0, 500)}`), { status: upstream.status });
         let payload;
         try { payload = raw ? JSON.parse(raw) : {}; }
         catch { throw new Error('Planner backend returned a non-JSON response.'); }
@@ -147,8 +247,9 @@ export async function init(router, { fetchImpl = fetch } = {}) {
                 throw Object.assign(new Error('Detached planning requires a request, chat id, and run key.'), { status: 400 });
             }
             delete request._taleFairyPlanner;
-            request.stream = false;
-            const backend = internalBackend(req, req.body?.backendPath);
+            const backendPath = String(req.body?.backendPath || '/api/backends/chat-completions/generate');
+            request.stream = backendPath === '/api/backends/chat-completions/generate';
+            const backend = internalBackend(req, backendPath);
             const meta = {
                 chatId: String(suppliedMeta.chatId),
                 runKey: String(suppliedMeta.runKey),
@@ -180,6 +281,8 @@ export async function init(router, { fetchImpl = fetch } = {}) {
                 cancelled: false,
                 createdAt: new Date().toISOString(),
                 completedAt: null,
+                receivedBytes: 0,
+                lastActivityAt: null,
             };
             jobs.set(job.id, job);
             await run(job, res);
