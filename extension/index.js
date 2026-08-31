@@ -16,7 +16,7 @@ import { plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js';
 import { collectSummarySources, summarySourceAudit } from './summary-context.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.63';
+const RUNTIME_VERSION = '0.11.74';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -750,7 +750,7 @@ function parseAnalysisResponse(value, evidence = '', { requireComplete = false }
             ? value
             : extractJson(completionText(value));
         if (requireComplete) requireCompleteProviderResult(rawResult);
-        const result = requireValidAnalysisResult(rawResult, { expectedOfferedIds, priorPlannerState });
+        const result = requireValidAnalysisResult(rawResult, { expectedOfferedIds, priorPlannerState, preservePriorLoreOnRecovery: !requireComplete });
         return finalizeAnalysisResult(result, evidence);
     } catch (error) {
         if (error instanceof AnalysisValidationError) throw error;
@@ -1072,7 +1072,7 @@ async function requestAnalysis(prompt, externalSignal, finalizationEvidence = pr
         externalSignal?.throwIfAborted?.();
         if (!(error instanceof AnalysisValidationError)) throw error;
         console.warn(`[${EXTENSION_ID}] planner JSON was incomplete after deterministic recovery; retrying once with explicit correction`, error);
-        const correction = `\n\n[REPAIR REQUIRED]\nThe prior planner response was rejected: ${analysisErrorMessage(error)}\nReturn one complete JSON object matching every required schema field. Do not rely on fallback text: every returned entity must contain its concrete current state, location, relevance, perspective, motivation, knowledge boundary, constraints, independent agenda, confidence, and causal window. possibilities must contain 12–18 objects with description, horizon, conditions (an array), and force. Include 3 or 4 distinct, grounded next_guides; each must specify an immediate direction, use/drop conditions, a causal operation, and a distinct world_delta. Return continuity_threads as an array, even when empty; audit established unresolved correspondence, commitments, processes, and relationships before leaving it empty. Return self_challenge with weakness, counter_route, and decision, plus a concrete reason for the selected plan. Do not omit required fields or replace field names with aliases.`;
+        const correction = `\n\n[REPAIR REQUIRED]\nThe prior planner response was rejected: ${analysisErrorMessage(error)}\nReturn one complete JSON object matching every required schema field. Do not rely on fallback text: every returned entity must contain its concrete current state, location, relevance, perspective, motivation, knowledge boundary, constraints, independent agenda, confidence, and causal window. Return lore_model with a concrete world_identity and baseline plus all five evidence arrays: variant_rules, continuity_signatures, baseline_departures, trajectory_signals, and active_forces. Preserve established world and roleplay-specific evidence unless later evidence changes or contradicts it; never replace it with generic placeholder prose. possibilities must contain 12–18 objects with description, horizon, conditions (an array), and force. Include 3 or 4 distinct, grounded next_guides; each must specify an immediate direction, use/drop conditions, a causal operation, and a distinct world_delta. Return continuity_threads as an array, even when empty; audit established unresolved correspondence, commitments, processes, and relationships before leaving it empty. Return self_challenge with weakness, counter_route, and decision, plus a concrete reason for the selected plan. Do not omit required fields or replace field names with aliases.`;
         return requestAnalysisOnce(`${prompt}${correction}`, externalSignal, finalizationEvidence, { requireComplete: false });
     }
 }

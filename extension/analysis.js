@@ -410,7 +410,7 @@ const DURABLE_HOOK_RECOVERY = Object.freeze({
     'commitment-or-debt': { label: 'Commitment, agreement, or debt', nextStep: 'fulfilment, repayment, renegotiation, release, or a supported consequence' },
     'planned-journey-or-return': { label: 'Planned journey or return', nextStep: 'departure, arrival, delay, cancellation, or another supported travel step' },
 });
-const DURABLE_HOOK_OPEN_STATE = /\b(?:sent|filed|filing|submitted|delivered|received|accepted|registered|stamped|tracking|reference|routed|routing|forwarded|forwarding|intake|pending|queued|await(?:ing)?|waiting|follow[ -]?up|scheduled|due|deadline|opened|ongoing|assigned|commissioned|deployed|promised|agreed|owed|booked|reserved|planned|departing|returning)\b/iu;
+const DURABLE_HOOK_OPEN_STATE = /\b(?:sent|filed|filing|submitted|delivered|received|accepted|registered|stamped|tracking|reference|routed|routing|forwarded|forwarding|intake|pending|queued|await(?:ing)?|waiting|follow[ -]?up|scheduled|due|deadline|opened|ongoing|unresolved|undecided|outstanding|incomplete|not yet|assigned|commissioned|deployed|promised|agreed|owed|booked|reserved|planned|departing|returning|tomorrow|tonight|next (?:day|week|month)|(?:on|for|is) (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|would (?:decid(?:e|es)|answer|reply|respond)|bear fruit)\b|\b(?:remain(?:s|ed)? open|(?:is|stays?) active)\b|\b(?:want|wants|wish|wishes|hope|hopes|wait|waits|waiting)\b.{0,90}\b(?:decid(?:e|es)|answer|reply|respond|outcome|result)\b/iu;
 const DURABLE_HOOK_TERMINAL_STATE = /\b(?:withdrawn|cancelled|canceled|rejected|denied|resolved|closed|completed|finished|fulfilled|repaid|released|approved|decided|concluded|arrived|returned)\b/giu;
 const DURABLE_HOOK_IDENTITY_STOPWORDS = new Set([
     'about', 'accepted', 'after', 'again', 'against', 'agreed', 'and', 'await', 'awaiting', 'before', 'booked', 'cancelled', 'canceled',
@@ -421,6 +421,8 @@ const DURABLE_HOOK_IDENTITY_STOPWORDS = new Set([
     'investigation', 'inquiry', 'search', 'order', 'case', 'file', 'evidence', 'trail', 'records', 'mission', 'assignment', 'contract',
     'commission', 'invitation', 'offer', 'deployment', 'promise', 'agreement', 'deal', 'bargain', 'debt', 'favor', 'owed', 'obligation',
     'departure', 'journey', 'trip', 'passage', 'ticket', 'return', 'visit', 'route', 'remained', 'remains', 'still', 'the', 'under', 'while',
+    'tell', 'tells', 'told', 'ask', 'asks', 'asked', 'think', 'thinks', 'thought', 'whether', 'what', 'when', 'where', 'which',
+    'who', 'why', 'how', 'you', 'your', 'yours', 'our', 'ours', 'bear', 'bears', 'fruit', 'hope', 'hopes', 'expect', 'expects',
 ]);
 
 function hookTypePattern(hookType) {
@@ -428,8 +430,9 @@ function hookTypePattern(hookType) {
 }
 
 function hookIdentityTerms(text, hookType) {
-    const generic = new Set((DURABLE_HOOK_RECOVERY[hookType]?.label || '').toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) || []);
-    return [...new Set(String(text || '').toLocaleLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}'’-]{2,}/gu) || [])]
+    const tokenize = value => String(value || '').toLocaleLowerCase().match(/[\p{L}\p{N}]{3,}/gu) || [];
+    const generic = new Set(tokenize(DURABLE_HOOK_RECOVERY[hookType]?.label));
+    return [...new Set(tokenize(text))]
         .filter(term => !DURABLE_HOOK_IDENTITY_STOPWORDS.has(term) && !generic.has(term) && !/^\d+$/u.test(term))
         .slice(0, 10);
 }
@@ -454,7 +457,9 @@ function stableHookSuffix(value) {
 function hookSubject(text, hookType) {
     const cleaned = String(text || '').replace(/\s+/gu, ' ').trim();
     const pattern = hookTypePattern(hookType);
-    const clauses = cleaned.split(/(?<=[.!?])\s+|\s+[—–|]\s+/u).filter(Boolean);
+    const clauses = cleaned.replace(/([.!?])(["'”’)]*)\s+/gu, '$1$2\n')
+        .split(/\n|\s+[—–|]\s+/u)
+        .filter(Boolean);
     const subject = clauses.find(clause => pattern?.test(clause)) || cleaned;
     return clipAtWord(subject.replace(/^[A-Z0-9 -]{3,30}:\s*/u, '').trim(), 125);
 }
@@ -477,11 +482,22 @@ function durableSeedFromCandidate(candidate) {
     const config = DURABLE_HOOK_RECOVERY[hookType];
     const text = asString(candidate?.content).trim();
     const pattern = hookTypePattern(hookType);
-    if (!config || !text || !pattern?.test(text) || !DURABLE_HOOK_OPEN_STATE.test(text) || hasUnnegatedTerminalState(text)) return null;
+    if (!config || !text || !pattern?.test(text)) return null;
+    const originalSubject = hookSubject(text, hookType);
     const laterEvidence = asArray(candidate?.later_evidence).map(item => asString(item?.content));
-    if (laterEvidence.some(hasUnnegatedTerminalState)) return null;
-    const subject = hookSubject(text, hookType);
+    const laterSubjects = laterEvidence.map(value => hookSubject(value, hookType))
+        .filter(value => pattern.test(value) && DURABLE_HOOK_OPEN_STATE.test(value) && !hasUnnegatedTerminalState(value) && isReliableHookSubject(value));
+    const subject = laterSubjects.at(-1) || originalSubject;
+    // A lifecycle marker must belong to the same clause as the actual hook.
+    // Do not turn "open doors" beside a meeting, or "waiting" beside a closed
+    // agreement, into factual continuity.
+    if (!pattern.test(subject) || !DURABLE_HOOK_OPEN_STATE.test(subject) || hasUnnegatedTerminalState(subject)) return null;
+    if (laterEvidence.some(value => {
+        const laterSubject = hookSubject(value, hookType);
+        return pattern.test(laterSubject) && hasUnnegatedTerminalState(laterSubject);
+    })) return null;
     if (!isReliableHookSubject(subject)) return null;
+    if (candidate?.role === 'user' && /^(?:please\s+)?(?:advance|skip|jump|fast[- ]?forward|move)\s+(?:to|ahead|forward)\b/iu.test(subject)) return null;
     const identityTerms = hookIdentityTerms(subject, hookType);
     const identity = identityTerms.slice(0, 5).join('-') || subject.toLocaleLowerCase();
     const thread = clipAtWord(`${config.label}: ${subject}`, 180);
@@ -505,19 +521,23 @@ function durableSeedFromCandidate(candidate) {
 }
 
 function structuredContinuityCandidates(result) {
-    return asArray(result?.lore_model?.continuity_signatures).flatMap((value, index) => {
+    const sources = [
+        ['planner-audited continuity signature', result?.lore_model?.continuity_signatures],
+        ['planner-audited trajectory signal', result?.lore_model?.trajectory_signals],
+    ];
+    return sources.flatMap(([source, values], sourceIndex) => asArray(values).flatMap((value, index) => {
         const content = asString(value).trim();
         if (!content || !DURABLE_HOOK_OPEN_STATE.test(content) || hasUnnegatedTerminalState(content)) return [];
         const hook = DURABLE_HOOK_TYPES.find(([, pattern]) => pattern.test(content));
         if (!hook) return [];
         return [{
-            index,
+            index: sourceIndex * 1000 + index,
             role: 'summary',
-            source: 'planner-audited continuity signature',
+            source,
             hook_type: hook[0],
             content,
         }];
-    });
+    }));
 }
 
 function durableContinuitySeeds(evidence, result) {
@@ -525,10 +545,39 @@ function durableContinuitySeeds(evidence, result) {
         ...asArray(evidencePayload(evidence)?.candidate_dormant_hooks),
         ...structuredContinuityCandidates(result),
     ];
-    const seeds = candidates.map(durableSeedFromCandidate).filter(Boolean);
-    return seeds.filter((seed, index) => !seeds.slice(0, index).some(item => item.id === seed.id))
-        .sort((a, b) => (a.index || 0) - (b.index || 0))
-        .slice(0, DURABLE_HOOK_TYPES.length);
+    const seeds = candidates.map(durableSeedFromCandidate).filter(Boolean)
+        .sort((a, b) => (a.index || 0) - (b.index || 0));
+    const unique = [];
+    for (const seed of seeds) {
+        if (unique.some(item => item.id === seed.id
+            || seedMatchesText(seed, `${item.thread} ${item.state} ${item.direction}`)
+            || seedMatchesText(item, `${seed.thread} ${seed.state} ${seed.direction}`))) continue;
+        unique.push(seed);
+    }
+    return unique.slice(0, 10);
+}
+
+function isRecoveredHookId(value) {
+    const id = asString(value);
+    return DURABLE_HOOK_TYPES.some(([hookType]) => id.startsWith(`open-${hookType}-`));
+}
+
+function pruneStaleRecoveredRoutes(result, seeds) {
+    const active = new Set(seeds.map(seed => seed.id));
+    const keepRecoveredId = id => !isRecoveredHookId(id) || active.has(id);
+    result.continuity_threads = asArray(result.continuity_threads).filter(item => keepRecoveredId(item?.id));
+    result.objectives = asArray(result.objectives).filter(item => item?.source !== 'Recovered full-chat continuity'
+        || seeds.some(seed => `${asString(item?.title)} ${asString(item?.detail)}`.includes(seed.thread)));
+    result.pathways = asArray(result.pathways).filter(item => {
+        const id = asString(item?.id);
+        return !id.startsWith('continuity-open-') || keepRecoveredId(id.slice('continuity-'.length));
+    });
+    if (result.plan_horizons && typeof result.plan_horizons === 'object') {
+        result.plan_horizons.items = asArray(result.plan_horizons.items).filter(item => {
+            const branch = asString(item?.branch);
+            return !isRecoveredHookId(branch) || active.has(branch);
+        });
+    }
 }
 
 function seedMatchesText(seed, value) {
@@ -536,7 +585,7 @@ function seedMatchesText(seed, value) {
     if (!text) return false;
     if (text.includes(seed.id.toLocaleLowerCase())) return true;
     const pattern = hookTypePattern(seed.hookType);
-    const textTerms = new Set(text.match(/[\p{L}\p{N}][\p{L}\p{N}'’-]{2,}/gu) || []);
+    const textTerms = new Set(text.match(/[\p{L}\p{N}]{3,}/gu) || []);
     const overlap = seed.identityTerms.filter(term => textTerms.has(term)).length;
     const requiredOverlap = seed.identityTerms.length >= 2 ? 2 : seed.identityTerms.length;
     return Boolean(pattern?.test(text) && overlap >= requiredOverlap);
@@ -559,6 +608,7 @@ function durablePlanningCoverage(result) {
 function restoreDurableContinuityRoutes(result, evidence) {
     if (!result || typeof result !== 'object') return;
     const seeds = durableContinuitySeeds(evidence, result);
+    pruneStaleRecoveredRoutes(result, seeds);
     if (!seeds.length) return;
     const existingThreads = asArray(result.continuity_threads);
     const threadText = item => `${asString(item?.id)} ${asString(item?.thread)} ${asString(item?.state)}`.toLocaleLowerCase();
@@ -746,19 +796,122 @@ function repairCausalRole(value) {
     return `advance — ${role}`.slice(0, 130).trim();
 }
 
+const HORIZON_ROUTE_STOPWORDS = new Set([
+    'about', 'across', 'after', 'allow', 'allows', 'another', 'before', 'continue', 'continues', 'current', 'develop', 'develops',
+    'development', 'direction', 'during', 'eventual', 'future', 'into', 'keep', 'keeps', 'later', 'let', 'lets', 'move', 'moves',
+    'next', 'only', 'open', 'path', 'possible', 'possibility', 'preserve', 'preserves', 'route', 'several', 'through', 'toward',
+    'while', 'without', 'with', 'from', 'that', 'this', 'the', 'and', 'for', 'its', 'one',
+]);
+
+function horizonRouteTerms(value) {
+    return new Set((String(value || '').toLocaleLowerCase().match(/[\p{L}\p{N}]{3,}/gu) || [])
+        .filter(term => !HORIZON_ROUTE_STOPWORDS.has(term)));
+}
+
+function horizonTimeBand(value) {
+    const text = String(value || '').toLocaleLowerCase();
+    if (/\b(?:distant|long[- ]?term|multiple arcs?|open[- ]?ended|months?|years?)\b/u.test(text)) return 4;
+    if (/\b(?:later|following) arcs?\b/u.test(text)) return 3;
+    if (/\b(?:current arc|several scenes?|next several scenes?)\b/u.test(text)) return 2;
+    if (/\b(?:scene|day|week)\b/u.test(text)) return 1;
+    if (/\b(?:reply|response|turns?|moment|immediate|current action)\b/u.test(text)) return 0;
+    return -1;
+}
+
+function repeatsHorizonRoute(candidate, existing) {
+    const branch = asString(candidate?.branch).trim().toLocaleLowerCase();
+    if (!branch || branch !== asString(existing?.branch).trim().toLocaleLowerCase()) return false;
+    const candidateTimeframe = asString(candidate?.timeframe).trim().toLocaleLowerCase().replace(/[\s–—-]+/gu, ' ');
+    const existingTimeframe = asString(existing?.timeframe).trim().toLocaleLowerCase().replace(/[\s–—-]+/gu, ' ');
+    // A branch may legitimately appear at several different rungs of the
+    // horizon ladder. Two cards for that same branch at the same named rung,
+    // however, are one route even when the provider paraphrases the direction.
+    if (candidateTimeframe && candidateTimeframe === existingTimeframe) return true;
+    const candidateBand = horizonTimeBand(candidate?.timeframe);
+    const existingBand = horizonTimeBand(existing?.timeframe);
+    if (candidateBand !== existingBand || candidateBand < 0) return false;
+    const candidateTerms = horizonRouteTerms(candidate?.direction);
+    const existingTerms = horizonRouteTerms(existing?.direction);
+    if (!candidateTerms.size || !existingTerms.size) return false;
+    const overlap = [...candidateTerms].filter(term => existingTerms.has(term)).length;
+    return overlap >= 2 && overlap / Math.min(candidateTerms.size, existingTerms.size) >= 0.6;
+}
+
 /**
  * Salvage provider output before using the generic fallback. Structured-output
  * support varies between providers, so harmless schema drift must not discard
  * otherwise useful authorial directions. This deliberately repairs bookkeeping
  * while dropping individual candidates that violate narrative safety rules.
  */
-export function repairAnalysisResult(result, { expectedOfferedIds = [], priorPlannerState = null } = {}) {
+export function repairAnalysisResult(result, { expectedOfferedIds = [], priorPlannerState = null, preservePriorLoreOnRecovery = false } = {}) {
     if (!result || typeof result !== 'object' || Array.isArray(result)) return result;
 
     const sceneSource = result.scene && typeof result.scene === 'object' && !Array.isArray(result.scene) ? result.scene : {};
     const storySource = result.story_frame && typeof result.story_frame === 'object' && !Array.isArray(result.story_frame) ? result.story_frame : {};
     const directorSource = result.director_score && typeof result.director_score === 'object' && !Array.isArray(result.director_score) ? result.director_score : {};
     const loreSource = result.lore_model && typeof result.lore_model === 'object' && !Array.isArray(result.lore_model) ? result.lore_model : {};
+    const priorLore = priorPlannerState?.loreModel || priorPlannerState?.lore_model || {};
+    const lorePlaceholder = /^(?:the world established by the supplied narrative evidence|use the world rules supported by scenario, character, lore, summaries, and story evidence|use the established operating logic of the (?:world|setting|narrative))/iu;
+    const loreValue = (source, camel, snake = camel) => source?.[camel] ?? source?.[snake];
+    const currentLoreLists = ['variant_rules', 'continuity_signatures', 'baseline_departures', 'trajectory_signals', 'active_forces'];
+    const hasCurrentLoreSubstance = [loreSource.world_identity, loreSource.baseline]
+        .some(value => usablePlanningText(value) && !lorePlaceholder.test(asString(value).trim()))
+        || currentLoreLists.some(key => uniqueStrings(loreSource[key]).length);
+    const hasPriorLoreSubstance = [loreValue(priorLore, 'worldIdentity', 'world_identity'), priorLore.baseline]
+        .some(value => usablePlanningText(value) && !lorePlaceholder.test(asString(value).trim()))
+        || [
+            loreValue(priorLore, 'variantRules', 'variant_rules'),
+            loreValue(priorLore, 'continuitySignatures', 'continuity_signatures'),
+            loreValue(priorLore, 'baselineDepartures', 'baseline_departures'),
+            loreValue(priorLore, 'trajectorySignals', 'trajectory_signals'),
+            loreValue(priorLore, 'activeForces', 'active_forces'),
+        ].some(value => uniqueStrings(value).length);
+    // A provider retry may satisfy the structural schema only by emitting the
+    // generic repair placeholders. Do not let that erase an already-audited
+    // world model. A substantive current lore model still wins in full, so an
+    // intentional empty-list update can retire old hypotheses normally.
+    const effectiveLore = !hasCurrentLoreSubstance && hasPriorLoreSubstance ? priorLore : loreSource;
+    const recoveredLoreText = (camel, snake = camel) => {
+        const current = loreValue(effectiveLore, camel, snake);
+        const prior = loreValue(priorLore, camel, snake);
+        return preservePriorLoreOnRecovery
+            && (!usablePlanningText(current) || lorePlaceholder.test(asString(current).trim()))
+            && usablePlanningText(prior)
+            && !lorePlaceholder.test(asString(prior).trim())
+            ? prior
+            : current;
+    };
+    const recoveredLoreList = (camel, snake = camel) => {
+        const current = uniqueStrings(loreValue(effectiveLore, camel, snake));
+        const prior = uniqueStrings(loreValue(priorLore, camel, snake));
+        return preservePriorLoreOnRecovery && !current.length && prior.length ? prior : current;
+    };
+    const recoveredBaseline = asString(recoveredLoreText('baseline')).trim();
+    const rawWorldIdentity = asString(recoveredLoreText('worldIdentity', 'world_identity')).trim();
+    const concreteSettingIdentity = usablePlanningText(directorSource.setting_identity);
+    const genericDirectorSetting = /^the (?:grounded|heightened|surreal) world around\b/iu;
+    const recoveredWorldIdentity = rawWorldIdentity && !lorePlaceholder.test(rawWorldIdentity)
+        ? rawWorldIdentity
+        : concreteSettingIdentity
+            && !lorePlaceholder.test(concreteSettingIdentity)
+            && !genericDirectorSetting.test(concreteSettingIdentity)
+            ? concreteSettingIdentity
+            : recoveredBaseline && !lorePlaceholder.test(recoveredBaseline)
+                ? recoveredBaseline.split(/[.!?]\s/u, 1)[0]
+                : rawWorldIdentity;
+    const priorWorldIdentity = asString(loreValue(priorLore, 'worldIdentity', 'world_identity')).trim();
+    const retainedPriorLoreField = preservePriorLoreOnRecovery && (
+        (priorWorldIdentity && recoveredWorldIdentity === priorWorldIdentity)
+        || ['variantRules', 'continuitySignatures', 'baselineDepartures', 'trajectorySignals', 'activeForces']
+            .some((camel, index) => {
+                const snake = currentLoreLists[index];
+                return !uniqueStrings(loreValue(effectiveLore, camel, snake)).length
+                    && uniqueStrings(loreValue(priorLore, camel, snake)).length;
+            })
+    );
+    const selfChallengeWasMissing = !usablePlanningText(result.self_challenge?.weakness)
+        || !usablePlanningText(result.self_challenge?.counter_route)
+        || !usablePlanningText(result.self_challenge?.decision);
     const layersSource = result.narrative_layers && typeof result.narrative_layers === 'object' && !Array.isArray(result.narrative_layers) ? result.narrative_layers : {};
     const priorLayers = priorPlannerState?.narrativeLayers || priorPlannerState?.narrative_layers || {};
     const repaired = {
@@ -788,14 +941,14 @@ export function repairAnalysisResult(result, { expectedOfferedIds = [], priorPla
             basis: asString(directorSource.basis, 'Recovered from the active scene and retained narrative trajectory.') || 'Recovered from the active scene and retained narrative trajectory.',
         },
         lore_model: {
-            world_identity: clipAtWord(asString(loreSource.world_identity, directorSource.setting_identity).trim() || 'The world established by the supplied narrative evidence', 140),
-            baseline: clipAtWord(asString(loreSource.baseline).trim() || 'Use the world rules supported by scenario, character, lore, summaries, and story evidence; keep unsupported details provisional.', 300),
-            variant_rules: uniqueStrings(loreSource.variant_rules).slice(0, 6).map(item => clipAtWord(item, 220)),
-            continuity_signatures: uniqueStrings(loreSource.continuity_signatures).slice(0, 8).map(item => clipAtWord(item, 220)),
-            baseline_departures: uniqueStrings(loreSource.baseline_departures).slice(0, 8).map(item => clipAtWord(item, 240)),
-            trajectory_signals: uniqueStrings(loreSource.trajectory_signals).slice(0, 6).map(item => clipAtWord(item, 220)),
-            active_forces: uniqueStrings(loreSource.active_forces).slice(0, 5).map(item => clipAtWord(item, 180)),
-            confidence: oneOf(asString(loreSource.confidence).toLowerCase(), ['low', 'moderate', 'high'], 'low'),
+            world_identity: clipAtWord(recoveredWorldIdentity || 'The world established by the supplied narrative evidence', 140),
+            baseline: clipAtWord(recoveredBaseline || 'Use the world rules supported by scenario, character, lore, summaries, and story evidence; keep unsupported details provisional.', 300),
+            variant_rules: recoveredLoreList('variantRules', 'variant_rules').slice(0, 6).map(item => clipAtWord(item, 220)),
+            continuity_signatures: recoveredLoreList('continuitySignatures', 'continuity_signatures').slice(0, 8).map(item => clipAtWord(item, 220)),
+            baseline_departures: recoveredLoreList('baselineDepartures', 'baseline_departures').slice(0, 8).map(item => clipAtWord(item, 240)),
+            trajectory_signals: recoveredLoreList('trajectorySignals', 'trajectory_signals').slice(0, 6).map(item => clipAtWord(item, 220)),
+            active_forces: recoveredLoreList('activeForces', 'active_forces').slice(0, 5).map(item => clipAtWord(item, 180)),
+            confidence: oneOf(asString(retainedPriorLoreField ? priorLore.confidence : effectiveLore.confidence).toLowerCase(), ['low', 'moderate', 'high'], 'low'),
         },
         narrative_layers: {
             immediate_action: usablePlanningText(layersSource.immediate_action),
@@ -974,6 +1127,14 @@ export function repairAnalysisResult(result, { expectedOfferedIds = [], priorPla
         repaired.pathways = [{ id: 'recovered-path-1', direction: guide.direction, when: guide.use_when, response_bias: guide.causal_role, horizon: 'next few turns', status: 'available', conditions: [], change: 'adjust', reason: guide.basis }];
         if (!guide.source_pathways.length) guide.source_pathways = ['recovered-path-1'];
     }
+    if (selfChallengeWasMissing && repaired.next_guides.length >= 2) {
+        const [preferred, counter] = repaired.next_guides;
+        repaired.self_challenge = {
+            weakness: clipAtWord(`The preferred route may overinvest in “${preferred.direction}” while neglecting a causally independent established route.`, 260),
+            counter_route: clipAtWord(counter.direction, 260),
+            decision: clipAtWord(`Keep the preferred route only while ${preferred.use_when}; otherwise retain “${counter.direction}” for when ${counter.use_when}.`, 320),
+        };
+    }
 
     const rawEvents = asArray(result.narrative_events);
     repaired.narrative_events = rawEvents.flatMap((event, index) => {
@@ -998,19 +1159,21 @@ export function repairAnalysisResult(result, { expectedOfferedIds = [], priorPla
 
     const horizonSource = result.plan_horizons && typeof result.plan_horizons === 'object' ? result.plan_horizons : {};
     const seenSourceHorizonDirections = new Set();
-    const sourceItems = asArray(horizonSource.items).filter(item => {
+    const sourceItems = [];
+    for (const item of asArray(horizonSource.items)) {
+        if (sourceItems.length >= 10) break;
         const direction = asString(item?.direction).trim().toLocaleLowerCase();
-        if (!direction || seenSourceHorizonDirections.has(direction)) return false;
+        if (!direction || seenSourceHorizonDirections.has(direction) || sourceItems.some(existing => repeatsHorizonRoute(item, existing))) continue;
         seenSourceHorizonDirections.add(direction);
-        return true;
-    }).slice(0, 10);
+        sourceItems.push(item);
+    }
     const priorHorizonItems = asArray(priorPlannerState?.planHorizons?.items || priorPlannerState?.plan_horizons?.items);
     for (const item of priorHorizonItems) {
         if (sourceItems.length >= 10) break;
         const timeframe = asString(item?.timeframe).trim();
         const direction = usablePlanningText(item?.direction);
         const directionKey = direction.toLocaleLowerCase();
-        if (!direction || seenSourceHorizonDirections.has(directionKey)) continue;
+        if (!direction || seenSourceHorizonDirections.has(directionKey) || sourceItems.some(existing => repeatsHorizonRoute(item, existing))) continue;
         // An incomplete provider response may safely retain supported upstream
         // orientation, but never revive a superseded local beat from prior state.
         if (!/\b(?:several|current arc|later|distant|long[- ]term|months?|years?|open[- ]ended|multiple arcs?)\b/iu.test(timeframe)) continue;
@@ -1639,13 +1802,13 @@ function retrieveOlderHistoricalEvidence(messages, state, recentStart, selectedI
 
 const DURABLE_HOOK_TYPES = Object.freeze([
     ['correspondence-or-petition', /\b(?:letter|petition|appeal|application|formal request|message to|wrote to|write to)\b/iu],
-    ['scheduled-decision', /\b(?:appointment|hearing|panel|review|assessment|meeting|interview|deadline|decision(?: date)?|determination|scheduled)\b/iu],
+    ['scheduled-decision', /\b(?:appointment|hearing|panel|review|assessment|meeting|interview|deadline|decision(?: date)?|decid(?:e|es|ing)|determination)\b/iu],
     ['investigation-or-search', /\b(?:investigation|inquiry|search order|missing person|case file|evidence trail|records search)\b/iu],
     ['mission-or-invitation', /\b(?:mission|assignment|contract|commission|invitation|job offer|deployment)\b/iu],
     ['commitment-or-debt', /\b(?:promise|agreement|deal|bargain|debt|favor owed|obligation)\b/iu],
     ['planned-journey-or-return', /\b(?:departure|journey|trip|passage|ticket|return to|visit to|route to)\b/iu],
 ]);
-const DURABLE_HOOK_LIFECYCLE = /\b(?:sent|filed|filing|submitted|delivered|received|accepted|registered|stamped|tracking|reference|routed|routing|forwarded|forwarding|intake|pending|queued|await(?:ing)?|waiting|follow[ -]?up|reply|response|answer|outcome|result|bear fruit|scheduled|due|deadline|opened|ongoing|assigned|commissioned|deployed|promised|agreed|owed|booked|reserved|planned|departing|returning|tomorrow|next (?:day|week|month)|weeks?|months?|eventually|later)\b/giu;
+const DURABLE_HOOK_LIFECYCLE = /\b(?:sent|filed|filing|submitted|delivered|received|accepted|registered|stamped|tracking|reference|routed|routing|forwarded|forwarding|intake|pending|queued|await(?:ing)?|waiting|follow[ -]?up|reply|response|answer|outcome|result|bear fruit|scheduled|due|deadline|opened|ongoing|unresolved|undecided|outstanding|incomplete|not yet|assigned|commissioned|deployed|promised|agreed|owed|booked|reserved|planned|departing|returning|tomorrow|tonight|next (?:day|week|month)|(?:on|for|is) (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|would (?:decid(?:e|es)|answer|reply|respond)|weeks?|months?|eventually|later)\b|\b(?:remain(?:s|ed)? open|(?:is|stays?) active)\b|\b(?:want|wants|wish|wishes|hope|hopes|wait|waits|waiting)\b.{0,90}\b(?:decid(?:e|es)|answer|reply|respond|outcome|result)\b/giu;
 const DURABLE_HOOK_USER_INITIATIVE = /\b(?:i|we)\s+(?:sent|filed|submitted|delivered|asked|requested|promised|agreed|accepted|planned|scheduled|intend|hope|expect|wait|await)\b/iu;
 
 function durableHookExcerpt(value, limit = 420) {
@@ -1691,12 +1854,18 @@ function retrieveDormantHookEvidence(messages, recentStart, selectedIndexes, max
         const lifecycleSignals = content.match(DURABLE_HOOK_LIFECYCLE)?.length || 0;
         const userInitiative = Boolean(message.is_user && DURABLE_HOOK_USER_INITIATIVE.test(content));
         const openQuestion = message.is_user && /\b(?:will|might|could|when|whether|what happens|bear fruit)\b/iu.test(content);
-        if (!lifecycleSignals && !userInitiative && !openQuestion) continue;
+        if (!DURABLE_HOOK_OPEN_STATE.test(content) || hasUnnegatedTerminalState(content)) continue;
         const score = types.length * 1.5 + Math.min(4, lifecycleSignals) + (userInitiative ? 2 : 0) + (openQuestion ? 1 : 0) + index / Math.max(1, recentStart);
         records.push({ index, role: message.is_user ? 'user' : 'assistant', hook_type: types[0], content, score });
     }
-    const limit = Math.max(1, Math.min(DURABLE_HOOK_TYPES.length, maxItems));
-    const ranked = records.sort((a, b) => b.score - a.score || b.index - a.index);
+    const limit = Math.max(1, Math.min(10, maxItems));
+    // Rank only candidates that remain open after their later matching evidence
+    // is audited. A louder but already closed route must never crowd out a
+    // quieter established route from the same family.
+    const ranked = records
+        .map(record => attachLaterHookEvidence(record, messages))
+        .filter(record => durableSeedFromCandidate(record))
+        .sort((a, b) => b.score - a.score || b.index - a.index);
     const chosen = [];
     // First preserve one strong candidate from each independent route family.
     // Otherwise many recent appointment mentions can crowd out a filed letter,
@@ -1710,7 +1879,6 @@ function retrieveDormantHookEvidence(messages, recentStart, selectedIndexes, max
     for (const record of ranked) {
         if (chosen.length >= limit) break;
         if (chosen.includes(record)) continue;
-        if (chosen.some(item => Math.abs(item.index - record.index) <= 8)) continue;
         chosen.push(record);
     }
     return chosen.sort((a, b) => a.index - b.index).map(({ score: _score, ...item }) => item);
@@ -1751,12 +1919,11 @@ export function buildFinalizationEvidence(messages, prompt = '') {
     let payload = {};
     try { payload = JSON.parse(prompt) || {}; } catch { /* keep recovery evidence independent */ }
     const source = asArray(messages);
-    const recentIndexes = asArray(payload.messages)
-        .filter(item => item?.kind === 'recent' && Number.isInteger(Number(item.index)))
-        .map(item => Number(item.index));
-    const recentStart = recentIndexes.length ? Math.min(...recentIndexes) : source.length;
-    const candidates = retrieveDormantHookEvidence(source, recentStart, new Set(), 6)
-        .map(candidate => attachLaterHookEvidence(candidate, source));
+    // Audit the complete chat rather than only the portion compacted out of the
+    // provider prompt. The provider can omit a lifecycle even when its evidence
+    // is still inside the recent raw tail; deterministic finalization must be an
+    // independent safety net, not rely on where prompt compaction drew a line.
+    const candidates = retrieveDormantHookEvidence(source, source.length, new Set(), 10);
     if (candidates.length) payload.candidate_dormant_hooks = candidates;
     return JSON.stringify(payload);
 }
@@ -1999,16 +2166,35 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
 function mergePlanHorizons(previous, proposed) {
     if (!previous?.items?.length || proposed.items.length < 6) return proposed;
     const deviation = proposed.deviation.level;
-    const merged = proposed.items.map(candidate => {
-        const prior = previous.items.find(item => item.id && item.id === candidate.id);
-        if (!prior) return candidate;
-        if (candidate.change === 'keep') return prior;
-        if (candidate.change === 'replace') return candidate;
-        const stability = prior.stability || candidate.stability;
-        if (stability === 'adaptive' && deviation === 'none') return prior;
-        if ((stability === 'stable' || stability === 'slow') && deviation === 'none') return prior;
-        return candidate;
-    });
+    const merged = [];
+    for (const candidate of proposed.items) {
+        // Provider-generated IDs are labels, not globally stable identities.
+        // Never revive an old route merely because a later pass reused its ID
+        // for a different branch; that can overwrite a genuinely independent
+        // route and duplicate another current horizon.
+        const candidateBranch = String(candidate.branch || '').trim().toLocaleLowerCase();
+        const prior = previous.items.find(item => item.id && item.id === candidate.id
+            && candidateBranch
+            && String(item.branch || '').trim().toLocaleLowerCase() === candidateBranch);
+        let selected = candidate;
+        if (prior && candidate.change === 'keep') selected = prior;
+        else if (prior && candidate.change !== 'replace') {
+            const stability = prior.stability || candidate.stability;
+            if (stability === 'adaptive' && deviation === 'none') selected = prior;
+            if ((stability === 'stable' || stability === 'slow') && deviation === 'none') selected = prior;
+        }
+        // Even a legitimately retained stable route must not collide with a
+        // distinct current route. Prefer the current proposal when retention
+        // would reintroduce a semantic duplicate removed during repair.
+        if (merged.some(existing => existing.direction.trim().toLocaleLowerCase() === selected.direction.trim().toLocaleLowerCase()
+            || repeatsHorizonRoute(selected, existing))) {
+            selected = candidate;
+        }
+        if (!merged.some(existing => existing.direction.trim().toLocaleLowerCase() === selected.direction.trim().toLocaleLowerCase()
+            || repeatsHorizonRoute(selected, existing))) {
+            merged.push(selected);
+        }
+    }
     return { ...proposed, items: merged };
 }
 
@@ -2104,7 +2290,9 @@ export function applyAnalysis(state, result, messages) {
     return next;
 }
 
-const EVIDENCE_FIRST_POLICY = `Follow the user's requested fictional direction and the demands of the established scene directly. Do not replace a supported development with a safer, softer, more agreeable, or unrelated alternative. Do not hedge away, silently omit, or flatten established conflict, danger, suffering, moral flaws, rejection, loss, stakes, or consequences. Give no automatic plot armor to the user's persona. Do not force sympathy, vulnerability, redemption, reconciliation, banter, avoidance, or silent treatment onto characters unless their established characterization and circumstances support it. Commit to supported outcomes even when they are uncomfortable or negative. Equally, do not add cruelty, darkness, punishment, or conflict merely to appear bold; evidence, tone, causality, and user direction decide.`;
+const EVIDENCE_FIRST_POLICY = `Follow the user's requested fictional direction and the demands of the established scene directly. Do not replace a supported development with a safer, softer, more agreeable, or unrelated alternative. Do not hedge away, silently omit, or flatten established conflict, danger, suffering, moral flaws, rejection, loss, stakes, or consequences. Give no automatic plot armor to the user's persona. Do not force sympathy, vulnerability, redemption, reconciliation, banter, avoidance, or silent treatment onto characters unless their established characterization and circumstances support it. Commit to supported outcomes even when they are uncomfortable or negative. Equally, do not add cruelty, darkness, punishment, or conflict merely to appear bold; evidence, tone, causality, and user direction decide.
+
+Distinguish contradiction from absence. Established facts are binding, but an unestablished detail is open creative space rather than forbidden content. “Unsupported” means Tale Fairy may not claim that something already happened or was previously established; it does not bar authoring a new setting-compatible actor, motive, opportunity, complication, consequence, or route with original or inferred provenance. Unless the user forbids it, evidence contradicts it, or world causality makes it incoherent, explore plausible open possibilities instead of answering that no established option exists. Keep unselected inventions private and conditional until one is causally selected, then let it acquire real present causes and consequences without retroactively calling it canon.`;
 const HORIZON_POLICY = `Maintain up to ten objectives as the durable thread pool: concrete open directions worth developing, holding, completing, or retiring as events change. Objectives are not a current-scene to-do list. Preserve consequential unresolved player initiatives, sent correspondence or petitions, pending decisions, appointments, investigations, promises, journeys, and other live processes while they remain supported, even when dormant or offscreen; do not silently drop them merely because recent turns focus elsewhere. Remove or retire one only when newer evidence completes, cancels, contradicts, or makes it irrelevant. Return six to ten concise plan_horizons.items ordered from the next few turns to a distant story horizon. Span useful scales such as next 2–4 turns, current scene, next scene, several scenes, current arc, and some later arc or meaningful future time; add intermediate rungs when the story supports them. The highest ladder item is mandatory, must use slow stability, and must name a suitably distant scope such as a later arc, several or multiple arcs, a distant phase/time, long-term, months/years later, or open-ended. It is a provisional relationship, world, thematic, or unresolved-thread direction to revisit—not a story ending, final resolution, or predetermined outcome.
 
 Return continuity_threads as the factual inventory of established unresolved processes, separate from speculative possibilities and private planned outcomes. Each item needs a stable id, a plain thread label, its current procedural or relationship state, active/dormant/due/blocked status, and a concise evidence basis. Include consequential correspondence, pending institutional decisions, scheduled reviews or appointments, investigations, assignments, promises, debts, journeys or returns, and relationship commitments when supported. Separate processes are independent routes even when they share a setting or institution and a quiet current scene foregrounds none of them. Preserve an item across scene changes and scene-focused summaries until newer evidence resolves, cancels, contradicts, or makes it irrelevant. Never invent an outcome, treat the inventory as a current-scene to-do list, or force a dormant item onscreen.

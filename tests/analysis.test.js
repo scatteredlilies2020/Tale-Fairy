@@ -229,6 +229,57 @@ test('finalization preserves authored variety when a dormant route is already re
     assert.deepEqual(result.self_challenge, existingChallenge);
 });
 
+test('continuity recovery deduplicates punctuation variants and compressed references generically', () => {
+    const result = requireValidAnalysisResult({
+        ...requiredPlanning,
+        continuity_threads: [],
+        lore_model: {
+            ...loreModel,
+            continuity_signatures: ['A sponsored petition to the regional council concerning the former community remains filed.'],
+        },
+        pathways: [{
+            ...pathways[0],
+            id: 'community-petition-route',
+            direction: 'Let the former-community petition advance through the regional council process.',
+        }],
+    });
+    finalizeAnalysisResult(result, JSON.stringify({ candidate_dormant_hooks: [{
+        index: 91,
+        role: 'user',
+        hook_type: 'correspondence-or-petition',
+        content: 'Do you think our letter to the regional council will bear fruit?',
+    }] }));
+    assert.equal(result.continuity_threads.length, 1);
+    assert.equal(result.pathways.filter(item => item.id.startsWith('continuity-open-')).length, 0);
+    assert.equal(result.plan_horizons.items.filter(item => item.branch.startsWith('open-correspondence-or-petition-')).length, 0);
+});
+
+test('continuity recovery resolves a sparse anaphoric reference without merging a distinct matter for the same recipient', () => {
+    const result = requireValidAnalysisResult({
+        ...requiredPlanning,
+        continuity_threads: [],
+        lore_model: {
+            ...loreModel,
+            continuity_signatures: ['A sponsored appeal to the ombudsman concerning a lease dispute remains filed.'],
+        },
+    });
+    finalizeAnalysisResult(result, JSON.stringify({ candidate_dormant_hooks: [{
+        index: 91,
+        role: 'user',
+        hook_type: 'correspondence-or-petition',
+        content: 'Do you think our letter to the ombudsman will bear fruit?',
+    }, {
+        index: 92,
+        role: 'assistant',
+        hook_type: 'correspondence-or-petition',
+        content: 'A separate petition to the ombudsman about transit access was filed and remains pending.',
+    }] }));
+    assert.equal(result.continuity_threads.length, 2);
+    assert.ok(result.continuity_threads.some(item => /lease dispute/iu.test(item.thread)));
+    assert.ok(result.continuity_threads.some(item => /transit access/iu.test(item.thread)));
+    assert.ok(result.continuity_threads.every(item => !/bear fruit/iu.test(item.thread)));
+});
+
 test('planner-audited RP continuity signatures can restore a missing factual lifecycle', () => {
     const result = requireValidAnalysisResult({
         ...requiredPlanning,
@@ -242,6 +293,22 @@ test('planner-audited RP continuity signatures can restore a missing factual lif
     assert.equal(result.continuity_threads.length, 1);
     assert.match(`${result.continuity_threads[0].thread} ${result.continuity_threads[0].state}`, /winter scholarship assessment/iu);
     assert.match(result.continuity_threads[0].basis, /planner-audited continuity signature/iu);
+});
+
+test('planner-audited trajectory signals can restore an established unresolved route', () => {
+    const result = requireValidAnalysisResult({
+        ...requiredPlanning,
+        continuity_threads: [],
+        lore_model: {
+            ...loreModel,
+            continuity_signatures: [],
+            trajectory_signals: ['The regional permit review remains unresolved while the board considers the amended plan.'],
+        },
+    });
+    finalizeAnalysisResult(result, '{}');
+    assert.equal(result.continuity_threads.length, 1);
+    assert.match(`${result.continuity_threads[0].thread} ${result.continuity_threads[0].state}`, /regional permit review/iu);
+    assert.match(result.continuity_threads[0].basis, /planner-audited trajectory signal/iu);
 });
 
 test('finalization never promotes clipped retrieval fragments into planning state', () => {
@@ -277,6 +344,123 @@ test('finalization evidence retains dormant routes independently of the provider
     assert.ok(evidence.candidate_dormant_hooks.some(item => item.index === 4
         && item.hook_type === 'correspondence-or-petition'
         && /harbor guild/iu.test(item.content)));
+});
+
+test('finalization restores unresolved lifecycle evidence from inside the recent raw tail', () => {
+    const messages = [
+        { is_user: true, mes: 'We finish supper and discuss tomorrow.' },
+        { is_user: false, mes: 'The academy placement review is Thursday at fifteen-thirty.' },
+        { is_user: true, mes: 'I turn in for the night and wait for morning.' },
+        { is_user: false, mes: 'The dormitory settles into its ordinary night routine.' },
+    ];
+    const prompt = JSON.stringify({
+        task: 'update_narrative_context',
+        messages: messages.map((message, index) => ({ kind: 'recent', index, role: message.is_user ? 'user' : 'assistant', content: message.mes })),
+    });
+    const evidence = buildFinalizationEvidence(messages, prompt);
+    const result = requireValidAnalysisResult({ ...requiredPlanning, continuity_threads: [], objectives: [] });
+    finalizeAnalysisResult(result, evidence);
+    assert.ok(result.continuity_threads.some(item => /academy placement review is Thursday/iu.test(`${item.thread} ${item.state}`)));
+});
+
+test('finalization treats an explicitly awaited decision as a generic open lifecycle', () => {
+    const messages = [
+        { is_user: true, mes: 'I wish the council would decide soon about my placement.' },
+        { is_user: false, mes: 'No decision is announced before the hall closes for the night.' },
+    ];
+    const evidence = buildFinalizationEvidence(messages, JSON.stringify({ messages: messages.map((message, index) => ({ kind: 'recent', index })) }));
+    const result = requireValidAnalysisResult({ ...requiredPlanning, continuity_threads: [], objectives: [] });
+    finalizeAnalysisResult(result, evidence);
+    assert.ok(result.continuity_threads.some(item => /council would decide soon/iu.test(`${item.thread} ${item.state}`)));
+});
+
+test('a closed high-signal route cannot crowd out another open route in the same family', () => {
+    const messages = [
+        { is_user: false, mes: 'The orchard license review was scheduled, heard, approved, decided, and closed.' },
+        { is_user: true, mes: 'Several quiet days pass.' },
+        { is_user: false, mes: 'The coastal residency panel remains unresolved while the applicant waits for an answer.' },
+    ];
+    const evidence = buildFinalizationEvidence(messages, '{}');
+    const result = requireValidAnalysisResult({ ...requiredPlanning, continuity_threads: [], objectives: [] });
+    finalizeAnalysisResult(result, evidence);
+    assert.equal(result.continuity_threads.some(item => /orchard license/iu.test(`${item.thread} ${item.state}`)), false);
+    assert.ok(result.continuity_threads.some(item => /coastal residency panel/iu.test(`${item.thread} ${item.state}`)));
+});
+
+test('lifecycle words in neighboring clauses cannot manufacture an unrelated route', () => {
+    const result = requireValidAnalysisResult({ ...requiredPlanning, continuity_threads: [], objectives: [] });
+    finalizeAnalysisResult(result, JSON.stringify({ candidate_dormant_hooks: [
+        {
+            index: 12,
+            role: 'assistant',
+            hook_type: 'scheduled-decision',
+            content: 'The corridor remains open. He pauses at the doors, meeting her gaze before leaving.',
+        },
+        {
+            index: 14,
+            role: 'assistant',
+            hook_type: 'commitment-or-debt',
+            content: 'The inquiry remains ongoing. No agreement either.',
+        },
+    ] }));
+    assert.equal(result.continuity_threads.length, 0);
+});
+
+test('a scheduled access constraint is not misclassified as a pending decision', () => {
+    const messages = [{
+        is_user: false,
+        mes: 'Communication access is scheduled rather than open, with one short call each week.',
+    }];
+    const evidence = buildFinalizationEvidence(messages, '{}');
+    const result = requireValidAnalysisResult({ ...requiredPlanning, continuity_threads: [], objectives: [] });
+    finalizeAnalysisResult(result, evidence);
+    assert.equal(result.continuity_threads.length, 0);
+});
+
+test('narrative time-navigation commands are not retained as factual open processes', () => {
+    const messages = [{ is_user: true, mes: 'Advance to the petition filing time.' }];
+    const evidence = buildFinalizationEvidence(messages, '{}');
+    const result = requireValidAnalysisResult({ ...requiredPlanning, continuity_threads: [], objectives: [] });
+    finalizeAnalysisResult(result, evidence);
+    assert.equal(result.continuity_threads.length, 0);
+});
+
+test('quoted repetition and player narration deduplicate to one factual route', () => {
+    const messages = [
+        { is_user: true, mes: 'I tell Nim I wish the council would decide soon about my placement.' },
+        { is_user: false, mes: '“I wish the council would decide soon about my placement.” Nim pauses over the game board.' },
+    ];
+    const evidence = buildFinalizationEvidence(messages, '{}');
+    const result = requireValidAnalysisResult({ ...requiredPlanning, continuity_threads: [], objectives: [] });
+    finalizeAnalysisResult(result, evidence);
+    assert.equal(result.continuity_threads.filter(item => /council would decide soon/iu.test(`${item.thread} ${item.state}`)).length, 1);
+});
+
+test('stale automatically recovered routes are removed when full-chat evidence no longer supports them', () => {
+    const result = requireValidAnalysisResult({
+        ...requiredPlanning,
+        continuity_threads: [{
+            id: 'open-scheduled-decision-oldnoise',
+            thread: 'Scheduled decision or review: He was meeting her by the open doors.',
+            state: 'Full-chat evidence leaves this unresolved: He was meeting her by the open doors.',
+            status: 'dormant',
+            basis: 'Full-chat assistant evidence records an open scheduled decision or review lifecycle.',
+        }],
+        lore_model: { ...loreModel, continuity_signatures: [], trajectory_signals: [] },
+    });
+    finalizeAnalysisResult(result, '{}');
+    assert.equal(result.continuity_threads.length, 0);
+});
+
+test('finalization evidence can retain several independent routes from one lifecycle family', () => {
+    const messages = [
+        { is_user: false, mes: 'The orchard license review remains pending with the agricultural board.' },
+        { is_user: false, mes: 'The coastal residency panel remains unresolved while the applicant waits.' },
+        { is_user: false, mes: 'The harbor appeal was filed and remains pending under reference HG-204.' },
+    ];
+    const evidence = JSON.parse(buildFinalizationEvidence(messages, '{}'));
+    const scheduled = evidence.candidate_dormant_hooks.filter(item => item.hook_type === 'scheduled-decision');
+    assert.equal(scheduled.length, 2);
 });
 
 test('generic lifecycle recovery covers unrelated correspondence, decisions, investigations, missions, commitments, and journeys', () => {
@@ -402,6 +586,9 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /Message kind anchor is older orientation only/);
     assert.match(SYSTEM, /cannot by itself justify reviving/);
     assert.match(SYSTEM, /Do not replace a supported development with a safer, softer/);
+    assert.match(SYSTEM, /Distinguish contradiction from absence/);
+    assert.match(SYSTEM, /an unestablished detail is open creative space rather than forbidden content/);
+    assert.match(SYSTEM, /does not bar authoring a new setting-compatible actor, motive, opportunity, complication, consequence, or route/);
     assert.match(SYSTEM, /Give no automatic plot armor/);
     assert.match(SYSTEM, /Do not force sympathy, vulnerability, redemption, reconciliation, banter, avoidance, or silent treatment/);
     assert.match(SYSTEM, /do not add cruelty, darkness, punishment, or conflict merely to appear bold/);
@@ -553,6 +740,41 @@ test('planner rejects cosmetically different horizons that collapse into one fut
     assert.ok(ANALYSIS_SCHEMA.value.properties.plan_horizons.properties.items.items.required.includes('branch'));
 });
 
+test('planner repair consolidates a repeated branch rung at the same horizon while keeping distinct routes', () => {
+    const repeatedBranch = {
+        ...requiredPlanning,
+        plan_horizons: {
+            ...planHorizons,
+            items: [...planHorizons.items, {
+                ...planHorizons.items[3],
+                id: 'arc-duplicate',
+                direction: 'Let the underlying obligation be revisited as a later arc pressure.',
+            }],
+        },
+    };
+    const repaired = requireValidAnalysisResult(repeatedBranch);
+    assert.equal(repaired.plan_horizons.items.filter(item => item.branch === 'jedi-obligation').length, 1);
+    assert.equal(repaired.plan_horizons.items.length, 6);
+    assert.equal(validateAnalysisResult(repaired).valid, true);
+});
+
+test('planner repair consolidates paraphrased cards for the same branch and named timeframe', () => {
+    const repeatedBranch = {
+        ...requiredPlanning,
+        plan_horizons: {
+            ...planHorizons,
+            items: [...planHorizons.items, {
+                ...planHorizons.items[4],
+                id: 'later-arcs-paraphrase',
+                direction: 'Open an independent consequence for those evolving allegiances.',
+            }],
+        },
+    };
+    const repaired = requireValidAnalysisResult(repeatedBranch);
+    assert.equal(repaired.plan_horizons.items.filter(item => item.branch === 'changing-loyalties').length, 1);
+    assert.equal(repaired.plan_horizons.items.length, 6);
+});
+
 test('planner rejects and repairs a single beat cloned across every horizon', () => {
     const repeated = {
         ...requiredPlanning,
@@ -669,6 +891,100 @@ test('incomplete planner output retains only upstream layers and horizons from p
     assert.ok(!repaired.plan_horizons.items.some(item => item.id === 'old-local'), 'stale local beats are never recovered');
     assert.equal(repaired.plan_horizons.items.at(-1).stability, 'slow');
     assert.equal(validateAnalysisResult(repaired).valid, true);
+});
+
+test('generic retry lore cannot erase the prior audited world model', () => {
+    const priorPlannerState = {
+        loreModel: {
+            worldIdentity: 'A recognizable setting interpreted through this roleplay continuity',
+            baseline: 'Established institutions and setting mechanics continue to operate unless narrative evidence overrides them.',
+            variantRules: ['A narrative-supplied rule changes how one established capability operates.'],
+            continuitySignatures: ['A roleplay-specific relationship and its accumulated trust remain causally important.'],
+            baselineDepartures: ['An established personal circumstance differs from the inferred setting baseline.'],
+            trajectorySignals: ['Several unresolved choices still support materially different future paths.'],
+            activeForces: ['Institutional review', 'Independent character motives'],
+            confidence: 'high',
+        },
+    };
+    const repaired = requireValidAnalysisResult({
+        ...requiredPlanning,
+        lore_model: {
+            world_identity: 'The world established by the supplied narrative evidence',
+            baseline: 'Use the world rules supported by scenario, character, lore, summaries, and story evidence; keep unsupported details provisional.',
+            variant_rules: [], continuity_signatures: [], baseline_departures: [], trajectory_signals: [], active_forces: [], confidence: 'low',
+        },
+    }, { priorPlannerState });
+    assert.equal(repaired.lore_model.world_identity, priorPlannerState.loreModel.worldIdentity);
+    assert.deepEqual(repaired.lore_model.variant_rules, priorPlannerState.loreModel.variantRules);
+    assert.deepEqual(repaired.lore_model.continuity_signatures, priorPlannerState.loreModel.continuitySignatures);
+    assert.deepEqual(repaired.lore_model.baseline_departures, priorPlannerState.loreModel.baselineDepartures);
+    assert.deepEqual(repaired.lore_model.trajectory_signals, priorPlannerState.loreModel.trajectorySignals);
+    assert.deepEqual(repaired.lore_model.active_forces, priorPlannerState.loreModel.activeForces);
+    assert.equal(repaired.lore_model.confidence, 'high');
+    assert.equal(validateAnalysisResult(repaired).valid, true);
+});
+
+test('incomplete recovery retains individual prior lore fields while accepting a new concrete baseline', () => {
+    const priorPlannerState = {
+        loreModel: {
+            worldIdentity: 'A recognizable setting with an alternate-continuity rule set',
+            baseline: 'The older inferred baseline.',
+            variantRules: ['The narrative explicitly changes one baseline mechanism.'],
+            continuitySignatures: ['A unique relationship state belongs to this roleplay.'],
+            baselineDepartures: ['A depicted institution differs from its inferred baseline.'],
+            trajectorySignals: ['Independent futures remain open.'],
+            activeForces: ['A persistent offscreen institution'],
+            confidence: 'high',
+        },
+    };
+    const repaired = requireValidAnalysisResult({
+        ...requiredPlanning,
+        lore_model: {
+            world_identity: 'The world established by the supplied narrative evidence',
+            baseline: 'A newly clarified setting baseline supported by the current evidence.',
+            variant_rules: [], continuity_signatures: [], baseline_departures: [], trajectory_signals: [], active_forces: [], confidence: 'low',
+        },
+    }, { priorPlannerState, preservePriorLoreOnRecovery: true });
+    assert.equal(repaired.lore_model.world_identity, priorPlannerState.loreModel.worldIdentity);
+    assert.equal(repaired.lore_model.baseline, 'A newly clarified setting baseline supported by the current evidence.');
+    assert.deepEqual(repaired.lore_model.variant_rules, priorPlannerState.loreModel.variantRules);
+    assert.deepEqual(repaired.lore_model.continuity_signatures, priorPlannerState.loreModel.continuitySignatures);
+    assert.equal(repaired.lore_model.confidence, 'high');
+});
+
+test('generic director setting cannot mask a concrete recovered world baseline', () => {
+    const repaired = requireValidAnalysisResult({
+        ...requiredPlanning,
+        director_score: {
+            ...directorScore,
+            setting_identity: 'The heightened world around the current location, treated as an active source of consequences.',
+        },
+        lore_model: {
+            world_identity: 'The world established by the supplied narrative evidence',
+            baseline: 'A concrete institutional baseline shapes character options and offscreen consequences.',
+            variant_rules: [], continuity_signatures: [], baseline_departures: [], trajectory_signals: [], active_forces: [], confidence: 'medium',
+        },
+    });
+    assert.equal(repaired.lore_model.world_identity, 'A concrete institutional baseline shapes character options and offscreen consequences.');
+    assert.equal(validateAnalysisResult(repaired).valid, true);
+});
+
+test('missing self-challenge compares the preferred route with a concrete independent guide', () => {
+    const routes = [
+        { ...pathways[0], id: 'local-rest', direction: 'Let the current rest conclude without spending the next activity.', when: 'When the sleeper wakes naturally.', status: 'foreground' },
+        { ...pathways[0], id: 'independent-review', direction: 'Let an established review proceed independently offscreen.', when: 'When the reviewing office resumes work.', status: 'latent', horizon: 'near' },
+        { ...pathways[0], id: 'relationship-path', direction: 'Let another character pursue a separate relationship goal.', when: 'When that character next has causal access.', status: 'available', horizon: 'mid' },
+    ];
+    const repaired = requireValidAnalysisResult({
+        ...requiredPlanning,
+        pathways: routes,
+        next_guides: [],
+        self_challenge: { weakness: '', counter_route: '', decision: '' },
+    });
+    assert.match(repaired.self_challenge.weakness, /current rest conclude/i);
+    assert.equal(repaired.self_challenge.counter_route, routes[1].direction);
+    assert.match(repaired.self_challenge.decision, /review proceed independently/i);
+    assert.doesNotMatch(repaired.self_challenge.counter_route, /materially different supported continuity route/i);
 });
 
 test('planner preserves contrasting pathways when generic response biases repeat', () => {
@@ -1071,6 +1387,35 @@ test('conditional pathways persist while supported horizons resist cosmetic chur
 
     const switched = applyAnalysis(kept, { pathways: [{ ...pathways[0], id: 'reaction', direction: 'Let the answer change the relationship.', change: 'replace' }] }, [...messages, { mes: 'Mara explains the concern.', is_user: false }]);
     assert.equal(switched.pathways[0].id, 'reaction');
+});
+
+test('horizon persistence never treats a reused id on a different branch as the old route', () => {
+    const messages = [{ mes: 'What else could develop from here?', is_user: true }];
+    const starting = {
+        ...defaultState(),
+        planHorizons: { items: planHorizons.items.map(item => ({ ...item, change: 'keep' })), deviation: { level: 'none', reason: 'On plan.' } },
+    };
+    const proposedItems = planHorizons.items.map(item => ({ ...item, change: 'replace' }));
+    proposedItems[3] = {
+        ...proposedItems[3],
+        branch: 'independent-civic-process',
+        direction: 'Let an independent civic process create a materially different opportunity.',
+        change: 'adjust',
+    };
+    proposedItems[4] = {
+        ...proposedItems[4],
+        id: 'new-obligation-route',
+        branch: 'jedi-obligation',
+        direction: planHorizons.items[3].direction,
+    };
+
+    const next = applyAnalysis(starting, {
+        plan_horizons: { items: proposedItems, deviation: { level: 'none', reason: 'The broader direction remains open.' } },
+    }, messages);
+
+    assert.equal(next.planHorizons.items.length, 6);
+    assert.equal(new Set(next.planHorizons.items.map(item => item.direction.toLocaleLowerCase())).size, 6);
+    assert.ok(next.planHorizons.items.some(item => item.branch === 'independent-civic-process'));
 });
 
 test('narrative events are stored internally but guidance remains the only injected output', () => {
