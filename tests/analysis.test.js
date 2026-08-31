@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, AnalysisValidationError, MODE_INSTRUCTIONS, applyAnalysis, buildAnalysisPrompt, buildFinalizationEvidence, extractJson, finalizeAnalysisResult, requireValidAnalysisResult, SYSTEM, validateAnalysisResult } from '../extension/analysis.js';
 import { defaultState } from '../extension/state.js';
+import { estimateTokenCount } from '../extension/token-budget.js';
 
 const pathways = [{ id: 'tea-talk', direction: 'Let the tea conversation reveal a useful tension.', when: 'The user continues the conversation or asks Mara directly.', response_bias: 'Have Mara answer plainly and expose one concrete concern.', horizon: 'next few turns', status: 'foreground', conditions: [], change: 'replace', reason: 'The current exchange supports this route.' }];
 const nextGuides = [
@@ -789,7 +790,7 @@ test('analysis prompt maintains a lightweight world model', () => {
 
 test('analysis prompt limits sent messages and accepts optional continuity context', () => {
     const messages = Array.from({ length: 5 }, (_, i) => ({ mes: `message-${i}`, is_user: i % 2 === 0 }));
-    const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { messageWindow: 2, messageCharLimit: 20, continuityContext: 'older context' }));
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { messageWindow: 2, messageTokenLimit: 20, continuityContext: 'older context' }));
     assert.equal(prompt.messages.length, 2);
     assert.equal(prompt.optional_continuity_context, 'older context');
     assert.match(prompt.continuity_instruction, /not a privileged memory authority or dependency/);
@@ -806,7 +807,7 @@ test('analysis prompt retrieves a few relevant older turns without continuity me
         pathways: [{ ...pathways[0], direction: 'Resolve the Chancellor petition about peace and aid for affected families.' }],
         contextLedger: 'The current thread concerns Lucia’s message to the Chancellor about the war.',
     };
-    const prompt = JSON.parse(buildAnalysisPrompt(messages, state, '', {}, { messageWindow: 6, maxPromptChars: 12000 }));
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, state, '', {}, { messageWindow: 6, maxPromptTokens: 12000 }));
     assert.ok(prompt.retrieved_historical_evidence.length <= 4);
     assert.ok(prompt.retrieved_historical_evidence.some(item => item.index === 46 && /affected families/.test(item.content)));
     assert.match(prompt.retrieval_instruction, /older turns from the active chat/);
@@ -828,7 +829,7 @@ test('standalone retrieval includes an old assistant payoff instead of preservin
         pathways: [{ ...pathways[0], id: 'private-vision', direction: 'Lucia discloses the private clone vision.', when: 'Lucia chooses to tell Vekk.' }],
         contextLedger: 'Lucia still has a private clone vision to disclose.',
     };
-    const prompt = JSON.parse(buildAnalysisPrompt(messages, state, '', {}, { messageWindow: 6, maxPromptChars: 12000 }));
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, state, '', {}, { messageWindow: 6, maxPromptTokens: 12000 }));
     assert.ok(prompt.retrieved_historical_evidence.some(item => item.role === 'user' && /disclos|vision/iu.test(item.content)));
     assert.ok(prompt.retrieved_historical_evidence.some(item => item.role === 'assistant' && /records|addendum|accepts/iu.test(item.content)));
     assert.ok(prompt.retrieved_historical_evidence.some(item => item.index === 23 && item.purpose === 'audit-current-claim'));
@@ -869,7 +870,7 @@ test('an upstream trajectory survives a hundred-turn routine lull and is audited
             temporalScope: 'activity',
         },
     };
-    const prompt = JSON.parse(buildAnalysisPrompt(messages, state, '', {}, { messageWindow: 6, maxPromptChars: 12000 }));
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, state, '', {}, { messageWindow: 6, maxPromptTokens: 12000 }));
     assert.match(prompt.current.narrativeLayers.durableTrajectory, /Hokage/);
     assert.equal(prompt.current.narrativeLayers.activityRole, 'routine');
     assert.equal(prompt.current.narrativeLayers.temporalScope, 'activity');
@@ -999,9 +1000,9 @@ test('jokes, wishes, and unsupported absurdities are not retained as events', ()
 
 test('planner prompt enforces its hard budget while retaining priority context', () => {
     const messages = Array.from({ length: 40 }, (_, i) => ({ mes: 'x'.repeat(2000) + i, is_user: i % 2 === 0 }));
-    const prompt = buildAnalysisPrompt(messages, { ...defaultState(), contextLedger: 'y'.repeat(4000) }, 'z'.repeat(2000), { description: 'd'.repeat(3500) }, { messageWindow: 24, maxPromptChars: 10000, continuityContext: 'c'.repeat(6000), hostContext: 'h'.repeat(8000), bootstrapScan: true });
+    const prompt = buildAnalysisPrompt(messages, { ...defaultState(), contextLedger: 'y'.repeat(4000) }, 'z'.repeat(2000), { description: 'd'.repeat(3500) }, { messageWindow: 24, maxPromptTokens: 10000, continuityContext: 'c'.repeat(6000), hostContext: 'h'.repeat(8000), bootstrapScan: true });
     const parsed = JSON.parse(prompt);
-    assert.ok(prompt.length <= 10000);
+    assert.ok(estimateTokenCount(prompt) <= 10000);
     assert.ok(parsed.messages.filter(item => item.kind === 'recent').length >= 6);
     assert.ok(parsed.messages.some(item => item.kind === 'recent' && item.index === 39));
     assert.ok(parsed.messages.some(item => item.kind === 'anchor' && item.index > 0 && item.index < 16));
@@ -1020,16 +1021,16 @@ test('latest turn stays complete by compacting redundant state and older excerpt
         planHorizons,
         contextLedger: 'ledger '.repeat(400),
     };
-    const prompt = buildAnalysisPrompt(messages, state, '', {}, { messageWindow: 12, messageCharLimit: 700, maxPromptChars: 12000, bootstrapScan: true });
+    const prompt = buildAnalysisPrompt(messages, state, '', {}, { messageWindow: 12, messageTokenLimit: 700, maxPromptTokens: 12000, bootstrapScan: true });
     const parsed = JSON.parse(prompt);
-    assert.ok(prompt.length <= 12000);
+    assert.ok(estimateTokenCount(prompt) <= 12000);
     assert.equal(parsed.messages.at(-1).content, latest.trim());
 });
 
 test('bootstrap compaction keeps a recent trajectory anchor instead of reviving the opening scene', () => {
     const messages = Array.from({ length: 520 }, (_, index) => ({ mes: `${index}: ${'current trajectory '.repeat(60)}`, is_user: index % 2 === 0 }));
     messages[0] = { mes: `Old opening armored walker attack. ${'past '.repeat(300)}`, is_user: false };
-    const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { messageWindow: 12, messageCharLimit: 700, maxPromptChars: 12000, bootstrapScan: true }));
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { messageWindow: 12, messageTokenLimit: 700, maxPromptTokens: 12000, effectivePromptTokens: 3000, bootstrapScan: true }));
     assert.doesNotMatch(JSON.stringify(prompt.messages), /armored walker/i);
     assert.ok(prompt.messages.some(item => item.kind === 'anchor' && item.index > 400));
 });
@@ -1050,8 +1051,8 @@ test('hard budget also compacts a fully populated long-running planner state', (
         lastRequestVerification: { status: 'confirmed', guidanceBlock: 'confirmed guide', guideCandidates: [sentCue], selectedGuideIndex: 0 },
     };
     const messages = Array.from({ length: 80 }, (_, index) => ({ mes: long.repeat(4) + index, is_user: index % 2 === 0 }));
-    const prompt = buildAnalysisPrompt(messages, state, long, { scenario: long }, { messageWindow: 80, messageCharLimit: 4000, maxPromptChars: 8000, continuityContext: long.repeat(6), hostContext: long.repeat(8), bootstrapScan: true });
-    assert.ok(prompt.length <= 8000, `expected hard budget, got ${prompt.length} characters`);
+    const prompt = buildAnalysisPrompt(messages, state, long, { scenario: long }, { messageWindow: 80, messageTokenLimit: 4000, maxPromptTokens: 8000, continuityContext: long.repeat(6), hostContext: long.repeat(8), bootstrapScan: true });
+    assert.ok(estimateTokenCount(prompt) <= 8000, `expected hard budget, got ${estimateTokenCount(prompt)} tokens`);
     const parsed = JSON.parse(prompt);
     assert.equal(parsed.messages.at(-1).index, 79);
     assert.equal(parsed.current.lastOfferedCues[0].id, sentCue.id);
@@ -1060,7 +1061,7 @@ test('hard budget also compacts a fully populated long-running planner state', (
 
 test('planner excerpts remove generated scaffolding and preserve both ends of long prose', () => {
     const long = `<stat>\`\`\`private tracker\`\`\`</stat>${'A'.repeat(900)} crucial middle evidence ${'B'.repeat(900)} crucial ending`;
-    const prompt = JSON.parse(buildAnalysisPrompt([{ mes: long, is_user: false }], defaultState(), '', {}, { messageCharLimit: 300 }));
+    const prompt = JSON.parse(buildAnalysisPrompt([{ mes: long, is_user: false }], defaultState(), '', {}, { messageTokenLimit: 300 }));
     assert.doesNotMatch(prompt.messages[0].content, /private tracker|<stat>/);
     assert.match(prompt.messages[0].content, /^A+/);
     assert.match(prompt.messages[0].content, /crucial middle evidence/);
@@ -1075,7 +1076,7 @@ test('analysis prompt independently recovers dormant formal hooks for future-rou
     messages[52] = { mes: 'Nim has a placement panel scheduled for Thursday.', is_user: false };
     messages[88] = { mes: 'The room remains quiet through the night.', is_user: false };
     messages[89] = { mes: 'Continue as I sleep.', is_user: true };
-    const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { messageWindow: 8, maxPromptChars: 12000 }));
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { messageWindow: 8, maxPromptTokens: 12000 }));
     assert.ok(prompt.candidate_dormant_hooks.some(item => item.hook_type === 'correspondence-or-petition' && /Chancellor|petition/iu.test(item.content)));
     assert.ok(prompt.candidate_dormant_hooks.some(item => item.hook_type === 'scheduled-decision' && /placement panel/iu.test(item.content)));
     assert.match(prompt.dormant_hook_instruction, /retain it in continuity_threads and objectives even while offscreen/);
@@ -1090,10 +1091,10 @@ test('repeated schedules cannot crowd a filed petition out of dormant-hook retri
     }
     messages[118] = { mes: 'The night passes quietly.', is_user: false };
     messages[119] = { mes: 'Continue while I sleep.', is_user: true };
-    const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { messageWindow: 8, maxPromptChars: 12000 }));
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { messageWindow: 8, maxPromptTokens: 12000 }));
     assert.ok(prompt.candidate_dormant_hooks.some(item => item.hook_type === 'correspondence-or-petition' && /Chancellor letter/iu.test(item.content)));
     assert.ok(prompt.candidate_dormant_hooks.some(item => item.hook_type === 'scheduled-decision'));
-    const constrained = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { messageWindow: 8, maxPromptChars: 8000, bootstrapScan: true }));
+    const constrained = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { messageWindow: 8, maxPromptTokens: 8000, bootstrapScan: true }));
     assert.ok(constrained.candidate_dormant_hooks.some(item => item.hook_type === 'correspondence-or-petition'), 'durable correspondence survives the minimum prompt budget');
 });
 

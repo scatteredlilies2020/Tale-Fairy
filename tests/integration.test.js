@@ -10,9 +10,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.57');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.57');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.57');
+    assert.equal(manifest.version, '0.11.58');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.58');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.58');
 });
 
 test('injection sends layered authorial control while concrete realization and future outcomes stay private', () => {
@@ -162,6 +162,13 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /previousContextVersion > 0 && previousContextVersion < 5/);
     assert.match(source, /previousContextVersion > 0 && previousContextVersion < 6/);
     assert.match(source, /settings\.contextSettingsVersion = DEFAULT_SETTINGS\.contextSettingsVersion/);
+    assert.match(source, /messageTokenLimit: 700, maxPromptTokens: 12000/);
+    assert.match(source, /continuityContextTokens: 3500, contextSettingsVersion: 7/);
+    assert.match(source, /getTokenCountAsync/);
+    assert.match(source, /actualTokens <= tokenBudget/);
+    assert.match(source, /could not be fitted within the \$\{tokenBudget\}-token limit/);
+    assert.match(template, /Planner context budget \(tokens\)/);
+    assert.match(template, /value="12000"/);
     assert.match(source, /inlineLatestUser: s\.injectionPosition === 'at-depth'/);
     assert.match(template, /<option value="user">User \(default\)<\/option>/);
     assert.match(source, /export async function livingWorldGuideGenerateInterceptor/);

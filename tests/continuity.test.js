@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { compactContinuityPrompt, readContinuityBridge, waitForContinuityBridge } from '../extension/continuity.js';
+import { estimateTokenCount } from '../extension/token-budget.js';
 
 function bridge(snapshot) {
     return { version: 1, getContextSnapshot: () => snapshot };
@@ -56,8 +57,8 @@ test('Continuity startup wait times out without consuming another chat', async (
 
 test('Continuity compaction preserves retrieved records and the trailing Chronicle', () => {
     const prompt = `<continuity>\nCheckpoint:\n${'present fact '.repeat(220)}\nFacts:\n${'retrieved fact '.repeat(220)}\nRecursive Chronicle layers (complete active frontier):\n${'chronicle fact '.repeat(260)}\n</continuity>`;
-    const compacted = compactContinuityPrompt(prompt, 1800);
-    assert.ok(compacted.length <= 1800);
+    const compacted = compactContinuityPrompt(prompt, 800);
+    assert.ok(estimateTokenCount(compacted) <= 800);
     assert.match(compacted, /Checkpoint:/);
     assert.match(compacted, /chronicle fact/);
     assert.match(compacted, /continuity context compacted/);
@@ -66,8 +67,8 @@ test('Continuity compaction preserves retrieved records and the trailing Chronic
 
 test('Continuity compaction preserves unresolved route records from the omitted middle', () => {
     const prompt = `Checkpoint:\n${'current scene '.repeat(180)}\nFacts:\n${'older detail '.repeat(100)}\nThe filed letter to the Chancellor remains pending with the aide office and has not received an answer.\n${'other record '.repeat(170)}\nRecursive Chronicle:\n${'chronicle '.repeat(220)}`;
-    const compacted = compactContinuityPrompt(prompt, 1800);
-    assert.ok(compacted.length <= 1800);
+    const compacted = compactContinuityPrompt(prompt, 700);
+    assert.ok(estimateTokenCount(compacted) <= 700);
     assert.match(compacted, /letter to the Chancellor remains pending/);
     assert.match(compacted, /Open-route records retained from omitted middle/);
     assert.match(compacted, /Recursive Chronicle/);

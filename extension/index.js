@@ -15,12 +15,12 @@ import { compactContinuityPrompt, readContinuityBridge, waitForContinuityBridge 
 import { plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.57';
+const RUNTIME_VERSION = '0.11.58';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
 const INJECTION_POSITIONS = new Set(['before-main', 'after-main', 'before-character-definitions', 'after-character-definitions', 'before-example-messages', 'after-example-messages', 'before-an', 'after-an', 'before-chat-history', 'after-chat-history', 'before-jailbreak', 'after-jailbreak', 'at-depth']);
-const DEFAULT_SETTINGS = { enabled: true, mode: 'balanced', analysisProfileId: '', analysisSource: 'active', analysisProvider: 'custom', analysisModel: '', analysisUrl: '', analysisSecretId: '', analysisReasoningMode: 'auto', analysisTemperature: 1, directSettingsMigrated: false, directCustomModel: '', directCustomUrl: '', directCustomSecretId: '', directOpenRouterModel: '', directOpenRouterUrl: '', directOpenRouterSecretId: '', injectionPosition: 'at-depth', injectionDepth: 1, injectionRole: 'user', includeWorldInfo: false, showDirectorNotes: false, messageWindow: 12, messageCharLimit: 700, maxPromptChars: 12000, continuityIntegration: true, continuityContextLimit: 3500, contextSettingsVersion: 6 };
+const DEFAULT_SETTINGS = { enabled: true, mode: 'balanced', analysisProfileId: '', analysisSource: 'active', analysisProvider: 'custom', analysisModel: '', analysisUrl: '', analysisSecretId: '', analysisReasoningMode: 'auto', analysisTemperature: 1, directSettingsMigrated: false, directCustomModel: '', directCustomUrl: '', directCustomSecretId: '', directOpenRouterModel: '', directOpenRouterUrl: '', directOpenRouterSecretId: '', injectionPosition: 'at-depth', injectionDepth: 1, injectionRole: 'user', includeWorldInfo: false, showDirectorNotes: false, messageWindow: 12, messageTokenLimit: 700, maxPromptTokens: 12000, continuityIntegration: true, continuityContextTokens: 3500, contextSettingsVersion: 7 };
 let settings = null;
 let analysisPromise = null;
 let analysisAbortController = null;
@@ -69,9 +69,6 @@ function getSettings() {
     }
     if (previousContextVersion < 3) {
         if ([16, 24].includes(Number(settings.messageWindow))) settings.messageWindow = 12;
-        if ([900, 1200].includes(Number(settings.messageCharLimit))) settings.messageCharLimit = 700;
-        if ([14000, 18000].includes(Number(settings.maxPromptChars))) settings.maxPromptChars = 12000;
-        if ([4000, 5000].includes(Number(settings.continuityContextLimit))) settings.continuityContextLimit = 3500;
         settings.contextSettingsVersion = 3;
     }
     if (previousContextVersion > 0 && previousContextVersion < 4) {
@@ -88,6 +85,17 @@ function getSettings() {
             settings.injectionDepth = 1;
         }
         settings.contextSettingsVersion = 6;
+    }
+    if (previousContextVersion < 7) {
+        // Character-based settings cannot represent a provider token budget.
+        // Move every existing install to the explicit 12k-token default.
+        settings.messageTokenLimit = Number(settings.messageTokenLimit) || DEFAULT_SETTINGS.messageTokenLimit;
+        settings.maxPromptTokens = Number(settings.maxPromptTokens) || DEFAULT_SETTINGS.maxPromptTokens;
+        settings.continuityContextTokens = Number(settings.continuityContextTokens) || DEFAULT_SETTINGS.continuityContextTokens;
+        delete settings.messageCharLimit;
+        delete settings.maxPromptChars;
+        delete settings.continuityContextLimit;
+        settings.contextSettingsVersion = 7;
     }
     settings.contextSettingsVersion = DEFAULT_SETTINGS.contextSettingsVersion;
     if (!settings.directSettingsMigrated) {
@@ -121,6 +129,32 @@ function plannerTemperature() {
 
 function messagesFromChat(chat = []) { return chat.map(m => ({ mes: m?.mes || '', is_user: Boolean(m?.is_user), name: m?.name || '' })); }
 function currentContext() { return getContext(); }
+
+async function buildTokenBudgetedAnalysisPrompt(messages, state, note, bootstrap, options) {
+    const tokenBudget = Math.max(8000, Math.min(30000, Number(options.maxPromptTokens) || 12000));
+    const context = currentContext();
+    const tokenCounter = typeof context?.getTokenCountAsync === 'function'
+        ? context.getTokenCountAsync.bind(context)
+        : null;
+    let effectivePromptTokens = tokenBudget;
+    let prompt = '';
+    let actualTokens = 0;
+    for (let attempt = 0; attempt < 8; attempt++) {
+        prompt = buildAnalysisPrompt(messages, state, note, bootstrap, { ...options, maxPromptTokens: tokenBudget, effectivePromptTokens });
+        if (!tokenCounter) return prompt;
+        try {
+            actualTokens = Number(await tokenCounter(prompt, 0));
+        } catch {
+            // The model-neutral counter still enforces the configured budget
+            // if SillyTavern's provider tokenizer is temporarily unavailable.
+            return prompt;
+        }
+        if (!Number.isFinite(actualTokens) || actualTokens <= tokenBudget) return prompt;
+        const scaledBudget = Math.floor(effectivePromptTokens * tokenBudget / actualTokens * 0.96);
+        effectivePromptTokens = Math.max(1000, Math.min(effectivePromptTokens - 100, scaledBudget));
+    }
+    throw new Error(`Planner context is ${actualTokens} tokens and could not be fitted within the ${tokenBudget}-token limit.`);
+}
 
 function analysisConnectionChoice(s = getSettings()) {
     if (s.analysisSource === 'profile') return String(s.analysisProfileId || '');
@@ -322,13 +356,13 @@ function continuityContextState(context, allowStale = false) {
 
 function optionalContinuityContext(context, allowStale = false) {
     const s = getSettings();
-    return compactContinuityPrompt(continuityContextState(context, allowStale).text, s.continuityContextLimit);
+    return compactContinuityPrompt(continuityContextState(context, allowStale).text, s.continuityContextTokens);
 }
 
 async function optionalContinuityContextWhenReady(context, allowStale, signal) {
     const s = getSettings();
     const immediate = continuityContextState(context, allowStale);
-    if (!s.continuityIntegration || immediate.text) return compactContinuityPrompt(immediate.text, s.continuityContextLimit);
+    if (!s.continuityIntegration || immediate.text) return compactContinuityPrompt(immediate.text, s.continuityContextTokens);
     const ready = await waitForContinuityBridge(context, () => globalThis.continuityMemoryBridge, {
         allowStale,
         timeoutMs: 8000,
@@ -338,7 +372,7 @@ async function optionalContinuityContextWhenReady(context, allowStale, signal) {
     // Preserve compatibility with Continuity versions that expose only their
     // SillyTavern extension prompt rather than the bridge.
     const finalState = ready.text ? ready : continuityContextState(context, allowStale);
-    return compactContinuityPrompt(finalState.text, s.continuityContextLimit);
+    return compactContinuityPrompt(finalState.text, s.continuityContextTokens);
 }
 
 function auxiliaryTexts(value) {
@@ -1107,7 +1141,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
             ? await optionalContinuityContextWhenReady(context, allowStaleContinuity, controller.signal)
             : optionalContinuityContext(context, allowStaleContinuity);
         controller.signal.throwIfAborted();
-        const plannerPrompt = buildAnalysisPrompt(chat, current, noteInstruction(userNote), bootstrapContext(context), { messageWindow: s.messageWindow, messageCharLimit: s.messageCharLimit, continuityContext, hostContext, bootstrapScan: rebuild || current.canonBootstrapPending || current.scene.status === 'uninitialized' || !current.contextLedger, maxPromptChars: s.maxPromptChars, variationNonce });
+        const plannerPrompt = await buildTokenBudgetedAnalysisPrompt(chat, current, noteInstruction(userNote), bootstrapContext(context), { messageWindow: s.messageWindow, messageTokenLimit: s.messageTokenLimit, continuityContext, hostContext, bootstrapScan: rebuild || current.canonBootstrapPending || current.scene.status === 'uninitialized' || !current.contextLedger, maxPromptTokens: s.maxPromptTokens, variationNonce });
         const finalizationEvidence = buildFinalizationEvidence(chat, plannerPrompt, s.messageWindow);
         const result = await requestAnalysis(plannerPrompt, controller.signal, finalizationEvidence);
         controller.signal.throwIfAborted();
@@ -1550,7 +1584,7 @@ async function mountUI() {
     root.querySelector('[data-setting="url"]').value = s.analysisUrl;
     root.querySelector('[data-setting="continuity"]').checked = Boolean(s.continuityIntegration);
     root.querySelector('[data-setting="window"]').value = s.messageWindow;
-    root.querySelector('[data-setting="budget"]').value = s.maxPromptChars;
+    root.querySelector('[data-setting="budget"]').value = s.maxPromptTokens;
     root.querySelector('[data-setting="injection-position"]').value = s.injectionPosition;
     root.querySelector('[data-setting="injection-depth"]').value = s.injectionDepth;
     root.querySelector('[data-setting="injection-role"]').value = s.injectionRole;
@@ -1595,7 +1629,7 @@ async function mountUI() {
     });
     root.querySelector('[data-setting="continuity"]').addEventListener('change', e => { invalidatePlanner(); s.continuityIntegration = e.target.checked; save(); });
     root.querySelector('[data-setting="window"]').addEventListener('change', e => { invalidatePlanner(); s.messageWindow = Math.max(1, Math.min(80, Number(e.target.value) || 12)); e.target.value = s.messageWindow; save(); });
-    root.querySelector('[data-setting="budget"]').addEventListener('change', e => { invalidatePlanner(); s.maxPromptChars = Math.max(8000, Math.min(30000, Number(e.target.value) || 12000)); e.target.value = s.maxPromptChars; save(); });
+    root.querySelector('[data-setting="budget"]').addEventListener('change', e => { invalidatePlanner(); s.maxPromptTokens = Math.max(8000, Math.min(30000, Number(e.target.value) || 12000)); e.target.value = s.maxPromptTokens; save(); });
     root.querySelector('[data-setting="injection-position"]').addEventListener('change', e => { s.injectionPosition = e.target.value; save(); });
     root.querySelector('[data-setting="injection-depth"]').addEventListener('change', e => { s.injectionDepth = Math.min(100, Math.max(0, Number(e.target.value) || 0)); e.target.value = s.injectionDepth; save(); });
     root.querySelector('[data-setting="injection-role"]').addEventListener('change', e => { s.injectionRole = e.target.value; save(); });
@@ -1687,7 +1721,7 @@ function refreshControls(root = document.querySelector(`#${EXTENSION_ID}-setting
     root.querySelector('[data-setting="url"]').value = s.analysisUrl;
     root.querySelector('[data-setting="continuity"]').checked = Boolean(s.continuityIntegration);
     root.querySelector('[data-setting="window"]').value = s.messageWindow;
-    root.querySelector('[data-setting="budget"]').value = s.maxPromptChars;
+    root.querySelector('[data-setting="budget"]').value = s.maxPromptTokens;
     root.querySelector('[data-setting="injection-position"]').value = s.injectionPosition;
     root.querySelector('[data-setting="injection-depth"]').value = s.injectionDepth;
     root.querySelector('[data-setting="injection-role"]').value = s.injectionRole;

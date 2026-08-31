@@ -1,3 +1,5 @@
+import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js';
+
 function cleanPrompt(value) {
     return String(value || '')
         .replace(/<[^>]+>/g, ' ')
@@ -7,31 +9,32 @@ function cleanPrompt(value) {
         .trim();
 }
 
-function boundedEdge(value, length, fromEnd = false) {
-    if (value.length <= length) return value;
+function boundedEdge(value, tokenLimit, fromEnd = false) {
+    if (estimateTokenCount(value) <= tokenLimit) return value;
+    const clipped = truncateToTokenBudget(value, tokenLimit, { fromEnd });
     if (fromEnd) {
-        const start = value.length - length;
-        const boundary = value.indexOf('\n', start);
-        return value.slice(boundary >= 0 && boundary - start < 160 ? boundary + 1 : start).trimStart();
+        const boundary = clipped.indexOf('\n');
+        return clipped.slice(boundary >= 0 && boundary < 160 ? boundary + 1 : 0).trimStart();
     }
-    const boundary = value.lastIndexOf('\n', length);
-    return value.slice(0, boundary >= length - 160 ? boundary : length).trimEnd();
+    const boundary = clipped.lastIndexOf('\n');
+    return clipped.slice(0, boundary >= clipped.length - 160 ? boundary : clipped.length).trimEnd();
 }
 
-function boundedChronicleTail(value, length) {
-    if (value.length <= length) return value;
+function boundedChronicleTail(value, tokenLimit) {
+    if (estimateTokenCount(value) <= tokenLimit) return value;
     const markerIndex = value.toLowerCase().lastIndexOf('recursive chronicle');
-    if (markerIndex < 0) return boundedEdge(value, length, true);
+    if (markerIndex < 0) return boundedEdge(value, tokenLimit, true);
     const lineEnd = value.indexOf('\n', markerIndex);
     const heading = value.slice(markerIndex, lineEnd >= 0 ? lineEnd : markerIndex + 100).trim();
-    if (!heading) return boundedEdge(value, length, true);
-    if (heading.length >= length) return heading.slice(0, length);
-    const tail = boundedEdge(value, length - heading.length - 1, true);
+    if (!heading) return boundedEdge(value, tokenLimit, true);
+    const headingTokens = estimateTokenCount(heading);
+    if (headingTokens >= tokenLimit) return truncateToTokenBudget(heading, tokenLimit);
+    const tail = boundedEdge(value, tokenLimit - headingTokens - 1, true);
     if (tail.toLowerCase().includes('recursive chronicle')) return tail;
-    return `${heading}\n${tail}`.slice(0, length);
+    return truncateToTokenBudget(`${heading}\n${tail}`, tokenLimit);
 }
 
-function routeBearingExcerpt(value, limit) {
+function routeBearingExcerpt(value, tokenLimit) {
     const pattern = /\b(?:unresolved|open|pending|due|blocked|dormant|petition|letter|correspondence|decision|hearing|appointment|investigation|promise|commitment|journey|return|review|application|request|order)\b/giu;
     const excerpts = [];
     const seen = new Set();
@@ -40,27 +43,28 @@ function routeBearingExcerpt(value, limit) {
         const key = excerpt.toLowerCase();
         if (excerpt && !seen.has(key)) excerpts.push(excerpt);
         seen.add(key);
-        if (excerpts.join(' … ').length >= limit) break;
+        if (estimateTokenCount(excerpts.join(' … ')) >= tokenLimit) break;
     }
-    return excerpts.join(' … ').slice(0, limit).trim();
+    return truncateToTokenBudget(excerpts.join(' … '), tokenLimit).trim();
 }
 
-export function compactContinuityPrompt(value, requestedLimit = 3500) {
+export function compactContinuityPrompt(value, requestedTokenLimit = 3500) {
     const text = cleanPrompt(value);
-    const limit = Math.max(500, Math.min(12000, Number(requestedLimit) || 3500));
-    if (text.length <= limit) return text;
+    const limit = Math.max(500, Math.min(12000, Number(requestedTokenLimit) || 3500));
+    if (estimateTokenCount(text) <= limit) return text;
 
     // Continuity Memory places its current/retrieved records near the front and
     // its Story/Recursive Chronicle at the end. Preserve both rather than
     // prefix-clipping away the chronological continuity spine.
     const marker = '\n\n[… continuity context compacted …]\n\n';
-    const routeBudget = Math.min(600, Math.floor((limit - marker.length) * 0.25));
+    const markerTokens = estimateTokenCount(marker);
+    const routeBudget = Math.min(600, Math.floor((limit - markerTokens) * 0.25));
     const routes = routeBearingExcerpt(text, routeBudget);
     const routeSection = routes ? `Open-route records retained from omitted middle:\n${routes}` : '';
-    const edgeBudget = Math.max(0, limit - marker.length * (routeSection ? 2 : 1) - routeSection.length);
+    const edgeBudget = Math.max(0, limit - markerTokens * (routeSection ? 2 : 1) - estimateTokenCount(routeSection));
     const headLength = Math.floor(edgeBudget * 0.52);
     const tailLength = edgeBudget - headLength;
-    return [boundedEdge(text, headLength), routeSection, boundedChronicleTail(text, tailLength)].filter(Boolean).join(marker).slice(0, limit);
+    return truncateToTokenBudget([boundedEdge(text, headLength), routeSection, boundedChronicleTail(text, tailLength)].filter(Boolean).join(marker), limit);
 }
 
 export function readContinuityBridge(context = {}, bridge, { allowStale = false } = {}) {
