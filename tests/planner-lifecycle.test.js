@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { clearPlannerPending, markPlannerPending, plannerWasInterrupted, waitForPlannerHandoff } from '../extension/planner-lifecycle.js';
+import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from '../extension/planner-lifecycle.js';
 
 test('a replacement waits until the cancelled local planner has settled', async () => {
     let settlePrevious;
@@ -49,4 +49,20 @@ test('a marker for an older chat snapshot is discarded rather than resumed', () 
     markPlannerPending(storage, 'chat', 'old-fingerprint');
     assert.equal(plannerWasInterrupted(storage, 'chat', 'new-fingerprint'), false);
     assert.equal(values.size, 0);
+});
+
+test('a failed snapshot is latched until the chat changes or a run succeeds', () => {
+    const values = new Map();
+    const storage = {
+        getItem: key => values.get(key) ?? null,
+        setItem: (key, value) => values.set(key, value),
+        removeItem: key => values.delete(key),
+    };
+    markPlannerFailed(storage, 'chat', 'fingerprint-1');
+    assert.equal(plannerFailedForSnapshot(storage, 'chat', 'fingerprint-1'), true);
+    assert.equal(plannerFailedForSnapshot(storage, 'chat', 'fingerprint-2'), false);
+
+    markPlannerFailed(storage, 'chat', 'fingerprint-2');
+    clearPlannerFailed(storage, 'chat');
+    assert.equal(plannerFailedForSnapshot(storage, 'chat', 'fingerprint-2'), false);
 });

@@ -11,9 +11,14 @@ export async function waitForPlannerHandoff(previousPromise, signal) {
 }
 
 const PENDING_PREFIX = 'living-world-guide:pending:';
+const FAILED_PREFIX = 'living-world-guide:failed:';
 
 function pendingKey(chatId) {
     return `${PENDING_PREFIX}${encodeURIComponent(String(chatId || ''))}`;
+}
+
+function failedKey(chatId) {
+    return `${FAILED_PREFIX}${encodeURIComponent(String(chatId || ''))}`;
 }
 
 export function markPlannerPending(storage, chatId, fingerprint) {
@@ -45,5 +50,37 @@ export function clearPlannerPending(storage, chatId) {
         storage.removeItem(pendingKey(chatId));
     } catch {
         // Best effort only; a mismatched marker is discarded during startup.
+    }
+}
+
+export function markPlannerFailed(storage, chatId, fingerprint) {
+    if (!storage || !chatId || !fingerprint) return;
+    try {
+        storage.setItem(failedKey(chatId), JSON.stringify({ fingerprint, failedAt: Date.now() }));
+    } catch {
+        // Best effort. The in-page analysis guard still prevents overlapping
+        // runs when persistent browser storage is unavailable.
+    }
+}
+
+export function plannerFailedForSnapshot(storage, chatId, fingerprint) {
+    if (!storage || !chatId || !fingerprint) return false;
+    try {
+        const key = failedKey(chatId);
+        const failed = JSON.parse(storage.getItem(key) || 'null');
+        if (failed?.fingerprint === fingerprint) return true;
+        if (failed) storage.removeItem(key);
+    } catch {
+        // A malformed marker must never prevent future automatic planning.
+    }
+    return false;
+}
+
+export function clearPlannerFailed(storage, chatId) {
+    if (!storage || !chatId) return;
+    try {
+        storage.removeItem(failedKey(chatId));
+    } catch {
+        // Best effort only.
     }
 }

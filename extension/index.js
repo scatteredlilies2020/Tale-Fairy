@@ -21,10 +21,10 @@ import { collectSummarySources, summarySourceAudit } from './summary-context.js?
 import { estimateTokenCount } from './token-budget.js?v=0.11.100';
 import { completionText } from './completion-response.js?v=0.11.100';
 import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.11.105';
-import { clearPlannerPending, markPlannerPending, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.100';
+import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.105';
+const RUNTIME_VERSION = '0.11.106';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -1456,6 +1456,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         next.noteNeedsClarification = Boolean(userNote && !resolvedNote);
         await persist(next, { chatId, fingerprint, messageCount: chat.length, allowOneUserAppend });
         await acknowledgeDetachedPlannerRun(detachedRunKey, chatId);
+        clearPlannerFailed(plannerStorage(), chatId);
         cancelAnalysisRetry();
         lastAnalysisError = '';
         finalStatus = userNote && !resolvedNote
@@ -1470,13 +1471,15 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
             const stopped = controller.signal.aborted;
             if (!stopped) lastAnalysisError = analysisErrorMessage(error);
             const retryable = shouldRetryPlannerError(error, stopped);
+            const willRetry = !stopped && retryable && analysisRetryAttempt < PLANNER_MAX_AUTO_RETRIES;
+            if (!stopped && !willRetry) markPlannerFailed(plannerStorage(), chatId, fingerprint);
             finalStatus = stopped
                 ? 'Stopped'
                 : error?.name === 'PlannerBusyInAnotherTabError'
                     ? 'Planner active in another page'
                     : isPlannerTimeoutError(error)
                         ? `Planner timed out after ${elapsedLabel(Date.now() - startedAt)} · automatic retry stopped`
-                        : retryable && analysisRetryAttempt < PLANNER_MAX_AUTO_RETRIES
+                        : willRetry
                             ? scheduleAnalysisRetry(error, { note, rebuild, waitForContinuity }, chatId)
                             : `Analysis failed · ${lastAnalysisError}`;
             if (!stopped && (!retryable || analysisRetryAttempt >= PLANNER_MAX_AUTO_RETRIES)) console.warn(`[${EXTENSION_ID}] analysis skipped`, error);
@@ -1884,6 +1887,11 @@ async function refreshCurrentPlanIfNeeded() {
     const state = loadState(context.chatMetadata);
     if (!getSettings().enabled || !chatId || !messages.length) {
         updatePrompt(state);
+        return state;
+    }
+    if (plannerFailedForSnapshot(plannerStorage(), chatId, fingerprint)) {
+        updatePrompt(state);
+        renderAnalysisActivity('Planner paused after unusable output · waiting for a new turn or Guide now', false);
         return state;
     }
     const decision = interrupted

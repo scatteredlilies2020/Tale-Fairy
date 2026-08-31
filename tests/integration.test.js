@@ -12,9 +12,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.105');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.105');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.105');
+    assert.equal(manifest.version, '0.11.106');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.106');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.106');
     assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.100'/);
     assert.match(source, /from '\.\/state\.js\?v=0\.11\.101'/);
     assert.match(source, /from '\.\/author-board\.js\?v=0\.11\.101'/);
@@ -23,7 +23,7 @@ test('manifest identifies the adaptive planning release', () => {
     assert.match(source, /from '\.\/planner-scheduler\.js\?v=0\.11\.101'/);
     assert.match(source, /from '\.\/completion-response\.js\?v=0\.11\.100'/);
     assert.match(source, /from '\.\/output-negotiation\.js\?v=0\.11\.105'/);
-    assert.match(source, /from '\.\/planner-lifecycle\.js\?v=0\.11\.100'/);
+    assert.match(source, /from '\.\/planner-lifecycle\.js\?v=0\.11\.106'/);
 });
 
 test('injection sends layered authorial control while concrete realization and future outcomes stay private', () => {
@@ -142,6 +142,8 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /Planner active in another page/);
     assert.match(source, /markPlannerPending\(plannerStorage\(\), chatId, fingerprint\)/);
     assert.match(source, /clearPlannerPending\(plannerStorage\(\), chatId\)/);
+    assert.match(source, /plannerFailedForSnapshot\(plannerStorage\(\), chatId, fingerprint\)/);
+    assert.match(source, /markPlannerFailed\(plannerStorage\(\), chatId, fingerprint\)/);
     assert.match(source, /Waiting for planner model/);
     assert.match(source, /Reading summaries and World Info/);
     assert.match(summarySource, /worldInfoActivationContext\(messages, options\.worldInfoActivationTokens \|\| 12000\)/);
