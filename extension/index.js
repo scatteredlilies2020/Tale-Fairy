@@ -4,7 +4,7 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_SCHEMA, buildAnalysisPrompt, buildFinalizationEvidence, extractJson, finalizeAnalysisResult, requireValidAnalysisResult, SYSTEM } from './analysis.js';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js';
 import { buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js';
 import { resolveInjectionPlacement } from './injection-placement.js';
 import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js';
@@ -14,9 +14,10 @@ import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlErr
 import { readContinuityBridge, waitForContinuityBridge } from './continuity.js';
 import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js';
 import { collectSummarySources, summarySourceAudit } from './summary-context.js';
+import { estimateTokenCount } from './token-budget.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.76';
+const RUNTIME_VERSION = '0.11.77';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -44,12 +45,12 @@ const legacyUpgradeAttempts = new Set();
 const directModelCache = new Map();
 // Reasoning providers may count hidden thinking against this ceiling. The
 // planner prompt and schema separately target a concise visible JSON result.
-const PLANNER_RESPONSE_TOKENS = 16384;
-const PLANNER_REQUEST_TIMEOUT_MS = 300000;
+const PLANNER_RESPONSE_TOKENS = 6144;
+const PLANNER_REQUEST_TIMEOUT_MS = 120000;
 const PLANNER_MAX_AUTO_RETRIES = 2;
 const UI_MOUNT_TIMEOUT_MS = 30000;
 const LEGACY_UPGRADE_MAX_ATTEMPTS = 1;
-const INTERNAL_PLANNER_MARKER = 'You are Tale Fairy, a narrative planning layer for SillyTavern roleplay.';
+const INTERNAL_PLANNER_MARKER = 'You are Tale Fairy, the private authorial planning layer for SillyTavern roleplay.';
 
 globalThis.taleFairyRuntime = Object.freeze({ version: RUNTIME_VERSION, loadedAt: Date.now() });
 console.info(`[${EXTENSION_ID}] Tale Fairy runtime ${RUNTIME_VERSION} loaded`);
@@ -139,6 +140,7 @@ function getSettings() {
     settings.analysisReasoningMode = normalizeReasoningMode(settings.analysisReasoningMode);
     if (settings.analysisReasoningMode === 'default') settings.analysisReasoningMode = 'auto';
     settings.analysisTemperature = normalizePlannerTemperature(settings.analysisTemperature);
+    settings.maxPromptTokens = Math.max(9000, Math.min(30000, Number(settings.maxPromptTokens) || DEFAULT_SETTINGS.maxPromptTokens));
     return settings;
 }
 
@@ -156,23 +158,34 @@ function messagesFromChat(chat = []) { return chat.map(m => ({ mes: m?.mes || ''
 function currentContext() { return getContext(); }
 
 async function buildTokenBudgetedAnalysisPrompt(messages, state, note, bootstrap, options) {
-    const tokenBudget = Math.max(8000, Math.min(30000, Number(options.maxPromptTokens) || 12000));
+    const tokenBudget = Math.max(9000, Math.min(30000, Number(options.maxPromptTokens) || 12000));
+    const fixedEnvelope = `${SYSTEM}\n${JSON.stringify(ANALYSIS_SCHEMA.value)}`;
+    const estimatedOverhead = estimateTokenCount(fixedEnvelope);
     const context = currentContext();
     const tokenCounter = typeof context?.getTokenCountAsync === 'function'
         ? context.getTokenCountAsync.bind(context)
         : null;
-    let effectivePromptTokens = tokenBudget;
+    let effectivePromptTokens = Math.max(1000, tokenBudget - estimatedOverhead);
     let prompt = '';
     let actualTokens = 0;
     for (let attempt = 0; attempt < 8; attempt++) {
         prompt = buildAnalysisPrompt(messages, state, note, bootstrap, { ...options, maxPromptTokens: tokenBudget, effectivePromptTokens });
-        if (!tokenCounter) return prompt;
+        if (!tokenCounter) {
+            const estimatedTotal = estimateTokenCount(`${fixedEnvelope}\n${prompt}`);
+            if (estimatedTotal <= tokenBudget) return prompt;
+            actualTokens = estimatedTotal;
+            const scaledBudget = Math.floor(effectivePromptTokens * tokenBudget / estimatedTotal * 0.96);
+            effectivePromptTokens = Math.max(1000, Math.min(effectivePromptTokens - 100, scaledBudget));
+            continue;
+        }
         try {
-            actualTokens = Number(await tokenCounter(prompt, 0));
+            actualTokens = Number(await tokenCounter(`${fixedEnvelope}\n${prompt}`, 0));
         } catch {
             // The model-neutral counter still enforces the configured budget
             // if SillyTavern's provider tokenizer is temporarily unavailable.
-            return prompt;
+            const estimatedTotal = estimateTokenCount(`${fixedEnvelope}\n${prompt}`);
+            if (estimatedTotal <= tokenBudget) return prompt;
+            actualTokens = estimatedTotal;
         }
         if (!Number.isFinite(actualTokens) || actualTokens <= tokenBudget) return prompt;
         const scaledBudget = Math.floor(effectivePromptTokens * tokenBudget / actualTokens * 0.96);
@@ -776,28 +789,16 @@ function stopAnalysis() {
     interruptAnalysis('Tale Fairy analysis stopped by the user.', 'Stopped');
 }
 
-function parseAnalysisResponse(value, evidence = '') {
+function parseAnalysisResponse(value) {
     try {
-        let expectedOfferedIds = [];
-        let priorPlannerState = null;
-        try {
-            const prompt = JSON.parse(evidence);
-            priorPlannerState = prompt?.current || null;
-            expectedOfferedIds = (Array.isArray(prompt?.current?.lastOfferedCues) ? prompt.current.lastOfferedCues : [])
-                .filter(cue => cue?.requestConfirmed === true && typeof cue?.id === 'string' && cue.id.trim())
-                .map(cue => cue.id.trim());
-        } catch {
-            // Non-JSON evidence simply has no authoritative offered-cue record.
-        }
         const rawResult = value && typeof value === 'object' && !Array.isArray(value) && value.scene
             ? value
             : extractJson(completionText(value));
-        // Provider output is normalized and validated locally. A partially
-        // populated but usable result must never cause a second full-context
-        // generation: the schema-constrained first request is the sole
-        // semantic planning pass.
-        const result = requireValidAnalysisResult(rawResult, { expectedOfferedIds, priorPlannerState, preservePriorLoreOnRecovery: true });
-        return finalizeAnalysisResult(result, evidence);
+        const validation = validateAnalysisResult(rawResult);
+        if (!validation.valid) {
+            throw new AnalysisValidationError(`Planner violated its strict output contract: ${validation.errors.slice(0, 16).join('; ')}.`);
+        }
+        return rawResult;
     } catch (error) {
         if (error instanceof AnalysisValidationError) throw error;
         throw new AnalysisValidationError(`Planner did not return valid JSON: ${error?.message || error}.`);
@@ -930,7 +931,7 @@ function rebuildState() {
     return defaultState();
 }
 
-async function requestAnalysisOnce(prompt, externalSignal, finalizationEvidence = prompt) {
+async function requestAnalysisOnce(prompt, externalSignal) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(new DOMException('Tale Fairy planner request timed out.', 'TimeoutError')), PLANNER_REQUEST_TIMEOUT_MS);
     const forwardAbort = () => controller.abort(externalSignal?.reason || new DOMException('Tale Fairy analysis stopped.', 'AbortError'));
@@ -972,7 +973,7 @@ async function requestAnalysisOnce(prompt, externalSignal, finalizationEvidence 
             try {
                 const response = await sendProfile(true);
                 controller.signal.throwIfAborted();
-                return parseAnalysisResponse(response, finalizationEvidence);
+                return parseAnalysisResponse(response);
             } catch (error) {
                 controller.signal.throwIfAborted();
                 // A completed planner response that fails our deterministic
@@ -993,7 +994,7 @@ async function requestAnalysisOnce(prompt, externalSignal, finalizationEvidence 
                     response = await sendProfile(false, fallbackSystem);
                 }
                 controller.signal.throwIfAborted();
-                return parseAnalysisResponse(response, finalizationEvidence);
+                return parseAnalysisResponse(response);
             }
         }
         if (model.active) {
@@ -1030,11 +1031,11 @@ async function requestAnalysisOnce(prompt, externalSignal, finalizationEvidence 
                 if (activeSource === 'openrouter') {
                     const raw = await runActiveCompatible(false);
                     controller.signal.throwIfAborted();
-                    return parseAnalysisResponse(raw, finalizationEvidence);
+                    return parseAnalysisResponse(raw);
                 }
                 const raw = await runActiveCompatible(true);
                 controller.signal.throwIfAborted();
-                return parseAnalysisResponse(raw, finalizationEvidence);
+                return parseAnalysisResponse(raw);
             } catch (error) {
                 controller.signal.throwIfAborted();
                 if (error instanceof AnalysisValidationError) throw error;
@@ -1044,7 +1045,7 @@ async function requestAnalysisOnce(prompt, externalSignal, finalizationEvidence 
                         const activeSource = String(currentContext().chatCompletionSettings?.chat_completion_source || '');
                         const raw = await runActiveCompatible(activeSource !== 'openrouter');
                         controller.signal.throwIfAborted();
-                        return parseAnalysisResponse(raw, finalizationEvidence);
+                        return parseAnalysisResponse(raw);
                     } catch (retryError) {
                         controller.signal.throwIfAborted();
                         error = retryError;
@@ -1053,7 +1054,7 @@ async function requestAnalysisOnce(prompt, externalSignal, finalizationEvidence 
                 console.warn(`[${EXTENSION_ID}] active model structured request failed; retrying with a JSON-only prompt`, error);
                 const raw = await runActiveCompatible(false);
                 controller.signal.throwIfAborted();
-                return parseAnalysisResponse(raw, finalizationEvidence);
+                return parseAnalysisResponse(raw);
             }
         }
         const reasoningMode = plannerReasoningMode();
@@ -1073,7 +1074,7 @@ async function requestAnalysisOnce(prompt, externalSignal, finalizationEvidence 
             const payload = await response.json();
             if (!response.ok || payload?.error) throw new Error(payload?.error?.message || payload?.error || `Analysis request failed (${response.status}).`);
             controller.signal.throwIfAborted();
-            return parseAnalysisResponse(payload, finalizationEvidence);
+            return parseAnalysisResponse(payload);
         };
         const send = structured => retryWithoutUnsupportedTemperature(
             () => sendRaw(structured),
@@ -1111,8 +1112,8 @@ async function requestAnalysisOnce(prompt, externalSignal, finalizationEvidence 
     }
 }
 
-async function requestAnalysis(prompt, externalSignal, finalizationEvidence = prompt) {
-    return requestAnalysisOnce(prompt, externalSignal, finalizationEvidence);
+async function requestAnalysis(prompt, externalSignal) {
+    return requestAnalysisOnce(prompt, externalSignal);
 }
 
 export async function analyzeNow({ note = null, force = false, messages = null, rebuild = false, allowOneUserAppend = false, allowStaleContinuity = false, waitForContinuity = false, retryAttempt = 0 } = {}) {
@@ -1166,11 +1167,10 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         });
         lastSummaryAudit = summarySourceAudit(summarySources);
         controller.signal.throwIfAborted();
-        showAnalysisPhase(`Building ${Number(s.maxPromptTokens).toLocaleString()}-token planner context`, runId, startedAt);
+        showAnalysisPhase(`Building ${Number(s.maxPromptTokens).toLocaleString()}-token total planner input`, runId, startedAt);
         const plannerPrompt = await buildTokenBudgetedAnalysisPrompt(chat, current, noteInstruction(userNote), bootstrapContext(context), { recentContextTokens: s.recentContextTokens, messageTokenLimit: s.messageTokenLimit, summaryContextTokens: s.summaryContextTokens, summarySources, bootstrapScan: rebuild || current.canonBootstrapPending || current.scene.status === 'uninitialized' || !current.contextLedger, maxPromptTokens: s.maxPromptTokens, variationNonce });
-        const finalizationEvidence = buildFinalizationEvidence(chat, plannerPrompt);
         showAnalysisPhase('Waiting for planner model', runId, startedAt);
-        const result = await requestAnalysis(plannerPrompt, controller.signal, finalizationEvidence);
+        const result = await requestAnalysis(plannerPrompt, controller.signal);
         controller.signal.throwIfAborted();
         showAnalysisPhase('Validating and saving planner result', runId, startedAt);
         const resolvedNote = resolveUserNote(result, userNote);
@@ -1668,7 +1668,7 @@ async function mountUI() {
     root.querySelector('[data-setting="continuity"]').addEventListener('change', e => { invalidatePlanner(); s.continuityIntegration = e.target.checked; save(); });
     root.querySelector('[data-setting="recent-budget"]').addEventListener('change', e => { invalidatePlanner(); s.recentContextTokens = Math.max(1000, Math.min(12000, Number(e.target.value) || 4000)); e.target.value = s.recentContextTokens; save(); });
     root.querySelector('[data-setting="summary-budget"]').addEventListener('change', e => { invalidatePlanner(); s.summaryContextTokens = Math.max(1000, Math.min(8000, Number(e.target.value) || 4000)); e.target.value = s.summaryContextTokens; save(); });
-    root.querySelector('[data-setting="budget"]').addEventListener('change', e => { invalidatePlanner(); s.maxPromptTokens = Math.max(8000, Math.min(30000, Number(e.target.value) || 12000)); e.target.value = s.maxPromptTokens; save(); });
+    root.querySelector('[data-setting="budget"]').addEventListener('change', e => { invalidatePlanner(); s.maxPromptTokens = Math.max(9000, Math.min(30000, Number(e.target.value) || 12000)); e.target.value = s.maxPromptTokens; save(); });
     root.querySelector('[data-setting="injection-position"]').addEventListener('change', e => { s.injectionPosition = e.target.value; save(); });
     root.querySelector('[data-setting="injection-depth"]').addEventListener('change', e => { s.injectionDepth = Math.min(100, Math.max(0, Number(e.target.value) || 0)); e.target.value = s.injectionDepth; save(); });
     root.querySelector('[data-setting="injection-role"]').addEventListener('change', e => { s.injectionRole = e.target.value; save(); });

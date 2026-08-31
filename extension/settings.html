@@ -31,9 +31,9 @@
             <input class="text_pole" type="number" data-setting="summary-budget" min="1000" max="8000" step="500" value="4000">
             <small>Shared fairly across Continuity Memory, extension summaries, recaps, world state, message memory, and active World Info.</small>
           </label>
-          <label>Planner context budget (tokens)
-            <input class="text_pole" type="number" data-setting="budget" min="8000" max="30000" step="1000" value="12000">
-            <small>Maximum dynamic planner input; default 12,000 tokens.</small>
+          <label>Total planner input budget (tokens)
+            <input class="text_pole" type="number" data-setting="budget" min="9000" max="30000" step="1000" value="12000">
+            <small>Hard limit for instructions, schema, raw turns, summaries, World Info, and retained state together. Default: 12,000 tokens.</small>
           </label>
         </div>
         <label class="checkbox_label">
