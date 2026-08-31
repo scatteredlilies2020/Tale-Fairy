@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, AnalysisValidationError, MODE_INSTRUCTIONS, applyAnalysis, buildAnalysisPrompt, buildFinalizationEvidence, extractJson, finalizeAnalysisResult, requireValidAnalysisResult, SYSTEM, validateAnalysisResult } from '../extension/analysis.js';
 import { defaultState } from '../extension/state.js';
 
@@ -24,7 +25,8 @@ const directorScore = { story_identity: 'A Star Wars survival and institutional-
 const narrativeLayers = { immediate_action: 'Continue the tea conversation.', local_activity: 'A quiet tea conversation with Mara.', situation: 'An intimate home exchange constrained by Jedi obligations.', wider_world: 'Star Wars institutions, droids, duties, and ongoing life beyond this room.', durable_trajectory: 'An open-ended survival and institutional-conflict story about trust under Jedi obligations.', activity_role: 'developmental', temporal_scope: 'action' };
 const continuityThreads = [{ id: 'chancellor-petition', thread: 'Letter to the Chancellor', state: 'The filed petition awaits routing or an official response.', status: 'dormant', basis: 'The intake clerk accepted and filed the petition.' }];
 const selfChallenge = { weakness: 'The direct answer may overfocus the newest local exchange.', counter_route: 'Let the unresolved Chancellor petition create independent institutional movement.', decision: 'Keep the direct answer now because it has stronger immediate support, while retaining the petition as a distinct future route.' };
-const requiredPlanning = { story_frame: { frame: 'grounded', confidence: 'high', basis: 'ordinary scene' }, director_score: directorScore, narrative_layers: narrativeLayers, pathways, next_guides: nextGuides, plan_horizons: planHorizons, continuity_threads: continuityThreads, canon_constraints: [], note_resolution: null, ledger: 'Tea conversation is active.\nOpen routes: the filed Chancellor petition remains unresolved.', narrative_events: [], cue_audit: { offered_ids: [], manifested_ids: [], unused_ids: [], contradicted_ids: [], pacing: 'respected', reason: 'No prior cues were offered.' }, self_challenge: selfChallenge };
+const loreModel = { world_identity: 'An established speculative setting', baseline: 'Institutions, technology, and social obligations operate according to the supplied setting lore.', variant_rules: [], continuity_signatures: ['The current relationship and its accumulated trust are specific to this roleplay.'], baseline_departures: [], trajectory_signals: ['Trust and institutional duty are moving toward a consequential choice.'], active_forces: ['Institutional obligations', 'Relationship trust'], confidence: 'high' };
+const requiredPlanning = { story_frame: { frame: 'grounded', confidence: 'high', basis: 'ordinary scene' }, director_score: directorScore, lore_model: loreModel, narrative_layers: narrativeLayers, pathways, next_guides: nextGuides, plan_horizons: planHorizons, continuity_threads: continuityThreads, canon_constraints: [], note_resolution: null, ledger: 'Tea conversation is active.\nOpen routes: the filed Chancellor petition remains unresolved.', narrative_events: [], cue_audit: { offered_ids: [], manifested_ids: [], unused_ids: [], contradicted_ids: [], pacing: 'respected', reason: 'No prior cues were offered.' }, self_challenge: selfChallenge };
 
 test('extractJson accepts fenced and wrapped JSON', () => {
     assert.deepEqual(extractJson('```json\n{"inject":false}\n```'), { inject: false });
@@ -117,10 +119,10 @@ test('finalization never rejects authored names and deterministically retains ex
     ]);
 });
 
-test('finalization restores a filed Chancellor route when the planner drops durable full-chat evidence', () => {
+test('finalization generically restores an unrelated filed route dropped by the planner', () => {
     const result = requireValidAnalysisResult({
         ...requiredPlanning,
-        scene: { status: 'active', activity: 'Quiet reading', pace: 'slow', intent: 'Wait for Lucia', location: 'Room 12-14', time: 'evening', loop: false },
+        scene: { status: 'active', activity: 'Quiet reading', pace: 'slow', intent: 'Wait', location: 'guest room', time: 'evening', loop: false },
         objectives: [], continuity_threads: [], entities: [],
         possibilities: Array.from({ length: 14 }, (_, index) => ({ description: `Local or institutional route ${index + 1}.`, horizon: index < 3 ? 'local' : index < 7 ? 'near' : index < 10 ? 'mid' : 'far', conditions: [], force: 'moderate' })),
         guidance: 'Preserve the quiet room moment while keeping future routes conditional.',
@@ -128,18 +130,20 @@ test('finalization restores a filed Chancellor route when the planner drops dura
         reason: 'The current action is narrow.',
     });
     const evidence = JSON.stringify({ candidate_dormant_hooks: [{
-        index: 654,
+        index: 64,
         role: 'assistant',
         hook_type: 'correspondence-or-petition',
-        content: 'C-5-2214 — RECEIVED / CHANCELLOR’S AIDE OFFICE. The filed petition remains in routing; a substantive response is indeterminate.',
+        content: 'The harbor guild appeal was filed and accepted under reference HG-204; it remains pending in regional routing.',
     }] });
     finalizeAnalysisResult(result, evidence);
-    assert.ok(result.continuity_threads.some(item => item.id === 'chancellor-petition' && /awaits a substantive response/iu.test(item.state)));
-    assert.ok(result.objectives.some(item => item.title === 'Chancellor petition'));
-    assert.ok(result.possibilities.some(item => /Chancellor petition/iu.test(item.description)));
-    assert.ok(result.pathways.some(item => item.id === 'continuity-chancellor-petition' && item.status === 'latent'));
-    assert.ok(result.next_guides.some(item => item.id === 'continuity-chancellor-petition-guide' && item.origin === 'established'));
-    assert.ok(result.plan_horizons.items.some(item => item.branch === 'chancellor-petition'));
+    const restored = result.continuity_threads.find(item => /^open-correspondence-or-petition-/u.test(item.id));
+    assert.ok(restored);
+    assert.match(`${restored.thread} ${restored.state}`, /harbor guild appeal/iu);
+    assert.ok(result.objectives.some(item => item.title === restored.thread));
+    assert.ok(result.possibilities.some(item => /harbor guild appeal/iu.test(item.description)));
+    assert.ok(result.pathways.some(item => item.id === `continuity-${restored.id}` && item.status === 'latent'));
+    assert.ok(result.next_guides.some(item => item.id === `continuity-${restored.id}-guide` && item.origin === 'established'));
+    assert.ok(result.plan_horizons.items.some(item => item.branch === restored.id));
     assert.match(result.self_challenge.decision, /independent conditional future route/iu);
     const restoredValidation = validateAnalysisResult(result);
     assert.deepEqual(restoredValidation.errors, []);
@@ -148,16 +152,63 @@ test('finalization restores a filed Chancellor route when the planner drops dura
 test('finalization evidence retains dormant routes independently of the provider prompt budget', () => {
     const messages = Array.from({ length: 30 }, (_, index) => ({
         is_user: index % 2 === 0,
-        name: index % 2 === 0 ? 'Lucia' : 'Narrator',
+        name: index % 2 === 0 ? 'Player' : 'Narrator',
         mes: index === 4
-            ? 'The sealed petition was filed and accepted for routing to the Chancellor’s aide. Tracking C-5-2214; its response remains pending.'
+            ? 'The harbor guild appeal was filed and accepted under reference HG-204; its regional response remains pending.'
             : `Ordinary scene message ${index}.`,
     }));
     const evidence = JSON.parse(buildFinalizationEvidence(messages, '{"task":"update_narrative_context"}', 12));
     assert.equal(evidence.task, 'update_narrative_context');
     assert.ok(evidence.candidate_dormant_hooks.some(item => item.index === 4
         && item.hook_type === 'correspondence-or-petition'
-        && /Chancellor/iu.test(item.content)));
+        && /harbor guild/iu.test(item.content)));
+});
+
+test('generic lifecycle recovery covers unrelated correspondence, decisions, investigations, missions, commitments, and journeys', () => {
+    const result = requireValidAnalysisResult({
+        ...requiredPlanning,
+        continuity_threads: [], objectives: [], entities: [],
+        possibilities: Array.from({ length: 12 }, (_, index) => ({ description: `Independent route ${index + 1}.`, horizon: index < 3 ? 'local' : index < 6 ? 'near' : index < 9 ? 'mid' : 'far', conditions: [], force: 'moderate' })),
+        scene: { status: 'active', activity: 'Reviewing maps', pace: 'steady', intent: 'Plan', location: 'workroom', time: 'afternoon', loop: false },
+        guidance: 'Continue the present planning activity.', inject: true, reason: 'The current action is bounded.',
+    });
+    const examples = [
+        ['correspondence-or-petition', 'The harbor guild appeal was filed under reference HG-204 and remains pending.'],
+        ['scheduled-decision', 'The orchard license hearing is scheduled next week and awaits a decision.'],
+        ['investigation-or-search', 'The archive records inquiry was opened and remains ongoing while archivists search the ledgers.'],
+        ['mission-or-invitation', 'The floodgate repair contract was accepted and the crew remains assigned for deployment.'],
+        ['commitment-or-debt', 'The bridge mason promised repayment and the repair debt remains owed.'],
+        ['planned-journey-or-return', 'Passage to Northport was booked and departure remains planned for next month.'],
+    ];
+    finalizeAnalysisResult(result, JSON.stringify({ candidate_dormant_hooks: examples.map(([hook_type, content], index) => ({ index, role: index % 2 ? 'assistant' : 'user', hook_type, content })) }));
+    assert.equal(result.continuity_threads.length, examples.length);
+    assert.equal(new Set(result.continuity_threads.map(item => item.id)).size, examples.length);
+    for (const [hookType] of examples) assert.ok(result.continuity_threads.some(item => item.id.startsWith(`open-${hookType}-`)));
+    assert.ok(result.pathways.filter(item => item.id.startsWith('continuity-open-')).length >= 3);
+    assert.ok(result.plan_horizons.items.filter(item => item.branch.startsWith('open-')).length >= 3);
+    assert.deepEqual(validateAnalysisResult(result).errors, []);
+});
+
+test('later terminal evidence prevents a stale recovered route', () => {
+    const messages = Array.from({ length: 28 }, (_, index) => ({
+        is_user: index % 2 === 0,
+        mes: index === 3
+            ? 'The harbor guild application was filed under reference HG-204 and remains pending.'
+            : index === 24
+                ? 'The harbor guild application under reference HG-204 was denied and closed.'
+                : `Unrelated scene message ${index}.`,
+    }));
+    const evidence = buildFinalizationEvidence(messages, '{}', 8);
+    const result = requireValidAnalysisResult({ ...requiredPlanning, continuity_threads: [], objectives: [] });
+    finalizeAnalysisResult(result, evidence);
+    assert.equal(result.continuity_threads.some(item => /harbor guild application/iu.test(`${item.thread} ${item.state}`)), false);
+});
+
+test('runtime planner logic contains no scenario-specific character or franchise recovery keys', () => {
+    const source = ['analysis.js', 'state.js', 'index.js']
+        .map(file => readFileSync(new URL(`../extension/${file}`, import.meta.url), 'utf8'))
+        .join('\n');
+    assert.doesNotMatch(source, /Chancellor|C-5-2214|\bNim\b|Hokage|Dorn-2|Star Wars|Midichlorian|\bLucia\b|\bVekk\b|\bMara\b/u);
 });
 
 test('planner keeps a causal possibility pool and adaptive multi-horizon plan', () => {
@@ -196,8 +247,8 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /ends at travel or arrival/);
     assert.match(SYSTEM, /Give each next guide one coherent authorial function and one bounded impact envelope/);
     assert.match(SYSTEM, /Keep every referent unambiguous inside each guide/);
-    assert.match(SYSTEM, /Dorn-2 medical unit on Level 10/);
-    assert.match(SYSTEM, /Never reinterpret an established code or proper noun as a different kind of entity/);
+    assert.match(SYSTEM, /Expand a shorthand identifier with its established type/);
+    assert.match(SYSTEM, /Never reinterpret an established identifier or proper noun as a different kind of entity/);
     assert.match(SYSTEM, /The first is Tale Fairy's preferred authorial function/);
     assert.match(SYSTEM, /privately challenge the first apparent preference/);
     assert.match(SYSTEM, /strongest materially different supported route/);
@@ -255,14 +306,20 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /If the referent remains unavailable, do not invent its name, identity, rules, prior result, or history/);
     assert.match(SYSTEM, /story_identity is the durable overall story or arc identity/);
     assert.match(SYSTEM, /Never let a quiet meal, game, assignment, training exercise, domestic pause, romance beat, or other slice-of-life scene redefine the whole story/);
-    assert.match(SYSTEM, /even one hundred turns spent on an assignment remain a lull/);
+    assert.match(SYSTEM, /Repetition and turn count do not promote it into the overall story/);
     assert.match(SYSTEM, /Middle and distant rungs must reconnect to the broader character trajectory/);
     assert.match(SYSTEM, /open-ended roleplay, not a quest with a terminal win condition/);
-    assert.match(SYSTEM, /Plan toward, through, and beyond a milestone without inventing a fixed ending/);
+    assert.match(SYSTEM, /Plan toward, through, and beyond a milestone: achieving an ambition changes circumstances/);
     assert.match(SYSTEM, /distant horizon should preserve room for continued life and new arcs/);
     assert.match(SYSTEM, /preserve two or three distinct major future paths/);
     assert.match(SYSTEM, /four farthest horizons, preserve at least three meaningfully distinct future routes/);
-    assert.match(SYSTEM, /Chancellor petition, a companion's placement decision, and a scientific inquiry/);
+    assert.match(SYSTEM, /Distinct routes may share a setting or institution/);
+    assert.match(SYSTEM, /omniscient authorial vantage/);
+    assert.match(SYSTEM, /perspective, motivation, knowledge boundary, constraints, and independent agenda/);
+    assert.match(SYSTEM, /infer its relevant baseline lore/);
+    assert.match(SYSTEM, /Identify continuity_signatures from this roleplay specifically/);
+    assert.match(SYSTEM, /Identify baseline_departures by comparing supplied narrative evidence with the inferred baseline/);
+    assert.match(SYSTEM, /Narrative evidence always outranks the inferred baseline/);
     assert.match(SYSTEM, /drawn first from other supported live or dormant hooks/);
     assert.match(SYSTEM, /private, speculative, headcanon-like possibility/);
     assert.match(SYSTEM, /Competing paths may coexist; do not turn alternatives into a mandatory sequence/);

@@ -273,6 +273,26 @@ test('v25 plans rebuild once after duplicate-horizon recovery changes while cano
     assert.equal(migrated.lastRequestVerification, null);
 });
 
+test('RP-specific lore signatures and baseline departures survive storage and planner projection', () => {
+    const loreModel = {
+        worldIdentity: 'A recognizable maritime republic whose present continuity has diverged.',
+        baseline: 'The historical council appoints harbor officials by closed vote.',
+        variantRules: ['In this continuity, public testimony can compel a recorded council hearing.'],
+        continuitySignatures: [
+            'The player personally holds the only surviving tide-ledger.',
+            'The dockworkers and archivists formed an alliance during play.',
+        ],
+        baselineDepartures: ['The council now answers petitions in public instead of by closed review.'],
+        trajectorySignals: ['The alliance is gathering testimony rather than preparing a revolt.'],
+        activeForces: ['The council protects legitimacy while the harbor alliance seeks disclosure.'],
+        confidence: 'high',
+    };
+    const restored = loadState(saveState({ title: 'chat' }, { ...defaultState(), loreModel }));
+
+    assert.deepEqual(restored.loreModel, loreModel);
+    assert.deepEqual(stateForPrompt(restored).loreModel, loreModel);
+});
+
 test('v30 migration clears excluded-block local chronology but preserves upstream direction', () => {
     const migrated = normalizeState({
         version: 30,

@@ -17,6 +17,9 @@ export const ANALYSIS_SCHEMA_VALUE = {
         director_score: { type: 'object', additionalProperties: false, properties: {
             story_identity: { type: 'string', maxLength: 180 }, scene_function: { type: 'string', maxLength: 120 }, setting_identity: { type: 'string', maxLength: 120 }, setting_forces: { type: 'array', maxItems: 3, items: { type: 'string', maxLength: 140 } }, causal_tempo: { type: 'string', enum: ['hold','seed','advance','converge','payoff','redirect','recover'] }, arc_direction: { type: 'string', maxLength: 240 }, future_setup: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', maxLength: 100 }, development: { type: 'string', maxLength: 220 }, current_step: { type: 'string', maxLength: 180 }, conditions: { type: 'array', maxItems: 4, items: { type: 'string', maxLength: 120 } }, earliest_window: { type: 'string', maxLength: 120 }, disclosure: { type: 'string', enum: ['hidden','signaled','ready'] } }, required: ['id','development','current_step','conditions','earliest_window','disclosure'] }, meaningful_aim: { type: 'string', maxLength: 200 }, change: { type: 'string', enum: ['keep','adjust','advance','payoff','replace'] }, basis: { type: 'string', maxLength: 180 },
         }, required: ['story_identity','scene_function','setting_identity','setting_forces','causal_tempo','arc_direction','future_setup','meaningful_aim','change','basis'] },
+        lore_model: { type: 'object', additionalProperties: false, properties: {
+            world_identity: { type: 'string', maxLength: 140 }, baseline: { type: 'string', maxLength: 300 }, variant_rules: { type: 'array', maxItems: 6, items: { type: 'string', maxLength: 220 } }, continuity_signatures: { type: 'array', maxItems: 8, items: { type: 'string', maxLength: 220 } }, baseline_departures: { type: 'array', maxItems: 8, items: { type: 'string', maxLength: 240 } }, trajectory_signals: { type: 'array', maxItems: 6, items: { type: 'string', maxLength: 220 } }, active_forces: { type: 'array', maxItems: 5, items: { type: 'string', maxLength: 180 } }, confidence: { type: 'string', enum: ['low','moderate','high'] },
+        }, required: ['world_identity','baseline','variant_rules','continuity_signatures','baseline_departures','trajectory_signals','active_forces','confidence'] },
         narrative_layers: { type: 'object', additionalProperties: false, properties: {
             immediate_action: { type: 'string', maxLength: 140 }, local_activity: { type: 'string', maxLength: 180 }, situation: { type: 'string', maxLength: 220 }, wider_world: { type: 'string', maxLength: 240 }, durable_trajectory: { type: 'string', maxLength: 260 }, activity_role: { type: 'string', enum: ['incidental','routine','developmental','central','transition'] }, temporal_scope: { type: 'string', enum: ['moment','action','activity','scene','extended'] },
         }, required: ['immediate_action','local_activity','situation','wider_world','durable_trajectory','activity_role','temporal_scope'] },
@@ -25,7 +28,7 @@ export const ANALYSIS_SCHEMA_VALUE = {
         }, required: ['status','activity','pace','intent','location','time','loop'] },
         objectives: { type: 'array', maxItems: 10, items: { type: 'object', additionalProperties: false, properties: { title: { type: 'string', maxLength: 120 }, detail: { type: 'string', maxLength: 300 }, status: { type: 'string', maxLength: 40 }, source: { type: 'string', maxLength: 120 } }, required: ['title','detail','status','source'] } },
         continuity_threads: { type: 'array', maxItems: 10, items: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', maxLength: 100 }, thread: { type: 'string', maxLength: 180 }, state: { type: 'string', maxLength: 240 }, status: { type: 'string', enum: ['active','dormant','due','blocked'] }, basis: { type: 'string', maxLength: 160 } }, required: ['id','thread','state','status','basis'] } },
-        entities: { type: 'array', maxItems: 8, items: { type: 'object', additionalProperties: false, properties: { name: { type: 'string', maxLength: 100 }, state: { type: 'string', maxLength: 220 }, location: { type: 'string', maxLength: 140 }, relevance: { type: 'string', maxLength: 140 }, confidence: { type: 'string', maxLength: 40 }, window: { type: 'string', maxLength: 100 } }, required: ['name','state','location','relevance','confidence','window'] } },
+        entities: { type: 'array', maxItems: 8, items: { type: 'object', additionalProperties: false, properties: { name: { type: 'string', maxLength: 100 }, state: { type: 'string', maxLength: 220 }, location: { type: 'string', maxLength: 140 }, relevance: { type: 'string', maxLength: 140 }, perspective: { type: 'string', maxLength: 180 }, motivation: { type: 'string', maxLength: 180 }, knowledge: { type: 'string', maxLength: 180 }, constraints: { type: 'string', maxLength: 180 }, agenda: { type: 'string', maxLength: 180 }, confidence: { type: 'string', maxLength: 40 }, window: { type: 'string', maxLength: 100 } }, required: ['name','state','location','relevance','perspective','motivation','knowledge','constraints','agenda','confidence','window'] } },
         possibilities: { type: 'array', minItems: 12, maxItems: 18, items: { type: 'object', additionalProperties: false, properties: { description: { type: 'string', maxLength: 120 }, horizon: { type: 'string', enum: ['local','near','mid','far','wildcard'] }, conditions: { type: 'array', maxItems: 1, items: { type: 'string', maxLength: 90 } }, force: { type: 'string', enum: ['light','moderate','strong'] } }, required: ['description','horizon','conditions','force'] } },
         pathways: { type: 'array', minItems: 1, maxItems: 5, items: { type: 'object', additionalProperties: false, properties: {
             id: { type: 'string', maxLength: 100 }, direction: { type: 'string', maxLength: 320 }, when: { type: 'string', maxLength: 240 }, response_bias: { type: 'string', maxLength: 300 }, horizon: { type: 'string', maxLength: 80 }, status: { type: 'string', enum: ['foreground','available','latent','blocked'] }, conditions: { type: 'array', maxItems: 3, items: { type: 'string', maxLength: 140 } }, change: { type: 'string', enum: ['keep','adjust','activate','deactivate','replace','retire'] }, reason: { type: 'string', maxLength: 220 },
@@ -51,7 +54,7 @@ export const ANALYSIS_SCHEMA_VALUE = {
             weakness: { type: 'string', maxLength: 260 }, counter_route: { type: 'string', maxLength: 260 }, decision: { type: 'string', maxLength: 320 },
         }, required: ['weakness','counter_route','decision'] },
         guidance: { type: 'string', maxLength: 700 }, inject: { type: 'boolean', const: true }, reason: { type: 'string', maxLength: 300 },
-    }, required: ['story_frame','director_score','narrative_layers','scene','objectives','continuity_threads','entities','possibilities','pathways','next_guides','plan_horizons','canon_constraints','note_resolution','ledger','narrative_events','cue_audit','self_challenge','guidance','inject','reason'],
+    }, required: ['story_frame','director_score','lore_model','narrative_layers','scene','objectives','continuity_threads','entities','possibilities','pathways','next_guides','plan_horizons','canon_constraints','note_resolution','ledger','narrative_events','cue_audit','self_challenge','guidance','inject','reason'],
 };
 
 export const ANALYSIS_SCHEMA = Object.freeze({
@@ -86,6 +89,7 @@ export function validateAnalysisResult(result) {
     const scene = result.scene;
     const storyFrame = result.story_frame;
     const directorScore = result.director_score;
+    const loreModel = result.lore_model;
     const narrativeLayers = result.narrative_layers;
     if (!storyFrame || typeof storyFrame !== 'object' || Array.isArray(storyFrame)
         || ['frame', 'confidence', 'basis'].some(key => typeof storyFrame[key] !== 'string')) {
@@ -136,6 +140,25 @@ export function validateAnalysisResult(result) {
     }
     for (const key of ['objectives', 'entities', 'possibilities']) {
         if (!Array.isArray(result[key])) errors.push(`${key} must be an array`);
+    }
+    if (!loreModel || typeof loreModel !== 'object' || Array.isArray(loreModel)) {
+        errors.push('lore_model must be an object');
+    } else {
+        for (const key of ['world_identity', 'baseline']) {
+            if (typeof loreModel[key] !== 'string' || !loreModel[key].trim()) errors.push(`lore_model.${key} must be a non-empty string`);
+        }
+        for (const key of ['variant_rules', 'continuity_signatures', 'baseline_departures', 'trajectory_signals', 'active_forces']) {
+            if (!Array.isArray(loreModel[key])) errors.push(`lore_model.${key} must be an array`);
+        }
+        if (!['low', 'moderate', 'high'].includes(loreModel.confidence)) errors.push('lore_model.confidence is invalid');
+    }
+    for (const [index, entity] of (Array.isArray(result.entities) ? result.entities : []).entries()) {
+        for (const key of ['name', 'state', 'location', 'relevance', 'perspective', 'motivation', 'knowledge', 'constraints', 'agenda', 'confidence', 'window']) {
+            if (typeof entity?.[key] !== 'string') errors.push(`entities[${index}].${key} must be a string`);
+        }
+        if (!entity?.name?.trim() || !entity?.state?.trim() || !entity?.motivation?.trim() || !entity?.agenda?.trim()) {
+            errors.push(`entities[${index}] must identify a force, its state, motivation, and independent agenda`);
+        }
     }
     if (!Array.isArray(result.continuity_threads)) {
         errors.push('continuity_threads must be an array');
@@ -359,56 +382,105 @@ function evidencePayload(evidence) {
     try { return JSON.parse(evidence) || {}; } catch { return {}; }
 }
 
+const DURABLE_HOOK_RECOVERY = Object.freeze({
+    'correspondence-or-petition': { label: 'Correspondence or petition', nextStep: 'a delivery, routing, reply, decision, or supported follow-up' },
+    'scheduled-decision': { label: 'Scheduled decision or review', nextStep: 'the scheduled proceeding, a decision, or an official update' },
+    'investigation-or-search': { label: 'Investigation or search', nextStep: 'new evidence, a finding, a lead, or a supported closure' },
+    'mission-or-invitation': { label: 'Mission, assignment, or invitation', nextStep: 'acceptance, preparation, execution, refusal, or a supported change of terms' },
+    'commitment-or-debt': { label: 'Commitment, agreement, or debt', nextStep: 'fulfilment, repayment, renegotiation, release, or a supported consequence' },
+    'planned-journey-or-return': { label: 'Planned journey or return', nextStep: 'departure, arrival, delay, cancellation, or another supported travel step' },
+});
+const DURABLE_HOOK_OPEN_STATE = /\b(?:sent|filed|filing|submitted|delivered|received|accepted|registered|stamped|tracking|reference|routed|routing|forwarded|forwarding|intake|pending|queued|await(?:ing)?|waiting|follow[ -]?up|scheduled|due|deadline|opened|ongoing|assigned|commissioned|deployed|promised|agreed|owed|booked|reserved|planned|departing|returning)\b/iu;
+const DURABLE_HOOK_TERMINAL_STATE = /\b(?:withdrawn|cancelled|canceled|rejected|denied|resolved|closed|completed|finished|fulfilled|repaid|released|approved|decided|concluded|arrived|returned)\b/giu;
+const DURABLE_HOOK_IDENTITY_STOPWORDS = new Set([
+    'about', 'accepted', 'after', 'again', 'against', 'agreed', 'await', 'awaiting', 'before', 'booked', 'cancelled', 'canceled',
+    'closed', 'completed', 'decision', 'delivered', 'denied', 'filed', 'filing', 'follow', 'forwarded', 'from', 'into', 'later',
+    'opened', 'pending', 'planned', 'received', 'reference', 'registered', 'rejected', 'remains', 'reply', 'resolved', 'response',
+    'routed', 'routing', 'scheduled', 'sent', 'submitted', 'that', 'their', 'there', 'this', 'tracking', 'waiting', 'will', 'with',
+    'letter', 'petition', 'appeal', 'application', 'request', 'appointment', 'hearing', 'panel', 'review', 'meeting', 'interview',
+    'investigation', 'inquiry', 'search', 'order', 'case', 'file', 'evidence', 'trail', 'records', 'mission', 'assignment', 'contract',
+    'commission', 'invitation', 'offer', 'deployment', 'promise', 'agreement', 'deal', 'bargain', 'debt', 'favor', 'owed', 'obligation',
+    'departure', 'journey', 'trip', 'passage', 'ticket', 'return', 'visit', 'route', 'remained', 'remains', 'still', 'under', 'while',
+]);
+
+function hookTypePattern(hookType) {
+    return DURABLE_HOOK_TYPES.find(([type]) => type === hookType)?.[1];
+}
+
+function hookIdentityTerms(text, hookType) {
+    const generic = new Set((DURABLE_HOOK_RECOVERY[hookType]?.label || '').toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) || []);
+    return [...new Set(String(text || '').toLocaleLowerCase().match(/[\p{L}\p{N}][\p{L}\p{N}'’-]{2,}/gu) || [])]
+        .filter(term => !DURABLE_HOOK_IDENTITY_STOPWORDS.has(term) && !generic.has(term) && !/^\d+$/u.test(term))
+        .slice(0, 10);
+}
+
+function hasUnnegatedTerminalState(text) {
+    for (const match of String(text || '').matchAll(DURABLE_HOOK_TERMINAL_STATE)) {
+        const prefix = String(text || '').slice(Math.max(0, match.index - 24), match.index).toLocaleLowerCase();
+        if (!/\b(?:not|never|neither|nor|without|isn't|wasn't|hasn't|un)\s*$/u.test(prefix)) return true;
+    }
+    return false;
+}
+
+function stableHookSuffix(value) {
+    let hash = 2166136261;
+    for (const char of String(value || '')) {
+        hash ^= char.codePointAt(0);
+        hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(36);
+}
+
+function hookSubject(text, hookType) {
+    const cleaned = String(text || '').replace(/\s+/gu, ' ').trim();
+    const pattern = hookTypePattern(hookType);
+    const clauses = cleaned.split(/(?<=[.!?])\s+|\s+[—–|]\s+/u).filter(Boolean);
+    const subject = clauses.find(clause => pattern?.test(clause)) || cleaned;
+    return clipAtWord(subject.replace(/^[A-Z0-9 -]{3,30}:\s*/u, '').trim(), 125);
+}
+
+function durableSeedFromCandidate(candidate) {
+    const hookType = asString(candidate?.hook_type);
+    const config = DURABLE_HOOK_RECOVERY[hookType];
+    const text = asString(candidate?.content).trim();
+    const pattern = hookTypePattern(hookType);
+    if (!config || !text || !pattern?.test(text) || !DURABLE_HOOK_OPEN_STATE.test(text) || hasUnnegatedTerminalState(text)) return null;
+    const laterEvidence = asArray(candidate?.later_evidence).map(item => asString(item?.content));
+    if (laterEvidence.some(hasUnnegatedTerminalState)) return null;
+    const subject = hookSubject(text, hookType);
+    const identityTerms = hookIdentityTerms(subject, hookType);
+    const identity = identityTerms.slice(0, 5).join('-') || subject.toLocaleLowerCase();
+    const thread = clipAtWord(`${config.label}: ${subject}`, 180);
+    return {
+        id: `open-${hookType}-${stableHookSuffix(identity)}`,
+        hookType,
+        identityTerms,
+        thread,
+        state: clipAtWord(`Full-chat evidence leaves this unresolved: ${subject}`, 240),
+        status: /\b(?:due|overdue|deadline|today|tonight|now)\b/iu.test(text) ? 'due' : 'dormant',
+        basis: clipAtWord(`Full-chat ${candidate.role === 'user' ? 'user' : 'assistant'} evidence records an open ${config.label.toLocaleLowerCase()} lifecycle.`, 160),
+        condition: clipAtWord(`When ${config.nextStep} becomes causally supported.`, 140),
+        direction: clipAtWord(`Let “${subject}” advance only through ${config.nextStep}, without forcing it into the current beat.`, 280),
+        delta: clipAtWord(`“${subject}” gains one evidenced lifecycle step while player choices remain open.`, 140),
+        index: Number(candidate.index),
+    };
+}
+
 function durableContinuitySeeds(evidence) {
     const candidates = asArray(evidencePayload(evidence)?.candidate_dormant_hooks);
-    const combined = candidates.map(item => ({ ...item, content: asString(item?.content) }));
-    const seeds = [];
-    const add = seed => {
-        if (!seed || seeds.some(item => item.id === seed.id)) return;
-        seeds.push(seed);
-    };
-    for (const candidate of combined) {
-        const text = candidate.content;
-        // Only promote high-confidence procedural records. The wider candidate
-        // pool remains an audit lead for the model; it is deliberately not
-        // converted wholesale because words such as "meeting" or "later" can
-        // describe completed or merely hypothetical events.
-        if (/\bchancellor(?:'s)?\b/iu.test(text)
-            && (candidate.hook_type === 'correspondence-or-petition' || /\b(?:petition|letter|appeal)\b/iu.test(text))
-            && /\b(?:filed|received|accepted|intake|routing|tracking|reference|await|pending|response|reply|follow[ -]?up|moves?)\b/iu.test(text)
-            && !/\b(?:petition|letter|appeal)\b[\s\S]{0,80}\b(?:withdrawn|cancelled|canceled|rejected|denied|resolved|closed)\b/iu.test(text)) {
-            const tracking = text.match(/\b[A-Z]-\d+-\d+\b/u)?.[0];
-            add({
-                id: 'chancellor-petition',
-                thread: 'Chancellor petition',
-                state: `The filed petition${tracking ? ` (${tracking})` : ''} remains in official routing or awaits a substantive response.`,
-                status: 'dormant',
-                basis: 'Full-chat evidence records official intake/routing without a completed substantive outcome.',
-                condition: 'A reply, tracking update, or supported follow-up naturally reaches the story.',
-                direction: 'Let the filed Chancellor petition create an independent civic consequence only through a documented response or chosen follow-up.',
-                delta: 'The filed petition gains a documented procedural step without deciding the player character’s response.',
-                index: Number(candidate.index),
-            });
-        }
-        if (/\bplacement\b/iu.test(text)
-            && /\b(?:panel|review|decision|packet)\b/iu.test(text)
-            && /\b(?:filed|submitted|accepted|scheduled|due|pending|await|Thursday|tomorrow|next week)\b/iu.test(text)
-            && !/\bplacement\b[\s\S]{0,80}\b(?:decided|resolved|completed|cancelled|canceled|rejected|approved)\b/iu.test(text)) {
-            const owner = /\bNim\b/iu.test(text) ? 'Nim’s ' : '';
-            add({
-                id: `${owner ? 'nim-' : ''}placement-review`,
-                thread: `${owner}placement review`,
-                state: 'The submitted placement process remains pending its scheduled review or decision.',
-                status: 'dormant',
-                basis: 'Full-chat evidence records a submitted placement process without a completed decision.',
-                condition: 'The scheduled panel, an official update, or a participant’s supported follow-up becomes due.',
-                direction: 'Keep the pending placement review as an independent relationship and institutional route.',
-                delta: 'The placement process advances procedurally while preserving the player character’s choices.',
-                index: Number(candidate.index),
-            });
-        }
-    }
-    return seeds.sort((a, b) => (a.index || 0) - (b.index || 0)).slice(0, 4);
+    const seeds = candidates.map(durableSeedFromCandidate).filter(Boolean);
+    return seeds.filter((seed, index) => !seeds.slice(0, index).some(item => item.id === seed.id))
+        .sort((a, b) => (a.index || 0) - (b.index || 0))
+        .slice(0, DURABLE_HOOK_TYPES.length);
+}
+
+function seedMatchesText(seed, value) {
+    const text = String(value || '').toLocaleLowerCase();
+    if (!text) return false;
+    if (text.includes(seed.id.toLocaleLowerCase())) return true;
+    const pattern = hookTypePattern(seed.hookType);
+    const overlap = seed.identityTerms.filter(term => text.includes(term)).length;
+    return Boolean(pattern?.test(text) && (overlap > 0 || seed.identityTerms.length === 0));
 }
 
 function restoreDurableContinuityRoutes(result, evidence) {
@@ -417,8 +489,7 @@ function restoreDurableContinuityRoutes(result, evidence) {
     if (!seeds.length) return;
     const existingThreads = asArray(result.continuity_threads);
     const threadText = item => `${asString(item?.id)} ${asString(item?.thread)} ${asString(item?.state)}`.toLocaleLowerCase();
-    const missing = seeds.filter(seed => !existingThreads.some(item => item?.id === seed.id || threadText(item).includes(seed.id.replaceAll('-', ' '))
-        || (seed.id === 'chancellor-petition' && /chancellor[\s\S]*(?:petition|letter|appeal)|(?:petition|letter|appeal)[\s\S]*chancellor/iu.test(threadText(item)))));
+    const missing = seeds.filter(seed => !existingThreads.some(item => item?.id === seed.id || seedMatchesText(seed, threadText(item))));
     if (!missing.length) return;
 
     result.continuity_threads = [...existingThreads, ...missing.map(({ id, thread, state, status, basis }) => ({ id, thread, state, status, basis }))].slice(-10);
@@ -433,36 +504,38 @@ function restoreDurableContinuityRoutes(result, evidence) {
     }
     result.objectives = objectives.slice(-10);
 
-    const lead = missing[0];
+    const promoted = missing.slice(0, 3);
+    const lead = promoted[0];
     const routeId = `continuity-${lead.id}`;
-    const possibility = {
-        description: clipAtWord(lead.direction, 120),
-        horizon: 'far',
-        conditions: [clipAtWord(lead.condition, 90)],
-        force: 'moderate',
-    };
     const possibilities = asArray(result.possibilities);
-    if (!possibilities.some(item => /chancellor[\s\S]*(?:petition|letter|appeal)|(?:petition|letter|appeal)[\s\S]*chancellor/iu.test(asString(item?.description)))) {
-        if (possibilities.length >= 18) possibilities.splice(-2, 1);
-        possibilities.push(possibility);
+    for (const seed of missing) {
+        if (possibilities.some(item => seedMatchesText(seed, asString(item?.description)))) continue;
+        if (possibilities.length >= 18) possibilities.splice(Math.max(0, possibilities.length - 2), 1);
+        possibilities.push({
+            description: clipAtWord(seed.direction, 120),
+            horizon: 'far',
+            conditions: [clipAtWord(seed.condition, 90)],
+            force: 'moderate',
+        });
     }
     result.possibilities = possibilities.slice(0, 18);
 
-    const pathway = {
-        id: routeId,
-        direction: lead.direction,
-        when: lead.condition,
-        response_bias: 'Advance only the evidenced procedural step; do not force the route into the current beat or decide the player response.',
-        horizon: 'later / when causally ready',
-        status: 'latent',
-        conditions: [lead.condition],
-        change: 'adjust',
-        reason: lead.basis,
-    };
     const pathways = asArray(result.pathways);
-    if (!pathways.some(item => item?.id === routeId)) {
+    for (const seed of promoted) {
+        const seedRouteId = `continuity-${seed.id}`;
+        if (pathways.some(item => item?.id === seedRouteId || seedMatchesText(seed, asString(item?.direction)))) continue;
         if (pathways.length >= 5) pathways.pop();
-        pathways.push(pathway);
+        pathways.push({
+            id: seedRouteId,
+            direction: seed.direction,
+            when: seed.condition,
+            response_bias: 'Advance only the evidenced lifecycle step; do not force this route into the current beat or decide the player response.',
+            horizon: 'later / when causally ready',
+            status: 'latent',
+            conditions: [seed.condition],
+            change: 'adjust',
+            reason: seed.basis,
+        });
     }
     result.pathways = pathways.slice(0, 5);
 
@@ -489,11 +562,12 @@ function restoreDurableContinuityRoutes(result, evidence) {
     result.next_guides = guides.slice(0, 4);
 
     const horizons = asArray(result.plan_horizons?.items);
-    if (!horizons.some(item => item?.branch === lead.id)) {
+    for (const seed of promoted) {
+        if (horizons.some(item => item?.branch === seed.id || seedMatchesText(seed, asString(item?.direction)))) continue;
         const horizon = {
-            id: `${routeId}-horizon`, branch: lead.id, direction: lead.direction,
+            id: `continuity-${seed.id}-horizon`, branch: seed.id, direction: seed.direction,
             timeframe: 'later in the current or following arc', stability: 'stable',
-            conditions: [lead.condition], change: 'adjust', reason: lead.basis,
+            conditions: [seed.condition], change: 'adjust', reason: seed.basis,
         };
         if (horizons.length >= 10) horizons.splice(-2, 1);
         else if (horizons.length >= 6) horizons.splice(Math.max(1, horizons.length - 1), 0, horizon);
@@ -558,6 +632,28 @@ function repairPossibility(item, index) {
     };
 }
 
+function repairEntity(item, index) {
+    const source = item && typeof item === 'object' && !Array.isArray(item) ? item : {};
+    const name = asString(source.name, `Active world force ${index + 1}`).trim() || `Active world force ${index + 1}`;
+    const state = asString(source.state, source.status).trim() || 'Its current causal state must be inferred from the supplied evidence.';
+    const relevance = asString(source.relevance, source.role).trim() || state;
+    const motivation = asString(source.motivation, source.motive).trim()
+        || `Pursue or protect what is currently at stake for this force: ${relevance}`;
+    return {
+        name: clipAtWord(name, 100),
+        state: clipAtWord(state, 220),
+        location: clipAtWord(asString(source.location, 'Offscreen or at its established location'), 140),
+        relevance: clipAtWord(relevance, 140),
+        perspective: clipAtWord(asString(source.perspective, source.point_of_view).trim() || `Interprets events through its own position, interests, and available evidence.`, 180),
+        motivation: clipAtWord(motivation, 180),
+        knowledge: clipAtWord(asString(source.knowledge, source.beliefs).trim() || 'Knows only what established access, observation, reports, and beliefs support.', 180),
+        constraints: clipAtWord(asString(source.constraints, source.limits).trim() || 'Bound by established access, resources, obligations, relationships, and world rules.', 180),
+        agenda: clipAtWord(asString(source.agenda, source.next_action).trim() || `Continue acting independently from this motivation unless conditions change.`, 180),
+        confidence: clipAtWord(asString(source.confidence, 'moderate'), 40),
+        window: clipAtWord(asString(source.window, source.timing).trim() || 'current or next relevant causal window', 100),
+    };
+}
+
 function clipAtWord(value, limit) {
     const text = asString(value).trim();
     if (text.length <= limit) return text;
@@ -603,6 +699,7 @@ export function repairAnalysisResult(result, { expectedOfferedIds = [], priorPla
     const sceneSource = result.scene && typeof result.scene === 'object' && !Array.isArray(result.scene) ? result.scene : {};
     const storySource = result.story_frame && typeof result.story_frame === 'object' && !Array.isArray(result.story_frame) ? result.story_frame : {};
     const directorSource = result.director_score && typeof result.director_score === 'object' && !Array.isArray(result.director_score) ? result.director_score : {};
+    const loreSource = result.lore_model && typeof result.lore_model === 'object' && !Array.isArray(result.lore_model) ? result.lore_model : {};
     const layersSource = result.narrative_layers && typeof result.narrative_layers === 'object' && !Array.isArray(result.narrative_layers) ? result.narrative_layers : {};
     const priorLayers = priorPlannerState?.narrativeLayers || priorPlannerState?.narrative_layers || {};
     const repaired = {
@@ -630,6 +727,16 @@ export function repairAnalysisResult(result, { expectedOfferedIds = [], priorPla
             meaningful_aim: asString(directorSource.meaningful_aim, 'Change understanding, relationship, stakes, or available choices in a scene-supported way.') || 'Change understanding, relationship, stakes, or available choices in a scene-supported way.',
             change: oneOf(directorSource.change, ['keep', 'adjust', 'advance', 'payoff', 'replace'], 'replace'),
             basis: asString(directorSource.basis, 'Recovered from the active scene and retained narrative trajectory.') || 'Recovered from the active scene and retained narrative trajectory.',
+        },
+        lore_model: {
+            world_identity: clipAtWord(asString(loreSource.world_identity, directorSource.setting_identity).trim() || 'The world established by the supplied narrative evidence', 140),
+            baseline: clipAtWord(asString(loreSource.baseline).trim() || 'Use the world rules supported by scenario, character, lore, summaries, and story evidence; keep unsupported details provisional.', 300),
+            variant_rules: uniqueStrings(loreSource.variant_rules).slice(0, 6).map(item => clipAtWord(item, 220)),
+            continuity_signatures: uniqueStrings(loreSource.continuity_signatures).slice(0, 8).map(item => clipAtWord(item, 220)),
+            baseline_departures: uniqueStrings(loreSource.baseline_departures).slice(0, 8).map(item => clipAtWord(item, 240)),
+            trajectory_signals: uniqueStrings(loreSource.trajectory_signals).slice(0, 6).map(item => clipAtWord(item, 220)),
+            active_forces: uniqueStrings(loreSource.active_forces).slice(0, 5).map(item => clipAtWord(item, 180)),
+            confidence: oneOf(asString(loreSource.confidence).toLowerCase(), ['low', 'moderate', 'high'], 'low'),
         },
         narrative_layers: {
             immediate_action: usablePlanningText(layersSource.immediate_action),
@@ -661,7 +768,7 @@ export function repairAnalysisResult(result, { expectedOfferedIds = [], priorPla
                 thread: asString(item?.thread).trim(), state: asString(item?.state).trim(),
                 status: oneOf(item?.status, ['active', 'dormant', 'due', 'blocked'], 'dormant'), basis: asString(item?.basis).trim(),
             })).filter(item => item.thread && item.state && item.basis),
-        entities: asArray(result.entities),
+        entities: asArray(result.entities).map(repairEntity).slice(0, 8),
         possibilities: asArray(result.possibilities).map(repairPossibility).filter(Boolean).slice(0, 18),
         canon_constraints: uniqueStrings(result.canon_constraints),
         ledger: asString(result.ledger),
@@ -952,6 +1059,12 @@ export function repairAnalysisResult(result, { expectedOfferedIds = [], priorPla
     repaired.narrative_layers.situation ||= `${sceneIntent} at ${sceneLocation}.`.slice(0, 220);
     repaired.narrative_layers.wider_world ||= (nearHorizon.direction || primaryPath?.direction).slice(0, 240);
     repaired.narrative_layers.durable_trajectory ||= farHorizon.direction.slice(0, 260);
+    repaired.lore_model.world_identity ||= repaired.director_score.setting_identity;
+    repaired.lore_model.baseline ||= `Use the established operating logic of ${repaired.lore_model.world_identity}; narrative evidence overrides unsupported assumptions.`.slice(0, 300);
+    if (!repaired.lore_model.active_forces.length) repaired.lore_model.active_forces = repaired.director_score.setting_forces.slice(0, 5);
+    if (!repaired.lore_model.trajectory_signals.length) {
+        repaired.lore_model.trajectory_signals = [repaired.narrative_layers.durable_trajectory].filter(Boolean).slice(0, 1);
+    }
 
     if (!repaired.entities.length) {
         repaired.entities = [{
@@ -959,6 +1072,11 @@ export function repairAnalysisResult(result, { expectedOfferedIds = [], priorPla
             state: `${sceneActivity}; ${repaired.narrative_layers.situation}`.slice(0, 220),
             location: sceneLocation.slice(0, 140),
             relevance: (primaryPath?.direction || nearHorizon.direction).slice(0, 140),
+            perspective: 'Interprets change through the current situation and the evidence available within it.',
+            motivation: 'Carry the strongest supported causal pressure forward without deciding for the player.',
+            knowledge: 'Contains only established scene facts and causally supported inferences.',
+            constraints: 'Bound by player agency, current timing, lore, material conditions, and disclosure limits.',
+            agenda: 'Continue changing independently where causality permits, whether onscreen or offscreen.',
             confidence: 'moderate',
             window: (nearHorizon.timeframe || 'current scene').slice(0, 100),
         }];
@@ -1113,12 +1231,13 @@ function compactPromptStateForPriority(current = {}) {
     return {
         mode: current.mode,
         directorScore: current.directorScore,
+        loreModel: current.loreModel,
         narrativeLayers: current.narrativeLayers,
         scene: current.scene,
         objectives: (current.objectives || []).slice(-5).map(item => ({ title: compactText(item.title, 80), detail: compactText(item.detail, 90), status: compactText(item.status, 30) })),
         continuityThreads: (current.continuityThreads || []).slice(0, 8).map(item => ({ id: compactText(item.id, 60), thread: compactText(item.thread, 110), state: compactText(item.state, 130), status: item.status, basis: compactText(item.basis, 90) })),
         selfChallenge: current.selfChallenge ? { weakness: compactText(current.selfChallenge.weakness, 150), counterRoute: compactText(current.selfChallenge.counterRoute, 150), decision: compactText(current.selfChallenge.decision, 180) } : undefined,
-        entities: (current.entities || []).slice(-1).map(item => ({ name: compactText(item.name, 80), state: compactText(item.state, 100), location: compactText(item.location, 60), relevance: compactText(item.relevance, 60) })),
+        entities: (current.entities || []).slice(-3).map(item => ({ name: compactText(item.name, 80), state: compactText(item.state, 100), location: compactText(item.location, 60), relevance: compactText(item.relevance, 60), perspective: compactText(item.perspective, 90), motivation: compactText(item.motivation, 100), knowledge: compactText(item.knowledge, 80), constraints: compactText(item.constraints, 80), agenda: compactText(item.agenda, 100) })),
         possibilities: (current.possibilities || []).slice(-6).map(item => compactText(item, 100)),
         pathways: (current.pathways || []).slice(0, 5).map(item => ({ id: compactText(item.id, 60), direction: compactText(item.direction, 140), when: compactText(item.when, 100), responseBias: compactText(item.responseBias, 120), horizon: compactText(item.horizon, 40), status: item.status, change: item.change })),
         nextGuides: (current.nextGuides || []).slice(0, 4).map(item => ({ id: compactText(item.id, 60), direction: compactText(item.direction, 140), useWhen: compactText(item.useWhen, 100), dropWhen: compactText(item.dropWhen, 100), causalRole: compactText(item.causalRole, 100), worldDelta: compactText(item.worldDelta, 100), origin: item.origin, basis: compactText(item.basis, 100), strength: item.strength, causalEventIds: item.causalEventIds, disclosure: item.disclosure })),
@@ -1149,12 +1268,13 @@ function compactPromptStateForBudget(current = {}) {
     return {
         mode: current.mode,
         directorScore: current.directorScore ? { storyIdentity: compactText(current.directorScore.storyIdentity, 110), sceneFunction: compactText(current.directorScore.sceneFunction, 80), settingIdentity: compactText(current.directorScore.settingIdentity, 80), settingForces: (current.directorScore.settingForces || []).slice(0, 2).map(item => compactText(item, 80)), causalTempo: current.directorScore.causalTempo, arcDirection: compactText(current.directorScore.arcDirection, 110), futureSetup: current.directorScore.futureSetup ? { id: compactText(current.directorScore.futureSetup.id, 50), development: compactText(current.directorScore.futureSetup.development, 100), currentStep: compactText(current.directorScore.futureSetup.currentStep, 90), conditions: (current.directorScore.futureSetup.conditions || []).slice(0, 2).map(item => compactText(item, 70)), earliestWindow: compactText(current.directorScore.futureSetup.earliestWindow, 60), disclosure: current.directorScore.futureSetup.disclosure } : undefined, meaningfulAim: compactText(current.directorScore.meaningfulAim, 100), change: current.directorScore.change } : undefined,
+        loreModel: current.loreModel ? { worldIdentity: compactText(current.loreModel.worldIdentity, 90), baseline: compactText(current.loreModel.baseline, 140), variantRules: (current.loreModel.variantRules || []).slice(0, 4).map(item => compactText(item, 100)), continuitySignatures: (current.loreModel.continuitySignatures || []).slice(0, 5).map(item => compactText(item, 105)), baselineDepartures: (current.loreModel.baselineDepartures || []).slice(0, 5).map(item => compactText(item, 110)), trajectorySignals: (current.loreModel.trajectorySignals || []).slice(0, 3).map(item => compactText(item, 100)), activeForces: (current.loreModel.activeForces || []).slice(0, 3).map(item => compactText(item, 90)), confidence: current.loreModel.confidence } : undefined,
         narrativeLayers: current.narrativeLayers ? { immediateAction: compactText(current.narrativeLayers.immediateAction, 80), localActivity: compactText(current.narrativeLayers.localActivity, 90), situation: compactText(current.narrativeLayers.situation, 100), widerWorld: compactText(current.narrativeLayers.widerWorld, 110), durableTrajectory: compactText(current.narrativeLayers.durableTrajectory, 120), activityRole: current.narrativeLayers.activityRole, temporalScope: current.narrativeLayers.temporalScope } : undefined,
         scene: current.scene,
         objectives: (current.objectives || []).slice(-2).map(item => ({ title: compactText(item.title, 70), detail: compactText(item.detail, 70), status: compactText(item.status, 24) })),
         continuityThreads: (current.continuityThreads || []).slice(0, 5).map(item => ({ id: compactText(item.id, 40), thread: compactText(item.thread, 70), state: compactText(item.state, 80), status: item.status })),
         selfChallenge: current.selfChallenge ? { weakness: compactText(current.selfChallenge.weakness, 90), counterRoute: compactText(current.selfChallenge.counterRoute, 90), decision: compactText(current.selfChallenge.decision, 110) } : undefined,
-        entities: (current.entities || []).slice(-1).map(item => ({ name: compactText(item.name, 80), state: compactText(item.state, 80), location: compactText(item.location, 60), relevance: compactText(item.relevance, 60) })),
+        entities: (current.entities || []).slice(-2).map(item => ({ name: compactText(item.name, 70), state: compactText(item.state, 70), perspective: compactText(item.perspective, 70), motivation: compactText(item.motivation, 80), knowledge: compactText(item.knowledge, 65), constraints: compactText(item.constraints, 65), agenda: compactText(item.agenda, 80) })),
         possibilities: (current.possibilities || []).slice(-2).map(item => compactText(item, 80)),
         pathways: (current.pathways || []).slice(0, 3).map(item => ({ id: compactText(item.id, 50), direction: compactText(item.direction, 90), when: compactText(item.when, 70), responseBias: compactText(item.responseBias, 80), horizon: compactText(item.horizon, 30), status: item.status })),
         nextGuides: (current.nextGuides || []).slice(0, 2).map(item => ({ id: compactText(item.id, 50), direction: compactText(item.direction, 100), useWhen: compactText(item.useWhen, 70), dropWhen: compactText(item.dropWhen, 70), worldDelta: compactText(item.worldDelta, 80), origin: item.origin, basis: compactText(item.basis, 80), strength: item.strength, causalEventIds: (item.causalEventIds || []).slice(0, 1), disclosure: item.disclosure })),
@@ -1429,7 +1549,7 @@ const DURABLE_HOOK_TYPES = Object.freeze([
     ['commitment-or-debt', /\b(?:promise|agreement|deal|bargain|debt|favor owed|obligation)\b/iu],
     ['planned-journey-or-return', /\b(?:departure|journey|trip|passage|ticket|return to|visit to|route to)\b/iu],
 ]);
-const DURABLE_HOOK_LIFECYCLE = /\b(?:sent|filed|filing|submitted|delivered|received|accepted|registered|stamped|tracking|reference|routed|routing|forwarded|forwarding|intake|pending|queued|await(?:ing)?|waiting|follow[ -]?up|reply|response|answer|outcome|result|bear fruit|scheduled|due|deadline|tomorrow|next (?:day|week|month)|weeks?|months?|eventually|later)\b/giu;
+const DURABLE_HOOK_LIFECYCLE = /\b(?:sent|filed|filing|submitted|delivered|received|accepted|registered|stamped|tracking|reference|routed|routing|forwarded|forwarding|intake|pending|queued|await(?:ing)?|waiting|follow[ -]?up|reply|response|answer|outcome|result|bear fruit|scheduled|due|deadline|opened|ongoing|assigned|commissioned|deployed|promised|agreed|owed|booked|reserved|planned|departing|returning|tomorrow|next (?:day|week|month)|weeks?|months?|eventually|later)\b/giu;
 const DURABLE_HOOK_USER_INITIATIVE = /\b(?:i|we)\s+(?:sent|filed|submitted|delivered|asked|requested|promised|agreed|accepted|planned|scheduled|intend|hope|expect|wait|await)\b/iu;
 
 function durableHookExcerpt(value, limit = 420) {
@@ -1441,11 +1561,11 @@ function durableHookExcerpt(value, limit = 420) {
         .replace(/\s+/gu, ' ')
         .trim();
     if (cleaned.length <= limit) return cleaned;
-    const signal = /\b(?:chancellor(?:'s)?|council|petition|letter|appeal|application|placement|panel|review|appointment|hearing|investigation|inquiry|mission|promise|agreement|journey|return|filed|submitted|received|accepted|tracking|intake|routing|pending|await(?:ing)?|reply|response|follow[ -]?up|scheduled|due|deadline)\b/giu;
+    const signal = /\b(?:petition|letter|appeal|application|request|panel|review|appointment|hearing|meeting|interview|investigation|inquiry|search|mission|assignment|contract|commission|invitation|deployment|promise|agreement|debt|obligation|journey|trip|passage|departure|return|filed|submitted|received|accepted|tracking|reference|intake|routing|pending|await(?:ing)?|reply|response|follow[ -]?up|scheduled|due|deadline|opened|ongoing|assigned|promised|agreed|owed|booked|reserved|planned)\b/giu;
     const windows = [...cleaned.matchAll(signal)].map(match => {
         const term = match[0];
-        const priority = /^(?:chancellor(?:'s)?|council|petition|letter|appeal|placement|panel|investigation|inquiry|mission|promise|journey)$/iu.test(term) ? 3
-            : /^(?:filed|submitted|received|accepted|tracking|intake|routing|pending|scheduled|due)$/iu.test(term) ? 2 : 1;
+        const priority = /^(?:petition|letter|appeal|application|panel|review|investigation|inquiry|mission|assignment|contract|invitation|promise|agreement|debt|journey|trip|passage|departure|return)$/iu.test(term) ? 3
+            : /^(?:filed|submitted|received|accepted|tracking|reference|intake|routing|pending|scheduled|due|opened|assigned|promised|agreed|owed|booked|planned)$/iu.test(term) ? 2 : 1;
         return { start: Math.max(0, match.index - 45), end: Math.min(cleaned.length, match.index + term.length + 70), priority };
     });
     if (!windows.length) return compactMessageContent(cleaned, limit);
@@ -1500,6 +1620,32 @@ function retrieveDormantHookEvidence(messages, recentStart, selectedIndexes, max
     return chosen.sort((a, b) => a.index - b.index).map(({ score: _score, ...item }) => item);
 }
 
+function hookReferenceTokens(value) {
+    return [...new Set(String(value || '').match(/\b(?=[\p{L}\p{N}-]{4,}\b)(?=[\p{L}\p{N}-]*\d)[\p{L}\p{N}]+(?:-[\p{L}\p{N}]+)+\b/giu) || [])]
+        .map(token => token.toLocaleLowerCase());
+}
+
+function attachLaterHookEvidence(candidate, messages) {
+    const pattern = hookTypePattern(candidate?.hook_type);
+    if (!pattern) return candidate;
+    const identity = new Set(hookIdentityTerms(candidate.content, candidate.hook_type));
+    const references = new Set(hookReferenceTokens(candidate.content));
+    const later = [];
+    for (let index = Number(candidate.index) + 1; index < messages.length; index++) {
+        const message = messages[index];
+        if (!message) continue;
+        const content = durableHookExcerpt(message.mes, 360);
+        if (!content || !pattern.test(content)) continue;
+        const laterIdentity = hookIdentityTerms(content, candidate.hook_type);
+        const overlap = laterIdentity.filter(term => identity.has(term)).length;
+        const sharedReference = hookReferenceTokens(content).some(token => references.has(token));
+        const requiredOverlap = identity.size >= 4 ? 2 : 1;
+        if (!sharedReference && overlap < requiredOverlap) continue;
+        later.push({ index, role: message.is_user ? 'user' : 'assistant', content });
+    }
+    return later.length ? { ...candidate, later_evidence: later.slice(-3) } : candidate;
+}
+
 /**
  * Build non-provider recovery evidence from the complete active chat. Prompt
  * compaction may legitimately evict older route candidates at small budgets;
@@ -1511,7 +1657,8 @@ export function buildFinalizationEvidence(messages, prompt = '', messageWindow =
     const source = asArray(messages);
     const windowSize = Math.max(1, Math.min(80, Number(messageWindow) || 12));
     const recentStart = Math.max(0, source.length - windowSize);
-    const candidates = retrieveDormantHookEvidence(source, recentStart, new Set(), 6);
+    const candidates = retrieveDormantHookEvidence(source, recentStart, new Set(), 6)
+        .map(candidate => attachLaterHookEvidence(candidate, source));
     if (candidates.length) payload.candidate_dormant_hooks = candidates;
     return JSON.stringify(payload);
 }
@@ -1728,6 +1875,10 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         delete payload.dormant_hook_instruction;
         serialized = JSON.stringify(payload);
     }
+    if (serialized.length > budget && payload.current?.possibilities?.length) {
+        payload.current.possibilities = [];
+        serialized = JSON.stringify(payload);
+    }
     return serialized;
 }
 
@@ -1764,6 +1915,9 @@ export function applyAnalysis(state, result, messages) {
     if (value.director_score && typeof value.director_score === 'object') {
         next.directorScore = normalizeState({ directorScore: value.director_score }).directorScore;
     }
+    if (value.lore_model && typeof value.lore_model === 'object') {
+        next.loreModel = normalizeState({ loreModel: value.lore_model }).loreModel;
+    }
     if (value.narrative_layers && typeof value.narrative_layers === 'object') {
         next.narrativeLayers = normalizeState({ narrativeLayers: value.narrative_layers }).narrativeLayers;
     }
@@ -1779,7 +1933,7 @@ export function applyAnalysis(state, result, messages) {
             decision: value.self_challenge.decision,
         } }).selfChallenge;
     }
-    next.entities = Array.isArray(value.entities) ? value.entities.slice(-8) : next.entities;
+    next.entities = Array.isArray(value.entities) ? normalizeState({ entities: value.entities }).entities : next.entities;
     next.possibilities = Array.isArray(value.possibilities)
         ? normalizeState({ possibilities: value.possibilities }).possibilities
         : next.possibilities;
@@ -1839,17 +1993,17 @@ export function applyAnalysis(state, result, messages) {
 const EVIDENCE_FIRST_POLICY = `Follow the user's requested fictional direction and the demands of the established scene directly. Do not replace a supported development with a safer, softer, more agreeable, or unrelated alternative. Do not hedge away, silently omit, or flatten established conflict, danger, suffering, moral flaws, rejection, loss, stakes, or consequences. Give no automatic plot armor to the user's persona. Do not force sympathy, vulnerability, redemption, reconciliation, banter, avoidance, or silent treatment onto characters unless their established characterization and circumstances support it. Commit to supported outcomes even when they are uncomfortable or negative. Equally, do not add cruelty, darkness, punishment, or conflict merely to appear bold; evidence, tone, causality, and user direction decide.`;
 const HORIZON_POLICY = `Maintain up to ten objectives as the durable thread pool: concrete open directions worth developing, holding, completing, or retiring as events change. Objectives are not a current-scene to-do list. Preserve consequential unresolved player initiatives, sent correspondence or petitions, pending decisions, appointments, investigations, promises, journeys, and other live processes while they remain supported, even when dormant or offscreen; do not silently drop them merely because recent turns focus elsewhere. Remove or retire one only when newer evidence completes, cancels, contradicts, or makes it irrelevant. Return six to ten concise plan_horizons.items ordered from the next few turns to a distant story horizon. Span useful scales such as next 2–4 turns, current scene, next scene, several scenes, current arc, and some later arc or meaningful future time; add intermediate rungs when the story supports them. The highest ladder item is mandatory, must use slow stability, and must name a suitably distant scope such as a later arc, several or multiple arcs, a distant phase/time, long-term, months/years later, or open-ended. It is a provisional relationship, world, thematic, or unresolved-thread direction to revisit—not a story ending, final resolution, or predetermined outcome.
 
-Return continuity_threads as the factual inventory of established unresolved processes, separate from speculative possibilities and private planned outcomes. Each item needs a stable id, a plain thread label, its current procedural or relationship state, active/dormant/due/blocked status, and a concise evidence basis. Include consequential sent letters or petitions, pending institutional decisions, scheduled reviews or appointments, investigations, promises, journeys or returns, and relationship commitments when supported. For example, a filed letter to a Chancellor, a pending Council decision, and a companion's placement review are three independent routes even while a quiet current scene foregrounds none of them. Preserve an item across scene changes and scene-focused summaries until newer evidence resolves, cancels, contradicts, or makes it irrelevant. Never invent an outcome, treat the inventory as a current-scene to-do list, or force a dormant item onscreen.
+Return continuity_threads as the factual inventory of established unresolved processes, separate from speculative possibilities and private planned outcomes. Each item needs a stable id, a plain thread label, its current procedural or relationship state, active/dormant/due/blocked status, and a concise evidence basis. Include consequential correspondence, pending institutional decisions, scheduled reviews or appointments, investigations, assignments, promises, debts, journeys or returns, and relationship commitments when supported. Separate processes are independent routes even when they share a setting or institution and a quiet current scene foregrounds none of them. Preserve an item across scene changes and scene-focused summaries until newer evidence resolves, cancels, contradicts, or makes it irrelevant. Never invent an outcome, treat the inventory as a current-scene to-do list, or force a dormant item onscreen.
 
-Every compact summary surface must integrate this inventory rather than collapse continuity into the most recent scene. The ledger must include a concise “Open routes:” line covering the supported established threads; narrative_layers.wider_world and durable_trajectory must remain compatible with them; and the private guidance summary should name multiple distinct route families when the evidence supports them, even if its preferred immediate beat uses only one. These mentions preserve availability, not priority or promises of future events.
+Every compact summary surface must integrate this inventory rather than collapse continuity into the most recent scene. The ledger must include a concise “Open routes:” line covering the supported established threads plus material continuity signatures, baseline departures, variant rules, and trajectory changes that future inference would otherwise lose; narrative_layers.wider_world and durable_trajectory must remain compatible with them; and the private guidance summary should name multiple distinct route families when the evidence supports them, even if its preferred immediate beat uses only one. These mentions preserve availability, not priority or promises of future events.
 
-Treat a bounded local activity—homework, training drill, meal, game, shopping trip, commute, rest, or similar downtime—as scene-level context unless broader evidence makes that activity the durable plot. Repetition and turn count do not promote it into the overall story: even one hundred turns spent on an assignment remain a lull when the durable trajectory is, for example, an academy student's continuing life and advancement, which may eventually include becoming Hokage. Only the near/current-scene rungs may primarily track completion of such an activity. Middle and distant rungs must reconnect to the broader character trajectory, relationships, obligations, setting forces, unresolved conflicts, and enduring directions rather than restating the local activity at larger time labels. A local event may affect those rungs only through a concrete lasting consequence.
+Treat a bounded local activity—homework, training drill, meal, game, shopping trip, commute, rest, or similar downtime—as scene-level context unless broader evidence makes that activity the durable plot. Repetition and turn count do not promote it into the overall story: even a long assignment remains a local activity when the durable trajectory is a character's continuing life, relationships, vocation, or transformation. Only the near/current-scene rungs may primarily track completion of such an activity. Middle and distant rungs must reconnect to the broader character trajectory, relationships, obligations, setting forces, unresolved conflicts, and enduring directions rather than restating the local activity at larger time labels. A local event may affect those rungs only through a concrete lasting consequence.
 
-This is open-ended roleplay, not a quest with a terminal win condition. Treat ambitions, promotions, relationships, victories, discoveries, and transformations as revisable directions or major milestones, never as the assumed final destination of the story. Plan toward, through, and beyond a milestone without inventing a fixed ending: becoming Hokage, graduating, winning a war, marrying, or resolving a mystery changes the character's circumstances and opens new pressures, responsibilities, relationships, and possibilities. The distant horizon should preserve room for continued life and new arcs rather than imply that play ends when a current ambition is achieved.
+This is open-ended roleplay, not a quest with a terminal win condition. Treat ambitions, promotions, relationships, victories, discoveries, and transformations as revisable directions or major milestones, never as the assumed final destination of the story. Plan toward, through, and beyond a milestone: achieving an ambition changes circumstances and opens new pressures, responsibilities, relationships, and possibilities. The distant horizon should preserve room for continued life and new arcs rather than imply that play ends when a current ambition is achieved.
 
 When the established story supports several meaningful long-term outcomes, preserve two or three distinct major future paths among the middle and distant horizons instead of collapsing them into one destiny. These may include an eventual institutional judgment about the player character's future, whether important companions can remain together, or a meaningful return to a formative place. Treat each as a private, speculative, headcanon-like possibility with explicit causal conditions—not an established promise, scheduled event, or outcome the story owes. Competing paths may coexist; do not turn alternatives into a mandatory sequence. Never force or repeatedly foreshadow present events to serve them, manufacture fate debt, or require a player choice to keep them alive. Let current causality move each path nearer, farther away, or out of relevance, and revise or retire it accordingly.
 
-Give every horizon a short branch label. Reuse a label when two rungs are successive stages of the same causal family; wording, timeframe, or a different consequence of the same actor, institution, trait, relationship, or pending decision does not create a new route. Across the four farthest horizons, preserve at least three meaningfully distinct future routes. Distinct does not require unrelated stories or different institutions: a Chancellor petition, a companion's placement decision, and a scientific inquiry may all belong to the same setting while remaining different routes because they arise from separate established hooks and open different consequences. One route may extend the current main thread; the others may come from supported dormant hooks or fresh setting-compatible opportunities and must not merely be downstream restatements of the same concern. The selected future_setup may occupy only one of these routes. Before returning, cluster the far and wildcard possibility cards by their underlying causal engine, not their nouns: if more than two cards depend on the same actor/process/trait and outcome axis, replace the extras with directions drawn first from other supported live or dormant hooks, then from setting-compatible relationships, places, systems, ambitions, conflicts, discoveries, departures, returns, identities, or outside forces. This is a variety audit, not permission to force any route onscreen.
+Give every horizon a short branch label. Reuse a label when two rungs are successive stages of the same causal family; wording, timeframe, or a different consequence of the same actor, institution, trait, relationship, or pending decision does not create a new route. Across the four farthest horizons, preserve at least three meaningfully distinct future routes. Distinct routes may share a setting or institution, but must arise from separate established hooks or causal engines and open different consequences. One route may extend the current main thread; the others may come from supported dormant hooks or fresh setting-compatible opportunities and must not merely be downstream restatements of the same concern. The selected future_setup may occupy only one of these routes. Before returning, cluster the far and wildcard possibility cards by their underlying causal engine, not their nouns: if more than two cards depend on the same actor/process/trait and outcome axis, replace the extras with directions drawn first from other supported live or dormant hooks, then from setting-compatible relationships, places, systems, ambitions, conflicts, discoveries, departures, returns, identities, or outside forces. This is a variety audit, not permission to force any route onscreen.
 
 Treat the horizon ladder as a provisional upstream/downstream hierarchy, not a rigid sequence. Distant horizons are upstream orientation; middle horizons translate that orientation into arcs and developing pressures; near horizons and next guides are downstream realizations. Every level is editable. Downstream levels must change fastest as the user acts and the scene develops, while upstream levels change more slowly because they summarize broader evidence—not because they are fixed. A local downstream change normally revises nearby execution without rewriting every upstream direction. When an upstream direction genuinely changes or becomes unsupported, rebuild any dependent middle and near directions so they do not continue serving an obsolete plan. Conversely, accumulated downstream outcomes may eventually supply enough evidence to adjust or replace an upstream direction. Never preserve internal consistency by resisting an explicit user pivot.
 
@@ -1857,6 +2011,8 @@ Everything in the plan remains changeable. Build fresh, specific future directio
 
 Every supported horizon also retains some effect with a strict distance gradient: near directions may shape the current reply, middle directions bias setup and compatible choices, and distant directions provide a subtle background pull unless events bring them closer. A horizon may describe a future payoff, but its causality starts now: translate the selected upstream trajectory into at least one present NPC motive, secret, private preparation, relationship pressure, institutional or environmental process, opportunity, consequence, or other world condition. Carry that non-spoiler footprint through future_setup.current_step, relevant narrative_events, and the preferred next guide whenever the current boundary permits it. Do not make mutually exclusive speculative alternatives all exert pressure; unselected possibility cards remain inert until evidence promotes one. Never force or foreshadow a distant outcome merely to prove it exists. Assign fluid, adaptive, stable, then slow stability as distance grows. Re-evaluate every horizon each run with increasing inertia only while it remains causally supported: fluid may change every turn; adaptive changes with beats or scenes; stable and slow directions resist cosmetic churn but must adjust or be replaced when the trajectory no longer supports them. The latest user direction always wins. Preserve ids only when genuinely keeping or adjusting the same supported direction, use a new id when replacing it, record keep/adjust/replace, and report overall deviation as none, minor, or major.`;
 const CORE_PLANNER_POLICY = `You are Tale Fairy, the authorial story-control layer for SillyTavern roleplay. The roleplay model performs the concrete fiction; you author causal direction, narrative function, timing, scale, and the evolving world without scripting exact prose. Do not write prose or expose reasoning. Return only one JSON object matching the supplied schema. Keep that JSON concise and under approximately 6,000 visible output tokens; the API's larger completion ceiling exists to accommodate hidden reasoning, not verbose planner state.
+
+Operate from an omniscient authorial vantage over the supplied fiction, never from only one character's limited viewpoint and never as a protagonist assistant. Maintain a multi-perspective causal model of every currently relevant actor, collective, institution, and world process: what each perceives or believes, knows and does not know, wants or fears, can do, is constrained by, is doing privately, and how its agenda interacts with other agendas, lore, culture, economy, environment, history, and current conditions. The planner may model hidden motives and offscreen causes when established, inferred with uncertainty, or deliberately simulated; the roleplay output may reveal them only through an allowed in-world disclosure channel. No actor, including the player character, automatically dominates the model. Preserve player agency while letting other actors and the world remain independent.
 
 Prefer causal roles, relationships, systems, forces, and reactions over pre-casting future developments with proper nouns. Preserve established names when identity matters, and invent a name only when that specific identity is itself causally important; otherwise use a clear functional role such as a supervisor, local authority, family pressure, institutional review, or environmental process. Do not coin names merely to make a possibility seem concrete. Mark invented material with original provenance and never present it as established history merely because you created it. Retained planner state remains a hypothesis to audit: do not copy an unrelated name, fragment, preset artifact, or malformed splice from prior planner text into a new result. Established names and semantic types must remain consistent unless the fiction changes them.
 
@@ -1868,7 +2024,9 @@ Tale Fairy must function independently. Use all supplied story evidence that can
 
 Treat backward references such as “again,” “the same one,” “last time,” “as before,” “the usual,” and unresolved pronouns conservatively. Resolve their specific referent from any supplied evidence, including raw turns, Tale Fairy state, lore, recaps, and injected summaries. If the referent remains unavailable, do not invent its name, identity, rules, prior result, or history. Keep guides referent-neutral, let an NPC clarify naturally without asserting an answer, or offer a different supported development. If the newest assistant reply supplied unsupported specificity for an older callback, preserve only what visibly happened in the current reply; do not promote its invented backstory to high-confidence established state.
 
-Maintain a compact causal world model from established evidence and active invention: relevant actors, institutions, locations, knowledge, motives, relationships, obligations, resources, constraints, processes, unresolved threads, and elapsed time. Lore is an active causal system and a source of new pressure, opportunity, and consequence, not decoration. Populate entities with the two to five actors, institutions, factions, or active processes most capable of affecting what follows, whether currently onscreen or offscreen. An entity name may be an established proper noun or a concise functional role; do not invent a proper noun for a placeholder. Track what each active force notices, wants, resists, permits, changes, or prepares, and through what channel that reaction can affect the present. A possibility needs an in-world source, route into the scene, timing, and reason, but Tale Fairy may author that source when it fits the setting and established facts. Wishes, jokes, hypotheticals, stale historical mentions, and disconnected franchise cameos are not scheduled events. Keep uncertainty where evidence is incomplete. Use one unified possibility pool rather than categories. Prefer fresh, causally grounded developments that grow from the current trajectory. Develop an established thread when it is still live; otherwise create a compatible new consequence, actor, motive, or direction instead of recycling the past or returning only summary.
+Maintain a compact causal world model from established evidence and active invention: relevant actors, institutions, locations, knowledge, motives, relationships, obligations, resources, constraints, processes, unresolved threads, and elapsed time. Lore is an active causal system and a source of new pressure, opportunity, and consequence, not decoration. Populate entities with the two to five actors, institutions, factions, or active processes most capable of affecting what follows, whether currently onscreen or offscreen. For each entity, explicitly record its perspective, motivation, knowledge boundary, constraints, and independent agenda instead of reducing it to a status label. An entity name may be an established proper noun or a concise functional role; do not invent a proper noun for a placeholder. Track what each active force notices, wants, resists, permits, changes, or prepares, and through what channel that reaction can affect the present. A possibility needs an in-world source, route into the scene, timing, and reason, but Tale Fairy may author that source when it fits the setting and established facts. Wishes, jokes, hypotheticals, stale historical mentions, and disconnected franchise cameos are not scheduled events. Keep uncertainty where evidence is incomplete. Use one unified possibility pool rather than categories. Prefer fresh, causally grounded developments that grow from the current trajectory. Develop an established thread when it is still live; otherwise create a compatible new consequence, actor, motive, or direction instead of recycling the past or returning only summary.
+
+Return lore_model as the persistent operating model of the world. When the supplied material identifies a recognizable franchise, historical setting, mythology, or established fictional universe, infer its relevant baseline lore from model knowledge and use that lore actively to generate plausible institutions, incentives, capabilities, limits, reactions, and consequences. Do not require the user to restate common world facts, but keep uncertain editions, eras, adaptations, and disputed details provisional. Narrative evidence always outranks the inferred baseline: explicit user/OOC rules, scenario or character material, lorebook entries, depicted facts, and established consequences define variant_rules and override incompatible default canon. Identify continuity_signatures from this roleplay specifically: distinctive people, roles, relationships, possessions, abilities, records, places, institutions, conditions, prior choices, and accumulated consequences whose identity or state matters later. Identify baseline_departures by comparing supplied narrative evidence with the inferred baseline and state the actual difference—not merely that it is alternate canon. A departure may be personal, relational, political, technological, historical, metaphysical, geographic, institutional, or systemic. Do not invent a difference when the baseline is unknown; record the distinctive established fact as a continuity signature instead. Update or retire both lists when later evidence changes them. Treat trajectory_signals as evidence of where this particular continuity was developing, not as completed canon or an irreversible ending. Reconcile contradictions by authority, provenance, specificity, and recency; never silently snap an alternate continuity back to franchise default. active_forces must name the lore mechanisms currently capable of causing change, not trivia or fan-service references.
 
 Timeframe controls when a development may mature or become visible, not when its causes begin. Future motivations, secrets, events, relationships, and world changes must grow from present causal state rather than appearing later without preparation. On every pass, decide what active future-facing forces are doing now—even if only privately—and let that state bias the most relevant immediate causes. Prefer a compact reaction model—what notices or cares, what makes it respond, and how that response can reach the present—over naming exact participants, objects, or incidents in advance. The present footprint must remain natural, proportionate, and revisable; it must not become repetitive foreshadowing, a predetermined outcome, or control of the player.
 
@@ -1916,7 +2074,7 @@ The local activity never becomes central merely because it is difficult, describ
 
 Give each next guide one coherent authorial function and one bounded impact envelope. Do not dictate a sequence of events, a mandatory reveal, an exact mechanism, or an exact character action. direction states what narrative work belongs at the relevant layer; world_delta states what may change and how much, including no required wider-world change for HOLD. The roleplay model must retain room to judge the concrete realization from the complete current scene.
 
-Keep every referent unambiguous inside each guide. Preserve the established semantic type of names, codes, rooms, wards, people, planets, organizations, and events. Expand a shorthand identifier when its type could be mistaken—for example, “Dorn-2 medical unit on Level 10,” not merely “Dorn-2.” Never reinterpret an established code or proper noun as a different kind of entity to create novelty.
+Keep every referent unambiguous inside each guide. Preserve the established semantic type of names, identifiers, rooms, wards, people, places, organizations, and events. Expand a shorthand identifier with its established type when it could be mistaken. Never reinterpret an established identifier or proper noun as a different kind of entity to create novelty.
 
 Maintain narrative coherence inside the user's action boundary. A routine action, activity, or transition may be the entire temporal scope when it is what the user declared. Enrich it with a supported NPC initiative, reaction, information change, relationship movement, discovery, opportunity, cost, payoff, complication, external process, or resolution only when causality and scene fit make that development ready—not because every response needs foreground motion. Never finish a subsequent activity or jump to a later task merely to manufacture a stronger delta. Arrival or completion itself can satisfy a HOLD operation when additional story change would be artificial. Protecting pacing never requires NPC passivity, but a living world does not require constant interruption.
 
@@ -1934,7 +2092,7 @@ Before finalizing the plan, privately challenge the first apparent preference. C
 
 After juggling the scene, layered context, world model, possibilities, pathways, objectives, schedules, and every time horizon privately, return three or four ranked next_guides as alternative authorial directions. Light mode normally uses three directions; Balanced and Fun should use four when four genuinely distinct supported functions exist, but never pad the set with incidents or duplicates. Each direction controls narrative purpose, causal source, operation, and impact scale while leaving exact realization to the roleplay model. The first is Tale Fairy's preferred authorial function under its stated conditions. A HOLD direction is substantive when it deliberately completes or deepens the bounded activity without activating a wider thread.
 
-Return director_score as persistent causal narrative control, not style direction. story_identity is the durable overall story or arc identity inferred from the broadest reliable evidence, especially established character ambitions, conflicts, long-running stakes, themes, world conditions, and distant horizons. Preserve a supported long-term trajectory from retained state and older evidence through extended downtime; the latest turn may refine the scene without replacing that trajectory. scene_function describes only what the current local scene accomplishes. Never let a quiet meal, game, assignment, training exercise, domestic pause, romance beat, or other slice-of-life scene redefine the whole story as slice of life when the durable arc is advancement, war, survival, political conflict, horror, mystery, epic fantasy, or something else. Current quietness is local context; overall identity has slow inertia and changes only after a genuine story pivot. setting_identity must name the established world or its distinctive operating logic when supported; do not reduce Star Wars or another recognizable setting to generic genre flavor. setting_forces names zero to three mechanisms presently capable of exerting causal pressure—institutions, technology, culture, metaphysics, geography, conflict, law, scarcity, scale, or social assumptions—not famous nouns.
+Return director_score as persistent causal narrative control, not style direction. story_identity is the durable overall story or arc identity inferred from the broadest reliable evidence, especially established character ambitions, conflicts, long-running stakes, themes, world conditions, and distant horizons. Preserve a supported long-term trajectory from retained state and older evidence through extended downtime; the latest turn may refine the scene without replacing that trajectory. scene_function describes only what the current local scene accomplishes. Never let a quiet meal, game, assignment, training exercise, domestic pause, romance beat, or other slice-of-life scene redefine the whole story as slice of life when the durable arc is advancement, war, survival, political conflict, horror, mystery, epic fantasy, or something else. Current quietness is local context; overall identity has slow inertia and changes only after a genuine story pivot. setting_identity must name the established world or its distinctive operating logic when supported; do not reduce a recognizable setting to generic genre flavor. setting_forces names zero to three mechanisms presently capable of exerting causal pressure—institutions, technology, culture, metaphysics, geography, conflict, law, scarcity, scale, or social assumptions—not famous nouns.
 
 causal_tempo controls only the rate of story-state change: hold keeps larger threads stable; seed advances at most one enabling condition for a future development; advance moves one live process a concrete step; converge brings already-active threads causally closer; payoff permits a due consequence when the current action boundary allows it; redirect follows a genuine user pivot; recover corrects prior overreach without retconning established facts. It never controls prose speed, dialogue cadence, mood, sentence rhythm, verbosity, descriptive density, or response length. Do not chain HOLD or “no wider change” merely by default, but repeated HOLD is valid while the current activity and active horizons supply no causal reason for an outward intrusion. Prefer SEED, ADVANCE, CONVERGE, or PAYOFF only when supported conditions mature and the action boundary permits; otherwise progress a connected non-player condition privately so the long-range plan continues accumulating without disturbing the current beat. arc_direction names a specific two-to-four-turn causal direction grounded in current people and world forces. meaningful_aim names what may change in understanding, relationship, stakes, choices, resources, obligations, or a live process—not atmosphere or activity for its own sake. Use keep or adjust while the same supported direction develops, advance or payoff when its causal conditions mature, and replace only when evidence or user direction makes it irrelevant.
 

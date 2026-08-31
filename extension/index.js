@@ -15,7 +15,7 @@ import { compactContinuityPrompt, readContinuityBridge, waitForContinuityBridge 
 import { plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.56';
+const RUNTIME_VERSION = '0.11.57';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -1227,6 +1227,18 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         : '';
     scratchpadText(board, 'scratchpad-frame', generatedValue(frame), boardFallback('grounded · low confidence\nBasis: Provisional opening classification; replace it immediately when the first story evidence supports heightened or surreal.', 'No generated story frame yet.'));
 
+    const lore = state.loreModel || {};
+    const loreText = [
+        lore.worldIdentity && `World: ${lore.worldIdentity}${lore.confidence ? ` · ${lore.confidence} confidence` : ''}`,
+        lore.baseline && `Inferred baseline: ${lore.baseline}`,
+        lore.variantRules?.length && `Narrative-supplied rules: ${lore.variantRules.join('; ')}`,
+        lore.continuitySignatures?.length && `Unique to this RP: ${lore.continuitySignatures.join('; ')}`,
+        lore.baselineDepartures?.length && `Changes from baseline: ${lore.baselineDepartures.join('; ')}`,
+        lore.trajectorySignals?.length && `Trajectory evidence: ${lore.trajectorySignals.join('; ')}`,
+        lore.activeForces?.length && `Active lore forces: ${lore.activeForces.join('; ')}`,
+    ].filter(Boolean).join('\n');
+    scratchpadText(board, 'scratchpad-lore', generatedValue(loreText), boardFallback('World: Infer the setting from supplied evidence.\nInferred baseline: Use recognized lore provisionally.\nUnique to this RP: Preserve distinctive established facts and accumulated changes.\nChanges from baseline: Record only evidenced departures.', 'No generated lore model yet.'));
+
     const score = state.directorScore || {};
     const setup = score.futureSetup || {};
     const directorScore = score.storyIdentity ? [
@@ -1353,7 +1365,15 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
 
     scratchpadText(board, 'scratchpad-entities', analyzed ? scratchpadList(state.entities, item => {
         if (!item?.name) return '';
-        const details = [item.state, item.location, item.relevance, item.confidence && `${item.confidence} confidence`, item.window].filter(Boolean).join(' · ');
+        const details = [
+            item.state,
+            item.perspective && `Perspective: ${item.perspective}`,
+            item.motivation && `Motivation: ${item.motivation}`,
+            item.knowledge && `Knowledge: ${item.knowledge}`,
+            item.constraints && `Constraints: ${item.constraints}`,
+            item.agenda && `Independent agenda: ${item.agenda}`,
+            item.location, item.relevance, item.confidence && `${item.confidence} confidence`, item.window,
+        ].filter(Boolean).join(' · ');
         return `${item.name}${details ? ` — ${details}` : ''}`;
     }, '') : '', boardFallback('Opening situation — Waiting to replace this provisional process with the first concrete people, institutions, places, and ongoing activities.', 'No generated entities or processes yet.'));
 

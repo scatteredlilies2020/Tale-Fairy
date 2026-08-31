@@ -1,5 +1,5 @@
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 36;
+export const STATE_VERSION = 37;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -21,6 +21,7 @@ export function defaultState() {
         narrativeLayers: { immediateAction: '', localActivity: '', situation: '', widerWorld: '', durableTrajectory: '', activityRole: 'routine', temporalScope: 'action' },
         storyFrame: { frame: 'unknown', confidence: 'low', basis: '' },
         directorScore: { storyIdentity: '', sceneFunction: '', settingIdentity: '', settingForces: [], causalTempo: 'hold', arcDirection: '', futureSetup: { id: '', development: '', currentStep: '', conditions: [], earliestWindow: '', disclosure: 'hidden' }, meaningfulAim: '', change: 'replace', basis: '' },
+        loreModel: { worldIdentity: '', baseline: '', variantRules: [], continuitySignatures: [], baselineDepartures: [], trajectorySignals: [], activeForces: [], confidence: 'low' },
         objectives: [],
         continuityThreads: [],
         selfChallenge: { weakness: '', counterRoute: '', decision: '' },
@@ -86,7 +87,19 @@ function normalizeSelfChallenge(value = {}) {
     };
 }
 function normalizeEntity(value = {}) {
-    return { name: text(value.name).slice(0, 100), state: text(value.state).slice(0, 220), location: text(value.location).slice(0, 140), relevance: text(value.relevance).slice(0, 140), confidence: text(value.confidence).slice(0, 40), window: text(value.window).slice(0, 100) };
+    return {
+        name: text(value.name).slice(0, 100),
+        state: clippedText(value.state, 220),
+        location: clippedText(value.location, 140),
+        relevance: clippedText(value.relevance, 140),
+        perspective: clippedText(value.perspective ?? value.point_of_view, 180),
+        motivation: clippedText(value.motivation ?? value.motive, 180),
+        knowledge: clippedText(value.knowledge ?? value.beliefs, 180),
+        constraints: clippedText(value.constraints ?? value.limits, 180),
+        agenda: clippedText(value.agenda ?? value.next_action, 180),
+        confidence: text(value.confidence).slice(0, 40),
+        window: clippedText(value.window ?? value.timing, 100),
+    };
 }
 function normalizePossibility(value = {}) {
     const horizon = text(value.horizon).toLowerCase();
@@ -319,7 +332,9 @@ export function normalizeState(input = {}) {
     // v32 gives future horizons explicit branches; v33 rebuilds once to seed
     // the durable established-open-thread inventory; v34 requires the planner
     // to challenge its preferred route before committing to it; v35 rebuilds
-    // ranked alternatives with durable-hook diversity and tolerant schema repair.
+    // ranked alternatives with durable-hook diversity and tolerant schema repair;
+    // v37 rebuilds once for persistent omniscient actors, lore, RP-specific
+    // continuity signatures, and explicit departures from inferred baselines.
     const unsafePlannerUpgrade = inputVersion > 0 && inputVersion < 18;
     const movementUpgrade = inputVersion > 0 && inputVersion < STATE_VERSION;
     const recoveryUpgrade = inputVersion > 0 && inputVersion < 26;
@@ -338,6 +353,7 @@ export function normalizeState(input = {}) {
             : normalizedLayers,
         storyFrame: { ...base.storyFrame, ...(value.storyFrame || {}) },
         directorScore: normalizeDirectorScore(value.directorScore),
+        loreModel: normalizeLoreModel(value.loreModel ?? value.lore_model),
         objectives: recoveryUpgrade ? [] : cap(value.objectives, MAX_OBJECTIVES).map(normalizeObjective).filter(item => item.title || item.detail),
         continuityThreads: cap(value.continuityThreads ?? value.continuity_threads, MAX_CONTINUITY_THREADS).map(normalizeContinuityThread).filter(item => item.id && item.thread && item.state && item.basis),
         selfChallenge: normalizeSelfChallenge(value.selfChallenge ?? value.self_challenge),
@@ -401,10 +417,15 @@ export function stateForPrompt(state) {
         mode: s.mode,
         scene: Object.fromEntries(Object.entries(s.scene).map(([key, value]) => [key, typeof value === 'string' ? value.slice(0, 100) : value])),
         narrativeLayers: { ...s.narrativeLayers },
+        loreModel: { ...s.loreModel },
         objectives: s.objectives.slice(-8).map(item => ({ title: item.title, detail: item.detail.slice(0, 180), status: item.status })),
         continuityThreads: s.continuityThreads.map(item => ({ id: item.id, thread: item.thread, state: item.state, status: item.status, basis: item.basis })),
         selfChallenge: { ...s.selfChallenge },
-        entities: s.entities.filter(e => e && e.relevance !== 'ambient').slice(-3).map(item => ({ name: item.name, state: item.state.slice(0, 120), location: item.location.slice(0, 80), relevance: item.relevance.slice(0, 80) })),
+        entities: s.entities.filter(e => e && e.relevance !== 'ambient').slice(-5).map(item => ({
+            name: item.name, state: item.state.slice(0, 120), location: item.location.slice(0, 80), relevance: item.relevance.slice(0, 80),
+            perspective: item.perspective.slice(0, 100), motivation: item.motivation.slice(0, 110), knowledge: item.knowledge.slice(0, 90),
+            constraints: item.constraints.slice(0, 90), agenda: item.agenda.slice(0, 110),
+        })),
         // The large brainstorming bench stays cheap in the next planner prompt:
         // one compact string per idea instead of repeating JSON field names.
         possibilities: s.possibilities.map(item => [
@@ -550,6 +571,19 @@ function narrativeConductor(score, layers, continuityThreads = [], latestUserAct
     const openThreads = continuityThreads.slice(0, 5).map(item => `${item.status}: ${clippedText(item.thread, 62)} — ${clippedText(item.state, 78)}`).join(' | ');
     const threadLine = openThreads ? `\nESTABLISHED OPEN THREADS (continuity only; do not force onscreen): ${openThreads}` : '';
     return `TALE FAIRY AUTHORIAL FRAME:\nDURABLE CONTEXT: ${clippedText(durable, 75)}\nCURRENT CAUSE: ${clippedText(presentPressure, 90)}\nCURRENT SITUATION: ${clippedText(situation, 100)}\nLOCAL ACTIVITY: ${clippedText(layers.localActivity || 'Use the latest established activity.', 90)} [${layers.activityRole.toUpperCase()}]\n${actionLabel}: ${currentAction}\nAUTHORIZED SCOPE: ${layers.temporalScope.toUpperCase()} (a ceiling, not a quota)\nWIDER WORLD: ${clippedText(widerWorld, 65)}${threadLine}\nACTIVE CAUSAL FORCES: ${forces}\nSTORY OPERATION: ${score.causalTempo.toUpperCase()}\nTale Fairy controls narrative function, pressure, and scale—not outcomes or player action; realize exact events, NPC actions, dialogue, outcomes, and prose from context.`;
+}
+function normalizeLoreModel(value = {}) {
+    const confidence = text(value.confidence, 'low').toLowerCase();
+    return {
+        worldIdentity: clippedText(value.worldIdentity ?? value.world_identity, 140),
+        baseline: clippedText(value.baseline, 300),
+        variantRules: cap(value.variantRules ?? value.variant_rules, 6).map(item => clippedText(item, 220)).filter(Boolean),
+        continuitySignatures: cap(value.continuitySignatures ?? value.continuity_signatures, 8).map(item => clippedText(item, 220)).filter(Boolean),
+        baselineDepartures: cap(value.baselineDepartures ?? value.baseline_departures, 8).map(item => clippedText(item, 240)).filter(Boolean),
+        trajectorySignals: cap(value.trajectorySignals ?? value.trajectory_signals, 6).map(item => clippedText(item, 220)).filter(Boolean),
+        activeForces: cap(value.activeForces ?? value.active_forces, 5).map(item => clippedText(item, 180)).filter(Boolean),
+        confidence: ['low', 'moderate', 'high'].includes(confidence) ? confidence : 'low',
+    };
 }
 
 function boundedPromptLines(items, prefix, perItem, total) {
