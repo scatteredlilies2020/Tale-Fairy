@@ -63,3 +63,12 @@ test('Continuity compaction preserves retrieved records and the trailing Chronic
     assert.match(compacted, /continuity context compacted/);
     assert.doesNotMatch(compacted, /<\/?continuity>/);
 });
+
+test('Continuity compaction preserves unresolved route records from the omitted middle', () => {
+    const prompt = `Checkpoint:\n${'current scene '.repeat(180)}\nFacts:\n${'older detail '.repeat(100)}\nThe filed letter to the Chancellor remains pending with the aide office and has not received an answer.\n${'other record '.repeat(170)}\nRecursive Chronicle:\n${'chronicle '.repeat(220)}`;
+    const compacted = compactContinuityPrompt(prompt, 1800);
+    assert.ok(compacted.length <= 1800);
+    assert.match(compacted, /letter to the Chancellor remains pending/);
+    assert.match(compacted, /Open-route records retained from omitted middle/);
+    assert.match(compacted, /Recursive Chronicle/);
+});

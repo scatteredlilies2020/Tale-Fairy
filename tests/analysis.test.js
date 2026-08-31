@@ -11,18 +11,20 @@ const nextGuides = [
 ];
 const planHorizons = {
     items: [
-        { id: 'reply', direction: 'Answer the immediate question.', timeframe: 'this reply', stability: 'fluid', conditions: [], change: 'replace', reason: 'Immediate user action.' },
-        { id: 'turns', direction: 'Let the concern affect the conversation.', timeframe: 'next 2–4 turns', stability: 'adaptive', conditions: ['The conversation continues.'], change: 'replace', reason: 'Natural follow-through.' },
-        { id: 'scene', direction: 'End the tea scene with a changed understanding.', timeframe: 'current scene', stability: 'adaptive', conditions: [], change: 'replace', reason: 'Scene direction.' },
-        { id: 'arc', direction: 'Revisit the underlying obligation later.', timeframe: 'current arc', stability: 'stable', conditions: ['The obligation remains unresolved.'], change: 'replace', reason: 'Longer consequence.' },
-        { id: 'later-arcs', direction: 'Let changing loyalties reshape how the obligation matters.', timeframe: 'later or multiple arcs', stability: 'stable', conditions: ['The relationship continues.'], change: 'replace', reason: 'Distant relationship direction.' },
-        { id: 'distant-arc', direction: 'Keep the obligation available as one evolving long-term pressure.', timeframe: 'later arcs / open-ended', stability: 'slow', conditions: ['It has not become irrelevant.'], change: 'replace', reason: 'Provisional distant trajectory.' },
+        { id: 'reply', branch: 'current-conversation', direction: 'Answer the immediate question.', timeframe: 'this reply', stability: 'fluid', conditions: [], change: 'replace', reason: 'Immediate user action.' },
+        { id: 'turns', branch: 'current-conversation', direction: 'Let the concern affect the conversation.', timeframe: 'next 2–4 turns', stability: 'adaptive', conditions: ['The conversation continues.'], change: 'replace', reason: 'Natural follow-through.' },
+        { id: 'scene', branch: 'current-conversation', direction: 'End the tea scene with a changed understanding.', timeframe: 'current scene', stability: 'adaptive', conditions: [], change: 'replace', reason: 'Scene direction.' },
+        { id: 'arc', branch: 'jedi-obligation', direction: 'Revisit the underlying obligation later.', timeframe: 'current arc', stability: 'stable', conditions: ['The obligation remains unresolved.'], change: 'replace', reason: 'Longer consequence.' },
+        { id: 'later-arcs', branch: 'changing-loyalties', direction: 'Let changing loyalties reshape how the obligation matters.', timeframe: 'later or multiple arcs', stability: 'stable', conditions: ['The relationship continues.'], change: 'replace', reason: 'Distant relationship direction.' },
+        { id: 'distant-arc', branch: 'open-vocation', direction: 'Keep the obligation available as one evolving long-term pressure.', timeframe: 'later arcs / open-ended', stability: 'slow', conditions: ['It has not become irrelevant.'], change: 'replace', reason: 'Provisional distant trajectory.' },
     ],
     deviation: { level: 'none', reason: 'Initial plan.' },
 };
 const directorScore = { story_identity: 'A Star Wars survival and institutional-conflict arc about trust under Jedi obligations.', scene_function: 'Let a quiet exchange alter trust.', setting_identity: 'Star Wars lived through its institutions, droids, technology, and social scale', setting_forces: ['A serving droid witnesses and mediates domestic routine.', 'Jedi obligations constrain available time and candor.'], causal_tempo: 'seed', arc_direction: 'Let ordinary interaction expose how affection and institutional duty compete across the next few turns.', future_setup: { id: 'duty-conflict', development: 'Mara must eventually choose between the relationship and a Jedi obligation.', current_step: 'Establish the obligation as a concrete constraint.', conditions: ['The duty becomes due.'], earliest_window: 'later in the current arc', disclosure: 'hidden' }, meaningful_aim: 'Change what Mara and the user understand about the limits of their trust.', change: 'adjust', basis: 'The active conversation is intimate, while established Star Wars institutions shape Mara’s choices.' };
 const narrativeLayers = { immediate_action: 'Continue the tea conversation.', local_activity: 'A quiet tea conversation with Mara.', situation: 'An intimate home exchange constrained by Jedi obligations.', wider_world: 'Star Wars institutions, droids, duties, and ongoing life beyond this room.', durable_trajectory: 'An open-ended survival and institutional-conflict story about trust under Jedi obligations.', activity_role: 'developmental', temporal_scope: 'action' };
-const requiredPlanning = { story_frame: { frame: 'grounded', confidence: 'high', basis: 'ordinary scene' }, director_score: directorScore, narrative_layers: narrativeLayers, pathways, next_guides: nextGuides, plan_horizons: planHorizons, canon_constraints: [], note_resolution: null, ledger: 'Tea conversation is active.', narrative_events: [], cue_audit: { offered_ids: [], manifested_ids: [], unused_ids: [], contradicted_ids: [], pacing: 'respected', reason: 'No prior cues were offered.' } };
+const continuityThreads = [{ id: 'chancellor-petition', thread: 'Letter to the Chancellor', state: 'The filed petition awaits routing or an official response.', status: 'dormant', basis: 'The intake clerk accepted and filed the petition.' }];
+const selfChallenge = { weakness: 'The direct answer may overfocus the newest local exchange.', counter_route: 'Let the unresolved Chancellor petition create independent institutional movement.', decision: 'Keep the direct answer now because it has stronger immediate support, while retaining the petition as a distinct future route.' };
+const requiredPlanning = { story_frame: { frame: 'grounded', confidence: 'high', basis: 'ordinary scene' }, director_score: directorScore, narrative_layers: narrativeLayers, pathways, next_guides: nextGuides, plan_horizons: planHorizons, continuity_threads: continuityThreads, canon_constraints: [], note_resolution: null, ledger: 'Tea conversation is active.\nOpen routes: the filed Chancellor petition remains unresolved.', narrative_events: [], cue_audit: { offered_ids: [], manifested_ids: [], unused_ids: [], contradicted_ids: [], pacing: 'respected', reason: 'No prior cues were offered.' }, self_challenge: selfChallenge };
 
 test('extractJson accepts fenced and wrapped JSON', () => {
     assert.deepEqual(extractJson('```json\n{"inject":false}\n```'), { inject: false });
@@ -47,6 +49,10 @@ test('planner validation rejects empty or incomplete structured output', () => {
         objectives: [], entities: [], possibilities: [], guidance: 'Preserve the slow pace and deepen the next supported reaction.', inject: true, reason: 'Even a quiet scene benefits from focused guidance.',
     }).valid, true);
     assert.equal(validateAnalysisResult({ ...requiredPlanning, narrative_layers: undefined }).valid, false);
+    assert.equal(validateAnalysisResult({ ...requiredPlanning, continuity_threads: undefined }).valid, false);
+    assert.equal(validateAnalysisResult({ ...requiredPlanning, continuity_threads: [{ ...continuityThreads[0], status: 'forgotten' }] }).valid, false);
+    assert.equal(validateAnalysisResult({ ...requiredPlanning, self_challenge: undefined }).valid, false);
+    assert.equal(validateAnalysisResult({ ...requiredPlanning, self_challenge: { ...selfChallenge, decision: '' } }).valid, false);
     assert.equal(validateAnalysisResult({ ...requiredPlanning, narrative_layers: { ...narrativeLayers, activity_role: 'foreground' } }).valid, false);
     assert.equal(validateAnalysisResult({ ...requiredPlanning, narrative_layers: { ...narrativeLayers, temporal_scope: 'turn' } }).valid, false);
 });
@@ -125,6 +131,9 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /Dorn-2 medical unit on Level 10/);
     assert.match(SYSTEM, /Never reinterpret an established code or proper noun as a different kind of entity/);
     assert.match(SYSTEM, /The first is Tale Fairy's preferred authorial function/);
+    assert.match(SYSTEM, /privately challenge the first apparent preference/);
+    assert.match(SYSTEM, /strongest materially different supported route/);
+    assert.match(SYSTEM, /Do not expose chain-of-thought or hidden reasoning/);
     assert.match(SYSTEM, /A HOLD direction is substantive/);
     assert.match(SYSTEM, /promised, agreed, deferred, owed, revealed, decided, or established only when raw conversation/);
     assert.match(SYSTEM, /Planner-created ideas may shape the future but must never be backfilled/);
@@ -184,6 +193,9 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /Plan toward, through, and beyond a milestone without inventing a fixed ending/);
     assert.match(SYSTEM, /distant horizon should preserve room for continued life and new arcs/);
     assert.match(SYSTEM, /preserve two or three distinct major future paths/);
+    assert.match(SYSTEM, /four farthest horizons, preserve at least three meaningfully distinct future routes/);
+    assert.match(SYSTEM, /Chancellor petition, a companion's placement decision, and a scientific inquiry/);
+    assert.match(SYSTEM, /drawn first from other supported live or dormant hooks/);
     assert.match(SYSTEM, /private, speculative, headcanon-like possibility/);
     assert.match(SYSTEM, /Competing paths may coexist; do not turn alternatives into a mandatory sequence/);
     assert.match(SYSTEM, /Never force or repeatedly foreshadow present events to serve them, manufacture fate debt/);
@@ -223,7 +235,7 @@ test('planner keeps a causal possibility pool and adaptive multi-horizon plan', 
     assert.match(SYSTEM, /Balanced and Fun must include at least one active inventive route/);
     assert.match(SYSTEM, /Keep the hidden outcome out of roleplay guidance/);
     assert.match(SYSTEM, /must never mention mood, emotional tone, prose tempo, dialogue delivery/);
-    assert.match(SYSTEM, /compact layered authorial frame, the causal operation, and one conditional authorial direction/);
+    assert.match(SYSTEM, /compact layered authorial frame, a factual one-line established-open-thread inventory, the causal operation, and one conditional authorial direction/);
     assert.match(SYSTEM, /Use consequence-only when the scene should show an effect but keep its cause wholly offscreen/);
     assert.match(SYSTEM, /This controls narrative information, not prose style/);
 });
@@ -285,6 +297,20 @@ test('planner requires a distant but open-ended highest horizon', () => {
     const repaired = requireValidAnalysisResult(fixedLike);
     assert.equal(repaired.plan_horizons.items.at(-1).stability, 'slow');
     assert.equal(validateAnalysisResult(repaired).valid, true);
+});
+
+test('planner rejects cosmetically different horizons that collapse into one future route', () => {
+    const collapsed = {
+        ...requiredPlanning,
+        plan_horizons: {
+            ...planHorizons,
+            items: planHorizons.items.map((item, index) => index < 2 ? item : { ...item, branch: 'same-nim-council-thread' }),
+        },
+    };
+    const validation = validateAnalysisResult(collapsed);
+    assert.equal(validation.valid, false);
+    assert.ok(validation.errors.some(error => /three meaningfully distinct future routes/i.test(error)));
+    assert.ok(ANALYSIS_SCHEMA.value.properties.plan_horizons.properties.items.items.required.includes('branch'));
 });
 
 test('planner rejects and repairs a single beat cloned across every horizon', () => {
@@ -741,7 +767,7 @@ test('canon bootstrap retains labeled OOC turns outside ordinary sampling points
 
 test('analysis application keeps layered guidance bounded and records its injection decision', () => {
     const messages = [{ mes: 'I make tea', is_user: true }];
-    const next = applyAnalysis(defaultState(), { director_score: directorScore, narrative_layers: narrativeLayers, scene: { status: 'active', activity: 'tea', pace: 'slow', intent: 'rest', location: 'kitchen', time: 'evening', loop: false }, objectives: [], entities: [], possibilities: [], pathways, next_guides: nextGuides, guidance: 'x'.repeat(2000), inject: true, reason: 'A gentle reminder will preserve the established pace.' }, messages);
+    const next = applyAnalysis(defaultState(), { director_score: directorScore, narrative_layers: narrativeLayers, self_challenge: selfChallenge, scene: { status: 'active', activity: 'tea', pace: 'slow', intent: 'rest', location: 'kitchen', time: 'evening', loop: false }, objectives: [], entities: [], possibilities: [], pathways, next_guides: nextGuides, guidance: 'x'.repeat(2000), inject: true, reason: 'A gentle reminder will preserve the established pace.' }, messages);
     assert.equal(next.guidance.length, 700);
     assert.equal(next.sourceMessageCount, 1);
     assert.equal(next.scene.activity, 'tea');
@@ -753,6 +779,7 @@ test('analysis application keeps layered guidance bounded and records its inject
     assert.equal(next.narrativeLayers.activityRole, 'developmental');
     assert.equal(next.narrativeLayers.temporalScope, 'action');
     assert.match(next.narrativeLayers.durableTrajectory, /open-ended survival/);
+    assert.match(next.selfChallenge.counterRoute, /Chancellor petition/);
     assert.match(next.lastReason, /established pace/);
 });
 
@@ -901,6 +928,21 @@ test('planner excerpts remove generated scaffolding and preserve both ends of lo
     assert.match(prompt.messages[0].content, /^A+/);
     assert.match(prompt.messages[0].content, /crucial middle evidence/);
     assert.match(prompt.messages[0].content, /crucial ending$/);
+});
+
+test('analysis prompt independently recovers dormant formal hooks for future-route variety', () => {
+    const messages = Array.from({ length: 90 }, (_, index) => ({ mes: `Quiet Temple routine ${index}.`, is_user: index % 2 === 0 }));
+    messages[30] = { mes: 'We filed my letter to the Chancellor as a humanitarian petition with a tracking copy.', is_user: false };
+    messages[31] = { mes: 'Do you think our letter to the Chancellor will bear fruit?', is_user: true };
+    messages[32] = { mes: 'The petition may be routed to Refugee Relief, and Vekk will follow up in one month if no answer arrives.', is_user: false };
+    messages[52] = { mes: 'Nim has a placement panel scheduled for Thursday.', is_user: false };
+    messages[88] = { mes: 'The room remains quiet through the night.', is_user: false };
+    messages[89] = { mes: 'Continue as I sleep.', is_user: true };
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { messageWindow: 8, maxPromptChars: 12000 }));
+    assert.ok(prompt.candidate_dormant_hooks.some(item => item.hook_type === 'correspondence-or-petition' && /Chancellor|petition/iu.test(item.content)));
+    assert.ok(prompt.candidate_dormant_hooks.some(item => item.hook_type === 'scheduled-decision' && /placement panel/iu.test(item.content)));
+    assert.match(prompt.dormant_hook_instruction, /retain it in continuity_threads and objectives even while offscreen/);
+    assert.match(prompt.dormant_hook_instruction, /distinct future-route family/);
 });
 
 test('planner excerpts strip plain generated statboxes but retain the depicted scene', () => {

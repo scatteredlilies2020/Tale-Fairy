@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, hasExplicitProgressDirective, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, isStateAligned, loadState, normalizeState, returnedReplyMatchesVerification, saveState, STATE_KEY, stateForPrompt } from '../extension/state.js';
+import { buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, hasExplicitProgressDirective, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, isStateAligned, loadState, normalizeState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION, stateForPrompt } from '../extension/state.js';
 
 const stateNextGuides = [
     { id: 'direct-answer', direction: 'Let Mara answer plainly and reveal one concrete concern.', useWhen: 'The user continues or asks Mara.', dropWhen: 'The user leaves or changes subject.', causalRole: 'Advance the live trust thread through a concrete disclosure.', worldDelta: 'Mara reveals a concern that changes the shared understanding.', origin: 'inferred', basis: 'Mara is present and engaged in the live conversation.', strength: 'strong', sourcePathways: ['answer'], reason: 'Direct continuation.' },
@@ -9,6 +9,8 @@ const stateNextGuides = [
 const currentPlan = {
     directorScore: { storyIdentity: 'A Star Wars survival and institutional-conflict arc about trust under Jedi obligations.', sceneFunction: 'Let a quiet slice-of-life exchange alter trust.', settingIdentity: 'Star Wars as a lived institutional and technological world', settingForces: ['Jedi obligations constrain time and candor.', 'Droids participate in domestic routine.'], causalTempo: 'seed', arcDirection: 'Let ordinary interaction expose how affection and duty compete.', futureSetup: { id: 'duty-conflict', development: 'Mara must choose between the relationship and a Jedi obligation.', currentStep: 'Establish the obligation as a real constraint.', conditions: ['The duty becomes due.'], earliestWindow: 'later in the current arc', disclosure: 'hidden' }, meaningfulAim: 'Change the shared understanding of trust and obligation.', change: 'adjust', basis: 'The active exchange and setting support this pressure.' },
     narrativeLayers: { immediateAction: 'Continue the tea conversation.', localActivity: 'A quiet tea conversation with Mara.', situation: 'An intimate home exchange constrained by Jedi obligations.', widerWorld: 'Star Wars institutions, droids, duties, and ongoing life beyond this room.', durableTrajectory: 'An open-ended survival and institutional-conflict story about trust under Jedi obligations.', activityRole: 'developmental', temporalScope: 'action' },
+    continuityThreads: [{ id: 'chancellor-petition', thread: 'Letter to the Chancellor', state: 'The filed petition awaits an official response.', status: 'dormant', basis: 'The intake clerk filed it.' }],
+    selfChallenge: { weakness: 'The preferred route may be too local.', counterRoute: 'Advance the Chancellor petition independently.', decision: 'Keep the local route for this action while retaining the petition.' },
     pathways: [{ id: 'answer', direction: 'Continue the active exchange.', when: 'The user continues or asks Mara.', responseBias: 'Have Mara answer.', horizon: 'near', status: 'foreground', conditions: [], change: 'keep', reason: 'The exchange is current.' }],
     nextGuides: stateNextGuides,
     planHorizons: { items: Array.from({ length: 6 }, (_, index) => ({ id: `h${index}`, direction: `Direction ${index}`, timeframe: index === 5 ? 'later arcs / open-ended' : `range ${index}`, stability: index < 2 ? 'adaptive' : index === 5 ? 'slow' : 'stable', conditions: [], change: 'keep', reason: 'Still relevant.' })), deviation: { level: 'none', reason: 'Aligned.' } },
@@ -18,10 +20,13 @@ test('state normalizes caps and invalid mode', () => {
     const guides = Array.from({ length: 4 }, (_, index) => ({ ...stateNextGuides[0], id: `guide-${index}`, direction: `Direction ${index}` }));
     guides[0].causalRole = 'advance '.repeat(40);
     const possibilities = Array.from({ length: 24 }, (_, index) => ({ description: `Idea ${index} ${'x'.repeat(160)}`, conditions: ['one condition', 'discarded condition'], force: 'moderate' }));
-    const state = normalizeState({ mode: 'hard', objectives: Array.from({ length: 9 }, (_, i) => ({ title: String(i) })), possibilities, nextGuides: guides, enabled: false });
+    const continuityThreads = Array.from({ length: 12 }, (_, index) => ({ id: `route-${index}`, thread: `Route ${index}`, state: 'Awaiting a supported development.', status: index ? 'dormant' : 'invalid', basis: 'Established in chat.' }));
+    const state = normalizeState({ mode: 'hard', objectives: Array.from({ length: 9 }, (_, i) => ({ title: String(i) })), continuityThreads, possibilities, nextGuides: guides, enabled: false });
     assert.equal(state.mode, 'balanced');
     assert.equal(state.enabled, false);
     assert.equal(state.objectives.length, 9);
+    assert.equal(state.continuityThreads.length, 10);
+    assert.equal(state.continuityThreads[0].status, 'dormant');
     assert.deepEqual(state.nextGuides.map(item => item.id), ['guide-0', 'guide-1', 'guide-2', 'guide-3']);
     assert.ok(state.nextGuides[0].causalRole.length <= 130);
     assert.match(state.nextGuides[0].causalRole, /advance…$/);
@@ -36,7 +41,7 @@ test('state normalizes caps and invalid mode', () => {
     assert.equal(promptIdeas.length, 18);
     assert.ok(promptIdeas.every(item => typeof item === 'string' && item.length <= 180));
     assert.ok(JSON.stringify(promptIdeas).length < 3400, 'the complete idea bank should remain token-cheap');
-    assert.equal(state.version, 31);
+    assert.equal(state.version, STATE_VERSION);
 });
 
 test('offscreen causes persist privately while injection exposes only their consequence', () => {
@@ -77,13 +82,15 @@ test('offscreen causes persist privately while injection exposes only their cons
 });
 
 test('state round trips through portable metadata', () => {
-    const metadata = saveState({ title: 'chat' }, { ...defaultState(), guidance: 'take a breath', sourceChatId: 'chat-1', sourceMessageCount: 1, lastAnalysisFingerprint: fingerprintMessages([{ mes: 'hello', is_user: true }]), scene: { status: 'active' }, lastRequestVerification: { status: 'confirmed', guidanceBlock: '<living-world-guide>take a breath</living-world-guide>', requestedAt: 10, confirmedAt: 20, sourceMessageCount: 1, responseMessageCount: 2, chatId: 'chat-1', provider: 'custom', model: 'model', position: 'at-depth', role: 'user', depth: 3, guideCandidates: stateNextGuides, canonConstraints: ['Fact before the response.'], selectedGuideIndex: 1 } });
+    const metadata = saveState({ title: 'chat' }, { ...defaultState(), continuityThreads: currentPlan.continuityThreads, selfChallenge: currentPlan.selfChallenge, guidance: 'take a breath', sourceChatId: 'chat-1', sourceMessageCount: 1, lastAnalysisFingerprint: fingerprintMessages([{ mes: 'hello', is_user: true }]), scene: { status: 'active' }, lastRequestVerification: { status: 'confirmed', guidanceBlock: '<living-world-guide>take a breath</living-world-guide>', requestedAt: 10, confirmedAt: 20, sourceMessageCount: 1, responseMessageCount: 2, chatId: 'chat-1', provider: 'custom', model: 'model', position: 'at-depth', role: 'user', depth: 3, guideCandidates: stateNextGuides, canonConstraints: ['Fact before the response.'], selectedGuideIndex: 1 } });
     assert.equal(metadata.title, 'chat');
     assert.equal(loadState(metadata).guidance, 'take a breath');
     assert.equal(loadState(metadata).lastRequestVerification.guidanceBlock, '<living-world-guide>take a breath</living-world-guide>');
     assert.equal(loadState(metadata).lastRequestVerification.responseMessageCount, 2);
     assert.equal(loadState(metadata).lastRequestVerification.guideCandidates.length, 2);
     assert.equal(loadState(metadata).lastRequestVerification.selectedGuideIndex, 1);
+    assert.equal(loadState(metadata).continuityThreads[0].id, 'chancellor-petition');
+    assert.match(loadState(metadata).selfChallenge.counterRoute, /Chancellor petition/);
     assert.deepEqual(loadState(metadata).lastRequestVerification.canonConstraints, ['Fact before the response.']);
     assert.equal(clearState(metadata)[STATE_KEY], undefined);
 });
@@ -230,7 +237,7 @@ test('pre-canon-ledger state requests one bounded bootstrap rescan', () => {
 
 test('pre-momentum guides and request verification cannot remain injectable after an upgrade', () => {
     const migrated = normalizeState({ version: 16, ...currentPlan, nextGuides: stateNextGuides, canonConstraints: ['Fact from a discarded response.'], lastInject: true, lastRequestVerification: { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides } });
-    assert.equal(migrated.version, 31);
+    assert.equal(migrated.version, STATE_VERSION);
     assert.equal(migrated.canonBootstrapPending, true);
     assert.deepEqual(migrated.nextGuides, []);
     assert.deepEqual(migrated.canonConstraints, []);
@@ -241,7 +248,7 @@ test('pre-momentum guides and request verification cannot remain injectable afte
 test('pre-v24 candidates are rebuilt with layered authorial control while established canon survives', () => {
     const verification = { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides };
     const migrated = normalizeState({ version: 22, ...currentPlan, nextGuides: stateNextGuides, canonConstraints: ['Established fact.'], lastRequestVerification: verification });
-    assert.equal(migrated.version, 31);
+    assert.equal(migrated.version, STATE_VERSION);
     assert.equal(migrated.canonBootstrapPending, true);
     assert.deepEqual(migrated.nextGuides, []);
     assert.deepEqual(migrated.canonConstraints, ['Established fact.']);
@@ -254,7 +261,7 @@ test('v25 plans rebuild once after duplicate-horizon recovery changes while cano
         deviation: { level: 'none', reason: 'Old recovery.' },
     };
     const migrated = normalizeState({ version: 25, ...currentPlan, planHorizons: repeatedHorizons, objectives: [{ title: 'Old cloned objective.' }], narrativeEvents: [{ title: 'Current situation develops', summary: 'Complete the current departure.' }], nextGuides: stateNextGuides, guidance: 'Old recovered guidance.', lastInject: true, canonConstraints: ['Established fact.'], lastRequestVerification: { status: 'confirmed', guidanceBlock: 'old', guideCandidates: stateNextGuides } });
-    assert.equal(migrated.version, 31);
+    assert.equal(migrated.version, STATE_VERSION);
     assert.equal(migrated.canonBootstrapPending, true);
     assert.deepEqual(migrated.nextGuides, []);
     assert.deepEqual(migrated.planHorizons.items, []);
@@ -292,6 +299,7 @@ test('prompt payload keeps user directives active and only includes usable guida
         ...defaultState(),
         directorScore: currentPlan.directorScore,
         narrativeLayers: currentPlan.narrativeLayers,
+        continuityThreads: currentPlan.continuityThreads,
         guidance: 'Keep the scene grounded.',
         pathways: [{ id: 'answer', direction: 'Resolve the immediate question.', when: 'The user asks Mara or continues the exchange.', responseBias: 'Have Mara answer with the established facts.', horizon: 'this reply', status: 'foreground', conditions: [], change: 'replace', reason: 'The user may address her directly.' }],
         nextGuides: stateNextGuides,
@@ -342,6 +350,8 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(current, /LATEST USER ACTION: I ask Mara what comes next/);
     assert.match(current, /AUTHORIZED SCOPE: ACTION \(a ceiling, not a quota\)/);
     assert.match(current, /WIDER WORLD: Star Wars institutions, droids, duties/);
+    assert.match(current, /ESTABLISHED OPEN THREADS \(continuity only; do not force onscreen\): dormant: Letter to the Chancellor/);
+    assert.match(current, /filed petition awaits an official response/);
     assert.match(current, /ACTIVE CAUSAL FORCES: Jedi obligations constrain time and candor; Droids participate in domestic routine/);
     assert.match(current, /STORY OPERATION: SEED/);
     assert.match(current, /Tale Fairy controls narrative function, pressure, and scale/);

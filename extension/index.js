@@ -1270,6 +1270,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         const change = item.change && item.change !== 'keep' ? ` · ${item.change}` : '';
         return [
             `${item.timeframe || 'Future'} [${item.stability || 'adaptive'} · ${horizonInfluence(index, items.length)} influence${change}] — ${item.direction}`,
+            item.branch && `Branch: ${item.branch}`,
             item.conditions?.length && `Needs: ${item.conditions.join('; ')}`,
             item.reason && `Basis: ${item.reason}`,
         ].filter(Boolean).join('\n');
@@ -1277,6 +1278,14 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const deviation = state.planHorizons?.deviation;
     if (deviation?.level && deviation.level !== 'none') horizonLines.push(`Deviation: ${deviation.level}${deviation.reason ? ` — ${deviation.reason}` : ''}`);
     scratchpadText(board, 'scratchpad-horizons', generatedValue(horizonLines.join('\n')), boardFallback('First action [fluid · immediate influence] — Establish the opening activity and its direct response.\nCurrent scene [adaptive · strong influence] — Let relationships or practical conditions begin changing.\nNext scene [adaptive · moderate influence] — Carry forward one consequence or opportunity.\nSeveral scenes [stable · light influence] — Develop a recurring person, place, activity, or pressure.\nCurrent arc [stable · background influence] — Let accumulated choices reshape the character’s circumstances.\nLater arcs / open-ended [slow · background influence] — Keep multiple major life directions available and fully revisable.', 'No generated planning horizons yet.'));
+
+    const challenge = state.selfChallenge || {};
+    const challengeText = [
+        challenge.weakness && `Weakness tested: ${challenge.weakness}`,
+        challenge.counterRoute && `Strongest counter-route: ${challenge.counterRoute}`,
+        challenge.decision && `Decision: ${challenge.decision}`,
+    ].filter(Boolean).join('\n');
+    scratchpadText(board, 'scratchpad-self-challenge', generatedValue(challengeText), boardFallback('Weakness tested: The first idea may be overfocused on the newest local beat.\nStrongest counter-route: Compare a distinct established continuity or wider-world route.\nDecision: Keep or revise the preference according to causal support, variety, simulation integrity, and player agency.', 'No planner self-challenge yet.'));
 
     const audit = state.cueAudit;
     const auditText = audit?.offeredIds?.length
@@ -1321,6 +1330,11 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         if (!item?.title && !item?.detail) return '';
         return `${item.title || 'Open direction'}${item.detail ? ` — ${item.detail}` : ''}${item.status ? ` [${item.status}]` : ''}`;
     }, '') : '', boardFallback('Opening objective — Establish what the character is doing, what can respond, and which choices remain open. [provisional]', 'No generated objectives yet.'));
+
+    scratchpadText(board, 'scratchpad-continuity-routes', analyzed ? scratchpadList(state.continuityThreads, item => {
+        if (!item?.thread) return '';
+        return `${item.thread} [${item.status || 'dormant'}] — ${item.state}${item.basis ? `\n  Basis: ${item.basis}` : ''}`;
+    }, '') : '', 'No established open routes yet.');
 
     const displayedPossibilities = state.possibilities?.length
         ? state.possibilities

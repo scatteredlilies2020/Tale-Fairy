@@ -18,6 +18,33 @@ function boundedEdge(value, length, fromEnd = false) {
     return value.slice(0, boundary >= length - 160 ? boundary : length).trimEnd();
 }
 
+function boundedChronicleTail(value, length) {
+    if (value.length <= length) return value;
+    const markerIndex = value.toLowerCase().lastIndexOf('recursive chronicle');
+    if (markerIndex < 0) return boundedEdge(value, length, true);
+    const lineEnd = value.indexOf('\n', markerIndex);
+    const heading = value.slice(markerIndex, lineEnd >= 0 ? lineEnd : markerIndex + 100).trim();
+    if (!heading) return boundedEdge(value, length, true);
+    if (heading.length >= length) return heading.slice(0, length);
+    const tail = boundedEdge(value, length - heading.length - 1, true);
+    if (tail.toLowerCase().includes('recursive chronicle')) return tail;
+    return `${heading}\n${tail}`.slice(0, length);
+}
+
+function routeBearingExcerpt(value, limit) {
+    const pattern = /\b(?:unresolved|open|pending|due|blocked|dormant|petition|letter|correspondence|decision|hearing|appointment|investigation|promise|commitment|journey|return|review|application|request|order)\b/giu;
+    const excerpts = [];
+    const seen = new Set();
+    for (const match of value.matchAll(pattern)) {
+        const excerpt = value.slice(Math.max(0, match.index - 120), Math.min(value.length, match.index + match[0].length + 180)).replace(/\s+/gu, ' ').trim();
+        const key = excerpt.toLowerCase();
+        if (excerpt && !seen.has(key)) excerpts.push(excerpt);
+        seen.add(key);
+        if (excerpts.join(' … ').length >= limit) break;
+    }
+    return excerpts.join(' … ').slice(0, limit).trim();
+}
+
 export function compactContinuityPrompt(value, requestedLimit = 3500) {
     const text = cleanPrompt(value);
     const limit = Math.max(500, Math.min(12000, Number(requestedLimit) || 3500));
@@ -26,11 +53,14 @@ export function compactContinuityPrompt(value, requestedLimit = 3500) {
     // Continuity Memory places its current/retrieved records near the front and
     // its Story/Recursive Chronicle at the end. Preserve both rather than
     // prefix-clipping away the chronological continuity spine.
-    const separator = '\n\n[… continuity context compacted …]\n\n';
-    const available = limit - separator.length;
-    const headLength = Math.floor(available * 0.52);
-    const tailLength = available - headLength;
-    return `${boundedEdge(text, headLength)}${separator}${boundedEdge(text, tailLength, true)}`.slice(0, limit);
+    const marker = '\n\n[… continuity context compacted …]\n\n';
+    const routeBudget = Math.min(600, Math.floor((limit - marker.length) * 0.25));
+    const routes = routeBearingExcerpt(text, routeBudget);
+    const routeSection = routes ? `Open-route records retained from omitted middle:\n${routes}` : '';
+    const edgeBudget = Math.max(0, limit - marker.length * (routeSection ? 2 : 1) - routeSection.length);
+    const headLength = Math.floor(edgeBudget * 0.52);
+    const tailLength = edgeBudget - headLength;
+    return [boundedEdge(text, headLength), routeSection, boundedChronicleTail(text, tailLength)].filter(Boolean).join(marker).slice(0, limit);
 }
 
 export function readContinuityBridge(context = {}, bridge, { allowStale = false } = {}) {

@@ -1,10 +1,11 @@
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 31;
+export const STATE_VERSION = 34;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
 const MAX_EVENTS = 10;
 const MAX_OBJECTIVES = 10;
+const MAX_CONTINUITY_THREADS = 10;
 const MAX_POSSIBILITIES = 18;
 const MAX_HORIZONS = 10;
 const MAX_PATHWAYS = 5;
@@ -21,6 +22,8 @@ export function defaultState() {
         storyFrame: { frame: 'unknown', confidence: 'low', basis: '' },
         directorScore: { storyIdentity: '', sceneFunction: '', settingIdentity: '', settingForces: [], causalTempo: 'hold', arcDirection: '', futureSetup: { id: '', development: '', currentStep: '', conditions: [], earliestWindow: '', disclosure: 'hidden' }, meaningfulAim: '', change: 'replace', basis: '' },
         objectives: [],
+        continuityThreads: [],
+        selfChallenge: { weakness: '', counterRoute: '', decision: '' },
         entities: [],
         possibilities: [],
         pathways: [],
@@ -64,6 +67,23 @@ function clippedText(value, limit) {
 }
 function normalizeObjective(value = {}) {
     return { title: text(value.title).slice(0, 120), detail: text(value.detail).slice(0, 300), status: text(value.status).slice(0, 40), source: text(value.source).slice(0, 120) };
+}
+function normalizeContinuityThread(value = {}) {
+    const status = text(value.status, 'dormant').toLowerCase();
+    return {
+        id: text(value.id).slice(0, 100),
+        thread: clippedText(value.thread, 180),
+        state: clippedText(value.state, 240),
+        status: ['active', 'dormant', 'due', 'blocked'].includes(status) ? status : 'dormant',
+        basis: clippedText(value.basis, 160),
+    };
+}
+function normalizeSelfChallenge(value = {}) {
+    return {
+        weakness: clippedText(value.weakness, 260),
+        counterRoute: clippedText(value.counterRoute ?? value.counter_route, 260),
+        decision: clippedText(value.decision, 320),
+    };
 }
 function normalizeEntity(value = {}) {
     return { name: text(value.name).slice(0, 100), state: text(value.state).slice(0, 220), location: text(value.location).slice(0, 140), relevance: text(value.relevance).slice(0, 140), confidence: text(value.confidence).slice(0, 40), window: text(value.window).slice(0, 100) };
@@ -223,6 +243,7 @@ function normalizeHorizon(value = {}, index = 0, items = [value]) {
     const rawTimeframe = text(value.timeframe);
     return {
         id: text(value.id).slice(0, 100),
+        branch: text(value.branch, 'current-trajectory').slice(0, 80),
         direction: text(value.direction).slice(0, 360),
         timeframe: (!rawTimeframe || GENERIC_HORIZON_TIMEFRAME.test(rawTimeframe)
             ? inferredHorizonTimeframe(index, items.length)
@@ -294,7 +315,10 @@ export function normalizeState(input = {}) {
     // makes depicted chronology an explicit planning boundary; v29 stops
     // generated status summaries from manufacturing elapsed time; v30 strips
     // plain leading statboxes and discards local state they may have tainted;
-    // v31 excludes fenced code and XML/HTML-style blocks from chat evidence.
+    // v31 excludes fenced code and XML/HTML-style blocks from chat evidence;
+    // v32 gives future horizons explicit branches; v33 rebuilds once to seed
+    // the durable established-open-thread inventory; v34 requires the planner
+    // to challenge its preferred route before committing to it.
     const unsafePlannerUpgrade = inputVersion > 0 && inputVersion < 18;
     const movementUpgrade = inputVersion > 0 && inputVersion < STATE_VERSION;
     const recoveryUpgrade = inputVersion > 0 && inputVersion < 26;
@@ -314,6 +338,8 @@ export function normalizeState(input = {}) {
         storyFrame: { ...base.storyFrame, ...(value.storyFrame || {}) },
         directorScore: normalizeDirectorScore(value.directorScore),
         objectives: recoveryUpgrade ? [] : cap(value.objectives, MAX_OBJECTIVES).map(normalizeObjective).filter(item => item.title || item.detail),
+        continuityThreads: cap(value.continuityThreads ?? value.continuity_threads, MAX_CONTINUITY_THREADS).map(normalizeContinuityThread).filter(item => item.id && item.thread && item.state && item.basis),
+        selfChallenge: normalizeSelfChallenge(value.selfChallenge ?? value.self_challenge),
         entities: cap(value.entities).map(normalizeEntity).filter(item => item.name),
         possibilities: cap(value.possibilities, MAX_POSSIBILITIES).map(normalizePossibility).filter(item => item.description),
         pathways: chronologyAuditUpgrade ? [] : cap(value.pathways, MAX_PATHWAYS).map(normalizePathway).filter(item => item.id && item.direction && item.when),
@@ -375,6 +401,8 @@ export function stateForPrompt(state) {
         scene: Object.fromEntries(Object.entries(s.scene).map(([key, value]) => [key, typeof value === 'string' ? value.slice(0, 100) : value])),
         narrativeLayers: { ...s.narrativeLayers },
         objectives: s.objectives.slice(-8).map(item => ({ title: item.title, detail: item.detail.slice(0, 180), status: item.status })),
+        continuityThreads: s.continuityThreads.map(item => ({ id: item.id, thread: item.thread, state: item.state, status: item.status, basis: item.basis })),
+        selfChallenge: { ...s.selfChallenge },
         entities: s.entities.filter(e => e && e.relevance !== 'ambient').slice(-3).map(item => ({ name: item.name, state: item.state.slice(0, 120), location: item.location.slice(0, 80), relevance: item.relevance.slice(0, 80) })),
         // The large brainstorming bench stays cheap in the next planner prompt:
         // one compact string per idea instead of repeating JSON field names.
@@ -390,7 +418,7 @@ export function stateForPrompt(state) {
         activeBeat: s.pathways.length ? undefined : { id: s.activeBeat.id, objective: s.activeBeat.objective, nextAction: s.activeBeat.nextAction, completion: s.activeBeat.completion, lifecycle: s.activeBeat.lifecycle },
         beatHistory: s.beatHistory.slice(-1).map(beat => ({ id: beat.id, objective: beat.objective, completion: beat.completion, lifecycle: beat.lifecycle })),
         planHorizons: {
-            items: s.planHorizons.items.map(item => ({ id: item.id, direction: item.direction.slice(0, 240), timeframe: item.timeframe, stability: item.stability, conditions: item.conditions.slice(0, 1), change: item.change })),
+            items: s.planHorizons.items.map(item => ({ id: item.id, branch: item.branch, direction: item.direction.slice(0, 240), timeframe: item.timeframe, stability: item.stability, conditions: item.conditions.slice(0, 1), change: item.change })),
             deviation: s.planHorizons.deviation,
         },
         canonConstraints: s.canonConstraints.slice(-8).map(item => item.slice(0, 360)),
@@ -510,7 +538,7 @@ function authorialDirective(guide) {
     return `AUTHORIAL INTENT: ${clippedText(guide.direction, 180)}\nAPPLY WHEN: ${clippedText(guide.useWhen, 90)}\nDO NOT APPLY WHEN: ${clippedText(guide.dropWhen, 80)}\nSTORY FUNCTION: ${clippedText(guide.causalRole, 110)}\nIMPACT ENVELOPE: ${clippedText(guide.worldDelta, 110)}${boundary ? `\nINFORMATION BOUNDARY: ${boundary}` : ''}`;
 }
 
-function narrativeConductor(score, layers, latestUserAction = '') {
+function narrativeConductor(score, layers, continuityThreads = [], latestUserAction = '') {
     const forces = score.settingForces.length ? score.settingForces.map(item => clippedText(item, 55).replace(/[.;:,]+$/u, '')).join('; ') : 'Use only setting forces established by context.';
     const durable = layers.durableTrajectory || score.storyIdentity || 'Preserve the broad trajectory established in the complete context.';
     const situation = layers.situation || score.sceneFunction || 'Use the current situation established in the latest conversation.';
@@ -518,7 +546,9 @@ function narrativeConductor(score, layers, latestUserAction = '') {
     const presentPressure = score.futureSetup?.currentStep || score.arcDirection || 'Let the durable trajectory shape one current non-player cause without predetermining its outcome.';
     const currentAction = clippedText(latestUserAction || layers.immediateAction || 'Follow the latest authorized action.', 110);
     const actionLabel = latestUserAction ? 'LATEST USER ACTION' : 'IMMEDIATE CONTEXT';
-    return `TALE FAIRY AUTHORIAL FRAME:\nDURABLE CONTEXT: ${clippedText(durable, 75)}\nCURRENT CAUSE: ${clippedText(presentPressure, 90)}\nCURRENT SITUATION: ${clippedText(situation, 100)}\nLOCAL ACTIVITY: ${clippedText(layers.localActivity || 'Use the latest established activity.', 90)} [${layers.activityRole.toUpperCase()}]\n${actionLabel}: ${currentAction}\nAUTHORIZED SCOPE: ${layers.temporalScope.toUpperCase()} (a ceiling, not a quota)\nWIDER WORLD: ${clippedText(widerWorld, 65)}\nACTIVE CAUSAL FORCES: ${forces}\nSTORY OPERATION: ${score.causalTempo.toUpperCase()}\nTale Fairy controls narrative function, pressure, and scale—not outcomes or player action; realize exact events, NPC actions, dialogue, outcomes, and prose from context.`;
+    const openThreads = continuityThreads.slice(0, 5).map(item => `${item.status}: ${clippedText(item.thread, 62)} — ${clippedText(item.state, 78)}`).join(' | ');
+    const threadLine = openThreads ? `\nESTABLISHED OPEN THREADS (continuity only; do not force onscreen): ${openThreads}` : '';
+    return `TALE FAIRY AUTHORIAL FRAME:\nDURABLE CONTEXT: ${clippedText(durable, 75)}\nCURRENT CAUSE: ${clippedText(presentPressure, 90)}\nCURRENT SITUATION: ${clippedText(situation, 100)}\nLOCAL ACTIVITY: ${clippedText(layers.localActivity || 'Use the latest established activity.', 90)} [${layers.activityRole.toUpperCase()}]\n${actionLabel}: ${currentAction}\nAUTHORIZED SCOPE: ${layers.temporalScope.toUpperCase()} (a ceiling, not a quota)\nWIDER WORLD: ${clippedText(widerWorld, 65)}${threadLine}\nACTIVE CAUSAL FORCES: ${forces}\nSTORY OPERATION: ${score.causalTempo.toUpperCase()}\nTale Fairy controls narrative function, pressure, and scale—not outcomes or player action; realize exact events, NPC actions, dialogue, outcomes, and prose from context.`;
 }
 
 function boundedPromptLines(items, prefix, perItem, total) {
@@ -552,7 +582,7 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
         : s.nextGuides;
     const selectedIndex = candidates.length ? Math.max(0, Math.min(candidates.length - 1, Number(guideIndex) || 0)) : 0;
     const selectedCandidate = candidates[selectedIndex] || null;
-    const conductorPrompt = guidanceUsable ? `${narrativeConductor(s.directorScore, s.narrativeLayers, latestUserAction)}\n\n` : '';
+    const conductorPrompt = guidanceUsable ? `${narrativeConductor(s.directorScore, s.narrativeLayers, s.continuityThreads, latestUserAction)}\n\n` : '';
     const beatRealization = 'BEAT REALIZATION: Realize the beat. Introduce an event, actor, object, or world change only when the direction or active horizon supports it. Otherwise deepen the activity through action, sensory state, progress, or consequence; calm may remain calm. Never invent intrusion or player tasks to prove movement; leave choices open.';
     const pacingBoundary = 'Primary user and roleplay instructions control voice, dialogue, prose, format, length, and response shape; Tale Fairy changes none of them; travel stops at arrival. A moment or named action preserves the established clock except for its immediate duration; never treat a future activity as completed. A broad activity may progress, but a named action permits one instance and immediate result—not repetition, onward movement, obeying a request, or unstated reaction. Never invent player dialogue, thoughts, feelings, choices, compliance, reactions, or activities. NPC requests/orders are world actions, not player authorization. Tale Fairy movement comes from independent character/world change, not assigning the player a task. Only simulate low-stakes procedure implicit in broad scope. Apply established strengths/limits proportionately; never cancel exceptional advantages. Keep unresolved choices open.';
     const fallbackPacingBoundary = 'AUTHORITY: User and roleplay instructions control expression; Tale Fairy supplies only movement. PLAYER AGENCY: Stay within latest user scope. Never invent player dialogue, thoughts, feelings, choices, compliance, reactions, or extra activities. NPC requests are events, not authorization.';

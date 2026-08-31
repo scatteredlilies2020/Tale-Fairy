@@ -10,9 +10,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.51');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.51');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.51');
+    assert.equal(manifest.version, '0.11.54');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.54');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.54');
 });
 
 test('injection sends layered authorial control while concrete realization and future outcomes stay private', () => {
@@ -152,6 +152,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /optionalContinuityContextWhenReady/);
     assert.match(source, /scratchpad-possibilities/);
     assert.match(source, /scratchpad-continuity/);
+    assert.match(source, /scratchpad-continuity-routes/);
     assert.match(source, /scratchpad-ledger/);
     assert.match(source, /function readableScratchpadGuidance/);
     assert.match(source, /Recovery: the planner omitted ranked guides/);
@@ -249,10 +250,14 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(template, /Timing, readiness, causes, and requirements/);
     assert.match(template, /Use Continuity context when available/);
     assert.match(template, /data-role="scratchpad-continuity"/);
+    assert.match(template, /data-role="scratchpad-continuity-routes"/);
     assert.match(template, /data-role="scratchpad-scene"/);
     assert.match(template, /data-role="scratchpad-next-guides"/);
     assert.match(template, /data-role="scratchpad-pathways"/);
     assert.match(template, /data-role="scratchpad-horizons"/);
+    assert.match(template, /Planner self-challenge/);
+    assert.match(template, /data-role="scratchpad-self-challenge"/);
+    assert.match(source, /Weakness tested:/);
     assert.match(template, /data-role="scratchpad-guidance"/);
     assert.match(template, /data-role="scratchpad-request-verification"/);
     assert.match(template, /data-role="scratchpad-objectives"/);
