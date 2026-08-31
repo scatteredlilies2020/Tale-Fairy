@@ -11,6 +11,17 @@ export class AnalysisValidationError extends Error {
     }
 }
 
+const asString = (value, fallback = '') => typeof value === 'string' ? value : fallback;
+const asArray = value => Array.isArray(value) ? value : [];
+const EMPTY_PLANNING_LANGUAGE = /(?:^\s*(?:unknown|uncertain|unresolved|tbd|to be determined)\s*[.!]?\s*$|planner classification was incomplete|overall story identity remains unresolved|current local activity established by the conversation|active social and practical situation surrounding the local activity|established wider world and its ongoing processes|broad open-ended trajectory remains provisional|use the established setting identity rather than generic genre decoration)/iu;
+const META_DIRECTIVE_PATTERN = /(?:^|[\r\n])\s*(?:[\[(<{]\s*)?(?:ooc|out[ -]?of[ -]?character|meta|canon|author|gm|narrator)(?:\s*(?:note))?\s*(?:[:\-\])}>]|$)\s*([\s\S]*)/iu;
+const HORIZON_ROUTE_STOPWORDS = new Set([
+    'about', 'across', 'after', 'allow', 'allows', 'another', 'before', 'continue', 'continues', 'current', 'develop', 'develops',
+    'development', 'direction', 'during', 'eventual', 'future', 'into', 'keep', 'keeps', 'later', 'let', 'lets', 'move', 'moves',
+    'next', 'only', 'open', 'path', 'possible', 'possibility', 'preserve', 'preserves', 'route', 'several', 'through', 'toward',
+    'while', 'without', 'with', 'from', 'that', 'this', 'the', 'and', 'for', 'its', 'one',
+]);
+
 export const ANALYSIS_SCHEMA_VALUE = {
     type: 'object', additionalProperties: false,
     properties: {
@@ -334,456 +345,6 @@ export function validateAnalysisResult(result) {
     return { valid: errors.length === 0, errors };
 }
 
-export function requireValidAnalysisResult(result, options = {}) {
-    const repaired = repairAnalysisResult(result, options);
-    const validation = validateAnalysisResult(repaired);
-    if (!validation.valid) {
-        throw new AnalysisValidationError(`Planner returned unusable JSON: ${validation.errors.join('; ')}.`);
-    }
-    return repaired;
-}
-
-function requiredCanonClaims(evidence) {
-    if (typeof evidence !== 'string') return [];
-    try {
-        const payload = JSON.parse(evidence);
-        return Array.isArray(payload?.required_canon_claims)
-            ? payload.required_canon_claims.map(item => String(item || '').trim()).filter(Boolean)
-            : [];
-    } catch {
-        return [];
-    }
-}
-
-/**
- * Keep explicit OOC facts even when the model forgets to copy them into its
- * structured result. This is deterministic and must never reject an otherwise
- * usable plan. Tale Fairy is an author, so newly invented names are not errors.
- */
-export function finalizeAnalysisResult(result, evidence) {
-    const claims = requiredCanonClaims(evidence)
-        .map(claim => claim.slice(0, 500))
-        .filter(Boolean)
-        .slice(-12);
-    const constraints = Array.isArray(result?.canon_constraints)
-        ? result.canon_constraints.map(item => String(item || '').trim().slice(0, 500)).filter(Boolean)
-        : [];
-    const seen = new Set(claims.map(claim => claim.toLocaleLowerCase()));
-    result.canon_constraints = [
-        ...constraints.filter(constraint => !seen.has(constraint.toLocaleLowerCase())),
-        ...claims,
-    ].slice(-12);
-    restoreDurableContinuityRoutes(result, evidence);
-    return result;
-}
-
-function evidencePayload(evidence) {
-    if (evidence && typeof evidence === 'object' && !Array.isArray(evidence)) return evidence;
-    if (typeof evidence !== 'string') return {};
-    try { return JSON.parse(evidence) || {}; } catch { return {}; }
-}
-
-const DURABLE_HOOK_RECOVERY = Object.freeze({
-    'correspondence-or-petition': { label: 'Correspondence or petition', nextStep: 'a delivery, routing, reply, decision, or supported follow-up' },
-    'scheduled-decision': { label: 'Scheduled decision or review', nextStep: 'the scheduled proceeding, a decision, or an official update' },
-    'investigation-or-search': { label: 'Investigation or search', nextStep: 'new evidence, a finding, a lead, or a supported closure' },
-    'mission-or-invitation': { label: 'Mission, assignment, or invitation', nextStep: 'acceptance, preparation, execution, refusal, or a supported change of terms' },
-    'commitment-or-debt': { label: 'Commitment, agreement, or debt', nextStep: 'fulfilment, repayment, renegotiation, release, or a supported consequence' },
-    'planned-journey-or-return': { label: 'Planned journey or return', nextStep: 'departure, arrival, delay, cancellation, or another supported travel step' },
-});
-const DURABLE_HOOK_OPEN_STATE = /\b(?:sent|filed|filing|submitted|delivered|received|accepted|registered|stamped|tracking|reference|routed|routing|forwarded|forwarding|intake|pending|queued|await(?:ing)?|waiting|follow[ -]?up|scheduled|due|deadline|opened|ongoing|unresolved|undecided|outstanding|incomplete|not yet|assigned|commissioned|deployed|promised|agreed|owed|booked|reserved|planned|departing|returning|tomorrow|tonight|next (?:day|week|month)|(?:on|for|is) (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|would (?:decid(?:e|es)|answer|reply|respond)|bear fruit)\b|\b(?:remain(?:s|ed)? open|(?:is|stays?) active)\b|\b(?:want|wants|wish|wishes|hope|hopes|wait|waits|waiting)\b.{0,90}\b(?:decid(?:e|es)|answer|reply|respond|outcome|result)\b/iu;
-const DURABLE_HOOK_TERMINAL_STATE = /\b(?:withdrawn|cancelled|canceled|rejected|denied|resolved|closed|completed|finished|fulfilled|repaid|released|approved|decided|concluded|arrived|returned)\b/giu;
-const DURABLE_HOOK_IDENTITY_STOPWORDS = new Set([
-    'about', 'accepted', 'after', 'again', 'against', 'agreed', 'and', 'await', 'awaiting', 'before', 'booked', 'cancelled', 'canceled',
-    'closed', 'completed', 'decision', 'delivered', 'denied', 'filed', 'filing', 'follow', 'forwarded', 'from', 'into', 'later',
-    'opened', 'pending', 'planned', 'received', 'reference', 'registered', 'rejected', 'remains', 'reply', 'resolved', 'response',
-    'routed', 'routing', 'scheduled', 'sent', 'submitted', 'that', 'their', 'there', 'this', 'tracking', 'waiting', 'will', 'with',
-    'letter', 'petition', 'appeal', 'application', 'request', 'appointment', 'hearing', 'panel', 'review', 'meeting', 'interview',
-    'investigation', 'inquiry', 'search', 'order', 'case', 'file', 'evidence', 'trail', 'records', 'mission', 'assignment', 'contract',
-    'commission', 'invitation', 'offer', 'deployment', 'promise', 'agreement', 'deal', 'bargain', 'debt', 'favor', 'owed', 'obligation',
-    'departure', 'journey', 'trip', 'passage', 'ticket', 'return', 'visit', 'route', 'remained', 'remains', 'still', 'the', 'under', 'while',
-    'tell', 'tells', 'told', 'ask', 'asks', 'asked', 'think', 'thinks', 'thought', 'whether', 'what', 'when', 'where', 'which',
-    'who', 'why', 'how', 'you', 'your', 'yours', 'our', 'ours', 'bear', 'bears', 'fruit', 'hope', 'hopes', 'expect', 'expects',
-]);
-
-function hookTypePattern(hookType) {
-    return DURABLE_HOOK_TYPES.find(([type]) => type === hookType)?.[1];
-}
-
-function hookIdentityTerms(text, hookType) {
-    const tokenize = value => String(value || '').toLocaleLowerCase().match(/[\p{L}\p{N}]{3,}/gu) || [];
-    const generic = new Set(tokenize(DURABLE_HOOK_RECOVERY[hookType]?.label));
-    return [...new Set(tokenize(text))]
-        .filter(term => !DURABLE_HOOK_IDENTITY_STOPWORDS.has(term) && !generic.has(term) && !/^\d+$/u.test(term))
-        .slice(0, 10);
-}
-
-function hasUnnegatedTerminalState(text) {
-    for (const match of String(text || '').matchAll(DURABLE_HOOK_TERMINAL_STATE)) {
-        const prefix = String(text || '').slice(Math.max(0, match.index - 24), match.index).toLocaleLowerCase();
-        if (!/\b(?:not|never|neither|nor|without|isn't|wasn't|hasn't|un)\s*$/u.test(prefix)) return true;
-    }
-    return false;
-}
-
-function stableHookSuffix(value) {
-    let hash = 2166136261;
-    for (const char of String(value || '')) {
-        hash ^= char.codePointAt(0);
-        hash = Math.imul(hash, 16777619);
-    }
-    return (hash >>> 0).toString(36);
-}
-
-function hookSubject(text, hookType) {
-    const cleaned = String(text || '').replace(/\s+/gu, ' ').trim();
-    const pattern = hookTypePattern(hookType);
-    const clauses = cleaned.replace(/([.!?])(["'”’)]*)\s+/gu, '$1$2\n')
-        .split(/\n|\s+[—–|]\s+/u)
-        .filter(Boolean);
-    const subject = clauses.find(clause => pattern?.test(clause)) || cleaned;
-    return clipAtWord(subject.replace(/^[A-Z0-9 -]{3,30}:\s*/u, '').trim(), 125);
-}
-
-function isReliableHookSubject(subject) {
-    const value = String(subject || '').trim();
-    if (!value || /(?:…|\.\.\.)/u.test(value)) return false;
-    const straightQuotes = value.match(/"/gu)?.length || 0;
-    const openCurlyQuotes = value.match(/“/gu)?.length || 0;
-    const closeCurlyQuotes = value.match(/”/gu)?.length || 0;
-    if (straightQuotes % 2 || openCurlyQuotes !== closeCurlyQuotes) return false;
-    // Focused historical excerpts may begin or end inside a sentence. Never
-    // turn those retrieval fragments into asserted continuity or directions.
-    if (/\s[\p{L}\p{N}]\s*["'”’)]?$/u.test(value)) return false;
-    return true;
-}
-
-function durableSeedFromCandidate(candidate) {
-    const hookType = asString(candidate?.hook_type);
-    const config = DURABLE_HOOK_RECOVERY[hookType];
-    const text = asString(candidate?.content).trim();
-    const pattern = hookTypePattern(hookType);
-    if (!config || !text || !pattern?.test(text)) return null;
-    const originalSubject = hookSubject(text, hookType);
-    const laterEvidence = asArray(candidate?.later_evidence).map(item => asString(item?.content));
-    const laterSubjects = laterEvidence.map(value => hookSubject(value, hookType))
-        .filter(value => pattern.test(value) && DURABLE_HOOK_OPEN_STATE.test(value) && !hasUnnegatedTerminalState(value) && isReliableHookSubject(value));
-    const subject = laterSubjects.at(-1) || originalSubject;
-    // A lifecycle marker must belong to the same clause as the actual hook.
-    // Do not turn "open doors" beside a meeting, or "waiting" beside a closed
-    // agreement, into factual continuity.
-    if (!pattern.test(subject) || !DURABLE_HOOK_OPEN_STATE.test(subject) || hasUnnegatedTerminalState(subject)) return null;
-    if (laterEvidence.some(value => {
-        const laterSubject = hookSubject(value, hookType);
-        return pattern.test(laterSubject) && hasUnnegatedTerminalState(laterSubject);
-    })) return null;
-    if (!isReliableHookSubject(subject)) return null;
-    if (candidate?.role === 'user' && /^(?:please\s+)?(?:advance|skip|jump|fast[- ]?forward|move)\s+(?:to|ahead|forward)\b/iu.test(subject)) return null;
-    const identityTerms = hookIdentityTerms(subject, hookType);
-    const identity = identityTerms.slice(0, 5).join('-') || subject.toLocaleLowerCase();
-    const thread = clipAtWord(`${config.label}: ${subject}`, 180);
-    const source = asString(candidate?.source).trim();
-    const basis = source
-        ? `${source} records an open ${config.label.toLocaleLowerCase()} lifecycle.`
-        : `Full-chat ${candidate.role === 'user' ? 'user' : 'assistant'} evidence records an open ${config.label.toLocaleLowerCase()} lifecycle.`;
-    return {
-        id: `open-${hookType}-${stableHookSuffix(identity)}`,
-        hookType,
-        identityTerms,
-        thread,
-        state: clipAtWord(`Full-chat evidence leaves this unresolved: ${subject}`, 240),
-        status: /\b(?:due|overdue|deadline|today|tonight|now)\b/iu.test(text) ? 'due' : 'dormant',
-        basis: clipAtWord(basis, 160),
-        condition: clipAtWord(`When ${config.nextStep} becomes causally supported.`, 140),
-        direction: clipAtWord(`Let “${subject}” advance only through ${config.nextStep}, without forcing it into the current beat.`, 280),
-        delta: clipAtWord(`“${subject}” gains one evidenced lifecycle step while player choices remain open.`, 140),
-        index: Number(candidate.index),
-    };
-}
-
-function structuredContinuityCandidates(result) {
-    const sources = [
-        ['planner-audited continuity signature', result?.lore_model?.continuity_signatures],
-        ['planner-audited trajectory signal', result?.lore_model?.trajectory_signals],
-    ];
-    return sources.flatMap(([source, values], sourceIndex) => asArray(values).flatMap((value, index) => {
-        const content = asString(value).trim();
-        if (!content || !DURABLE_HOOK_OPEN_STATE.test(content) || hasUnnegatedTerminalState(content)) return [];
-        const hook = DURABLE_HOOK_TYPES.find(([, pattern]) => pattern.test(content));
-        if (!hook) return [];
-        return [{
-            index: sourceIndex * 1000 + index,
-            role: 'summary',
-            source,
-            hook_type: hook[0],
-            content,
-        }];
-    }));
-}
-
-function durableContinuitySeeds(evidence, result) {
-    const candidates = [
-        ...asArray(evidencePayload(evidence)?.candidate_dormant_hooks),
-        ...structuredContinuityCandidates(result),
-    ];
-    const seeds = candidates.map(durableSeedFromCandidate).filter(Boolean)
-        .sort((a, b) => (a.index || 0) - (b.index || 0));
-    const unique = [];
-    for (const seed of seeds) {
-        if (unique.some(item => item.id === seed.id
-            || seedMatchesText(seed, `${item.thread} ${item.state} ${item.direction}`)
-            || seedMatchesText(item, `${seed.thread} ${seed.state} ${seed.direction}`))) continue;
-        unique.push(seed);
-    }
-    return unique.slice(0, 10);
-}
-
-function isRecoveredHookId(value) {
-    const id = asString(value);
-    return DURABLE_HOOK_TYPES.some(([hookType]) => id.startsWith(`open-${hookType}-`));
-}
-
-function pruneStaleRecoveredRoutes(result, seeds) {
-    const active = new Set(seeds.map(seed => seed.id));
-    const keepRecoveredId = id => !isRecoveredHookId(id) || active.has(id);
-    result.continuity_threads = asArray(result.continuity_threads).filter(item => keepRecoveredId(item?.id));
-    result.objectives = asArray(result.objectives).filter(item => item?.source !== 'Recovered full-chat continuity'
-        || seeds.some(seed => `${asString(item?.title)} ${asString(item?.detail)}`.includes(seed.thread)));
-    result.pathways = asArray(result.pathways).filter(item => {
-        const id = asString(item?.id);
-        return !id.startsWith('continuity-open-') || keepRecoveredId(id.slice('continuity-'.length));
-    });
-    if (result.plan_horizons && typeof result.plan_horizons === 'object') {
-        result.plan_horizons.items = asArray(result.plan_horizons.items).filter(item => {
-            const branch = asString(item?.branch);
-            return !isRecoveredHookId(branch) || active.has(branch);
-        });
-    }
-}
-
-function seedMatchesText(seed, value) {
-    const text = String(value || '').toLocaleLowerCase();
-    if (!text) return false;
-    if (text.includes(seed.id.toLocaleLowerCase())) return true;
-    const pattern = hookTypePattern(seed.hookType);
-    const textTerms = new Set(text.match(/[\p{L}\p{N}]{3,}/gu) || []);
-    const overlap = seed.identityTerms.filter(term => textTerms.has(term)).length;
-    const requiredOverlap = seed.identityTerms.length >= 2 ? 2 : seed.identityTerms.length;
-    return Boolean(pattern?.test(text) && overlap >= requiredOverlap);
-}
-
-function durablePlanningCoverage(result) {
-    return [
-        ...asArray(result.continuity_threads),
-        ...asArray(result.objectives),
-        ...asArray(result.pathways),
-        ...asArray(result.next_guides),
-        ...asArray(result.plan_horizons?.items),
-        ...asArray(result.narrative_events),
-        result.director_score?.future_setup,
-        result.director_score?.arc_direction,
-        result.director_score?.meaningful_aim,
-    ].filter(Boolean).map(item => typeof item === 'string' ? item : JSON.stringify(item));
-}
-
-function restoreDurableContinuityRoutes(result, evidence) {
-    if (!result || typeof result !== 'object') return;
-    const seeds = durableContinuitySeeds(evidence, result);
-    pruneStaleRecoveredRoutes(result, seeds);
-    if (!seeds.length) return;
-    const existingThreads = asArray(result.continuity_threads);
-    const threadText = item => `${asString(item?.id)} ${asString(item?.thread)} ${asString(item?.state)}`.toLocaleLowerCase();
-    const planningCoverage = durablePlanningCoverage(result);
-    // A pathway or horizon can cover the creative route without satisfying the
-    // factual continuity inventory. Always restore a supported unresolved
-    // lifecycle to continuity_threads, but only add new speculative planning
-    // cards when that route is absent from the rest of the authored plan.
-    const missingInventory = seeds.filter(seed => !existingThreads.some(item => item?.id === seed.id || seedMatchesText(seed, threadText(item))));
-    result.continuity_threads = [...existingThreads, ...missingInventory.map(({ id, thread, state, status, basis }) => ({ id, thread, state, status, basis }))].slice(-10);
-    const objectives = asArray(result.objectives);
-    for (const seed of missingInventory) {
-        if (!objectives.some(item => threadText(item).includes(seed.thread.toLocaleLowerCase()))) objectives.push({
-            title: seed.thread,
-            detail: seed.state,
-            status: seed.status,
-            source: 'Recovered full-chat continuity',
-        });
-    }
-    result.objectives = objectives.slice(-10);
-
-    const missing = seeds.filter(seed => !planningCoverage.some(item => seedMatchesText(seed, item)));
-    if (!missing.length) return;
-
-    const promoted = missing.slice(0, 3);
-    const possibilities = asArray(result.possibilities);
-    for (const seed of missing) {
-        if (possibilities.some(item => seedMatchesText(seed, asString(item?.description)))) continue;
-        if (possibilities.length >= 18) break;
-        possibilities.push({
-            description: clipAtWord(seed.direction, 120),
-            horizon: 'far',
-            conditions: [clipAtWord(seed.condition, 90)],
-            force: 'moderate',
-        });
-    }
-    result.possibilities = possibilities.slice(0, 18);
-
-    const pathways = asArray(result.pathways);
-    for (const seed of promoted) {
-        const seedRouteId = `continuity-${seed.id}`;
-        if (pathways.some(item => item?.id === seedRouteId || seedMatchesText(seed, asString(item?.direction)))) continue;
-        if (pathways.length >= 5) break;
-        pathways.push({
-            id: seedRouteId,
-            direction: seed.direction,
-            when: seed.condition,
-            response_bias: 'Advance only the evidenced lifecycle step; do not force this route into the current beat or decide the player response.',
-            horizon: 'later / when causally ready',
-            status: 'latent',
-            conditions: [seed.condition],
-            change: 'adjust',
-            reason: seed.basis,
-        });
-    }
-    result.pathways = pathways.slice(0, 5);
-
-    const horizons = asArray(result.plan_horizons?.items);
-    for (const seed of promoted) {
-        if (horizons.some(item => item?.branch === seed.id || seedMatchesText(seed, asString(item?.direction)))) continue;
-        const horizon = {
-            id: `continuity-${seed.id}-horizon`, branch: seed.id, direction: seed.direction,
-            timeframe: 'later in the current or following arc', stability: 'stable',
-            conditions: [seed.condition], change: 'adjust', reason: seed.basis,
-        };
-        if (horizons.length >= 10) break;
-        const highestIndex = horizons.findIndex(item => item?.stability === 'slow');
-        horizons.splice(highestIndex >= 0 ? highestIndex : horizons.length, 0, horizon);
-    }
-    if (result.plan_horizons && typeof result.plan_horizons === 'object') result.plan_horizons.items = horizons.slice(0, 10);
-}
-
-const asString = (value, fallback = '') => typeof value === 'string' ? value : fallback;
-const asArray = value => Array.isArray(value) ? value : [];
-const oneOf = (value, allowed, fallback) => allowed.includes(value) ? value : fallback;
-const uniqueStrings = values => [...new Set(asArray(values).map(value => asString(value).trim()).filter(Boolean))];
-const CAUSAL_OPERATION = /\b(?:hold|seed|advance|converge|payoff|redirect|recover)\b/iu;
-const STYLE_DIRECTIVE = /\b(?:mood|tone|warmth|playful|prose|sentence|rhythm|verbosity|descriptive texture|dialogue delivery|surprise latitude)\b/iu;
-const VACUOUS_CAUSAL_ROLE = /^\s*(?:make|keep)\b[\s\S]*\b(?:interesting|engaging|good|better)\b[.!?]*\s*$/iu;
-const EMPTY_PLANNING_LANGUAGE = /(?:^\s*(?:unknown|uncertain|unresolved|tbd|to be determined)\s*[.!]?\s*$|planner classification was incomplete|overall story identity remains unresolved|current local activity established by the conversation|active social and practical situation surrounding the local activity|established wider world and its ongoing processes|broad open-ended trajectory remains provisional|use the established setting identity rather than generic genre decoration)/iu;
-
-function normalizePossibilityForce(value) {
-    const force = asString(value).trim().toLowerCase();
-    if (['light', 'moderate', 'strong'].includes(force)) return force;
-    if (/^(?:low|weak|soft|faint|minimal|minor|latent|tentative)$/u.test(force)) return 'light';
-    if (/^(?:high|firm|intense|major|foreground|likely)$/u.test(force)) return 'strong';
-    // Force is a compact display weight, not narrative evidence. A provider's
-    // unfamiliar label must not discard an otherwise usable possibility bench.
-    return 'moderate';
-}
-
-function normalizePossibilityHorizon(value, index) {
-    const horizon = asString(value).trim().toLowerCase();
-    if (['local', 'near', 'mid', 'far', 'wildcard'].includes(horizon)) return horizon;
-    if (/^(?:immediate|current|scene|short)$/u.test(horizon)) return 'local';
-    if (/^(?:soon|next|short-term|near-term)$/u.test(horizon)) return 'near';
-    if (/^(?:middle|medium|medium-term|mid[- ]?arc)$/u.test(horizon)) return 'mid';
-    if (/^(?:long|long-term|distant|later[- ]?arc)$/u.test(horizon)) return 'far';
-    if (/^(?:wild|surprise|outlier|unexpected)$/u.test(horizon)) return 'wildcard';
-    return index < 3 ? 'local' : index < 6 ? 'near' : index < 9 ? 'mid' : index < 13 ? 'far' : 'wildcard';
-}
-
-function repairPossibility(item, index) {
-    const source = typeof item === 'string'
-        ? { description: item }
-        : item && typeof item === 'object' && !Array.isArray(item) ? item : {};
-    const description = [source.description, source.direction, source.idea, source.development, source.title, source.summary]
-        .map(value => asString(value).trim())
-        .find(Boolean) || '';
-    if (!description) return null;
-    const rawConditions = Array.isArray(source.conditions)
-        ? source.conditions
-        : [source.conditions, source.condition, source.when, source.use_when, source.trigger]
-            .filter(value => typeof value === 'string');
-    return {
-        description,
-        horizon: normalizePossibilityHorizon(source.horizon ?? source.timeframe ?? source.range, index),
-        conditions: [...new Set(rawConditions.map(value => asString(value).trim()).filter(Boolean))].slice(0, 4),
-        force: normalizePossibilityForce(source.force ?? source.strength ?? source.weight ?? source.intensity),
-    };
-}
-
-function repairEntity(item, index) {
-    const source = item && typeof item === 'object' && !Array.isArray(item) ? item : {};
-    const name = asString(source.name, `Active world force ${index + 1}`).trim() || `Active world force ${index + 1}`;
-    const location = asString(source.location).trim();
-    const constraints = asString(source.constraints, source.limits).trim();
-    const relevance = asString(source.relevance, source.role).trim();
-    const perspective = asString(source.perspective, source.point_of_view).trim();
-    const state = asString(source.state, source.status).trim()
-        || [location && `At ${location}`, constraints && `currently constrained by ${constraints}`, relevance && `causally relevant because ${relevance}`]
-            .filter(Boolean).join('; ')
-        || `Currently participates in ${name}'s evidenced role in the active situation.`;
-    const motivation = asString(source.motivation, source.motive).trim()
-        || `Pursue or protect what is currently at stake for this force: ${relevance || state}`;
-    const knowledge = asString(source.knowledge, source.beliefs).trim()
-        || (perspective ? `Knowledge boundary reflected by this perspective: ${perspective}` : 'Knowledge is limited to established access, observations, reports, and beliefs.');
-    const agenda = asString(source.agenda, source.next_action).trim()
-        || `Pursue ${motivation}${constraints ? ` within ${constraints}` : ''} as conditions permit.`;
-    return {
-        name: clipAtWord(name, 100),
-        state: clipAtWord(state, 220),
-        location: clipAtWord(location || 'Offscreen or at its established location', 140),
-        relevance: clipAtWord(relevance || state, 140),
-        perspective: clipAtWord(perspective || `Interprets events through its own position, interests, and available evidence.`, 180),
-        motivation: clipAtWord(motivation, 180),
-        knowledge: clipAtWord(knowledge, 180),
-        constraints: clipAtWord(constraints || 'Bound by established access, resources, obligations, relationships, and world rules.', 180),
-        agenda: clipAtWord(agenda, 180),
-        confidence: clipAtWord(asString(source.confidence, 'moderate'), 40),
-        window: clipAtWord(asString(source.window, source.timing).trim() || 'current or next relevant causal window', 100),
-    };
-}
-
-function clipAtWord(value, limit) {
-    const text = asString(value).trim();
-    if (text.length <= limit) return text;
-    const clipped = text.slice(0, Math.max(1, limit - 1));
-    const boundary = clipped.lastIndexOf(' ');
-    return `${(boundary >= Math.floor(limit * 0.65) ? clipped.slice(0, boundary) : clipped).trimEnd()}…`;
-}
-
-function usablePlanningText(value) {
-    const text = asString(value).trim();
-    return text && !EMPTY_PLANNING_LANGUAGE.test(text) ? text : '';
-}
-
-function inferStoryFrame(result) {
-    const evidence = JSON.stringify(result || {}).slice(0, 24000);
-    if (/\b(?:dream(?:ing)?|hallucination|surreal|impossible geometry|reality warps?|time loop|metafiction)\b/iu.test(evidence)) return 'surreal';
-    if (/\b(?:jedi|sith|the force|magic|spell|wizard|supernatural|superpower|starship|spaceship|galactic|dragon|vampire|cyberpunk|android|alien)\b/iu.test(evidence)) return 'heightened';
-    return 'grounded';
-}
-
-function repairCausalRole(value) {
-    const role = asString(value).trim();
-    const fallback = 'Advance one supported thread without exceeding the current action boundary.';
-    if (!role) return fallback;
-    // Some providers describe a sound cause-and-effect function but omit the
-    // schema's exact operation token. Preserve the substance and supply the
-    // neutral operation instead of spending the entire timeout on a retry.
-    // Style-only and vacuous directions remain invalid and still trigger the
-    // normal fallback path.
-    if (CAUSAL_OPERATION.test(role) || STYLE_DIRECTIVE.test(role) || VACUOUS_CAUSAL_ROLE.test(role)) return role;
-    return `advance — ${role}`.slice(0, 130).trim();
-}
-
-const HORIZON_ROUTE_STOPWORDS = new Set([
-    'about', 'across', 'after', 'allow', 'allows', 'another', 'before', 'continue', 'continues', 'current', 'develop', 'develops',
-    'development', 'direction', 'during', 'eventual', 'future', 'into', 'keep', 'keeps', 'later', 'let', 'lets', 'move', 'moves',
-    'next', 'only', 'open', 'path', 'possible', 'possibility', 'preserve', 'preserves', 'route', 'several', 'through', 'toward',
-    'while', 'without', 'with', 'from', 'that', 'this', 'the', 'and', 'for', 'its', 'one',
-]);
-
 function horizonRouteTerms(value) {
     return new Set((String(value || '').toLocaleLowerCase().match(/[\p{L}\p{N}]{3,}/gu) || [])
         .filter(term => !HORIZON_ROUTE_STOPWORDS.has(term)));
@@ -817,537 +378,6 @@ function repeatsHorizonRoute(candidate, existing) {
     const overlap = [...candidateTerms].filter(term => existingTerms.has(term)).length;
     return overlap >= 2 && overlap / Math.min(candidateTerms.size, existingTerms.size) >= 0.6;
 }
-
-/**
- * Salvage provider output before using the generic fallback. Structured-output
- * support varies between providers, so harmless schema drift must not discard
- * otherwise useful authorial directions. This deliberately repairs bookkeeping
- * while dropping individual candidates that violate narrative safety rules.
- */
-export function repairAnalysisResult(result, { expectedOfferedIds = [], priorPlannerState = null, preservePriorLoreOnRecovery = false } = {}) {
-    if (!result || typeof result !== 'object' || Array.isArray(result)) return result;
-
-    const sceneSource = result.scene && typeof result.scene === 'object' && !Array.isArray(result.scene) ? result.scene : {};
-    const storySource = result.story_frame && typeof result.story_frame === 'object' && !Array.isArray(result.story_frame) ? result.story_frame : {};
-    const directorSource = result.director_score && typeof result.director_score === 'object' && !Array.isArray(result.director_score) ? result.director_score : {};
-    const loreSource = result.lore_model && typeof result.lore_model === 'object' && !Array.isArray(result.lore_model) ? result.lore_model : {};
-    const priorLore = priorPlannerState?.loreModel || priorPlannerState?.lore_model || {};
-    const lorePlaceholder = /^(?:the world established by the supplied narrative evidence|use the world rules supported by scenario, character, lore, summaries, and story evidence|use the established operating logic of the (?:world|setting|narrative))/iu;
-    const loreValue = (source, camel, snake = camel) => source?.[camel] ?? source?.[snake];
-    const currentLoreLists = ['variant_rules', 'continuity_signatures', 'baseline_departures', 'trajectory_signals', 'active_forces'];
-    const hasCurrentLoreSubstance = [loreSource.world_identity, loreSource.baseline]
-        .some(value => usablePlanningText(value) && !lorePlaceholder.test(asString(value).trim()))
-        || currentLoreLists.some(key => uniqueStrings(loreSource[key]).length);
-    const hasPriorLoreSubstance = [loreValue(priorLore, 'worldIdentity', 'world_identity'), priorLore.baseline]
-        .some(value => usablePlanningText(value) && !lorePlaceholder.test(asString(value).trim()))
-        || [
-            loreValue(priorLore, 'variantRules', 'variant_rules'),
-            loreValue(priorLore, 'continuitySignatures', 'continuity_signatures'),
-            loreValue(priorLore, 'baselineDepartures', 'baseline_departures'),
-            loreValue(priorLore, 'trajectorySignals', 'trajectory_signals'),
-            loreValue(priorLore, 'activeForces', 'active_forces'),
-        ].some(value => uniqueStrings(value).length);
-    // A provider retry may satisfy the structural schema only by emitting the
-    // generic repair placeholders. Do not let that erase an already-audited
-    // world model. A substantive current lore model still wins in full, so an
-    // intentional empty-list update can retire old hypotheses normally.
-    const effectiveLore = !hasCurrentLoreSubstance && hasPriorLoreSubstance ? priorLore : loreSource;
-    const recoveredLoreText = (camel, snake = camel) => {
-        const current = loreValue(effectiveLore, camel, snake);
-        const prior = loreValue(priorLore, camel, snake);
-        return preservePriorLoreOnRecovery
-            && (!usablePlanningText(current) || lorePlaceholder.test(asString(current).trim()))
-            && usablePlanningText(prior)
-            && !lorePlaceholder.test(asString(prior).trim())
-            ? prior
-            : current;
-    };
-    const recoveredLoreList = (camel, snake = camel) => {
-        const current = uniqueStrings(loreValue(effectiveLore, camel, snake));
-        const prior = uniqueStrings(loreValue(priorLore, camel, snake));
-        return preservePriorLoreOnRecovery && !current.length && prior.length ? prior : current;
-    };
-    const recoveredBaseline = asString(recoveredLoreText('baseline')).trim();
-    const rawWorldIdentity = asString(recoveredLoreText('worldIdentity', 'world_identity')).trim();
-    const concreteSettingIdentity = usablePlanningText(directorSource.setting_identity);
-    const genericDirectorSetting = /^the (?:grounded|heightened|surreal) world around\b/iu;
-    const recoveredWorldIdentity = rawWorldIdentity && !lorePlaceholder.test(rawWorldIdentity)
-        ? rawWorldIdentity
-        : concreteSettingIdentity
-            && !lorePlaceholder.test(concreteSettingIdentity)
-            && !genericDirectorSetting.test(concreteSettingIdentity)
-            ? concreteSettingIdentity
-            : recoveredBaseline && !lorePlaceholder.test(recoveredBaseline)
-                ? recoveredBaseline.split(/[.!?]\s/u, 1)[0]
-                : rawWorldIdentity;
-    const priorWorldIdentity = asString(loreValue(priorLore, 'worldIdentity', 'world_identity')).trim();
-    const retainedPriorLoreField = preservePriorLoreOnRecovery && (
-        (priorWorldIdentity && recoveredWorldIdentity === priorWorldIdentity)
-        || ['variantRules', 'continuitySignatures', 'baselineDepartures', 'trajectorySignals', 'activeForces']
-            .some((camel, index) => {
-                const snake = currentLoreLists[index];
-                return !uniqueStrings(loreValue(effectiveLore, camel, snake)).length
-                    && uniqueStrings(loreValue(priorLore, camel, snake)).length;
-            })
-    );
-    const selfChallengeWasMissing = !usablePlanningText(result.self_challenge?.weakness)
-        || !usablePlanningText(result.self_challenge?.counter_route)
-        || !usablePlanningText(result.self_challenge?.decision);
-    const layersSource = result.narrative_layers && typeof result.narrative_layers === 'object' && !Array.isArray(result.narrative_layers) ? result.narrative_layers : {};
-    const priorLayers = priorPlannerState?.narrativeLayers || priorPlannerState?.narrative_layers || {};
-    const repaired = {
-        ...result,
-        story_frame: {
-            frame: usablePlanningText(storySource.frame).toLowerCase(),
-            confidence: asString(storySource.confidence, 'low'),
-            basis: usablePlanningText(storySource.basis),
-        },
-        director_score: {
-            story_identity: usablePlanningText(directorSource.story_identity),
-            scene_function: usablePlanningText(directorSource.scene_function),
-            setting_identity: usablePlanningText(directorSource.setting_identity),
-            setting_forces: uniqueStrings(directorSource.setting_forces).slice(0, 3),
-            causal_tempo: oneOf(directorSource.causal_tempo, ['hold', 'seed', 'advance', 'converge', 'payoff', 'redirect', 'recover'], 'hold'),
-            arc_direction: asString(directorSource.arc_direction, 'Carry one supported relationship or world process forward across the next few turns.') || 'Carry one supported relationship or world process forward across the next few turns.',
-            future_setup: {
-                id: asString(directorSource.future_setup?.id),
-                development: asString(directorSource.future_setup?.development),
-                current_step: asString(directorSource.future_setup?.current_step),
-                conditions: uniqueStrings(directorSource.future_setup?.conditions).slice(0, 4),
-                earliest_window: asString(directorSource.future_setup?.earliest_window),
-                disclosure: oneOf(directorSource.future_setup?.disclosure, ['hidden', 'signaled', 'ready'], 'hidden'),
-            },
-            meaningful_aim: asString(directorSource.meaningful_aim, 'Change understanding, relationship, stakes, or available choices in a scene-supported way.') || 'Change understanding, relationship, stakes, or available choices in a scene-supported way.',
-            change: oneOf(directorSource.change, ['keep', 'adjust', 'advance', 'payoff', 'replace'], 'replace'),
-            basis: asString(directorSource.basis, 'Recovered from the active scene and retained narrative trajectory.') || 'Recovered from the active scene and retained narrative trajectory.',
-        },
-        lore_model: {
-            world_identity: clipAtWord(recoveredWorldIdentity || 'The world established by the supplied narrative evidence', 140),
-            baseline: clipAtWord(recoveredBaseline || 'Use the world rules supported by scenario, character, lore, summaries, and story evidence; keep unsupported details provisional.', 300),
-            variant_rules: recoveredLoreList('variantRules', 'variant_rules').slice(0, 6).map(item => clipAtWord(item, 220)),
-            continuity_signatures: recoveredLoreList('continuitySignatures', 'continuity_signatures').slice(0, 8).map(item => clipAtWord(item, 220)),
-            baseline_departures: recoveredLoreList('baselineDepartures', 'baseline_departures').slice(0, 8).map(item => clipAtWord(item, 240)),
-            trajectory_signals: recoveredLoreList('trajectorySignals', 'trajectory_signals').slice(0, 6).map(item => clipAtWord(item, 220)),
-            active_forces: recoveredLoreList('activeForces', 'active_forces').slice(0, 5).map(item => clipAtWord(item, 180)),
-            confidence: oneOf(asString(retainedPriorLoreField ? priorLore.confidence : effectiveLore.confidence).toLowerCase(), ['low', 'moderate', 'high'], 'low'),
-        },
-        narrative_layers: {
-            immediate_action: usablePlanningText(layersSource.immediate_action),
-            local_activity: usablePlanningText(layersSource.local_activity),
-            situation: usablePlanningText(layersSource.situation),
-            wider_world: usablePlanningText(layersSource.wider_world) || usablePlanningText(priorLayers.widerWorld || priorLayers.wider_world),
-            durable_trajectory: usablePlanningText(layersSource.durable_trajectory) || usablePlanningText(priorLayers.durableTrajectory || priorLayers.durable_trajectory),
-            activity_role: oneOf(layersSource.activity_role, ['incidental', 'routine', 'developmental', 'central', 'transition'], 'routine'),
-            temporal_scope: oneOf(layersSource.temporal_scope, ['moment', 'action', 'activity', 'scene', 'extended'], 'action'),
-        },
-        scene: {
-            status: asString(sceneSource.status, 'active') || 'active',
-            activity: asString(sceneSource.activity, 'Current scene'),
-            pace: asString(sceneSource.pace, 'adaptive'),
-            intent: asString(sceneSource.intent, 'Continue the current interaction'),
-            location: asString(sceneSource.location, 'current location'),
-            time: asString(sceneSource.time, 'current moment'),
-            loop: typeof sceneSource.loop === 'boolean' ? sceneSource.loop : false,
-        },
-        objectives: asArray(result.objectives),
-        continuity_threads: asArray(result.continuity_threads).length
-            ? asArray(result.continuity_threads).slice(0, 10).map((item, index) => ({
-                id: asString(item?.id, `continuity-${index + 1}`).trim() || `continuity-${index + 1}`,
-                thread: asString(item?.thread).trim(), state: asString(item?.state).trim(),
-                status: oneOf(item?.status, ['active', 'dormant', 'due', 'blocked'], 'dormant'), basis: asString(item?.basis).trim(),
-            })).filter(item => item.thread && item.state && item.basis)
-            : asArray(priorPlannerState?.continuityThreads || priorPlannerState?.continuity_threads).slice(0, 10).map((item, index) => ({
-                id: asString(item?.id, `continuity-${index + 1}`).trim() || `continuity-${index + 1}`,
-                thread: asString(item?.thread).trim(), state: asString(item?.state).trim(),
-                status: oneOf(item?.status, ['active', 'dormant', 'due', 'blocked'], 'dormant'), basis: asString(item?.basis).trim(),
-            })).filter(item => item.thread && item.state && item.basis),
-        entities: asArray(result.entities).map(repairEntity).slice(0, 8),
-        possibilities: asArray(result.possibilities).map(repairPossibility).filter(Boolean).slice(0, 18),
-        canon_constraints: uniqueStrings(result.canon_constraints),
-        ledger: asString(result.ledger),
-        self_challenge: {
-            weakness: asString(result.self_challenge?.weakness, 'The preferred route may overfocus the newest local beat or repeat a familiar pattern.').trim() || 'The preferred route may overfocus the newest local beat or repeat a familiar pattern.',
-            counter_route: asString(result.self_challenge?.counter_route, asString(result.next_guides?.[1]?.direction, 'Use a materially different supported continuity route.')).trim() || 'Use a materially different supported continuity route.',
-            decision: asString(result.self_challenge?.decision, 'Keep the preferred route only when its current causal support is stronger; otherwise revise toward the counter-route.').trim() || 'Keep the preferred route only when its current causal support is stronger; otherwise revise toward the counter-route.',
-        },
-        guidance: asString(result.guidance),
-        inject: true,
-        reason: asString(result.reason).trim()
-            || asString(result.self_challenge?.decision).trim()
-            || asString(directorSource.basis).trim()
-            || 'Selected distinct conditional directions from the supplied narrative and world-state evidence.',
-        note_resolution: result.note_resolution && ['suggest', 'correct', 'establish', 'forbid'].includes(result.note_resolution.kind)
-            ? { kind: result.note_resolution.kind }
-            : null,
-    };
-
-    const rawGuides = asArray(result.next_guides);
-    const unsafeCondition = /\b(?:swipe|alternative|preferred|primary guide|next response|next reply|writing the|write the)\b/iu;
-    const delayedSubstance = /\b(?:promise|promises|commit|commits|schedule|schedules|plan|plans|agree|agrees)\b[\s\S]{0,140}\b(?:later|tomorrow|morning|next day|next scene|after breakfast|eventually)\b/iu;
-    const trivialDelta = /\b(?:routine|harmless|minor|small)\b[\s\S]{0,80}\b(?:notice|ping|item|gesture|symptom|detail|update)\b/iu;
-    const seenIds = new Set();
-    const seenDirections = new Set();
-    const seenDeltas = new Set();
-    repaired.next_guides = rawGuides.flatMap((guide, index) => {
-        if (!guide || typeof guide !== 'object' || Array.isArray(guide)) return [];
-        const direction = asString(guide.direction).trim();
-        const worldDelta = asString(guide.world_delta).trim();
-        if (!direction || !worldDelta || delayedSubstance.test(`${direction} ${worldDelta}`) || trivialDelta.test(`${direction} ${worldDelta}`)) return [];
-        let useWhen = asString(guide.use_when, 'Use when it remains compatible with the latest user action and established scene.').trim() || 'Use when it remains compatible with the latest user action and established scene.';
-        let dropWhen = asString(guide.drop_when, 'Drop when new story evidence contradicts or supersedes this direction.').trim() || 'Drop when new story evidence contradicts or supersedes this direction.';
-        if (unsafeCondition.test(`${useWhen} ${dropWhen}`)) {
-            useWhen = 'Use when it remains compatible with the latest user action and established scene.';
-            dropWhen = 'Drop when new story evidence contradicts or supersedes this direction.';
-        }
-        let id = asString(guide.id, `recovered-guide-${index + 1}`).trim() || `recovered-guide-${index + 1}`;
-        const idKey = id.toLowerCase();
-        const directionKey = direction.toLowerCase();
-        const deltaKey = worldDelta.toLowerCase();
-        if (seenIds.has(idKey) || seenDirections.has(directionKey) || seenDeltas.has(deltaKey)) return [];
-        seenIds.add(idKey); seenDirections.add(directionKey); seenDeltas.add(deltaKey);
-        return [{
-            id, direction, use_when: useWhen, drop_when: dropWhen,
-            causal_role: repairCausalRole(guide.causal_role),
-            world_delta: worldDelta,
-            origin: oneOf(guide.origin, ['established', 'inferred', 'original'], 'inferred'),
-            basis: asString(guide.basis, 'Supported by the current scene and its active trajectory.').trim() || 'Supported by the current scene and its active trajectory.',
-            strength: oneOf(guide.strength, ['strong', 'moderate', 'light'], 'moderate'),
-            source_pathways: uniqueStrings(guide.source_pathways).slice(0, 3),
-            causal_event_ids: uniqueStrings(guide.causal_event_ids).slice(0, 2),
-            disclosure: oneOf(guide.disclosure, ['none', 'consequence-only', 'partial-clue', 'reveal-cause'], 'none'),
-            reason: asString(guide.reason, 'This is a usable conditional authorial direction for the current situation.'),
-        }];
-    }).slice(0, 4);
-
-    const rawPathways = asArray(result.pathways);
-    repaired.pathways = rawPathways.flatMap((pathway, index) => {
-        if (!pathway || typeof pathway !== 'object' || Array.isArray(pathway) || !asString(pathway.direction).trim()) return [];
-        return [{
-            id: asString(pathway.id, `recovered-path-${index + 1}`).trim() || `recovered-path-${index + 1}`,
-            direction: asString(pathway.direction).trim(),
-            when: asString(pathway.when, 'When current story conditions continue to support it.') || 'When current story conditions continue to support it.',
-            response_bias: asString(pathway.response_bias, 'Describe only the causal step this pathway enables.'),
-            horizon: asString(pathway.horizon, 'next few turns'),
-            status: oneOf(pathway.status, ['foreground', 'available', 'latent', 'blocked'], 'available'),
-            conditions: uniqueStrings(pathway.conditions).slice(0, 3),
-            change: oneOf(pathway.change, ['keep', 'adjust', 'activate', 'deactivate', 'replace', 'retire'], 'adjust'),
-            reason: asString(pathway.reason, 'Recovered from an incomplete planner route.'),
-        }];
-    }).slice(0, 5);
-    if (repaired.next_guides.length < 3 && repaired.pathways.length) {
-        // Some otherwise capable providers intermittently omit next_guides even
-        // though they return grounded conditional pathways. Promote those
-        // routes into conservative ranked guides rather than discarding the
-        // complete planner pass. Unsafe/deferred routes are still rejected.
-        const originalGuideCount = repaired.next_guides.length;
-        const promotedDeltas = new Set(repaired.next_guides.map(guide => guide.world_delta.toLocaleLowerCase()));
-        const genericPathwayImpact = /^\s*(?:describe|show|follow|advance)\b[\s\S]{0,100}\b(?:causal step|this pathway|this route)\b/iu;
-        const promotedGuides = repaired.pathways.flatMap((pathway, index) => {
-            const direction = pathway.direction.trim();
-            const impact = asString(pathway.response_bias).trim();
-            if (!direction || delayedSubstance.test(direction) || trivialDelta.test(direction)) return [];
-            let useWhen = asString(pathway.when, 'Use while the current story conditions continue to support this route.').trim()
-                || 'Use while the current story conditions continue to support this route.';
-            if (unsafeCondition.test(useWhen)) useWhen = 'Use while the current story conditions continue to support this route.';
-            const routeId = pathway.id || `recovered-path-${index + 1}`;
-            const impactKey = impact.toLocaleLowerCase();
-            const usableImpact = impact
-                && !genericPathwayImpact.test(impact)
-                && !promotedDeltas.has(impactKey)
-                && !STYLE_DIRECTIVE.test(impact)
-                && !delayedSubstance.test(impact)
-                && !trivialDelta.test(impact);
-            const futureRoute = pathway.status === 'latent' || /\b(?:near|mid|far|later|future|arc)\b/iu.test(pathway.horizon);
-            const worldDelta = usableImpact
-                ? impact
-                : futureRoute
-                    ? `${direction} This prepares a revisable future change without forcing it into the current beat.`
-                    : `${direction} This changes the active situation or available choices now.`;
-            const causalRole = pathway.status === 'latent'
-                ? 'seed — prepare this route privately until its stated condition is met.'
-                : futureRoute
-                    ? 'advance — use this route only when its stated condition becomes true.'
-                    : `${repaired.director_score.causal_tempo} — deepen or complete the current activity within player scope.`;
-            const clippedDelta = clipAtWord(worldDelta, 140);
-            promotedDeltas.add(clippedDelta.toLocaleLowerCase());
-            return [{
-                id: `recovered-path-guide-${index + 1}`,
-                direction,
-                use_when: useWhen,
-                drop_when: 'Drop when new story evidence contradicts or supersedes this route.',
-                causal_role: causalRole.slice(0, 130),
-                world_delta: clippedDelta,
-                origin: 'inferred',
-                basis: pathway.reason || 'Recovered from a grounded planner pathway.',
-                strength: pathway.status === 'foreground' ? 'strong' : pathway.status === 'latent' ? 'light' : 'moderate',
-                source_pathways: [routeId],
-                causal_event_ids: [],
-                disclosure: 'none',
-                reason: 'Recovered because the planner supplied this grounded pathway but omitted ranked next guides.',
-            }];
-        }).filter((guide, index, guides) => guides.findIndex(other => other.direction.toLowerCase() === guide.direction.toLowerCase()
-            || other.world_delta.toLowerCase() === guide.world_delta.toLowerCase()) === index);
-        repaired.next_guides = [...repaired.next_guides, ...promotedGuides]
-            .filter((guide, index, guides) => guides.findIndex(other => other.id.toLowerCase() === guide.id.toLowerCase()
-                || other.direction.toLowerCase() === guide.direction.toLowerCase()
-                || other.world_delta.toLowerCase() === guide.world_delta.toLowerCase()) === index)
-            .slice(0, 4);
-        if (!originalGuideCount && repaired.next_guides.length) {
-            const [preferred, alternate] = repaired.next_guides;
-            repaired.guidance = [
-                `Leading conditional direction (not a required player action): ${preferred.direction}`,
-                alternate && `Alternative when ${alternate.use_when}: ${alternate.direction}`,
-            ].filter(Boolean).join('\n');
-            repaired.reason = 'Recovered ranked guidance from grounded planner pathways after next_guides was omitted.';
-        } else if (repaired.next_guides.length > originalGuideCount) {
-            repaired.reason = `${repaired.reason} Missing ranked alternatives were recovered from grounded pathways.`.trim();
-        }
-    }
-    if (!repaired.pathways.length && repaired.next_guides.length) {
-        const guide = repaired.next_guides[0];
-        repaired.pathways = [{ id: 'recovered-path-1', direction: guide.direction, when: guide.use_when, response_bias: guide.causal_role, horizon: 'next few turns', status: 'available', conditions: [], change: 'adjust', reason: guide.basis }];
-        if (!guide.source_pathways.length) guide.source_pathways = ['recovered-path-1'];
-    }
-    if (selfChallengeWasMissing && repaired.next_guides.length >= 2) {
-        const [preferred, counter] = repaired.next_guides;
-        repaired.self_challenge = {
-            weakness: clipAtWord(`The preferred route may overinvest in “${preferred.direction}” while neglecting a causally independent established route.`, 260),
-            counter_route: clipAtWord(counter.direction, 260),
-            decision: clipAtWord(`Keep the preferred route only while ${preferred.use_when}; otherwise retain “${counter.direction}” for when ${counter.use_when}.`, 320),
-        };
-    }
-
-    const rawEvents = asArray(result.narrative_events);
-    repaired.narrative_events = rawEvents.flatMap((event, index) => {
-        if (!event || typeof event !== 'object' || !asString(event.title).trim() || !asString(event.summary).trim()) return [];
-        const scope = oneOf(event.scope, ['onscreen', 'offscreen'], 'offscreen');
-        let epistemic = oneOf(event.epistemic_status, ['established', 'simulated', 'inferred', 'possible', 'disproved'], 'possible');
-        const consequences = uniqueStrings(event.consequences).slice(0, 3);
-        const cause = asString(event.cause);
-        if (epistemic === 'simulated' && (!cause.trim() || !consequences.length)) epistemic = 'possible';
-        return [{ id: asString(event.id, `recovered-event-${index + 1}`).trim() || `recovered-event-${index + 1}`, title: asString(event.title), summary: asString(event.summary), scope, epistemic_status: epistemic, disclosure: scope === 'onscreen' ? oneOf(event.disclosure, ['signaled', 'revealed'], 'revealed') : oneOf(event.disclosure, ['hidden', 'signaled', 'revealed'], 'hidden'), status: oneOf(event.status, ['active', 'latent', 'manifested', 'resolved', 'retired'], 'latent'), confidence: oneOf(event.confidence, ['low', 'moderate', 'high'], 'low'), timing: asString(event.timing, 'unscheduled'), due_state: oneOf(event.due_state, ['unscheduled', 'pending', 'due', 'overdue'], 'unscheduled'), cause, consequences, basis: asString(event.basis), requirements: uniqueStrings(event.requirements).slice(0, 4), interpretation: asString(event.interpretation, 'conditional') }];
-    }).filter((event, index, events) => events.findIndex(other => other.id === event.id) === index).slice(0, 6);
-    const eventsById = new Map(repaired.narrative_events.map(event => [event.id, event]));
-    for (const guide of repaired.next_guides) {
-        const linked = guide.causal_event_ids.map(id => eventsById.get(id)).filter(Boolean);
-        const validDisclosure = linked.length && linked.every(event => !['possible', 'disproved'].includes(event.epistemic_status)
-            && (guide.disclosure === 'reveal-cause' || (event.scope === 'offscreen' && event.disclosure !== 'revealed')));
-        if (guide.disclosure !== 'none' && !validDisclosure) {
-            guide.disclosure = 'none';
-            guide.causal_event_ids = [];
-        }
-    }
-
-    const horizonSource = result.plan_horizons && typeof result.plan_horizons === 'object' ? result.plan_horizons : {};
-    const seenSourceHorizonDirections = new Set();
-    const sourceItems = [];
-    for (const item of asArray(horizonSource.items)) {
-        if (sourceItems.length >= 10) break;
-        const direction = asString(item?.direction).trim().toLocaleLowerCase();
-        if (!direction || seenSourceHorizonDirections.has(direction) || sourceItems.some(existing => repeatsHorizonRoute(item, existing))) continue;
-        seenSourceHorizonDirections.add(direction);
-        sourceItems.push(item);
-    }
-    const priorHorizonItems = asArray(priorPlannerState?.planHorizons?.items || priorPlannerState?.plan_horizons?.items);
-    for (const item of priorHorizonItems) {
-        if (sourceItems.length >= 10) break;
-        const timeframe = asString(item?.timeframe).trim();
-        const direction = usablePlanningText(item?.direction);
-        const directionKey = direction.toLocaleLowerCase();
-        if (!direction || seenSourceHorizonDirections.has(directionKey) || sourceItems.some(existing => repeatsHorizonRoute(item, existing))) continue;
-        // An incomplete provider response may safely retain supported upstream
-        // orientation, but never revive a superseded local beat from prior state.
-        if (!/\b(?:several|current arc|later|distant|long[- ]term|months?|years?|open[- ]ended|multiple arcs?)\b/iu.test(timeframe)) continue;
-        seenSourceHorizonDirections.add(directionKey);
-        sourceItems.push({ ...item, change: oneOf(item?.change, ['keep', 'adjust', 'replace'], 'keep') });
-    }
-    const inferredTimeframe = index => index >= sourceItems.length - 1
-        ? 'distant / open-ended'
-        : (['next response', 'next few turns', 'current scene', 'next scene', 'several scenes', 'current arc'][index] || 'later arcs');
-    const recoveredBranch = (index, total) => {
-        if (index < Math.max(1, total - 3)) return 'current-trajectory';
-        return ['relationship-alternative', 'world-system-alternative', 'identity-or-vocation-alternative'][index - Math.max(1, total - 3)] || 'open-future-alternative';
-    };
-    const items = sourceItems.map((item, index) => ({
-        id: asString(item?.id, `recovered-horizon-${index + 1}`) || `recovered-horizon-${index + 1}`,
-        branch: asString(item?.branch, recoveredBranch(index, sourceItems.length)) || recoveredBranch(index, sourceItems.length),
-        direction: asString(item?.direction, 'Keep the current trajectory revisable as events develop.') || 'Keep the current trajectory revisable as events develop.',
-        timeframe: /^(?:future|open[- ]ended future|unknown|uncertain|tbd)?$/iu.test(asString(item?.timeframe).trim())
-            ? inferredTimeframe(index)
-            : asString(item.timeframe).trim(),
-        stability: oneOf(item?.stability, ['fluid', 'adaptive', 'stable', 'slow'], index < 1 ? 'fluid' : index < 3 ? 'adaptive' : 'stable'),
-        conditions: uniqueStrings(item?.conditions).slice(0, 3),
-        change: oneOf(item?.change, ['keep', 'adjust', 'replace'], 'adjust'),
-        reason: asString(item?.reason, 'Recovered while preserving the usable narrative direction.') || 'Recovered while preserving the usable narrative direction.',
-    }));
-    const timeframeDefaults = ['next few turns', 'current scene', 'next scene', 'several scenes', 'current arc', 'later arcs / open-ended'];
-    const fallbackDirections = [
-        'Deepen the current activity through immediate consequences while preserving player choice.',
-        'Let the current scene establish which unresolved relationship or process matters next.',
-        'Carry the most relevant supported consequence into the next scene without fixing its outcome.',
-        'Let accumulated choices reshape active relationships, institutions, or opportunities across several scenes.',
-        'Develop the strongest supported unresolved thread through the current arc while allowing redirection.',
-        'Let accumulated choices reshape long-term relationships, obligations, and possibilities without fixing an ending.',
-    ];
-    const horizonRank = pathway => {
-        const label = `${pathway?.horizon || ''} ${pathway?.status || ''}`;
-        if (/\b(?:far|distant|later|wildcard)\b/iu.test(label)) return 5;
-        if (/\b(?:mid|arc|several)\b/iu.test(label)) return 3;
-        if (/\b(?:near|next)\b/iu.test(label)) return 2;
-        return 0;
-    };
-    const usedHorizonDirections = new Set(items.map(item => item.direction.trim().toLocaleLowerCase()));
-    const unusedPathways = () => repaired.pathways.filter(pathway => pathway.status !== 'blocked'
-        && !usedHorizonDirections.has(pathway.direction.trim().toLocaleLowerCase()));
-    while (items.length < 6) {
-        const index = items.length;
-        const candidate = unusedPathways().sort((left, right) => Math.abs(horizonRank(left) - index) - Math.abs(horizonRank(right) - index))[0];
-        const direction = candidate?.direction || fallbackDirections[index];
-        usedHorizonDirections.add(direction.trim().toLocaleLowerCase());
-        items.push({
-            id: candidate?.id ? `horizon-${candidate.id}` : `recovered-horizon-${index + 1}`,
-            branch: recoveredBranch(index, 6),
-            direction,
-            timeframe: timeframeDefaults[index],
-            stability: index < 1 ? 'fluid' : index < 3 ? 'adaptive' : index < 5 ? 'stable' : 'slow',
-            conditions: candidate?.conditions?.length ? candidate.conditions.slice(0, 3) : [],
-            change: 'adjust',
-            reason: candidate?.reason || 'No distinct farther development survived recovery, so this remains a broad revisable direction.',
-        });
-    }
-    items.at(-1).stability = 'slow';
-    repaired.plan_horizons = { items, deviation: { level: oneOf(horizonSource.deviation?.level, ['none', 'minor', 'major'], 'minor'), reason: asString(horizonSource.deviation?.reason, 'Minor planner structure was normalized without changing its usable narrative direction.') } };
-
-    // A valid plan is never allowed to collapse into an "unknown" card. When
-    // a provider skips a category, derive a low-confidence working hypothesis
-    // from its concrete scene/routes. It remains explicitly revisable, but it
-    // gives the next pass something specific to update instead of a blank.
-    const primaryPath = repaired.pathways[0];
-    const nearHorizon = items[0];
-    const farHorizon = items.at(-1);
-    const sceneActivity = usablePlanningText(repaired.scene.activity) || 'the opening interaction';
-    const sceneLocation = usablePlanningText(repaired.scene.location) || 'the current location';
-    const sceneIntent = usablePlanningText(repaired.scene.intent) || primaryPath?.direction || nearHorizon.direction;
-    const inferredFrame = ['grounded', 'heightened', 'surreal'].includes(repaired.story_frame.frame)
-        ? repaired.story_frame.frame
-        : inferStoryFrame(result);
-    repaired.story_frame.frame = inferredFrame;
-    repaired.story_frame.confidence = /^(?:low|moderate|high)$/iu.test(repaired.story_frame.confidence)
-        ? repaired.story_frame.confidence.toLowerCase()
-        : 'low';
-    repaired.story_frame.basis ||= `Provisional ${inferredFrame} reading from ${sceneActivity} at ${sceneLocation}; revise when new evidence changes it.`;
-
-    repaired.director_score.story_identity ||= `An open-ended ${inferredFrame} story centered on ${sceneActivity}, with ${farHorizon.direction}`.slice(0, 180);
-    repaired.director_score.scene_function ||= `Develop ${sceneActivity} through its own progress or a causally supported response without choosing for the player.`.slice(0, 120);
-    repaired.director_score.setting_identity ||= `The ${inferredFrame} world around ${sceneLocation}, treated as an active source of consequences.`.slice(0, 120);
-    if (!repaired.director_score.setting_forces.length) {
-        repaired.director_score.setting_forces = [
-            ...asArray(repaired.entities).map(entity => usablePlanningText(entity?.name)),
-            `Current activity: ${sceneActivity}`,
-            `Open route: ${primaryPath?.direction || nearHorizon.direction}`,
-        ].filter(Boolean).slice(0, 3).map(value => value.slice(0, 140));
-    }
-    repaired.director_score.arc_direction = usablePlanningText(repaired.director_score.arc_direction)
-        || (primaryPath?.direction || nearHorizon.direction).slice(0, 240);
-    repaired.director_score.meaningful_aim = usablePlanningText(repaired.director_score.meaningful_aim)
-        || `Let ${sceneActivity} change the relationships, knowledge, pressures, or choices that matter next.`.slice(0, 200);
-    repaired.director_score.basis = usablePlanningText(repaired.director_score.basis)
-        || `Derived provisionally from ${sceneActivity}, ${sceneIntent}, and the retained conditional routes.`.slice(0, 180);
-    const setup = repaired.director_score.future_setup;
-    setup.id ||= farHorizon.id || 'provisional-future';
-    setup.development ||= farHorizon.direction.slice(0, 220);
-    setup.current_step ||= (nearHorizon.direction || primaryPath?.direction).slice(0, 180);
-    setup.conditions = setup.conditions.length ? setup.conditions : farHorizon.conditions.slice(0, 4);
-    setup.earliest_window ||= farHorizon.timeframe.slice(0, 120);
-
-    repaired.narrative_layers.immediate_action ||= `Continue ${sceneActivity} only within the player’s already declared action.`.slice(0, 140);
-    repaired.narrative_layers.local_activity ||= sceneActivity.slice(0, 180);
-    repaired.narrative_layers.situation ||= `${sceneIntent} at ${sceneLocation}.`.slice(0, 220);
-    repaired.narrative_layers.wider_world ||= (nearHorizon.direction || primaryPath?.direction).slice(0, 240);
-    repaired.narrative_layers.durable_trajectory ||= farHorizon.direction.slice(0, 260);
-    repaired.lore_model.world_identity ||= repaired.director_score.setting_identity;
-    repaired.lore_model.baseline ||= `Use the established operating logic of ${repaired.lore_model.world_identity}; narrative evidence overrides unsupported assumptions.`.slice(0, 300);
-    if (!repaired.lore_model.active_forces.length) repaired.lore_model.active_forces = repaired.director_score.setting_forces.slice(0, 5);
-    if (!repaired.lore_model.trajectory_signals.length) {
-        repaired.lore_model.trajectory_signals = [repaired.narrative_layers.durable_trajectory].filter(Boolean).slice(0, 1);
-    }
-
-    if (!repaired.entities.length) {
-        repaired.entities = [{
-            name: 'Active scene process',
-            state: `${sceneActivity}; ${repaired.narrative_layers.situation}`.slice(0, 220),
-            location: sceneLocation.slice(0, 140),
-            relevance: (primaryPath?.direction || nearHorizon.direction).slice(0, 140),
-            perspective: 'Interprets change through the current situation and the evidence available within it.',
-            motivation: 'Carry the strongest supported causal pressure forward without deciding for the player.',
-            knowledge: 'Contains only established scene facts and causally supported inferences.',
-            constraints: 'Bound by player agency, current timing, lore, material conditions, and disclosure limits.',
-            agenda: 'Continue changing independently where causality permits, whether onscreen or offscreen.',
-            confidence: 'moderate',
-            window: (nearHorizon.timeframe || 'current scene').slice(0, 100),
-        }];
-    }
-
-    // Older scratchpad sections should reflect the usable modern plan rather
-    // than looking like a failed/empty rebuild. These are working directions,
-    // not terminal goals or claims that an event already happened.
-    if (!repaired.objectives.length) {
-        repaired.objectives = items.slice(0, 4).map(item => ({
-            title: `Open direction · ${item.timeframe}`.slice(0, 120),
-            detail: item.direction.slice(0, 300),
-            status: item.stability,
-            source: 'Current plan horizon',
-        }));
-    }
-    if (!repaired.possibilities.length) {
-        repaired.possibilities = [
-            ...repaired.pathways.filter(pathway => pathway.status !== 'blocked').map(pathway => ({
-                description: pathway.direction.slice(0, 120),
-                horizon: pathway.status === 'foreground' ? 'local' : pathway.status === 'latent' ? 'mid' : 'near',
-                conditions: pathway.conditions.slice(0, 1).map(value => value.slice(0, 90)),
-                force: pathway.status === 'foreground' ? 'strong' : pathway.status === 'latent' ? 'light' : 'moderate',
-            })),
-            ...items.map((item, index) => ({
-                description: item.direction.slice(0, 120),
-                horizon: index < 2 ? 'near' : index < 4 ? 'mid' : 'far',
-                conditions: item.conditions.slice(0, 1).map(value => value.slice(0, 90)),
-                force: item.stability === 'fluid' ? 'moderate' : 'light',
-            })),
-        ].filter((item, index, all) => all.findIndex(other => other.description.toLowerCase() === item.description.toLowerCase()) === index).slice(0, 18);
-    }
-    repaired.guidance ||= `Leading conditional direction (not a required player action): ${repaired.next_guides[0]?.direction || primaryPath?.direction || nearHorizon.direction}`.slice(0, 700);
-    if (!repaired.ledger.trim()) {
-        repaired.ledger = [
-            `Working scene: ${repaired.scene.activity}.`,
-            `Situation: ${repaired.narrative_layers.situation}`,
-            `Wider context: ${repaired.narrative_layers.wider_world}`,
-            `Durable trajectory: ${repaired.narrative_layers.durable_trajectory}`,
-        ].join('\n').slice(0, 3000);
-    }
-
-    const auditSource = result.cue_audit && typeof result.cue_audit === 'object' ? result.cue_audit : {};
-    const authoritativeOffered = uniqueStrings(expectedOfferedIds).slice(0, 4);
-    const offered = authoritativeOffered.length ? authoritativeOffered : uniqueStrings(auditSource.offered_ids).slice(0, 4);
-    const classified = new Set();
-    const auditGroup = key => uniqueStrings(auditSource[key]).filter(id => offered.includes(id) && !classified.has(id)).filter(id => (classified.add(id), true));
-    const manifested = auditGroup('manifested_ids');
-    const contradicted = auditGroup('contradicted_ids');
-    const unused = [...auditGroup('unused_ids'), ...offered.filter(id => !classified.has(id))];
-    const auditWasRecovered = authoritativeOffered.length && !authoritativeOffered.every(id => uniqueStrings(auditSource.offered_ids).includes(id));
-    repaired.cue_audit = {
-        offered_ids: offered,
-        manifested_ids: manifested,
-        unused_ids: unused,
-        contradicted_ids: contradicted,
-        pacing: oneOf(auditSource.pacing, ['respected', 'exceeded', 'uncertain'], 'uncertain'),
-        reason: auditWasRecovered
-            ? 'Confirmed offered cues were restored from the request record; unclassified cues were conservatively marked unused.'
-            : asString(auditSource.reason, 'Incomplete cue audit was normalized.'),
-    };
-    return repaired;
-}
-
-const META_DIRECTIVE_PATTERN = /(?:^|[\r\n])\s*(?:[\[(<{]\s*)?(?:ooc|out[ -]?of[ -]?character|meta|canon|author|gm|narrator)(?:\s*(?:note))?\s*(?:[:\-\])}>]|$)\s*([\s\S]*)/iu;
 
 function metaDirectiveText(value) {
     const match = String(value || '').match(META_DIRECTIVE_PATTERN);
@@ -1789,8 +819,80 @@ const DURABLE_HOOK_TYPES = Object.freeze([
     ['commitment-or-debt', /\b(?:promise|agreement|deal|bargain|debt|favor owed|obligation)\b/iu],
     ['planned-journey-or-return', /\b(?:departure|journey|trip|passage|ticket|return to|visit to|route to)\b/iu],
 ]);
+const DURABLE_HOOK_OPEN_STATE = /\b(?:sent|filed|filing|submitted|delivered|received|accepted|registered|stamped|tracking|reference|routed|routing|forwarded|forwarding|intake|pending|queued|await(?:ing)?|waiting|follow[ -]?up|scheduled|due|deadline|opened|ongoing|unresolved|undecided|outstanding|incomplete|not yet|assigned|commissioned|deployed|promised|agreed|owed|booked|reserved|planned|departing|returning|tomorrow|tonight|next (?:day|week|month)|(?:on|for|is) (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|would (?:decid(?:e|es)|answer|reply|respond)|bear fruit)\b|\b(?:remain(?:s|ed)? open|(?:is|stays?) active)\b|\b(?:want|wants|wish|wishes|hope|hopes|wait|waits|waiting)\b.{0,90}\b(?:decid(?:e|es)|answer|reply|respond|outcome|result)\b/iu;
+const DURABLE_HOOK_TERMINAL_STATE = /\b(?:withdrawn|cancelled|canceled|rejected|denied|resolved|closed|completed|finished|fulfilled|repaid|released|approved|decided|concluded|arrived|returned)\b/giu;
+const DURABLE_HOOK_IDENTITY_STOPWORDS = new Set([
+    'about', 'accepted', 'after', 'again', 'against', 'agreed', 'and', 'await', 'awaiting', 'before', 'booked', 'cancelled', 'canceled',
+    'closed', 'completed', 'decision', 'delivered', 'denied', 'filed', 'filing', 'follow', 'forwarded', 'from', 'into', 'later',
+    'opened', 'pending', 'planned', 'received', 'reference', 'registered', 'rejected', 'remains', 'reply', 'resolved', 'response',
+    'routed', 'routing', 'scheduled', 'sent', 'submitted', 'that', 'their', 'there', 'this', 'tracking', 'waiting', 'will', 'with',
+    'letter', 'petition', 'appeal', 'application', 'request', 'appointment', 'hearing', 'panel', 'review', 'meeting', 'interview',
+    'investigation', 'inquiry', 'search', 'order', 'case', 'file', 'evidence', 'trail', 'records', 'mission', 'assignment', 'contract',
+    'commission', 'invitation', 'offer', 'deployment', 'promise', 'agreement', 'deal', 'bargain', 'debt', 'favor', 'owed', 'obligation',
+    'departure', 'journey', 'trip', 'passage', 'ticket', 'return', 'visit', 'route', 'remained', 'still', 'the', 'under', 'while',
+    'tell', 'tells', 'told', 'ask', 'asks', 'asked', 'think', 'thinks', 'thought', 'whether', 'what', 'when', 'where', 'which',
+    'who', 'why', 'how', 'you', 'your', 'yours', 'our', 'ours', 'bear', 'bears', 'fruit', 'hope', 'hopes', 'expect', 'expects',
+]);
 const DURABLE_HOOK_LIFECYCLE = /\b(?:sent|filed|filing|submitted|delivered|received|accepted|registered|stamped|tracking|reference|routed|routing|forwarded|forwarding|intake|pending|queued|await(?:ing)?|waiting|follow[ -]?up|reply|response|answer|outcome|result|bear fruit|scheduled|due|deadline|opened|ongoing|unresolved|undecided|outstanding|incomplete|not yet|assigned|commissioned|deployed|promised|agreed|owed|booked|reserved|planned|departing|returning|tomorrow|tonight|next (?:day|week|month)|(?:on|for|is) (?:monday|tuesday|wednesday|thursday|friday|saturday|sunday)|would (?:decid(?:e|es)|answer|reply|respond)|weeks?|months?|eventually|later)\b|\b(?:remain(?:s|ed)? open|(?:is|stays?) active)\b|\b(?:want|wants|wish|wishes|hope|hopes|wait|waits|waiting)\b.{0,90}\b(?:decid(?:e|es)|answer|reply|respond|outcome|result)\b/giu;
 const DURABLE_HOOK_USER_INITIATIVE = /\b(?:i|we)\s+(?:sent|filed|submitted|delivered|asked|requested|promised|agreed|accepted|planned|scheduled|intend|hope|expect|wait|await)\b/iu;
+
+function hookTypePattern(hookType) {
+    return DURABLE_HOOK_TYPES.find(([type]) => type === hookType)?.[1];
+}
+
+function hookIdentityTerms(text, hookType) {
+    const tokenize = value => String(value || '').toLocaleLowerCase().match(/[\p{L}\p{N}]{3,}/gu) || [];
+    return [...new Set(tokenize(text))]
+        .filter(term => !DURABLE_HOOK_IDENTITY_STOPWORDS.has(term) && !/^\d+$/u.test(term))
+        .slice(0, 10);
+}
+
+function hasUnnegatedTerminalState(text) {
+    for (const match of String(text || '').matchAll(DURABLE_HOOK_TERMINAL_STATE)) {
+        const prefix = String(text || '').slice(Math.max(0, match.index - 24), match.index).toLocaleLowerCase();
+        if (!/\b(?:not|never|neither|nor|without|isn't|wasn't|hasn't|un)\s*$/u.test(prefix)) return true;
+    }
+    return false;
+}
+
+function hookSubject(text, hookType) {
+    const cleaned = String(text || '').replace(/\s+/gu, ' ').trim();
+    const pattern = hookTypePattern(hookType);
+    const clauses = cleaned.replace(/([.!?])(["'”’)]*)\s+/gu, '$1$2\n')
+        .split(/\n|\s+[—–|]\s+/u)
+        .filter(Boolean);
+    return (clauses.find(clause => pattern?.test(clause)) || cleaned)
+        .replace(/^[A-Z0-9 -]{3,30}:\s*/u, '').trim().slice(0, 125);
+}
+
+function isReliableHookSubject(subject) {
+    const value = String(subject || '').trim();
+    if (!value || /(?:…|\.\.\.)/u.test(value)) return false;
+    const straightQuotes = value.match(/"/gu)?.length || 0;
+    const openCurlyQuotes = value.match(/“/gu)?.length || 0;
+    const closeCurlyQuotes = value.match(/”/gu)?.length || 0;
+    if (straightQuotes % 2 || openCurlyQuotes !== closeCurlyQuotes) return false;
+    return !/\s[\p{L}\p{N}]\s*["'”’)]?$/u.test(value);
+}
+
+function isOpenDurableHookCandidate(candidate) {
+    const hookType = asString(candidate?.hook_type);
+    const text = asString(candidate?.content).trim();
+    const pattern = hookTypePattern(hookType);
+    if (!text || !pattern?.test(text)) return false;
+    const originalSubject = hookSubject(text, hookType);
+    const laterEvidence = asArray(candidate?.later_evidence).map(item => asString(item?.content));
+    const laterOpenSubjects = laterEvidence.map(value => hookSubject(value, hookType))
+        .filter(value => pattern.test(value) && DURABLE_HOOK_OPEN_STATE.test(value) && !hasUnnegatedTerminalState(value) && isReliableHookSubject(value));
+    const subject = laterOpenSubjects.at(-1) || originalSubject;
+    if (!pattern.test(subject) || !DURABLE_HOOK_OPEN_STATE.test(subject) || hasUnnegatedTerminalState(subject)) return false;
+    if (laterEvidence.some(value => {
+        const laterSubject = hookSubject(value, hookType);
+        return pattern.test(laterSubject) && hasUnnegatedTerminalState(laterSubject);
+    })) return false;
+    if (!isReliableHookSubject(subject)) return false;
+    return candidate?.role !== 'user' || !/^(?:please\s+)?(?:advance|skip|jump|fast[- ]?forward|move)\s+(?:to|ahead|forward)\b/iu.test(subject);
+}
 
 function durableHookExcerpt(value, limit = 420) {
     const cleaned = stripStructuredEvidence(stripLeadingGeneratedStatusSummary(value))
@@ -1845,7 +947,7 @@ function retrieveDormantHookEvidence(messages, recentStart, selectedIndexes, max
     // quieter established route from the same family.
     const ranked = records
         .map(record => attachLaterHookEvidence(record, messages))
-        .filter(record => durableSeedFromCandidate(record))
+        .filter(isOpenDurableHookCandidate)
         .sort((a, b) => b.score - a.score || b.index - a.index);
     const chosen = [];
     // First preserve one strong candidate from each independent route family.
@@ -1891,24 +993,7 @@ function attachLaterHookEvidence(candidate, messages) {
     return later.length ? { ...candidate, later_evidence: later.slice(-3) } : candidate;
 }
 
-/**
- * Build non-provider recovery evidence from the complete active chat. Prompt
- * compaction may legitimately evict older route candidates at small budgets;
- * finalization must not lose those same durable records as a side effect.
- */
-export function buildFinalizationEvidence(messages, prompt = '') {
-    let payload = {};
-    try { payload = JSON.parse(prompt) || {}; } catch { /* keep recovery evidence independent */ }
-    const source = asArray(messages);
-    // Audit the complete chat rather than only the portion compacted out of the
-    // provider prompt. The provider can omit a lifecycle even when its evidence
-    // is still inside the recent raw tail; deterministic finalization must be an
-    // independent safety net, not rely on where prompt compaction drew a line.
-    const candidates = retrieveDormantHookEvidence(source, source.length, new Set(), 10);
-    if (candidates.length) payload.candidate_dormant_hooks = candidates;
-    return JSON.stringify(payload);
-}
-
+/** Keep several kinds of durable hooks represented when prompt space is tight. */
 function compactDormantHooks(items, limit, tokenLimit) {
     const source = asArray(items);
     const chosen = [];
@@ -2164,9 +1249,8 @@ function mergePlanHorizons(previous, proposed) {
             if (stability === 'adaptive' && deviation === 'none') selected = prior;
             if ((stability === 'stable' || stability === 'slow') && deviation === 'none') selected = prior;
         }
-        // Even a legitimately retained stable route must not collide with a
-        // distinct current route. Prefer the current proposal when retention
-        // would reintroduce a semantic duplicate removed during repair.
+        // A retained stable route must not collide with a distinct current
+        // route. Prefer the current proposal when retention would duplicate it.
         if (merged.some(existing => existing.direction.trim().toLocaleLowerCase() === selected.direction.trim().toLocaleLowerCase()
             || repeatsHorizonRoute(selected, existing))) {
             selected = candidate;

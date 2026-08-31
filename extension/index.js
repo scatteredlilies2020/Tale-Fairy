@@ -566,8 +566,8 @@ function ensureChatCompletionRequestGuidance(eventData) {
     if (eventData?.dryRun || containsPlannerMarker(eventData?.chat) || !getSettings().enabled || !Array.isArray(eventData?.chat)) return;
     const payload = currentGuidancePayload();
     if (!payload.includes('<living-world-guide>')) return;
-    const repaired = ensureGuidanceInChat(eventData.chat, payload, requestInjectionOptions());
-    if (repaired) renderAnalysisActivity('Guidance inserted into request', false);
+    const inserted = ensureGuidanceInChat(eventData.chat, payload, requestInjectionOptions());
+    if (inserted) renderAnalysisActivity('Guidance inserted into request', false);
     if (!chatHasCurrentGuidance(eventData.chat, payload)) throw new Error('Tale Fairy could not place current guidance in the chat request.');
 }
 
@@ -1790,8 +1790,8 @@ export async function livingWorldGuideGenerateInterceptor(_chat, _contextSize, _
 globalThis.livingWorldGuideGenerateInterceptor = livingWorldGuideGenerateInterceptor;
 
 // The generation interceptor runs before SillyTavern assembles the provider
-// payload. Verify the finished request too, and repair it in place if another
-// prompt path omitted the current dynamic guide.
+// payload. Verify the finished request too and insert the current dynamic guide
+// if another prompt path omitted it.
 eventSource.on(event_types.CHAT_COMPLETION_PROMPT_READY, ensureChatCompletionRequestGuidance);
 eventSource.on(event_types.CHAT_COMPLETION_SETTINGS_READY, ensureProviderChatRequestGuidance);
 eventSource.on(event_types.GENERATE_AFTER_COMBINE_PROMPTS, ensureTextCompletionRequestGuidance);
