@@ -20,11 +20,11 @@ import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } fro
 import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.100';
 import { estimateTokenCount } from './token-budget.js?v=0.11.100';
 import { completionText } from './completion-response.js?v=0.11.100';
-import { customOutputPayload, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.11.103';
+import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.11.104';
 import { clearPlannerPending, markPlannerPending, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.100';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.103';
+const RUNTIME_VERSION = '0.11.104';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -228,6 +228,11 @@ function installDetachedPlannerTransport() {
             cache: 'no-store',
         });
         rememberDetachedPlannerJob(meta.runKey, response.headers.get('X-Tale-Fairy-Job-Id'));
+        // SillyTavern turns non-2xx response bodies into a generic
+        // "Got response status ..." exception after showing its own toast.
+        // Preserve the provider's actual reason here so output negotiation can
+        // recognize unsupported response formats and retry without them.
+        if (!response.ok) throw await detachedPlannerFailure(response);
         return response;
     };
 }

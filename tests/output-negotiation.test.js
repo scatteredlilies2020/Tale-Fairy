@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { customOutputPayload, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from '../extension/output-negotiation.js';
+import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from '../extension/output-negotiation.js';
 
 const schema = { value: { type: 'object', required: ['contract_version'] } };
 
@@ -118,6 +118,17 @@ test('DeepSeek proxy response-format unavailability triggers prompt-only fallbac
 
     assert.equal(result, 'valid prompt JSON');
     assert.deepEqual(calls, [PLANNER_OUTPUT_MODE.JSON_SCHEMA, PLANNER_OUTPUT_MODE.JSON_OBJECT, PLANNER_OUTPUT_MODE.PROMPT_ONLY]);
+});
+
+test('detached transport preserves the DeepSeek rejection hidden by SillyTavern', async () => {
+    const response = new Response(JSON.stringify({
+        error: 'Planner backend returned HTTP 400: {"error":{"message":"This response_format type is unavailable now","type":"invalid_request_error"}}',
+    }), { status: 500, statusText: 'Internal Server Error' });
+    const error = await detachedPlannerFailure(response);
+
+    assert.equal(error.status, 500);
+    assert.match(error.message, /response_format type is unavailable now/);
+    assert.equal(isUnsupportedStructuredOutputError(error), true);
 });
 
 test('generic provider unavailability is not mistaken for structured-output rejection', () => {

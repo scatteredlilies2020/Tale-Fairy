@@ -19,6 +19,23 @@ export function isUnsupportedStructuredOutputError(error) {
     return namesStructuredControl && describesRejection;
 }
 
+export async function detachedPlannerFailure(response) {
+    const raw = await response.text();
+    let detail = '';
+    try {
+        const payload = raw ? JSON.parse(raw) : {};
+        detail = typeof payload?.error === 'string'
+            ? payload.error
+            : payload?.error?.message || payload?.message || '';
+    } catch {
+        detail = raw;
+    }
+    const status = [response.status, response.statusText].filter(Boolean).join(' ');
+    const error = new Error(detail || `Planner request failed${status ? ` (${status})` : ''}`);
+    error.status = response.status;
+    return error;
+}
+
 export function stripStructuredOutputControls(payload) {
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
     for (const key of ['response_format', 'json_schema', 'jsonSchema']) delete payload[key];
