@@ -17,7 +17,7 @@ import { collectSummarySources, summarySourceAudit } from './summary-context.js'
 import { estimateTokenCount } from './token-budget.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.77';
+const RUNTIME_VERSION = '0.11.78';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -46,7 +46,10 @@ const directModelCache = new Map();
 // Reasoning providers may count hidden thinking against this ceiling. The
 // planner prompt and schema separately target a concise visible JSON result.
 const PLANNER_RESPONSE_TOKENS = 6144;
-const PLANNER_REQUEST_TIMEOUT_MS = 120000;
+// Large-context reasoning models can legitimately take more than two minutes
+// before returning their single structured planner result. Keep a finite cap,
+// but do not turn normal NVIDIA/Kimi latency into a misleading AbortError.
+const PLANNER_REQUEST_TIMEOUT_MS = 300000;
 const PLANNER_MAX_AUTO_RETRIES = 2;
 const UI_MOUNT_TIMEOUT_MS = 30000;
 const LEGACY_UPGRADE_MAX_ATTEMPTS = 1;
@@ -933,7 +936,10 @@ function rebuildState() {
 
 async function requestAnalysisOnce(prompt, externalSignal) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(new DOMException('Tale Fairy planner request timed out.', 'TimeoutError')), PLANNER_REQUEST_TIMEOUT_MS);
+    const timeout = setTimeout(() => {
+        console.warn(`[${EXTENSION_ID}] planner request reached its ${Math.round(PLANNER_REQUEST_TIMEOUT_MS / 1000)}-second limit; stopping the provider request`);
+        controller.abort(new DOMException('Tale Fairy planner request timed out.', 'TimeoutError'));
+    }, PLANNER_REQUEST_TIMEOUT_MS);
     const forwardAbort = () => controller.abort(externalSignal?.reason || new DOMException('Tale Fairy analysis stopped.', 'AbortError'));
     if (externalSignal?.aborted) forwardAbort();
     else externalSignal?.addEventListener('abort', forwardAbort, { once: true });
