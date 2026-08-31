@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, AnalysisValidationError, MODE_INSTRUCTIONS, applyAnalysis, buildAnalysisPrompt, buildFinalizationEvidence, extractJson, finalizeAnalysisResult, requireCompleteProviderResult, requireValidAnalysisResult, SYSTEM, validateAnalysisResult } from '../extension/analysis.js';
+import { ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, AnalysisValidationError, MODE_INSTRUCTIONS, applyAnalysis, buildAnalysisPrompt, buildFinalizationEvidence, extractJson, finalizeAnalysisResult, requireValidAnalysisResult, SYSTEM, validateAnalysisResult } from '../extension/analysis.js';
 import { defaultState } from '../extension/state.js';
 import { estimateTokenCount } from '../extension/token-budget.js';
 
@@ -166,36 +166,6 @@ test('entity repair derives concrete state and knowledge from supplied fields in
     assert.match(result.entities[0].knowledge, /filed record|private notes/iu);
     assert.doesNotMatch(result.entities[0].state, /must be inferred/iu);
     assert.doesNotMatch(result.entities[0].agenda, /Continue acting independently from this motivation/iu);
-});
-
-test('first provider pass must supply semantic content before compatibility recovery', () => {
-    const complete = {
-        ...requiredPlanning,
-        scene: { status: 'active', activity: 'Tea', pace: 'steady', intent: 'Talk', location: 'home', time: 'evening', loop: false },
-        objectives: [],
-        entities: [],
-        possibilities: Array.from({ length: 12 }, (_, index) => ({
-            description: `Distinct supported possibility ${index + 1}.`,
-            horizon: ['local', 'near', 'mid', 'far', 'wildcard'][index % 5],
-            conditions: [],
-            force: 'moderate',
-        })),
-        guidance: 'Advance the strongest supported route without collapsing the alternatives.',
-        inject: true,
-        reason: 'The selected routes span current, institutional, relational, and long-range causes.',
-    };
-    assert.equal(requireCompleteProviderResult(complete), complete);
-    assert.throws(
-        () => requireCompleteProviderResult({ ...complete, possibilities: complete.possibilities.slice(0, 4) }),
-        /12 to 18 distinct future candidates/i,
-    );
-    assert.throws(
-        () => requireCompleteProviderResult({
-            ...complete,
-            entities: [{ name: 'Mara', motivation: 'Protect trust.', agenda: 'Seek a candid answer.' }],
-        }),
-        /entities\[0\]\.state must be a string/i,
-    );
 });
 
 test('finalization preserves authored variety when a dormant route is already represented', () => {

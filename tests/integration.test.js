@@ -11,9 +11,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.75');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.75');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.75');
+    assert.equal(manifest.version, '0.11.76');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.76');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.76');
 });
 
 test('injection sends layered authorial control while concrete realization and future outcomes stay private', () => {
@@ -92,9 +92,10 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /messages\.join\('\s*→\s*'\)/);
     assert.match(source, /active model structured request failed; retrying with a JSON-only prompt/);
     assert.match(source, /direct model structured request failed; retrying with a JSON-only prompt/);
-    assert.match(source, /planner JSON was incomplete after deterministic recovery; retrying once with explicit correction/);
+    assert.doesNotMatch(source, /REPAIR REQUIRED|incomplete after deterministic recovery/);
     assert.match(source, /async function requestAnalysisOnce/);
-    assert.match(source, /async function requestAnalysis\(/);
+    assert.match(source, /async function requestAnalysis\([^)]*\)\s*{\s*return requestAnalysisOnce\(prompt, externalSignal, finalizationEvidence\);\s*}/s);
+    assert.match(source, /structured \? \{ json_schema: ANALYSIS_SCHEMA \} : \{\}/);
     assert.match(source, /JSON\.stringify\(ANALYSIS_SCHEMA\.value\)/);
     assert.match(source, /text: submittedNote\.text/);
     assert.match(source, /Instruction saved/);

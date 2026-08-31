@@ -4,7 +4,7 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_SCHEMA, buildAnalysisPrompt, buildFinalizationEvidence, extractJson, finalizeAnalysisResult, requireCompleteProviderResult, requireValidAnalysisResult, SYSTEM } from './analysis.js';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_SCHEMA, buildAnalysisPrompt, buildFinalizationEvidence, extractJson, finalizeAnalysisResult, requireValidAnalysisResult, SYSTEM } from './analysis.js';
 import { buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js';
 import { resolveInjectionPlacement } from './injection-placement.js';
 import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js';
@@ -16,7 +16,7 @@ import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } fro
 import { collectSummarySources, summarySourceAudit } from './summary-context.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.75';
+const RUNTIME_VERSION = '0.11.76';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -776,7 +776,7 @@ function stopAnalysis() {
     interruptAnalysis('Tale Fairy analysis stopped by the user.', 'Stopped');
 }
 
-function parseAnalysisResponse(value, evidence = '', { requireComplete = false } = {}) {
+function parseAnalysisResponse(value, evidence = '') {
     try {
         let expectedOfferedIds = [];
         let priorPlannerState = null;
@@ -792,8 +792,11 @@ function parseAnalysisResponse(value, evidence = '', { requireComplete = false }
         const rawResult = value && typeof value === 'object' && !Array.isArray(value) && value.scene
             ? value
             : extractJson(completionText(value));
-        if (requireComplete) requireCompleteProviderResult(rawResult);
-        const result = requireValidAnalysisResult(rawResult, { expectedOfferedIds, priorPlannerState, preservePriorLoreOnRecovery: !requireComplete });
+        // Provider output is normalized and validated locally. A partially
+        // populated but usable result must never cause a second full-context
+        // generation: the schema-constrained first request is the sole
+        // semantic planning pass.
+        const result = requireValidAnalysisResult(rawResult, { expectedOfferedIds, priorPlannerState, preservePriorLoreOnRecovery: true });
         return finalizeAnalysisResult(result, evidence);
     } catch (error) {
         if (error instanceof AnalysisValidationError) throw error;
@@ -927,7 +930,7 @@ function rebuildState() {
     return defaultState();
 }
 
-async function requestAnalysisOnce(prompt, externalSignal, finalizationEvidence = prompt, { requireComplete = false } = {}) {
+async function requestAnalysisOnce(prompt, externalSignal, finalizationEvidence = prompt) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(new DOMException('Tale Fairy planner request timed out.', 'TimeoutError')), PLANNER_REQUEST_TIMEOUT_MS);
     const forwardAbort = () => controller.abort(externalSignal?.reason || new DOMException('Tale Fairy analysis stopped.', 'AbortError'));
@@ -969,7 +972,7 @@ async function requestAnalysisOnce(prompt, externalSignal, finalizationEvidence 
             try {
                 const response = await sendProfile(true);
                 controller.signal.throwIfAborted();
-                return parseAnalysisResponse(response, finalizationEvidence, { requireComplete });
+                return parseAnalysisResponse(response, finalizationEvidence);
             } catch (error) {
                 controller.signal.throwIfAborted();
                 // A completed planner response that fails our deterministic
@@ -990,7 +993,7 @@ async function requestAnalysisOnce(prompt, externalSignal, finalizationEvidence 
                     response = await sendProfile(false, fallbackSystem);
                 }
                 controller.signal.throwIfAborted();
-                return parseAnalysisResponse(response, finalizationEvidence, { requireComplete });
+                return parseAnalysisResponse(response, finalizationEvidence);
             }
         }
         if (model.active) {
@@ -1027,11 +1030,11 @@ async function requestAnalysisOnce(prompt, externalSignal, finalizationEvidence 
                 if (activeSource === 'openrouter') {
                     const raw = await runActiveCompatible(false);
                     controller.signal.throwIfAborted();
-                    return parseAnalysisResponse(raw, finalizationEvidence, { requireComplete });
+                    return parseAnalysisResponse(raw, finalizationEvidence);
                 }
                 const raw = await runActiveCompatible(true);
                 controller.signal.throwIfAborted();
-                return parseAnalysisResponse(raw, finalizationEvidence, { requireComplete });
+                return parseAnalysisResponse(raw, finalizationEvidence);
             } catch (error) {
                 controller.signal.throwIfAborted();
                 if (error instanceof AnalysisValidationError) throw error;
@@ -1041,7 +1044,7 @@ async function requestAnalysisOnce(prompt, externalSignal, finalizationEvidence 
                         const activeSource = String(currentContext().chatCompletionSettings?.chat_completion_source || '');
                         const raw = await runActiveCompatible(activeSource !== 'openrouter');
                         controller.signal.throwIfAborted();
-                        return parseAnalysisResponse(raw, finalizationEvidence, { requireComplete });
+                        return parseAnalysisResponse(raw, finalizationEvidence);
                     } catch (retryError) {
                         controller.signal.throwIfAborted();
                         error = retryError;
@@ -1050,7 +1053,7 @@ async function requestAnalysisOnce(prompt, externalSignal, finalizationEvidence 
                 console.warn(`[${EXTENSION_ID}] active model structured request failed; retrying with a JSON-only prompt`, error);
                 const raw = await runActiveCompatible(false);
                 controller.signal.throwIfAborted();
-                return parseAnalysisResponse(raw, finalizationEvidence, { requireComplete });
+                return parseAnalysisResponse(raw, finalizationEvidence);
             }
         }
         const reasoningMode = plannerReasoningMode();
@@ -1064,13 +1067,13 @@ async function requestAnalysisOnce(prompt, externalSignal, finalizationEvidence 
         let samplingEnabled = !plannerModelRejectsTemperature(model.model);
         const sendRaw = async structured => {
             const systemPrompt = structured ? SYSTEM : fallbackSystemPrompt();
-            const body = { chat_completion_source: model.provider, model: model.model, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }], max_tokens: PLANNER_RESPONSE_TOKENS, stream: false, ...plannerTemperaturePayload(temperature, samplingEnabled), ...reasoningPayload, ...(structured ? { response_format: { type: 'json_object' } } : {}), ...(model.provider === 'openrouter' ? { api_url: model.url.replace(/\/$/, '') } : { custom_url: model.url.replace(/\/$/, '') }) };
+            const body = { chat_completion_source: model.provider, model: model.model, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }], max_tokens: PLANNER_RESPONSE_TOKENS, stream: false, ...plannerTemperaturePayload(temperature, samplingEnabled), ...reasoningPayload, ...(structured ? { json_schema: ANALYSIS_SCHEMA } : {}), ...(model.provider === 'openrouter' ? { api_url: model.url.replace(/\/$/, '') } : { custom_url: model.url.replace(/\/$/, '') }) };
             if (model.secretId) body.secret_id = model.secretId;
             const response = await fetch('/api/backends/chat-completions/generate', { method: 'POST', headers: currentContext().getRequestHeaders?.() || getRequestHeaders?.() || { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
             const payload = await response.json();
             if (!response.ok || payload?.error) throw new Error(payload?.error?.message || payload?.error || `Analysis request failed (${response.status}).`);
             controller.signal.throwIfAborted();
-            return parseAnalysisResponse(payload, finalizationEvidence, { requireComplete });
+            return parseAnalysisResponse(payload, finalizationEvidence);
         };
         const send = structured => retryWithoutUnsupportedTemperature(
             () => sendRaw(structured),
@@ -1109,15 +1112,7 @@ async function requestAnalysisOnce(prompt, externalSignal, finalizationEvidence 
 }
 
 async function requestAnalysis(prompt, externalSignal, finalizationEvidence = prompt) {
-    try {
-        return await requestAnalysisOnce(prompt, externalSignal, finalizationEvidence, { requireComplete: true });
-    } catch (error) {
-        externalSignal?.throwIfAborted?.();
-        if (!(error instanceof AnalysisValidationError)) throw error;
-        console.warn(`[${EXTENSION_ID}] planner JSON was incomplete after deterministic recovery; retrying once with explicit correction`, error);
-        const correction = `\n\n[REPAIR REQUIRED]\nThe prior planner response was rejected: ${analysisErrorMessage(error)}\nReturn one complete JSON object matching every required schema field. Do not rely on fallback text: every returned entity must contain its concrete current state, location, relevance, perspective, motivation, knowledge boundary, constraints, independent agenda, confidence, and causal window. Return lore_model with a concrete world_identity and baseline plus all five evidence arrays: variant_rules, continuity_signatures, baseline_departures, trajectory_signals, and active_forces. Preserve established world and roleplay-specific evidence unless later evidence changes or contradicts it; never replace it with generic placeholder prose. possibilities must contain 12–18 objects with description, horizon, conditions (an array), and force. Include 3 or 4 distinct, grounded next_guides; each must specify an immediate direction, use/drop conditions, a causal operation, and a distinct world_delta. Return continuity_threads as an array, even when empty; audit established unresolved correspondence, commitments, processes, and relationships before leaving it empty. Return self_challenge with weakness, counter_route, and decision, plus a concrete reason for the selected plan. Do not omit required fields or replace field names with aliases.`;
-        return requestAnalysisOnce(`${prompt}${correction}`, externalSignal, finalizationEvidence, { requireComplete: false });
-    }
+    return requestAnalysisOnce(prompt, externalSignal, finalizationEvidence);
 }
 
 export async function analyzeNow({ note = null, force = false, messages = null, rebuild = false, allowOneUserAppend = false, allowStaleContinuity = false, waitForContinuity = false, retryAttempt = 0 } = {}) {

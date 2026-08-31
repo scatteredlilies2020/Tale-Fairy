@@ -343,25 +343,6 @@ export function requireValidAnalysisResult(result, options = {}) {
     return repaired;
 }
 
-/**
- * The first provider response should stand on its own rather than passing only
- * because repairAnalysisResult supplied generic semantic content. A later
- * compatibility pass may still salvage harmless provider/schema drift, but the
- * caller gets one opportunity to request the actual missing analysis first.
- */
-export function requireCompleteProviderResult(result) {
-    const validation = validateAnalysisResult(result);
-    const errors = [...validation.errors];
-    if (Array.isArray(result?.possibilities)
-        && (result.possibilities.length < 12 || result.possibilities.length > 18)) {
-        errors.push('possibilities must contain 12 to 18 distinct future candidates');
-    }
-    if (errors.length) {
-        throw new AnalysisValidationError(`Planner response needs semantic completion before recovery: ${errors.slice(0, 16).join('; ')}.`);
-    }
-    return result;
-}
-
 function requiredCanonClaims(evidence) {
     if (typeof evidence !== 'string') return [];
     try {
