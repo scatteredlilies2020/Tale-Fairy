@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, hasExplicitProgressDirective, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, isStateAligned, loadState, normalizeState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION, stateForPrompt } from '../extension/state.js';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, hasExplicitProgressDirective, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, isStateAligned, loadState, normalizeState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION, stateForPrompt } from '../extension/state.js';
 
 const stateNextGuides = [
     { id: 'direct-answer', direction: 'Let Mara answer plainly and reveal one concrete concern.', useWhen: 'The user continues or asks Mara.', dropWhen: 'The user leaves or changes subject.', causalRole: 'Advance the live trust thread through a concrete disclosure.', worldDelta: 'Mara reveals a concern that changes the shared understanding.', origin: 'inferred', basis: 'Mara is present and engaged in the live conversation.', strength: 'strong', sourcePathways: ['answer'], reason: 'Direct continuation.' },
@@ -546,4 +546,47 @@ test('the lean guide preserves player agency without a general narrative-policy 
     assert.equal(hasExplicitProgressDirective('I open the consultation door and walk inside to receive my results.'), false);
     assert.match(payload, /Never invent player dialogue, thoughts, feelings, choices, compliance, reactions, or extra activities/);
     assert.doesNotMatch(payload, /<tale-fairy-narrative-policy>|Carry its declared actions|Before ending|Routine logistics/);
+});
+
+test('v42 planning migrates into the author board without forcing another planner call', () => {
+    const migrated = normalizeState({ version: 42, ...currentPlan, canonBootstrapPending: false });
+    assert.equal(migrated.version, 43);
+    assert.equal(migrated.canonBootstrapPending, false);
+    assert.equal(migrated.authorBoard.story.identity, currentPlan.directorScore.storyIdentity);
+    assert.equal(migrated.authorBoard.scene.purpose, currentPlan.directorScore.sceneFunction);
+    assert.ok(migrated.authorBoard.scene.requiredDevelopments.length > 0);
+});
+
+test('planner completion refreshes the persistent author board and resets maintenance', () => {
+    const planned = applyPlannerAuthorLayer({
+        ...defaultState(),
+        ...currentPlan,
+        plannerSchedule: { turnsSincePlanner: 6, refreshInterval: 6 },
+    }, { turnCount: 8, fingerprint: 'current-chat' });
+    assert.equal(planned.plannerSchedule.turnsSincePlanner, 0);
+    assert.equal(planned.plannerSchedule.lastPlannerTurn, 8);
+    assert.equal(planned.plannerSchedule.lastPlannerFingerprint, 'current-chat');
+    assert.equal(planned.conductor.status, 'invalid');
+    assert.ok(planned.authorBoard.scene.requiredDevelopments.some(item => item.status === 'queued'));
+});
+
+test('an active response contract is injected even between AI planner refreshes', () => {
+    const state = normalizeState({
+        ...defaultState(),
+        conductor: {
+            status: 'active',
+            pacing: 'linger',
+            scenePurpose: 'Let studying change what is understood without ending the session.',
+            requiredDevelopment: 'Reveal one useful fact from the current page.',
+            allowedMovement: 'Deepen the reading activity.',
+            forbiddenMovement: 'Do not finish the book or move the player.',
+            backgroundTick: 'Advance hidden processes silently.',
+            exitGate: 'Only when the user stops reading or advances.',
+        },
+    });
+    const payload = buildPromptPayload(state, { enabled: true, guidanceUsable: false });
+    assert.match(payload, /TALE FAIRY — NEXT RESPONSE CONTRACT/);
+    assert.match(payload, /PACE: LINGER/);
+    assert.match(payload, /REQUIRED DEVELOPMENT: Reveal one useful fact/);
+    assert.match(payload, /Do not finish the book/);
 });

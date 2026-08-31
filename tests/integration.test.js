@@ -11,11 +11,15 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.100');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.100');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.100');
+    assert.equal(manifest.version, '0.11.101');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.101');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.101');
     assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.100'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.100'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.101'/);
+    assert.match(source, /from '\.\/author-board\.js\?v=0\.11\.101'/);
+    assert.match(source, /from '\.\/conductor\.js\?v=0\.11\.101'/);
+    assert.match(source, /from '\.\/pacing\.js\?v=0\.11\.101'/);
+    assert.match(source, /from '\.\/planner-scheduler\.js\?v=0\.11\.101'/);
     assert.match(source, /from '\.\/completion-response\.js\?v=0\.11\.100'/);
     assert.match(source, /from '\.\/output-negotiation\.js\?v=0\.11\.100'/);
     assert.match(source, /from '\.\/planner-lifecycle\.js\?v=0\.11\.100'/);
@@ -73,6 +77,8 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(template, /data-setting="model-list"/);
     assert.match(template, /Model ID \(manual or selected\)/);
     assert.match(template, /data-setting="reasoning"/);
+    assert.match(template, /data-setting="pacing"/);
+    assert.match(template, /Advance once/);
     assert.match(template, /Auto inherits the selected Connection Manager profile or its preset/);
     assert.doesNotMatch(template, /data-setting="source"|data-setting="profile"|data-setting="provider"/);
     assert.match(source, /function applyAnalysisConnectionChoice/);
@@ -147,18 +153,21 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /buildPromptPayload\(state/);
     assert.match(source, /function renderBoard/);
     assert.match(source, /function prepareGenerationGuide/);
+    assert.match(source, /function prepareAuthorContract/);
+    assert.match(source, /state\.pacing = updatePacing/);
+    assert.match(source, /state\.conductor = normalizeConductorState\(\{ \.\.\.state\.conductor, status: 'invalid' \}\)/);
     assert.match(source, /replacementGeneration: generationGuideSelection\?\.replacement === true/);
     assert.match(source, /returnedReplyMatchesVerification\(pending, messages, chatId\)/);
     assert.match(source, /function guideTurnKey/);
     assert.match(source, /swipeGuideCursors\.get\(turnKey\)/);
     assert.match(source, /swipeGuideCursors\.set\(turnKey, index\)/);
-    assert.match(source, /MESSAGE_SWIPED[\s\S]{0,900}existingSwipeSelected[\s\S]{0,500}void analyzeNow\(\{ messages, allowOneUserAppend: true \}\)/);
-    assert.match(source, /Number\(selected\.swipe_id\) < selected\.swipes\.length/);
+    assert.doesNotMatch(source, /MESSAGE_SWIPED[\s\S]{0,700}void analyzeNow/);
+    assert.match(source, /prepareAuthorContract\(loadState\(context\.chatMetadata\), type\)/);
     assert.match(source, /type === 'swipe' \|\| type === 'regenerate'/);
     assert.match(source, /\(previousIndex \+ 1\) % candidates\.length/);
     assert.match(source, /state\.lastRequestVerification\?\.guideCandidates/);
     assert.match(source, /state\.lastRequestVerification\?\.canonConstraints/);
-    assert.match(source, /canonConstraints: loadState\(context\.chatMetadata\)\.canonConstraints/);
+    assert.match(source, /canonConstraints: state\.canonConstraints/);
     assert.match(source, /generationGuideSelection\.usable \? generationGuideSelection\.candidates : \[\]/);
     assert.match(source, /regeneration: generationGuideSelection\.regeneration/);
     assert.match(source, /variationCue: generationGuideSelection\.variationCue/);
@@ -233,7 +242,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /'stop', 'stopping_strings', 'logit_bias', 'tools', 'tool_choice'/);
     assert.match(source, /generateRaw\(\{[\s\S]{0,320}instructOverride: true/);
     assert.doesNotMatch(source, /MESSAGE_SENT[\s\S]{0,500}void analyzeNow/);
-    assert.match(source, /MESSAGE_RECEIVED[\s\S]{0,900}void analyzeNow\(\{ messages, allowOneUserAppend: true \}\)/);
+    assert.match(source, /MESSAGE_RECEIVED[\s\S]{0,1600}plannerRefreshDecision\(\{ state, messages, event: replacement \? 'replacement' : 'turn', swipe: replacement \}\)[\s\S]{0,500}decision\.shouldRun[\s\S]{0,300}void analyzeNow\(\{ messages, force: true/);
     assert.match(source, /isAnalysisSourceCurrent\(guard\.fingerprint, guard\.messageCount, chat/);
     assert.doesNotMatch(source, /waitForBackgroundPlanner/);
     assert.doesNotMatch(source, /function backgroundRetryDelay/);
@@ -242,10 +251,10 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.doesNotMatch(source, /MESSAGE_RECEIVED[\s\S]{0,500}scheduleBackgroundAnalysis/);
     assert.match(source, /async function upgradeLegacyPlanIfNeeded/);
     assert.match(source, /async function refreshCurrentPlanIfNeeded/);
-    assert.match(source, /refreshCurrentPlanIfNeeded[\s\S]{0,1400}isGuidanceUsable\(state, messages, chatId\)/);
+    assert.match(source, /refreshCurrentPlanIfNeeded[\s\S]{0,1800}plannerRefreshDecision\(\{ state, messages, event: 'load' \}\)/);
     assert.match(source, /plannerWasInterrupted\(plannerStorage\(\), chatId, fingerprint\)/);
-    assert.match(source, /refreshCurrentPlanIfNeeded[\s\S]{0,1600}analyzeNow\(\{ messages, force: interrupted, allowOneUserAppend: true, waitForContinuity: true \}\)/);
-    assert.match(source, /rawVersion < STATE_VERSION/);
+    assert.match(source, /refreshCurrentPlanIfNeeded[\s\S]{0,2000}if \(!decision\.shouldRun\) return state;[\s\S]{0,200}analyzeNow\(\{ messages, force: true, allowOneUserAppend: true, waitForContinuity: true \}\)/);
+    assert.match(source, /rawVersion < 42/);
     assert.match(source, /LEGACY_UPGRADE_MAX_ATTEMPTS = 1/);
     assert.match(source, /persistedVersion >= STATE_VERSION/);
     assert.match(source, /if \(!completed\) legacyUpgradeAttempts\.delete\(attemptKey\)/);

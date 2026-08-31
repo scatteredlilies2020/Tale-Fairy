@@ -5,7 +5,11 @@ import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
 import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.100';
-import { buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.100';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.101';
+import { markAuthorBeatDelivered, tickAuthorBoard } from './author-board.js?v=0.11.101';
+import { normalizeConductorState, runConductor } from './conductor.js?v=0.11.101';
+import { consumeAdvanceOverride, isReleaseSignal, updatePacing } from './pacing.js?v=0.11.101';
+import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.11.101';
 import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.100';
 import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.100';
 import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.100';
@@ -20,7 +24,7 @@ import { customOutputPayload, negotiateOutputModes, plannerMessages, plannerProm
 import { clearPlannerPending, markPlannerPending, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.100';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.100';
+const RUNTIME_VERSION = '0.11.101';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -581,6 +585,37 @@ function prepareGenerationGuide(state, type) {
     };
 }
 
+function assistantTurnNumber(messages = []) {
+    return messages.reduce((count, message) => count + (message?.is_user ? 0 : 1), 0);
+}
+
+function prepareAuthorContract(state, type = '') {
+    const context = currentContext();
+    const messages = messagesFromChat(context.chat || []);
+    const latestUserAction = [...messages].reverse().find(message => message.is_user)?.mes || '';
+    const replacement = type === 'swipe' || type === 'regenerate';
+    const targetTurn = assistantTurnNumber(messages) + (messages.at(-1)?.is_user ? 1 : 0);
+    state.pacing = updatePacing(state.pacing, { latestUserAction, turnCount: targetTurn });
+
+    // Regenerations replay the same authorial obligation. Discarding wording
+    // must not consume a new beat or silently accelerate the story.
+    const archived = state.lastRequestVerification?.conductorContract;
+    if (replacement && archived?.requiredDevelopment) {
+        state.conductor = normalizeConductorState({ ...archived, status: 'active', updatedAtTurn: targetTurn });
+    } else {
+        const prepared = runConductor({
+            authorBoard: state.authorBoard,
+            pacing: state.pacing,
+            previous: state.conductor,
+            turnCount: targetTurn,
+        });
+        state.authorBoard = prepared.authorBoard;
+        state.conductor = prepared.contract;
+    }
+    context.updateChatMetadata(saveState(context.chatMetadata, state));
+    return state;
+}
+
 function updatePrompt(state) {
     const context = currentContext();
     const s = getSettings();
@@ -624,6 +659,7 @@ function rememberVerifiedRequest(payload, { provider = '', model = '' } = {}) {
     const context = currentContext();
     const messages = messagesFromChat(context.chat || []);
     const s = getSettings();
+    const state = loadState(context.chatMetadata);
     pendingRequestVerification = {
         status: 'included',
         guidanceBlock,
@@ -639,10 +675,12 @@ function rememberVerifiedRequest(payload, { provider = '', model = '' } = {}) {
         depth: s.injectionPosition === 'at-depth' ? s.injectionDepth : 0,
         guideCandidates: generationGuideSelection
             ? (generationGuideSelection.usable ? generationGuideSelection.candidates : [])
-            : loadState(context.chatMetadata).nextGuides,
-        canonConstraints: loadState(context.chatMetadata).canonConstraints,
+            : state.nextGuides,
+        canonConstraints: state.canonConstraints,
         selectedGuideIndex: generationGuideSelection?.index || 0,
         replacementGeneration: generationGuideSelection?.replacement === true,
+        conductorDevelopmentId: state.conductor.status === 'active' ? state.conductor.developmentId : '',
+        conductorContract: state.conductor.status === 'active' ? state.conductor : null,
     };
     renderBoard();
 }
@@ -690,6 +728,12 @@ async function confirmReturnedReplyUsedGuidance() {
         confirmedAt: Date.now(),
         responseMessageCount: messages.length,
     };
+    const turn = assistantTurnNumber(messages);
+    if (pending.conductorDevelopmentId) {
+        state.authorBoard = markAuthorBeatDelivered(state.authorBoard, pending.conductorDevelopmentId, pending.conductorContract?.developmentType, turn);
+    }
+    state.conductor = normalizeConductorState({ ...state.conductor, status: 'invalid' });
+    state.pacing = consumeAdvanceOverride(state.pacing);
     context.updateChatMetadata(saveState(context.chatMetadata, state));
     pendingRequestVerification = null;
     if (typeof context.saveMetadata === 'function') {
@@ -971,7 +1015,11 @@ async function recoverDetachedPlannerJobs() {
             }
             const current = meta.rebuild ? rebuildState() : loadState(context.chatMetadata);
             current.mode = meta.mode || getSettings().mode;
-            const next = applyAnalysis(current, result, chat.slice(0, Number(meta.messageCount) || chat.length));
+            let next = applyAnalysis(current, result, chat.slice(0, Number(meta.messageCount) || chat.length));
+            next = applyPlannerAuthorLayer(next, {
+                turnCount: assistantTurnNumber(chat.slice(0, Number(meta.messageCount) || chat.length)),
+                fingerprint: String(meta.fingerprint || ''),
+            });
             next.summaryEvidence = { ...(meta.summaryEvidence || {}), scannedAt: Date.now() };
             next.plannerSeed = Number(meta.plannerSeed) || 0;
             next.sourceChatId = chatId;
@@ -1408,7 +1456,8 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
             finalStatus = 'Skipped · chat changed';
             return current;
         }
-        const next = applyAnalysis(current, result, chat);
+        let next = applyAnalysis(current, result, chat);
+        next = applyPlannerAuthorLayer(next, { turnCount: assistantTurnNumber(chat), fingerprint });
         next.summaryEvidence = { ...lastSummaryAudit, scannedAt: Date.now() };
         next.plannerSeed = variationNonce;
         next.sourceChatId = chatId;
@@ -1493,6 +1542,8 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
             ? 'Not populated in the retained plan — the requested refresh has not produced a valid saved result yet.'
             : fallback);
     const settingsRoot = document.querySelector(`#${EXTENSION_ID}-settings`);
+    const pacingControl = settingsRoot?.querySelector('[data-setting="pacing"]');
+    if (pacingControl) pacingControl.value = state.pacing.mode;
     const guideButton = settingsRoot?.querySelector('[data-action="guide"]');
     const guideLabel = guideButton?.querySelector('[data-role="guide-label"]');
     if (guideLabel) guideLabel.textContent = analyzed ? 'Re-evaluate' : 'Guide now';
@@ -1514,6 +1565,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
 
     const layers = state.narrativeLayers || {};
     const scene = [
+        state.pacing && `Tale Fairy pacing: ${state.pacing.effective.toUpperCase()} (${state.pacing.mode === 'auto' ? state.pacing.reason : `${state.pacing.mode} override`})`,
         layers.immediateAction && `Immediate action: ${layers.immediateAction}`,
         layers.localActivity && `Local activity: ${layers.localActivity} [${layers.activityRole || 'routine'}]`,
         layers.situation && `Situation: ${layers.situation}`,
@@ -1781,7 +1833,7 @@ async function upgradeLegacyPlanIfNeeded() {
     // An interceptor can normalize and save the new version before this startup
     // audit runs. The bootstrap flag must therefore remain an independent
     // migration marker until a fresh planner pass clears it.
-    const upgradePending = rawVersion < STATE_VERSION || rawState?.canonBootstrapPending === true;
+    const upgradePending = rawVersion < 42 || rawState?.canonBootstrapPending === true;
     const chatId = String(context.getCurrentChatId?.() || '');
     const messages = messagesFromChat(context.chat || []);
     const fingerprint = fingerprintMessages(messages);
@@ -1832,7 +1884,7 @@ async function refreshCurrentPlanIfNeeded() {
     if (recovered.active) return loadState(context.chatMetadata);
     const rawState = context.chatMetadata?.[STATE_KEY];
     const rawVersion = Math.max(0, Number(rawState?.version) || 0);
-    const upgradePending = Boolean(rawState && (rawVersion < STATE_VERSION || rawState.canonBootstrapPending === true));
+    const upgradePending = Boolean(rawState && ((rawVersion > 0 && rawVersion < 42) || rawState.canonBootstrapPending === true));
     if (upgradePending) return upgradeLegacyPlanIfNeeded();
 
     const chatId = String(context.getCurrentChatId?.() || '');
@@ -1840,16 +1892,18 @@ async function refreshCurrentPlanIfNeeded() {
     const fingerprint = fingerprintMessages(messages);
     const interrupted = plannerWasInterrupted(plannerStorage(), chatId, fingerprint);
     const state = loadState(context.chatMetadata);
-    if (!getSettings().enabled || !chatId || !messages.length || (!interrupted && isGuidanceUsable(state, messages, chatId))) {
+    if (!getSettings().enabled || !chatId || !messages.length) {
         updatePrompt(state);
         return state;
     }
-
-    // A current-format plan can still be stale after a closed tab, extension
-    // reload, or interrupted background request. Refresh it once on chat load;
-    // analyzeNow deduplicates an identical in-flight request and never blocks
-    // the user's generation.
-    return analyzeNow({ messages, force: interrupted, allowOneUserAppend: true, waitForContinuity: true });
+    const decision = interrupted
+        ? { shouldRun: true, code: 'interrupted', reason: 'A previously interrupted planner run must be recovered.' }
+        : plannerRefreshDecision({ state, messages, event: 'load' });
+    state.plannerSchedule = withRefreshReason(state.plannerSchedule, decision);
+    context.updateChatMetadata(saveState(context.chatMetadata, state));
+    updatePrompt(state);
+    if (!decision.shouldRun) return state;
+    return analyzeNow({ messages, force: true, allowOneUserAppend: true, waitForContinuity: true });
 }
 
 async function mountUI() {
@@ -1874,6 +1928,7 @@ async function mountUI() {
     const root = document.querySelector(`#${EXTENSION_ID}-settings`);
     root.querySelector('[data-setting="enabled"]').checked = s.enabled;
     root.querySelector('[data-setting="mode"]').value = s.mode;
+    root.querySelector('[data-setting="pacing"]').value = loadState(currentContext().chatMetadata).pacing.mode;
     root.querySelector('[data-setting="reasoning"]').value = s.analysisReasoningMode;
     root.querySelector('[data-setting="temperature-slider"]').value = s.analysisTemperature;
     root.querySelector('[data-setting="temperature"]').value = s.analysisTemperature;
@@ -1898,6 +1953,26 @@ async function mountUI() {
         save();
     });
     root.querySelector('[data-setting="mode"]').addEventListener('change', e => { invalidatePlanner(); s.mode = e.target.value; save(); });
+    root.querySelector('[data-setting="pacing"]').addEventListener('change', async e => {
+        const context = currentContext();
+        const state = loadState(context.chatMetadata);
+        const messages = messagesFromChat(context.chat || []);
+        const latestUserAction = [...messages].reverse().find(message => message.is_user)?.mes || '';
+        state.pacing = updatePacing(state.pacing, {
+            mode: e.target.value,
+            latestUserAction,
+            turnCount: assistantTurnNumber(messages) + (messages.at(-1)?.is_user ? 1 : 0),
+        });
+        state.conductor = normalizeConductorState({ ...state.conductor, status: 'invalid' });
+        context.updateChatMetadata(saveState(context.chatMetadata, state));
+        updatePrompt(state);
+        renderBoard(state);
+        try {
+            await context.saveMetadata?.();
+        } catch (error) {
+            console.warn(`[${EXTENSION_ID}] Could not persist pacing control`, error);
+        }
+    });
     root.querySelector('[data-setting="connection"]').addEventListener('change', e => { invalidatePlanner(); applyAnalysisConnectionChoice(e.target.value, s); save(); });
     root.querySelector('[data-setting="reasoning"]').addEventListener('change', e => { invalidatePlanner(); s.analysisReasoningMode = normalizeReasoningMode(e.target.value); save(); });
     const updateTemperature = value => {
@@ -2012,6 +2087,7 @@ function refreshControls(root = document.querySelector(`#${EXTENSION_ID}-setting
     const direct = source === 'direct' || source === 'openrouter';
     root.querySelector('[data-setting="enabled"]').checked = Boolean(s.enabled);
     root.querySelector('[data-setting="mode"]').value = s.mode;
+    root.querySelector('[data-setting="pacing"]').value = loadState(currentContext().chatMetadata).pacing.mode;
     root.querySelector('[data-setting="temperature-slider"]').value = s.analysisTemperature;
     root.querySelector('[data-setting="temperature"]').value = s.analysisTemperature;
     root.querySelector('[data-setting="connection"]').value = analysisConnectionChoice(s);
@@ -2037,7 +2113,7 @@ function refreshControls(root = document.querySelector(`#${EXTENSION_ID}-setting
 export async function livingWorldGuideGenerateInterceptor(_chat, _contextSize, _abort, type) {
     if (type === 'quiet' || !getSettings().enabled) return;
     const context = currentContext();
-    const state = loadState(context.chatMetadata);
+    const state = prepareAuthorContract(loadState(context.chatMetadata), type);
     // Planning never blocks generation. The completed-turn guide is already
     // in metadata; the latest user action may use, reshape, or discard it.
     prepareGenerationGuide(state, type);
@@ -2067,10 +2143,25 @@ eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
     generationGuideSelection = null;
     const context = currentContext();
     const messages = messagesFromChat(context.chat || []);
-    updatePrompt(loadState(context.chatMetadata));
-    // One background planning cycle revises the routes after the completed
-    // assistant response. The next user generation never waits for it.
-    if (getSettings().enabled) void analyzeNow({ messages, allowOneUserAppend: true, allowStaleContinuity: true });
+    const state = loadState(context.chatMetadata);
+    const turn = assistantTurnNumber(messages);
+    const latestUserAction = [...messages].reverse().find(message => message.is_user)?.mes || '';
+    state.authorBoard = tickAuthorBoard(state.authorBoard, {
+        turnCount: turn,
+        storyTimeAdvanced: state.lastRequestVerification?.conductorContract?.pacing === 'advance' || isReleaseSignal(latestUserAction),
+    });
+    const responseKey = `${String(context.getCurrentChatId?.() || '')}:${turn}`;
+    const replacement = state.plannerSchedule.lastCountedResponseKey === responseKey;
+    state.plannerSchedule = markAssistantTurn(state.plannerSchedule, responseKey);
+    const decision = plannerRefreshDecision({ state, messages, event: replacement ? 'replacement' : 'turn', swipe: replacement });
+    state.plannerSchedule = withRefreshReason(state.plannerSchedule, decision);
+    context.updateChatMetadata(saveState(context.chatMetadata, state));
+    updatePrompt(state);
+    // Ordinary turns are directed locally. The AI planner wakes only for
+    // initialization, meaningful pivots/corrections/payoffs, or maintenance.
+    if (getSettings().enabled && decision.shouldRun) {
+        void analyzeNow({ messages, force: true, allowOneUserAppend: true, allowStaleContinuity: true });
+    }
 });
 if (event_types.MESSAGE_SENT) eventSource.on(event_types.MESSAGE_SENT, () => {
     // analyzeNow allows exactly one appended user turn. Keep that completed-
@@ -2078,7 +2169,7 @@ if (event_types.MESSAGE_SENT) eventSource.on(event_types.MESSAGE_SENT, () => {
     // the only planner call before it can ever persist in a fast conversation.
     generationGuideSelection = null;
     const context = currentContext();
-    const state = loadState(context.chatMetadata);
+    const state = prepareAuthorContract(loadState(context.chatMetadata));
     updatePrompt(state);
 });
 for (const event of [event_types.MESSAGE_EDITED, event_types.MESSAGE_UPDATED, event_types.MESSAGE_DELETED]) {
@@ -2092,19 +2183,9 @@ eventSource.on(event_types.MESSAGE_SWIPED, messageId => {
     generationRevision++;
     cancelRunningAnalysis('The selected swipe changed while Tale Fairy was analyzing.', 'Refreshing…');
     const context = currentContext();
-    const messages = messagesFromChat(context.chat || []);
     updatePrompt(loadState(context.chatMetadata));
-    const selected = context.chat?.[Number(messageId)];
-    const existingSwipeSelected = Array.isArray(selected?.swipes)
-        && Number(selected.swipe_id) >= 0
-        && Number(selected.swipe_id) < selected.swipes.length;
-    // Selecting an existing result changes the active trajectory and needs a
-    // replan. An overswipe points one slot past swipes while it generates; do
-    // not spend a planner call on the discarded/empty slot. MESSAGE_RECEIVED
-    // plans once from the completed new result instead.
-    if (existingSwipeSelected && getSettings().enabled && messages.length && !messages.at(-1).is_user) {
-        void analyzeNow({ messages, allowOneUserAppend: true });
-    }
+    // A discarded wording never advances clocks or spends a planner call.
+    // Newly generated replacements reuse the archived response contract.
 });
 eventSource.on(event_types.CHAT_CHANGED, () => {
     pendingRequestVerification = null;

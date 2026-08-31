@@ -1,5 +1,10 @@
+import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js';
+import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
+import { defaultPacingState, normalizePacingState } from './pacing.js';
+import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js';
+
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 42;
+export const STATE_VERSION = 43;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -55,6 +60,10 @@ export function defaultState() {
         turnCount: 0,
         plannerSeed: 0,
         lastRequestVerification: null,
+        authorBoard: defaultAuthorBoard(),
+        pacing: defaultPacingState(),
+        conductor: defaultConductorState(),
+        plannerSchedule: defaultPlannerSchedule(),
     };
 }
 
@@ -346,6 +355,8 @@ function normalizeRequestVerification(value) {
         canonConstraints: cap(value.canonConstraints).map(item => text(item).slice(0, 500)).filter(Boolean),
         selectedGuideIndex: Math.max(0, Math.min(MAX_GUIDES - 1, Number(value.selectedGuideIndex) || 0)),
         replacementGeneration: value.replacementGeneration === true,
+        conductorDevelopmentId: text(value.conductorDevelopmentId).slice(0, 100),
+        conductorContract: normalizeConductorState(value.conductorContract),
     };
 }
 
@@ -359,7 +370,7 @@ export function normalizeState(input = {}) {
     const base = defaultState();
     const value = input && typeof input === 'object' ? input : {};
     const inputVersion = Math.max(0, Number(value.version) || 0);
-    const plannerUpgradePending = inputVersion > 0 && inputVersion < STATE_VERSION;
+    const plannerUpgradePending = inputVersion > 0 && inputVersion < 42;
     // v18 already stores the current canon shape. Preserve that evidence, but
     // v21 rebuilt event-prescriptive guides, v22 added a dramatic score, and
     // v23 replaces that style-adjacent score with causal narrative control;
@@ -388,9 +399,11 @@ export function normalizeState(input = {}) {
     // v41 separates the underlying causal engines so one recent matter cannot
     // masquerade as several independent futures by changing actor or timing;
     // v42 binds each selected guide to its route's engine so it cannot consume
-    // another route's signature development.
+    // another route's signature development. v43 adds an author board,
+    // deterministic conductor, pacing state, and periodic planner scheduler;
+    // v42 plans migrate into that layer without spending a forced AI call.
     const unsafePlannerUpgrade = inputVersion > 0 && inputVersion < 18;
-    const movementUpgrade = inputVersion > 0 && inputVersion < STATE_VERSION;
+    const movementUpgrade = inputVersion > 0 && inputVersion < 42;
     const recoveryUpgrade = inputVersion > 0 && inputVersion < 26;
     const chronologyAuditUpgrade = inputVersion > 0 && inputVersion < 31;
     const normalizedLayers = normalizeNarrativeLayers(value.narrativeLayers);
@@ -448,6 +461,10 @@ export function normalizeState(input = {}) {
         plannerSeed: Number.isInteger(value.plannerSeed) ? value.plannerSeed : 0,
         lastRequestVerification: movementUpgrade ? null : normalizeRequestVerification(value.lastRequestVerification),
     };
+    state.authorBoard = normalizeAuthorBoard(value.authorBoard, state);
+    state.pacing = normalizePacingState(value.pacing);
+    state.conductor = normalizeConductorState(value.conductor);
+    state.plannerSchedule = normalizePlannerSchedule(value.plannerSchedule);
     state.objectives = state.objectives.map((objective, index) => {
         if (!/^Open direction · open[- ]ended future$/iu.test(objective.title)) return objective;
         const timeframe = state.planHorizons.items[index]?.timeframe;
@@ -466,6 +483,15 @@ export function saveState(metadata, state) {
 export function clearState(metadata) {
     const next = { ...(metadata || {}) };
     delete next[STATE_KEY];
+    return next;
+}
+
+export function applyPlannerAuthorLayer(state, { turnCount = 0, fingerprint = '' } = {}) {
+    const next = normalizeState(state);
+    const turn = Math.max(0, Number(turnCount) || next.turnCount);
+    next.authorBoard = refreshAuthorBoardFromLegacy(next.authorBoard, next, turn);
+    next.conductor = normalizeConductorState({ ...next.conductor, status: 'invalid', boardRevision: next.authorBoard.revision });
+    next.plannerSchedule = markPlannerCompleted(next.plannerSchedule, { turnCount: turn, fingerprint });
     return next;
 }
 
@@ -523,6 +549,10 @@ export function stateForPrompt(state) {
             change: s.directorScore.change,
             basis: s.directorScore.basis,
         },
+        authorBoard: s.authorBoard,
+        pacing: s.pacing,
+        conductor: s.conductor,
+        plannerSchedule: s.plannerSchedule,
         narrativeEvents: s.narrativeEvents.slice(-6).map(event => ({
             id: event.id,
             engine: event.engine,
@@ -685,7 +715,10 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
     const beatRealization = 'BEAT REALIZATION: Realize the beat. Introduce an event, actor, object, or world change only when the direction or active horizon supports it. Otherwise deepen the activity through action, sensory state, progress, or consequence; calm may remain calm. Never invent intrusion or player tasks to prove movement; leave choices open.';
     const pacingBoundary = 'Primary user and roleplay instructions control voice, dialogue, prose, format, length, and response shape; Tale Fairy changes none of them; travel stops at arrival. A moment or named action preserves the established clock except for its immediate duration; never treat a future activity as completed. A broad activity may progress, but a named action permits one instance and immediate result—not repetition, onward movement, obeying a request, or unstated reaction. Never invent player dialogue, thoughts, feelings, choices, compliance, reactions, or activities. NPC requests/orders are world actions, not player authorization. Tale Fairy movement comes from independent character/world change, not assigning the player a task. Only simulate low-stakes procedure implicit in broad scope. Apply established strengths/limits proportionately; never cancel exceptional advantages. Keep unresolved choices open.';
     const fallbackPacingBoundary = 'AUTHORITY: User and roleplay instructions control expression; Tale Fairy supplies only movement. PLAYER AGENCY: Stay within latest user scope. Never invent player dialogue, thoughts, feelings, choices, compliance, reactions, or extra activities. NPC requests are events, not authorization.';
-    const routePrompt = guidanceUsable && selectedCandidate
+    const contractActive = s.conductor.status === 'active' && Boolean(s.conductor.requiredDevelopment);
+    const routePrompt = contractActive
+        ? `TALE FAIRY — NEXT RESPONSE CONTRACT\n${formatConductorContract(s.conductor)}\nTreat this contract as binding narrative direction. Accomplish the required development concretely in this response while respecting PACE and RELEASE ONLY WHEN. Do not replace it with a menu of possibilities, generic foreshadowing, or a promise to act later. Hidden background contents are deliberately omitted; never invent or reveal them.\n${pacingBoundary}`
+        : guidanceUsable && selectedCandidate
         ? `${conductorPrompt}Conditional authorial direction${regeneration ? ' for a different regeneration' : ''}:\n${authorialDirective(selectedCandidate)}\nWhen APPLY holds and its exclusion does not, fulfill STORY FUNCTION within IMPACT ENVELOPE. This direction is binding at narrative-purpose level, not a prescribed incident. If invalid, do not force it; choose another supported beat function from current context.${regeneration ? ' Do not reuse the discarded reply\'s concrete realization.' : ''} Keep private future developments offscreen and preserve established meanings and player agency.\n${beatRealization}\n${pacingBoundary}`
         : regeneration
             ? `Background variation ${Math.max(1, Number(variationCue) || 1)}: realize a different supported beat function; do not repeat the discarded event, alter established meanings, or invent a crisis.\n${beatRealization}\n${fallbackPacingBoundary}`

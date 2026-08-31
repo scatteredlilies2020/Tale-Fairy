@@ -23,6 +23,15 @@
               <option value="fun">Fun</option>
             </select>
           </label>
+          <label>Scene pacing (this chat)
+            <select class="text_pole" data-setting="pacing">
+              <option value="auto">Auto (infer from my actions)</option>
+              <option value="linger">Linger in the current activity</option>
+              <option value="natural">Natural movement</option>
+              <option value="advance">Advance once</option>
+            </select>
+            <small>Auto remembers when you keep reading, training, talking, or otherwise stay in an activity. Advance once returns to Auto after a reply.</small>
+          </label>
           <label>Recent raw context budget (tokens)
             <input class="text_pole" type="number" data-setting="recent-budget" min="1000" max="12000" step="500" value="4000">
             <small>Adaptive tail: includes as many newest turns as fit. Persistent summaries and full-chat retrieval are separate.</small>
