@@ -124,6 +124,9 @@ test('OOC outcome, continue, and advance-time authority override any beat', () =
     assert.match(payload, /Latest user\/OOC authority wins/);
     assert.match(payload, /Never invent player dialogue, thoughts, consent, decisions, compliance, retreat, or extra actions/);
     assert.match(payload, /preserve canon and broad trajectory without forecasting canon events/i);
+    assert.match(payload, /USER-CONTROLLED PACING/);
+    assert.match(payload, /ceiling, not a quota/i);
+    assert.match(payload, /User-authorized travel may reach its stated destination/);
 });
 
 test('regeneration reuses semantic function but demands a different realization', () => {

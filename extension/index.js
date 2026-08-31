@@ -4,25 +4,24 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.119';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.119';
-import { updatePacing } from './pacing.js?v=0.11.101';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.120';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.120';
 import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.11.101';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.119';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.119';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.119';
-import { normalizeModelListResponse } from './models.js?v=0.11.119';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.120';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.120';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.120';
+import { normalizeModelListResponse } from './models.js?v=0.11.120';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.108';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.119';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.119';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.119';
-import { estimateTokenCount } from './token-budget.js?v=0.11.119';
-import { completionText } from './completion-response.js?v=0.11.119';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.120';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.120';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.120';
+import { estimateTokenCount } from './token-budget.js?v=0.11.120';
+import { completionText } from './completion-response.js?v=0.11.120';
 import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.11.105';
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.119';
+const RUNTIME_VERSION = '0.11.120';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -1481,8 +1480,6 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     if (!board) return;
     const analyzed = state.scene.status !== 'uninitialized';
     const settingsRoot = document.querySelector(`#${EXTENSION_ID}-settings`);
-    const pacingControl = settingsRoot?.querySelector('[data-setting="pacing"]');
-    if (pacingControl) pacingControl.value = state.pacing.mode;
     const guideButton = settingsRoot?.querySelector('[data-action="guide"]');
     const guideLabel = guideButton?.querySelector('[data-role="guide-label"]');
     if (guideLabel) guideLabel.textContent = analyzed ? 'Re-evaluate' : 'Guide now';
@@ -1717,7 +1714,7 @@ async function mountUI() {
     uiMountPromise = (async () => {
     // Load the template relative to this module so the extension works from
     // third-party/Tale-Fairy as well as any legacy installation directory.
-    const response = await fetch(new URL('./settings.html', import.meta.url));
+    const response = await fetch(new URL(`./settings.html?v=${RUNTIME_VERSION}`, import.meta.url));
     if (!response.ok) {
         throw new Error(`Could not load Tale Fairy settings: ${response.status} ${response.statusText}`);
     }
@@ -1729,7 +1726,6 @@ async function mountUI() {
     const root = document.querySelector(`#${EXTENSION_ID}-settings`);
     root.querySelector('[data-setting="enabled"]').checked = s.enabled;
     root.querySelector('[data-setting="mode"]').value = s.mode;
-    root.querySelector('[data-setting="pacing"]').value = loadState(currentContext().chatMetadata).pacing.mode;
     root.querySelector('[data-setting="reasoning"]').value = s.analysisReasoningMode;
     root.querySelector('[data-setting="temperature-slider"]').value = s.analysisTemperature;
     root.querySelector('[data-setting="temperature"]').value = s.analysisTemperature;
@@ -1754,25 +1750,6 @@ async function mountUI() {
         save();
     });
     root.querySelector('[data-setting="mode"]').addEventListener('change', e => { invalidatePlanner(); s.mode = e.target.value; save(); });
-    root.querySelector('[data-setting="pacing"]').addEventListener('change', async e => {
-        const context = currentContext();
-        const state = loadState(context.chatMetadata);
-        const messages = messagesFromChat(context.chat || []);
-        const latestUserAction = [...messages].reverse().find(message => message.is_user)?.mes || '';
-        state.pacing = updatePacing(state.pacing, {
-            mode: e.target.value,
-            latestUserAction,
-            turnCount: assistantTurnNumber(messages) + (messages.at(-1)?.is_user ? 1 : 0),
-        });
-        context.updateChatMetadata(saveState(context.chatMetadata, state));
-        updatePrompt(state);
-        renderBoard(state);
-        try {
-            await context.saveMetadata?.();
-        } catch (error) {
-            console.warn(`[${EXTENSION_ID}] Could not persist pacing control`, error);
-        }
-    });
     root.querySelector('[data-setting="connection"]').addEventListener('change', e => { invalidatePlanner(); applyAnalysisConnectionChoice(e.target.value, s); save(); });
     root.querySelector('[data-setting="reasoning"]').addEventListener('change', e => { invalidatePlanner(); s.analysisReasoningMode = normalizeReasoningMode(e.target.value); save(); });
     const updateTemperature = value => {
@@ -1887,7 +1864,6 @@ function refreshControls(root = document.querySelector(`#${EXTENSION_ID}-setting
     const direct = source === 'direct' || source === 'openrouter';
     root.querySelector('[data-setting="enabled"]').checked = Boolean(s.enabled);
     root.querySelector('[data-setting="mode"]').value = s.mode;
-    root.querySelector('[data-setting="pacing"]').value = loadState(currentContext().chatMetadata).pacing.mode;
     root.querySelector('[data-setting="temperature-slider"]').value = s.analysisTemperature;
     root.querySelector('[data-setting="temperature"]').value = s.analysisTemperature;
     root.querySelector('[data-setting="connection"]').value = analysisConnectionChoice(s);

@@ -13,6 +13,8 @@ const DURATION = new Set(['moment', 'beat', 'scene', 'extended']);
 const CEILINGS = new Set(['none', 'local', 'partial', 'decisive', 'open']);
 const SCOPES = new Set(['personal', 'social', 'institutional', 'societal', 'world']);
 
+export const USER_PACING_BOUNDARY = 'USER-CONTROLLED PACING: The latest user/OOC turn sets the maximum time, activity, and player progress this response may cover—a ceiling, not a quota. Do not repeat or extend the user action, advance the clock or scene beyond it, begin another activity, or invent another player action. User-authorized travel may reach its stated destination but does not perform the next activity there. NPC and world developments may unfold only within this boundary.';
+
 function text(value, limit = 240) { return String(value ?? '').trim().slice(0, limit); }
 function choice(value, allowed, fallback) {
     const candidate = String(value ?? '').trim().toLowerCase();
@@ -83,6 +85,7 @@ export function formatBeatContract(sceneValue, beatValue, { regeneration = false
         `CONTENT ENVELOPE: ${envelope(beat)}.`,
         beat.preserve.length ? `PRESERVE: ${beat.preserve.join('; ')}.` : '',
         beat.forbid.length ? `DO NOT: ${beat.forbid.join('; ')}.` : '',
+        USER_PACING_BOUNDARY,
         'Make that function observable only if it still fits the latest user/OOC/scenario authority. Freely invent a compatible context-native realization; the category is not a menu. Do not announce it, prescribe a future route, or add drama merely to show movement.',
         'Quiet and slice-of-life beats may remain quiet; genre alone never licenses intrusion. Match any opposition to the envelope without predetermining identity or outcome. At life, institutional, country, or world scale, use natural causal units such as relationships, decisions, resources, policy effects, public reactions, or trends—not an obligatory encounter.',
         'Latest user/OOC authority wins. Never invent player dialogue, thoughts, consent, decisions, compliance, retreat, or extra actions. Preserve canon and broad trajectory without forecasting canon events.',
@@ -95,6 +98,7 @@ export function formatFreshBeatFallback({ regeneration = false } = {}) {
     return [
         'TALE FAIRY — LIVE BEAT POLICY',
         'From the latest user/OOC turn and current scene, choose the least forceful fitting move: retain, deepen, introduce, complicate, escalate, deescalate, resolve, transition, withdraw, stalemate, or disrupt. Make it observable when valid.',
+        USER_PACING_BOUNDARY,
         'Do not manufacture conflict, newcomers, urgency, or ominous setup in a closed quiet beat. When intervention fits, freely invent a compatible context-native realization or custom idea without fixing a future route. For life, organization, country, or world simulation, use the causal unit natural to that scale.',
         'Latest user/OOC/scenario authority wins. Never invent player dialogue, thoughts, consent, choices, compliance, retreat, or extra actions; preserve canon and broad trajectory without forecasting events.',
         regeneration ? 'Realize a different concrete response from the discarded generation; do not escalate merely for novelty.' : '',

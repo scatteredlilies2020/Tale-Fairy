@@ -13,20 +13,27 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest and detached plugin identify the current-beat release', () => {
-    assert.equal(manifest.version, '0.11.119');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.119');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.119');
+    assert.equal(manifest.version, '0.11.120');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.120');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.120');
     assert.match(manifest.description, /lightweight current-beat director/i);
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.11\.119'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.11\.119'/);
+    assert.match(pluginSource, /const VERSION = '0\.11\.120'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.11\.120'/);
 });
 
-test('extension loads v119 analysis, state, and request-injection modules', () => {
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.119'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.119'/);
-    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.119'/);
-    assert.match(stateSource, /from '\.\/beat-director\.js'/);
+test('extension loads v120 analysis, state, and request-injection modules', () => {
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.120'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.120'/);
+    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.120'/);
+    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.120'/);
+});
+
+test('obsolete pacing selector is absent while active guidance preserves user-controlled pacing', () => {
+    assert.doesNotMatch(template, /data-setting="pacing"|Scene pacing/);
+    assert.doesNotMatch(source, /updatePacing|data-setting="pacing"/);
+    assert.match(directorSource, /USER-CONTROLLED PACING/);
+    assert.match(directorSource, /latest user\/OOC turn sets the maximum time, activity, and player progress/i);
 });
 
 test('current-beat analysis replaces future agenda planning at the wire boundary', () => {

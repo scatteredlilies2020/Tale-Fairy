@@ -1,4 +1,4 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.11.119';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.11.120';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.11.96';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
@@ -93,7 +93,7 @@ export const MODE_INSTRUCTIONS = Object.freeze({
     fun: 'FUN — Invent boldly inside the current beat and scale, while preserving quiet-scene restraint, canon, authority, and player agency.',
 });
 
-export const PACING_INSTRUCTION = 'Infer the maximum temporal scope authorized by the latest user/OOC turn. Treat it as a ceiling, not a quota. Never invent player dialogue, thoughts, consent, decisions, compliance, retreat, or extra actions.';
+export const PACING_INSTRUCTION = 'USER-CONTROLLED PACING — The latest user/OOC turn sets the maximum time, activity, and player progress the next response may cover. Treat it as a ceiling, not a quota. A moment or specific action permits only that action and its immediate consequences; never repeat it, continue into another activity, advance the scene or clock beyond it, or invent an additional player action. User-authorized travel may reach the stated destination but does not authorize performing the next activity there. NPC and world developments may unfold only inside this boundary.';
 
 export const EXTREME_CANON_INSTRUCTION = 'Explicit user/OOC canon remains authoritative even when extreme or unprecedented. Preserve its magnitude and apply relevant strengths and limits causally; averages are not ceilings. Unspecified compatible details remain creative space.';
 
@@ -1311,7 +1311,6 @@ function compactDormantHooks(items, limit, tokenLimit) {
         .map(item => ({ ...item, content: compactMessageContent(item.content, tokenLimit) }));
 }
 
-const PROMPT_PACING_INSTRUCTION = 'USER-CONTROLLED PACING — Infer the latest user turn’s maximum scope: moment, action, activity, scene, or extended. It is a ceiling, not a quota. Travel permits arrival only, not activity there. A moment or named action preserves the clock except for its physical duration; planned future activity remains future. A broad bounded activity permits representative progression. A named action permits exactly one instance and immediate consequences—not repetition, onward movement, an NPC’s next task, or unstated player reaction. NPC requests, orders, and invitations are events, never player authorization. Tale Fairy must not select a player-facing assignment as planned movement; use independent NPC/world change. This is an agency and causality boundary, not a dialogue or prose policy. Primary user and roleplay instructions control voice, wording, format, length, and response shape. Broad scope delegates low-stakes procedure only, not dialogue, feelings, consequential decisions, or another activity. Allocate attention by user engagement and narrative yield inside the endpoint. Mode changes pressure and breadth, not speed or player control.';
 const PROMPT_EXTREME_CANON_INSTRUCTION = 'Explicit user/OOC facts remain authoritative even when extreme or unprecedented; averages are not ceilings. Apply relevant abilities and limits causally; never make traits decorative or manufacture equal odds. Unspecified details remain creative space. Keep all durable user-established constraints until corrected, but remove ordinary plot history and planner inference from canon constraints.';
 
 export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, options = {}) {
@@ -1325,6 +1324,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         task: 'direct_current_beat',
         instruction: 'Analyze the current scene only. Return one semantic beat operation whose effect should be visible in the next response, without naming a predetermined incident, future route, exact newcomer, exact obstacle, or outcome. The roleplay model freely realizes the function from the latest context.',
         authority: 'Explicit OOC/scenario commands and the latest user action outrank every retained inference. OOC outcome commands bind the stated outcome; continue or advance-time commands widen scope only as stated. Never invent player dialogue, thoughts, consent, choices, compliance, retreat, or extra actions.',
+        pacing: PACING_INSTRUCTION,
         restraint: 'Use the least forceful operation that makes the current beat satisfying. Quiet, hopeful, domestic, reflective, solitary, and slice-of-life scenes may retain or deepen themselves. Genre alone never licenses conflict or intrusion. Do not force novelty, drama, foreshadowing, or a newcomer.',
         invention: 'The beat categories describe narrative work, not a menu or limit. When intervention fits, the writing model may invent any compatible custom realization: a context-native person, institution, opportunity, obstacle, reaction, discovery, policy, public response, resource shift, systemic pressure, or other idea. Do not prescribe its exact fictional identity.',
         simulation: 'Use the causal unit natural to the scope. Personal and life simulation may move through needs, relationships, work, routine, opportunity, or consequence. Organization and country simulation may move through decisions, institutions, resources, factions, policy effects, public reaction, trends, or systemic pressures. World simulation may move through broad forces. Do not translate every scale into a conventional adventure encounter.',
@@ -1836,6 +1836,8 @@ const PLANNER_SYSTEM = `You are Tale Fairy's current-beat director. Another mode
 Analyze what is happening now and choose one semantic operation for the next response. Never plan a future route, schedule an event, name a specific future incident, prescribe an exact newcomer or obstacle, or decide an outcome beyond explicit authority. The operation must have an observable effect when valid, but its concrete realization belongs to the writing model.
 
 AUTHORITY: Explicit user/OOC/scenario commands outrank retained state and your preferences. A forced outcome binds that outcome. A continue or time-advance command widens scope only as stated. The latest user action defines the endpoint. Never invent player dialogue, thoughts, feelings, consent, decisions, compliance, retreat, or extra actions.
+
+PACING: ${PACING_INSTRUCTION}
 
 RESTRAINT: Select the least forceful satisfying operation. Quiet, hopeful, domestic, reflective, solitary, and slice-of-life scenes may RETAIN or DEEPEN. Genre alone never licenses conflict, intrusion, ominous setup, or a newcomer. Do not manufacture a crisis to prove Tale Fairy had an effect.
 

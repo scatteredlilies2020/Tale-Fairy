@@ -87,6 +87,8 @@ test('planner system protects quiet scenes while requiring observable current-be
     assert.match(SYSTEM, /Genre alone never licenses conflict/i);
     assert.match(SYSTEM, /WITHDRAW lets opposition or pressure retreat/i);
     assert.match(SYSTEM, /STALEMATE preserves a partial or unresolved balance/i);
+    assert.match(SYSTEM, /USER-CONTROLLED PACING/);
+    assert.match(SYSTEM, /latest user\/OOC turn sets the maximum time, activity, and player progress/i);
 });
 
 test('planner permits custom AI invention and scale-native simulation', () => {
@@ -117,6 +119,8 @@ test('analysis prompt carries current context, identity, variation, bootstrap, a
     assert.equal(prompt.summary_sources[0].label, 'Continuity Memory');
     assert.match(prompt.invention, /custom realization/i);
     assert.match(prompt.simulation, /country simulation/i);
+    assert.match(prompt.pacing, /ceiling, not a quota/i);
+    assert.match(prompt.pacing, /travel may reach the stated destination but does not authorize performing the next activity/i);
 });
 
 test('analysis prompt treats OOC and scenario authority as binding, not future suggestions', () => {
