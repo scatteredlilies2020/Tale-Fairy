@@ -4,23 +4,30 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.96';
-import { buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.96';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.96';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.96';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.96';
-import { normalizeModelListResponse } from './models.js?v=0.11.96';
-import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.96';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.96';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.96';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.96';
-import { estimateTokenCount } from './token-budget.js?v=0.11.96';
-import { completionText } from './completion-response.js?v=0.11.96';
-import { customOutputPayload, negotiateOutputModes, plannerMessages, plannerPrompt, PLANNER_OUTPUT_MODE } from './output-negotiation.js?v=0.11.96';
-import { clearPlannerPending, markPlannerPending, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.96';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.97';
+import { buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.97';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.97';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.97';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.97';
+import { normalizeModelListResponse } from './models.js?v=0.11.97';
+import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.97';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.97';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.97';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.97';
+import { estimateTokenCount } from './token-budget.js?v=0.11.97';
+import { completionText } from './completion-response.js?v=0.11.97';
+import { customOutputPayload, negotiateOutputModes, plannerMessages, plannerPrompt, PLANNER_OUTPUT_MODE } from './output-negotiation.js?v=0.11.97';
+import { clearPlannerPending, markPlannerPending, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.97';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.96';
+const RUNTIME_VERSION = '0.11.97';
+const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
+const PLANNER_BACKEND_PATHS = new Set([
+    '/api/backends/chat-completions/generate',
+    '/api/backends/text-completions/generate',
+    '/api/backends/kobold/generate',
+    '/api/backends/koboldhorde/generate',
+]);
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -47,6 +54,10 @@ let lastSummaryAudit = { count: 0, includedTokens: 0, originalTokens: 0, labels:
 const legacyUpgradeAttempts = new Set();
 const directModelCache = new Map();
 const plannerOutputModeCache = new Map();
+const detachedPlannerJobIds = new Map();
+const plannerNativeFetch = globalThis.fetch.bind(globalThis);
+let detachedPlannerEnabled = false;
+let detachedPlannerRecovering = false;
 // Reasoning providers may count hidden thinking against this ceiling. The
 // planner prompt and schema separately target a concise visible JSON result.
 const PLANNER_RESPONSE_TOKENS = 6144;
@@ -167,6 +178,69 @@ function plannerTemperature() {
 
 function messagesFromChat(chat = []) { return chat.map(m => ({ mes: m?.mes || '', is_user: Boolean(m?.is_user), name: m?.name || '' })); }
 function currentContext() { return getContext(); }
+
+async function plannerServerApi(path, options = {}) {
+    const response = await plannerNativeFetch(`${PLANNER_SERVER_BASE}${path}`, {
+        ...options,
+        headers: options.body
+            ? (currentContext().getRequestHeaders?.() || getRequestHeaders?.() || { 'Content-Type': 'application/json' })
+            : options.headers,
+        cache: 'no-store',
+    });
+    const text = await response.text();
+    let payload;
+    try { payload = text ? JSON.parse(text) : {}; }
+    catch { payload = { error: text || response.statusText }; }
+    if (!response.ok) throw new Error(payload.error || `${response.status} ${response.statusText}`);
+    return payload;
+}
+
+function rememberDetachedPlannerJob(runKey, id) {
+    if (!runKey || !id) return;
+    if (!detachedPlannerJobIds.has(runKey)) detachedPlannerJobIds.set(runKey, new Set());
+    detachedPlannerJobIds.get(runKey).add(id);
+}
+
+function installDetachedPlannerTransport() {
+    globalThis.fetch = async function taleFairyDetachedFetch(input, init = {}) {
+        const rawUrl = typeof input === 'string' || input instanceof URL ? String(input) : input?.url;
+        let pathname = '';
+        try { pathname = new URL(rawUrl, globalThis.location?.origin || 'http://localhost').pathname; }
+        catch { /* Leave unrelated or non-URL fetch inputs untouched. */ }
+        if (!detachedPlannerEnabled || !PLANNER_BACKEND_PATHS.has(pathname) || typeof init?.body !== 'string') {
+            return plannerNativeFetch(input, init);
+        }
+        let request;
+        try { request = JSON.parse(init.body); }
+        catch { return plannerNativeFetch(input, init); }
+        const meta = request?._taleFairyPlanner;
+        if (!meta || typeof meta !== 'object') return plannerNativeFetch(input, init);
+        delete request._taleFairyPlanner;
+        const response = await plannerNativeFetch(`${PLANNER_SERVER_BASE}/planner-jobs/generate`, {
+            method: 'POST',
+            headers: init.headers || currentContext().getRequestHeaders?.() || getRequestHeaders?.() || { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ request, meta, backendPath: pathname }),
+            signal: init.signal,
+            cache: 'no-store',
+        });
+        rememberDetachedPlannerJob(meta.runKey, response.headers.get('X-Tale-Fairy-Job-Id'));
+        return response;
+    };
+}
+
+async function initializeDetachedPlanner() {
+    try {
+        const health = await plannerServerApi('/health');
+        detachedPlannerEnabled = health?.detachedPlanner === true;
+    } catch (error) {
+        detachedPlannerEnabled = false;
+        console.warn(`[${EXTENSION_ID}] Browser-independent planner is unavailable; restart SillyTavern after updating Tale Fairy.`, error);
+    }
+    return detachedPlannerEnabled;
+}
+
+installDetachedPlannerTransport();
+const detachedPlannerReady = initializeDetachedPlanner();
 
 async function buildTokenBudgetedAnalysisPrompt(messages, state, note, bootstrap, options) {
     const tokenBudget = Math.max(9000, Math.min(30000, Number(options.maxPromptTokens) || 12000));
@@ -792,7 +866,9 @@ function interruptAnalysis(reason, status) {
 
 function stopAnalysis() {
     const context = currentContext();
-    clearPlannerPending(plannerStorage(), String(context.getCurrentChatId?.() || ''));
+    const chatId = String(context.getCurrentChatId?.() || '');
+    clearPlannerPending(plannerStorage(), chatId);
+    void cancelDetachedPlannerJobs(chatId);
     interruptAnalysis('Tale Fairy analysis stopped by the user.', 'Stopped');
 }
 
@@ -817,6 +893,110 @@ function parseAnalysisResponse(value) {
     } catch (error) {
         if (error instanceof AnalysisValidationError) throw error;
         throw new AnalysisValidationError(`Planner did not return valid JSON: ${error?.message || error}.`);
+    }
+}
+
+async function acknowledgeDetachedPlannerJob(id) {
+    if (!id || !detachedPlannerEnabled) return;
+    await plannerServerApi(`/planner-jobs/${encodeURIComponent(id)}/ack`, { method: 'POST', body: '{}' });
+}
+
+async function detachedPlannerJobs(chatId = '') {
+    if (!await detachedPlannerReady) return [];
+    const query = chatId ? `?chatId=${encodeURIComponent(chatId)}` : '';
+    const payload = await plannerServerApi(`/planner-jobs${query}`);
+    return Array.isArray(payload.jobs) ? payload.jobs : [];
+}
+
+async function acknowledgeDetachedPlannerRun(runKey, chatId = '') {
+    if (!runKey || !detachedPlannerEnabled) return;
+    let ids = [...(detachedPlannerJobIds.get(runKey) || [])];
+    try {
+        const jobs = await detachedPlannerJobs(chatId);
+        ids.push(...jobs.filter(job => job.runKey === runKey).map(job => job.id));
+    } catch (error) {
+        console.warn(`[${EXTENSION_ID}] Could not list completed planner jobs for acknowledgement`, error);
+    }
+    ids = [...new Set(ids)];
+    await Promise.allSettled(ids.map(acknowledgeDetachedPlannerJob));
+    detachedPlannerJobIds.delete(runKey);
+}
+
+async function cancelDetachedPlannerJobs(chatId) {
+    if (!chatId || !detachedPlannerEnabled) return;
+    try {
+        const jobs = await detachedPlannerJobs(chatId);
+        await Promise.allSettled(jobs
+            .filter(job => job.status === 'queued' || job.status === 'processing')
+            .map(job => plannerServerApi(`/planner-jobs/${encodeURIComponent(job.id)}`, { method: 'DELETE', body: '{}' })));
+    } catch (error) {
+        console.warn(`[${EXTENSION_ID}] Could not cancel detached planner jobs`, error);
+    }
+}
+
+async function recoverDetachedPlannerJobs() {
+    if (detachedPlannerRecovering || analysisPromise || !getSettings().enabled) return { active: false, recovered: false };
+    const context = currentContext();
+    const chatId = String(context.getCurrentChatId?.() || '');
+    if (!chatId) return { active: false, recovered: false };
+    detachedPlannerRecovering = true;
+    try {
+        const chat = messagesFromChat(context.chat || []);
+        const jobs = await detachedPlannerJobs(chatId);
+        let active = false;
+        for (const job of jobs) {
+            const meta = job.meta || {};
+            const sourceCurrent = isAnalysisSourceCurrent(meta.fingerprint, meta.messageCount, chat, {
+                allowOneUserAppend: Boolean(meta.allowOneUserAppend),
+            });
+            if (job.status === 'queued' || job.status === 'processing') {
+                if (sourceCurrent) active = true;
+                continue;
+            }
+            if (job.status === 'error' || job.status === 'cancelled' || !sourceCurrent) {
+                await acknowledgeDetachedPlannerJob(job.id).catch(() => {});
+                continue;
+            }
+            if (job.status !== 'complete' || !job.text) continue;
+            let result;
+            try {
+                result = parseAnalysisResponse(job.text);
+            } catch (error) {
+                await acknowledgeDetachedPlannerJob(job.id).catch(() => {});
+                console.warn(`[${EXTENSION_ID}] A retained planner result was invalid`, error);
+                continue;
+            }
+            const current = meta.rebuild ? rebuildState() : loadState(context.chatMetadata);
+            current.mode = meta.mode || getSettings().mode;
+            const next = applyAnalysis(current, result, chat.slice(0, Number(meta.messageCount) || chat.length));
+            next.summaryEvidence = { ...(meta.summaryEvidence || {}), scannedAt: Date.now() };
+            next.plannerSeed = Number(meta.plannerSeed) || 0;
+            next.sourceChatId = chatId;
+            next.analysisModel = meta.analysisSelection || {};
+            const submittedNote = normalizeUserNote(meta.userNote);
+            const resolvedNote = resolveUserNote(result, submittedNote);
+            if (resolvedNote) next.userNotes = [...next.userNotes, { ...resolvedNote, at: Date.now() }].slice(-12);
+            next.noteNeedsClarification = Boolean(submittedNote && !resolvedNote);
+            await persist(next, {
+                chatId,
+                fingerprint: meta.fingerprint,
+                messageCount: meta.messageCount,
+                allowOneUserAppend: Boolean(meta.allowOneUserAppend),
+            });
+            await acknowledgeDetachedPlannerRun(job.runKey, chatId);
+            clearPlannerPending(plannerStorage(), chatId);
+            lastAnalysisError = '';
+            renderBoard(next);
+            renderAnalysisActivity('Recovered planner result completed while this page was unavailable', false);
+            return { active: false, recovered: true, state: next };
+        }
+        if (active) renderAnalysisActivity('Planner continuing on the SillyTavern server', true);
+        return { active, recovered: false };
+    } catch (error) {
+        console.warn(`[${EXTENSION_ID}] Detached planner recovery check failed`, error);
+        return { active: false, recovered: false };
+    } finally {
+        detachedPlannerRecovering = false;
     }
 }
 
@@ -956,13 +1136,16 @@ function rebuildState() {
     return defaultState();
 }
 
-async function requestAnalysisOnce(prompt, externalSignal) {
+async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null) {
     const controller = new AbortController();
     const forwardAbort = () => controller.abort(externalSignal?.reason || new DOMException('Tale Fairy analysis stopped.', 'AbortError'));
     if (externalSignal?.aborted) forwardAbort();
     else externalSignal?.addEventListener('abort', forwardAbort, { once: true });
     try {
         controller.signal.throwIfAborted();
+        await detachedPlannerReady;
+        controller.signal.throwIfAborted();
+        const detachedMarker = detachedPlannerEnabled && detachedMeta ? { _taleFairyPlanner: detachedMeta } : {};
         const model = analysisModelOptions();
         const temperature = plannerTemperature();
         if (model.profileId) {
@@ -988,6 +1171,7 @@ async function requestAnalysisOnce(prompt, externalSignal) {
                     custom_prompt_post_processing: '',
                     ...plannerTemperaturePayload(temperature, samplingEnabled),
                     ...reasoningPayload,
+                    ...detachedMarker,
                 },
             );
             const sendProfile = mode => retryWithoutUnsupportedTemperature(
@@ -1031,6 +1215,7 @@ async function requestAnalysisOnce(prompt, externalSignal) {
                         && Object.hasOwn(generateData, 'temperature')
                         && !plannerModelRejectsTemperature(generateData.model);
                     isolatePlannerGenerationData(generateData, activeReasoningMode, temperature, requestSamplingEnabled);
+                    Object.assign(generateData, detachedMarker);
                 };
                 eventSource.on(seedEvent, configurePlanner);
                 return waitForAbortable(generateRaw({
@@ -1081,7 +1266,7 @@ async function requestAnalysisOnce(prompt, externalSignal) {
         let samplingEnabled = !plannerModelRejectsTemperature(model.model);
         const sendRaw = async mode => {
             const modePayload = model.provider === 'custom' ? customOutputPayload(reasoningPayload, mode) : reasoningPayload;
-            const body = { chat_completion_source: model.provider, model: model.model, messages: plannerMessages(PLANNER_SYSTEM_PROMPT, prompt, ANALYSIS_SCHEMA, mode), max_tokens: PLANNER_RESPONSE_TOKENS, stream: false, ...plannerTemperaturePayload(temperature, samplingEnabled), ...modePayload, ...(mode === PLANNER_OUTPUT_MODE.JSON_SCHEMA ? { json_schema: ANALYSIS_SCHEMA } : {}), ...(model.provider === 'openrouter' ? { api_url: model.url.replace(/\/$/, '') } : { custom_url: model.url.replace(/\/$/, '') }) };
+            const body = { chat_completion_source: model.provider, model: model.model, messages: plannerMessages(PLANNER_SYSTEM_PROMPT, prompt, ANALYSIS_SCHEMA, mode), max_tokens: PLANNER_RESPONSE_TOKENS, stream: false, ...plannerTemperaturePayload(temperature, samplingEnabled), ...modePayload, ...(mode === PLANNER_OUTPUT_MODE.JSON_SCHEMA ? { json_schema: ANALYSIS_SCHEMA } : {}), ...(model.provider === 'openrouter' ? { api_url: model.url.replace(/\/$/, '') } : { custom_url: model.url.replace(/\/$/, '') }), ...detachedMarker };
             if (model.secretId) body.secret_id = model.secretId;
             const response = await fetch('/api/backends/chat-completions/generate', { method: 'POST', headers: currentContext().getRequestHeaders?.() || getRequestHeaders?.() || { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
             const payload = await response.json();
@@ -1136,8 +1321,8 @@ function isUnsupportedStructuredOutputError(error) {
     return namesStructuredControl && describesRejection;
 }
 
-async function requestAnalysis(prompt, externalSignal) {
-    return requestAnalysisOnce(prompt, externalSignal);
+async function requestAnalysis(prompt, externalSignal, detachedMeta) {
+    return requestAnalysisOnce(prompt, externalSignal, detachedMeta);
 }
 
 export async function analyzeNow({ note = null, force = false, messages = null, rebuild = false, allowOneUserAppend = false, allowStaleContinuity = false, waitForContinuity = false, retryAttempt = 0 } = {}) {
@@ -1160,6 +1345,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
     }
     const revision = ++generationRevision;
     const runId = ++analysisRunId;
+    const detachedRunKey = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${runId}-${randomVariationNonce()}`;
     const variationNonce = randomVariationNonce();
     const startedAt = Date.now();
     const controller = new AbortController();
@@ -1197,7 +1383,19 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         showAnalysisPhase(`Building ${Number(s.maxPromptTokens).toLocaleString()}-token total planner input`, runId, startedAt);
         const plannerPrompt = await buildTokenBudgetedAnalysisPrompt(chat, current, noteInstruction(userNote), bootstrapContext(context), { recentContextTokens: s.recentContextTokens, messageTokenLimit: s.messageTokenLimit, summaryContextTokens: s.summaryContextTokens, summarySources, bootstrapScan: rebuild || current.canonBootstrapPending || current.scene.status === 'uninitialized' || !current.contextLedger, maxPromptTokens: s.maxPromptTokens, variationNonce });
         showAnalysisPhase('Waiting for planner model', runId, startedAt);
-        const result = await requestAnalysis(plannerPrompt, controller.signal);
+        const result = await requestAnalysis(plannerPrompt, controller.signal, {
+            chatId,
+            runKey: detachedRunKey,
+            fingerprint,
+            messageCount: chat.length,
+            allowOneUserAppend,
+            rebuild,
+            mode: current.mode,
+            plannerSeed: variationNonce,
+            analysisSelection,
+            userNote,
+            summaryEvidence: lastSummaryAudit,
+        });
         controller.signal.throwIfAborted();
         showAnalysisPhase('Validating and saving planner result', runId, startedAt);
         const resolvedNote = resolveUserNote(result, userNote);
@@ -1213,6 +1411,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         if (resolvedNote) next.userNotes = [...next.userNotes, { ...resolvedNote, at: Date.now() }].slice(-12);
         next.noteNeedsClarification = Boolean(userNote && !resolvedNote);
         await persist(next, { chatId, fingerprint, messageCount: chat.length, allowOneUserAppend });
+        await acknowledgeDetachedPlannerRun(detachedRunKey, chatId);
         cancelAnalysisRetry();
         lastAnalysisError = '';
         finalStatus = userNote && !resolvedNote
@@ -1623,6 +1822,9 @@ async function upgradeLegacyPlanIfNeeded() {
 
 async function refreshCurrentPlanIfNeeded() {
     const context = currentContext();
+    const recovered = await recoverDetachedPlannerJobs();
+    if (recovered.recovered) return recovered.state;
+    if (recovered.active) return loadState(context.chatMetadata);
     const rawState = context.chatMetadata?.[STATE_KEY];
     const rawVersion = Math.max(0, Number(rawState?.version) || 0);
     const upgradePending = Boolean(rawState && (rawVersion < STATE_VERSION || rawState.canonBootstrapPending === true));
@@ -1924,14 +2126,19 @@ startUIMounting();
 // the active plan once on startup as well, so a stale or legacy chat cannot
 // remain route-less until another assistant response arrives.
 setTimeout(() => void refreshCurrentPlanIfNeeded(), 0);
+setInterval(() => void recoverDetachedPlannerJobs(), 3000);
 
 // Android may discard or freeze the page while SillyTavern itself remains
-// available. Abort browser-owned work on page shutdown so its Web Lock is not
-// retained by a back/forward-cache document. Completed guidance stays in chat
-// metadata; a restored or newly loaded page refreshes only when it is stale.
+// available. Release only this page's wait and Web Lock: the SillyTavern server
+// continues the detached model request. A restored or newly loaded page polls
+// the retained job and saves its result into chat metadata.
 globalThis.addEventListener?.('pagehide', () => {
     interruptAnalysis('Tale Fairy page is shutting down.', '');
 });
-globalThis.addEventListener?.('pageshow', event => {
-    if (event.persisted) setTimeout(() => void refreshCurrentPlanIfNeeded(), 0);
+globalThis.addEventListener?.('pageshow', () => {
+    setTimeout(() => void refreshCurrentPlanIfNeeded(), 0);
+});
+globalThis.addEventListener?.('focus', () => void recoverDetachedPlannerJobs());
+globalThis.document?.addEventListener?.('visibilitychange', () => {
+    if (globalThis.document.visibilityState === 'visible') void recoverDetachedPlannerJobs();
 });

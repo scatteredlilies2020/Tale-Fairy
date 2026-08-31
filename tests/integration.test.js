@@ -11,14 +11,14 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.96');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.96');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.96');
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.96'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.96'/);
-    assert.match(source, /from '\.\/completion-response\.js\?v=0\.11\.96'/);
-    assert.match(source, /from '\.\/output-negotiation\.js\?v=0\.11\.96'/);
-    assert.match(source, /from '\.\/planner-lifecycle\.js\?v=0\.11\.96'/);
+    assert.equal(manifest.version, '0.11.97');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.97');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.97');
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.97'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.97'/);
+    assert.match(source, /from '\.\/completion-response\.js\?v=0\.11\.97'/);
+    assert.match(source, /from '\.\/output-negotiation\.js\?v=0\.11\.97'/);
+    assert.match(source, /from '\.\/planner-lifecycle\.js\?v=0\.11\.97'/);
 });
 
 test('injection sends layered authorial control while concrete realization and future outcomes stay private', () => {
@@ -103,7 +103,10 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /function isUnsupportedStructuredOutputError/);
     assert.doesNotMatch(source, /REPAIR REQUIRED|incomplete after deterministic recovery/);
     assert.match(source, /async function requestAnalysisOnce/);
-    assert.match(source, /async function requestAnalysis\([^)]*\)\s*{\s*return requestAnalysisOnce\(prompt, externalSignal\);\s*}/s);
+    assert.match(source, /async function requestAnalysis\([^)]*\)\s*{\s*return requestAnalysisOnce\(prompt, externalSignal, detachedMeta\);\s*}/s);
+    assert.match(source, /X-Tale-Fairy-Job-Id/);
+    assert.match(source, /Planner continuing on the SillyTavern server/);
+    assert.match(source, /setInterval\(\(\) => void recoverDetachedPlannerJobs\(\), 3000\)/);
     assert.match(source, /mode === PLANNER_OUTPUT_MODE\.JSON_SCHEMA \? \{ json_schema: ANALYSIS_SCHEMA \} : \{\}/);
     assert.match(source, /const PLANNER_SYSTEM_PROMPT = `\$\{SYSTEM\}[\s\S]*?\$\{ANALYSIS_OUTPUT_CONTRACT\}`/);
     assert.match(source, /const PLANNER_BUDGET_ENVELOPE = `\$\{PLANNER_SYSTEM_PROMPT\}\\n\$\{JSON\.stringify\(ANALYSIS_SCHEMA\)\}`/);
@@ -235,7 +238,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.doesNotMatch(source, /MESSAGE_RECEIVED[\s\S]{0,500}scheduleBackgroundAnalysis/);
     assert.match(source, /async function upgradeLegacyPlanIfNeeded/);
     assert.match(source, /async function refreshCurrentPlanIfNeeded/);
-    assert.match(source, /refreshCurrentPlanIfNeeded[\s\S]{0,900}isGuidanceUsable\(state, messages, chatId\)/);
+    assert.match(source, /refreshCurrentPlanIfNeeded[\s\S]{0,1400}isGuidanceUsable\(state, messages, chatId\)/);
     assert.match(source, /plannerWasInterrupted\(plannerStorage\(\), chatId, fingerprint\)/);
     assert.match(source, /refreshCurrentPlanIfNeeded[\s\S]{0,1600}analyzeNow\(\{ messages, force: interrupted, allowOneUserAppend: true, waitForContinuity: true \}\)/);
     assert.match(source, /rawVersion < STATE_VERSION/);
@@ -250,8 +253,8 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /CHAT_CHANGED[\s\S]{0,900}void refreshCurrentPlanIfNeeded\(\)/);
     assert.match(source, /startUIMounting\(\);\s*\/\/ CHAT_CHANGED[\s\S]{0,500}setTimeout\(\(\) => void refreshCurrentPlanIfNeeded\(\), 0\)/);
     assert.match(source, /addEventListener\?\.\('pagehide'[\s\S]{0,220}interruptAnalysis\('Tale Fairy page is shutting down\.'/);
-    assert.match(source, /addEventListener\?\.\('pageshow'[\s\S]{0,220}event\.persisted[\s\S]{0,120}refreshCurrentPlanIfNeeded\(\)/);
-    assert.match(source, /Completed guidance stays in chat[\s\S]{0,180}metadata/);
+    assert.match(source, /addEventListener\?\.\('pageshow'[\s\S]{0,220}refreshCurrentPlanIfNeeded\(\)/);
+    assert.match(source, /SillyTavern server[\s\S]{0,180}continues the detached model request/);
     assert.doesNotMatch(source, /setTimeout\(\(\) => \{ renderBoard\(\); scheduleBackgroundAnalysis\(300\); \}, 0\)/);
     assert.match(source, /CHAT_COMPLETION_PROMPT_READY, ensureChatCompletionRequestGuidance/);
     assert.match(source, /CHAT_COMPLETION_SETTINGS_READY, ensureProviderChatRequestGuidance/);

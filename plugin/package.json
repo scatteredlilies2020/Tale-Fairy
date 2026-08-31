@@ -1,0 +1,11 @@
+{
+  "name": "tale-fairy",
+  "version": "0.11.97",
+  "description": "Browser-independent Tale Fairy planner jobs for SillyTavern.",
+  "type": "module",
+  "main": "index.js",
+  "license": "AGPL-3.0-only",
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
