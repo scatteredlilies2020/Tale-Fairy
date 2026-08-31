@@ -38,7 +38,7 @@ test('offscreen clocks tick once per accepted turn and honor their clock type', 
     assert.deepEqual(second.offscreenDevelopments.map(item => item.progress), [30, 30, 50]);
 });
 
-test('a routine scene hold cannot replace the durable story and arc with the current activity', () => {
+test('a routine scene hold stays local instead of becoming a model-authored story interpretation', () => {
     const board = normalizeAuthorBoard({
         story: { identity: 'Lucia grows from institutional childhood into a life shaped by extraordinary Force potential.' },
         activeArc: { id: 'placement', title: 'Who will shape Lucia\'s future?', phase: 'setup', purpose: 'Let institutional custody and Jedi attention converge over multiple scenes.', pressure: 'The Council petition remains unresolved.' },
@@ -47,13 +47,14 @@ test('a routine scene hold cannot replace the durable story and arc with the cur
         narrativeLayers: { localActivity: 'Quiet garden reading', durableTrajectory: board.story.identity, activityRole: 'routine' },
         directorScore: { storyIdentity: 'A quiet morning interlude before an uncertain future.', sceneFunction: 'Let Lucia read without interruption.', causalTempo: 'hold', arcDirection: 'Read page 42.', meaningfulAim: 'Enjoy the garden.', futureSetup: { id: 'g_garden', currentStep: 'Lucia reads in the garden.', conditions: [] } },
     }, 361);
-    assert.equal(refreshed.story.identity, board.story.identity);
-    assert.equal(refreshed.activeArc.id, 'placement');
+    assert.equal(board.story.identity, '');
+    assert.equal(refreshed.story.identity, '');
+    assert.equal(refreshed.activeArc.id, '');
     assert.equal(refreshed.scene.identity, 'Quiet garden reading');
     assert.equal(refreshed.scene.purpose, 'Let Lucia read without interruption.');
 });
 
-test('a clean rescan rebuilds broad scope without rewriting the existing board on load', () => {
+test('a clean rescan builds a future queue without reconstructing a story identity or active arc', () => {
     const localIdentity = 'A quiet morning interlude in a structured facility before an uncertain future.';
     const durable = 'Lucia survives institutional childhood while extraordinary Force potential may draw Jedi and Republic attention.';
     const weakBoard = {
@@ -64,17 +65,18 @@ test('a clean rescan rebuilds broad scope without rewriting the existing board o
         narrativeLayers: { localActivity: 'Quiet garden reading', durableTrajectory: durable, activityRole: 'routine' },
         directorScore: { storyIdentity: localIdentity, sceneFunction: 'Linger on reading.', causalTempo: 'hold', arcDirection: 'Read in the garden.', meaningfulAim: 'Reach page 42.', futureSetup: { id: 'g_garden', currentStep: 'Continue reading.', conditions: [] } },
         pathways: [{ id: 'council-review', lane: 'relationship-institution', scale: 'arc', status: 'active', direction: 'The unresolved Council petition changes who may take responsibility for Lucia.', conditions: ['The filed petition reaches a decision.'], engine: 'Jedi Council review' }],
+        nextGuides: [{ id: 'council-review', direction: 'The unresolved Council petition reaches a procedurally supported next step.', useWhen: 'The review remains unresolved and its prerequisites are met.', dropWhen: 'A newer event completes, cancels, or invalidates the review.', causalRole: 'Advance the existing institutional process.', worldDelta: 'The review acquires one concrete procedural state.', disclosure: 'none' }],
     };
     const loaded = normalizeAuthorBoard(weakBoard, legacy);
-    assert.equal(loaded.story.identity, localIdentity);
-    assert.equal(loaded.activeArc.id, 'g_garden');
+    assert.equal(loaded.story.identity, '');
+    assert.equal(loaded.activeArc.id, '');
     const refreshed = refreshAuthorBoardFromLegacy(normalizeAuthorBoard(), legacy, 361);
-    assert.match(refreshed.story.identity, /Council petition/);
-    assert.equal(refreshed.activeArc.id, 'council-review');
-    assert.match(refreshed.activeArc.purpose, /Council petition/);
+    assert.equal(refreshed.story.identity, '');
+    assert.equal(refreshed.activeArc.id, '');
+    assert.ok(refreshed.scene.requiredDevelopments.some(item => item.id === 'council-review'));
 });
 
-test('an advancing recent scene cannot redefine an established story or active arc', () => {
+test('an advancing recent scene also cannot create an established story interpretation', () => {
     const board = normalizeAuthorBoard({
         story: { identity: 'A broad institutional coming-of-age story.' },
         activeArc: { id: 'custody', title: 'Lucia\'s placement', purpose: 'Resolve who will shape Lucia\'s future.', pressure: 'Competing responsibilities remain open.' },
@@ -84,7 +86,22 @@ test('an advancing recent scene cannot redefine an established story or active a
         directorScore: { storyIdentity: 'A decisive garden chess drama.', sceneFunction: 'End the match.', causalTempo: 'advance', arcDirection: 'Win at chess.', meaningfulAim: 'Checkmate.', futureSetup: { id: 'chess-win', currentStep: 'Move the queen.', conditions: [] } },
         pathways: [{ id: 'chess-win', lane: 'character', scale: 'arc', status: 'foreground', direction: 'The chess victory defines Lucia\'s future.', engine: 'garden chess' }],
     }, 362);
-    assert.equal(refreshed.story.identity, board.story.identity);
-    assert.equal(refreshed.activeArc.id, 'custody');
+    assert.equal(board.story.identity, '');
+    assert.equal(refreshed.story.identity, '');
+    assert.equal(refreshed.activeArc.id, '');
     assert.equal(refreshed.scene.purpose, 'End the match.');
+});
+
+test('delivered future developments cannot be silently requeued through paraphrase', () => {
+    let board = normalizeAuthorBoard({
+        scene: { requiredDevelopments: [{ id: 'council-decision', instruction: 'The Council petition reaches a formal decision.', status: 'queued' }] },
+    });
+    board = markDevelopmentDelivered(board, 'council-decision', 7);
+    const refreshed = refreshAuthorBoardFromLegacy(board, {
+        directorScore: { sceneFunction: 'Hold the current scene.', meaningfulAim: 'Preserve pacing.' },
+        nextGuides: [{ id: 'renamed-decision', direction: 'A formal decision arrives for the Council petition.', useWhen: 'The review completes.', dropWhen: 'The petition is withdrawn.' }],
+    }, 8);
+    assert.equal(refreshed.scene.requiredDevelopments.length, 1);
+    assert.equal(refreshed.scene.requiredDevelopments[0].id, 'council-decision');
+    assert.equal(refreshed.scene.requiredDevelopments[0].status, 'delivered');
 });

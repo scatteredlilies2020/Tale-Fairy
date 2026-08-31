@@ -4,10 +4,10 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.111';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.111';
-import { markAuthorBeatDelivered, tickAuthorBoard } from './author-board.js?v=0.11.111';
-import { normalizeConductorState, runConductor } from './conductor.js?v=0.11.111';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.112';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.112';
+import { markAuthorBeatDelivered, tickAuthorBoard } from './author-board.js?v=0.11.112';
+import { normalizeConductorState, runConductor } from './conductor.js?v=0.11.112';
 import { consumeAdvanceOverride, isReleaseSignal, updatePacing } from './pacing.js?v=0.11.101';
 import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.11.101';
 import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.100';
@@ -24,7 +24,7 @@ import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOut
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.111';
+const RUNTIME_VERSION = '0.11.112';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -1563,7 +1563,6 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         layers.localActivity && `Local activity: ${layers.localActivity} [${layers.activityRole || 'routine'}]`,
         layers.situation && `Situation: ${layers.situation}`,
         layers.widerWorld && `Wider world: ${layers.widerWorld}`,
-        layers.durableTrajectory && `Durable trajectory: ${layers.durableTrajectory}`,
         layers.temporalScope && `Authorized scope: ${layers.temporalScope}`,
         state.scene.activity && `Activity: ${state.scene.activity}`,
         state.scene.intent && `Intent: ${state.scene.intent}`,
@@ -1572,7 +1571,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         state.scene.time && `Time: ${state.scene.time}`,
         state.scene.loop && 'Pattern: the scene may be looping or repeating',
     ].filter(Boolean).join('\n');
-    scratchpadText(board, 'scratchpad-scene', generatedValue(scene), boardFallback('Immediate action: Await the first declared player action.\nLocal activity: Opening situation [transition]\nSituation: Establish the initial people, place, and pressures from the first story evidence.\nWider world: Track only pressures with a credible route toward the scene.\nDurable trajectory: Grow an open-ended path from the player’s choices without deciding those choices.', 'No generated scene state yet.'));
+    scratchpadText(board, 'scratchpad-scene', generatedValue(scene), boardFallback('Immediate action: Await the first declared player action.\nLocal activity: Opening situation [transition]\nSituation: Establish the initial people, place, and pressures from the first story evidence.\nWider world: Track only pressures with a credible route toward the scene.', 'No generated scene state yet.'));
 
     const frame = state.storyFrame.frame && state.storyFrame.frame !== 'unknown'
         ? `${state.storyFrame.frame}${state.storyFrame.confidence ? ` · ${state.storyFrame.confidence} confidence` : ''}${state.storyFrame.basis ? `\nBasis: ${state.storyFrame.basis}` : ''}`
@@ -1593,20 +1592,18 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
 
     const score = state.directorScore || {};
     const setup = score.futureSetup || {};
-    const directorScore = score.storyIdentity ? [
-        `Overall story: ${score.storyIdentity}`,
+    const directorScore = score.sceneFunction || score.meaningfulAim || setup.development ? [
         score.sceneFunction && `Current scene function: ${score.sceneFunction}`,
         score.settingIdentity && `Setting: ${score.settingIdentity}`,
         score.settingForces?.length && `Active causal forces: ${score.settingForces.join('; ')}`,
         `Causal tempo: ${String(score.causalTempo || 'hold').toUpperCase()}${score.change ? ` · ${score.change}` : ''}`,
-        score.arcDirection && `Near-term arc: ${score.arcDirection}`,
         setup.development && `Private future setup: ${setup.development}${setup.earliestWindow ? ` · earliest ${setup.earliestWindow}` : ''}`,
         setup.currentStep && `Setup step: ${setup.currentStep}`,
         setup.conditions?.length && `Setup needs: ${setup.conditions.join('; ')}`,
         score.meaningfulAim && `Meaningful aim: ${score.meaningfulAim}`,
         score.basis && `Basis: ${score.basis}`,
     ].filter(Boolean).join('\n') : '';
-    scratchpadText(board, 'scratchpad-director-score', generatedValue(directorScore), boardFallback('Overall story: An open-ended character story that will specialize around the first concrete action.\nCurrent scene function: Establish and deepen a playable situation while preserving every player choice.\nSetting: The opening location as a source of sensory context and causally supported possibilities.\nCausal tempo: HOLD\nNear-term arc: Let current evidence determine whether to sustain, advance, reveal, introduce, or pay off.\nPrivate future setup: Keep one distant transformation available without making it canon.\nMeaningful aim: Change knowledge, relationships, pressures, or available choices without controlling the player.', 'No generated director plan yet.'));
+    scratchpadText(board, 'scratchpad-director-score', generatedValue(directorScore), boardFallback('Current scene function: Establish and deepen a playable situation while preserving every player choice.\nSetting: The opening location as a source of sensory context and causally supported possibilities.\nCausal tempo: HOLD\nPrivate future setup: Keep one conditional development available without making it canon.\nMeaningful aim: Change knowledge, relationships, pressures, or available choices without controlling the player.', 'No generated future agenda yet.'));
 
     const pathways = state.pathways || [];
     const requiredRouteLanes = ['immediate', 'character', 'relationship-institution', 'lore-world', 'original', 'long-range'];
@@ -1620,6 +1617,8 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         `${item.id} [${[item.lane, item.status, item.horizon, item.scale, item.origin, item.change !== 'keep' ? item.change : ''].filter(Boolean).join(' · ')}] — ${item.direction}`,
         item.agent && `Causal center: ${item.agent}${item.relation ? ` (${item.relation})` : ''}`,
         item.engine && `Engine: ${item.engine}`,
+        item.evidenceRefs?.length && `Evidence: ${item.evidenceRefs.join('; ')}`,
+        item.completionCheck && `Completion audit: ${item.completionCheck}${item.unresolvedBasis ? ` — ${item.unresolvedBasis}` : ''}`,
         item.mechanismStatus && `Mechanism: ${item.mechanismStatus}${item.mechanismBasis ? ` — ${item.mechanismBasis}` : ''}`,
         `Use when: ${item.when}`,
         item.responseBias && `If chosen: ${item.responseBias}`,
@@ -1751,7 +1750,6 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         state.scene?.activity && `Working scene: ${state.scene.activity}.`,
         state.narrativeLayers?.situation && `Situation: ${state.narrativeLayers.situation}`,
         state.narrativeLayers?.widerWorld && `Wider context: ${state.narrativeLayers.widerWorld}`,
-        state.narrativeLayers?.durableTrajectory && `Durable trajectory: ${state.narrativeLayers.durableTrajectory}`,
     ].filter(Boolean).join('\n');
     scratchpadText(board, 'scratchpad-ledger', generatedValue(displayedLedger), boardFallback('Opening state: no story facts have been established yet. First evidence will replace this line with concrete continuity.', 'No generated context ledger yet.'));
 

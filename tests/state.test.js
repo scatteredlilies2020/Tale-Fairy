@@ -330,7 +330,7 @@ test('RP-specific lore signatures and baseline departures survive storage and pl
     assert.deepEqual(stateForPrompt(restored).loreModel, loreModel);
 });
 
-test('v30 migration clears excluded-block local chronology but preserves upstream direction', () => {
+test('v30 migration clears excluded-block local chronology and retrospective trajectory while preserving future routes', () => {
     const migrated = normalizeState({
         version: 30,
         scene: { status: 'active', activity: 'after dinner', time: '6:42 PM' },
@@ -344,11 +344,56 @@ test('v30 migration clears excluded-block local chronology but preserves upstrea
     assert.equal(migrated.scene.time, '');
     assert.equal(migrated.narrativeLayers.localActivity, '');
     assert.equal(migrated.narrativeLayers.widerWorld, 'A council review is pending.');
-    assert.equal(migrated.narrativeLayers.durableTrajectory, 'Training remains open.');
+    assert.equal(migrated.narrativeLayers.durableTrajectory, '');
     assert.deepEqual(migrated.pathways, []);
     assert.equal(migrated.contextLedger, '');
     assert.deepEqual(migrated.narrativeEvents, []);
     assert.equal(migrated.planHorizons.items[0].direction, 'Training remains open.');
+});
+
+test('v43 migration deletes retrospective interpretation while preserving audited future lifecycle', () => {
+    const migrated = normalizeState({
+        version: 43,
+        contextLedger: 'This is the definitive meaning and shape of the story so far.',
+        directorScore: {
+            storyIdentity: 'A retrospective master identity.',
+            arcDirection: 'A model-authored interpretation of the past.',
+            sceneFunction: 'Let the user linger over the document.',
+            meaningfulAim: 'Keep future pressure dormant until the reading changes something.',
+        },
+        narrativeLayers: {
+            localActivity: 'Reading the document slowly.',
+            durableTrajectory: 'The model-defined whole-story trajectory.',
+        },
+        pathways: [{
+            id: 'petition',
+            direction: 'Allow the filed petition to receive an official result.',
+            when: 'After the review process acts.',
+            evidenceRefs: ['msg:42'],
+            unresolvedBasis: 'No later evidence resolves, cancels, or contradicts the pending review.',
+            completionCheck: 'unresolved',
+        }],
+        authorBoard: {
+            scene: {
+                requiredDevelopments: [{
+                    id: 'petition-result',
+                    instruction: 'The petition receives a formal result.',
+                    status: 'delivered',
+                    deliveredAtTurn: 9,
+                }],
+            },
+        },
+    });
+
+    assert.equal(migrated.version, STATE_VERSION);
+    assert.equal(migrated.contextLedger, '');
+    assert.equal(migrated.directorScore.storyIdentity, '');
+    assert.equal(migrated.directorScore.arcDirection, '');
+    assert.equal(migrated.narrativeLayers.durableTrajectory, '');
+    assert.deepEqual(migrated.pathways[0].evidenceRefs, ['msg:42']);
+    assert.equal(migrated.pathways[0].unresolvedBasis, 'No later evidence resolves, cancels, or contradicts the pending review.');
+    assert.equal(migrated.pathways[0].completionCheck, 'unresolved');
+    assert.equal(migrated.authorBoard.scene.requiredDevelopments[0].status, 'delivered');
 });
 
 test('prompt payload keeps user directives active and only includes usable guidance', () => {
@@ -400,8 +445,8 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.doesNotMatch(current, /Keep the scene grounded/);
     assert.match(current, /Conditional authorial direction/);
     assert.match(current, /TALE FAIRY AUTHORIAL FRAME/);
-    assert.match(current, /CURRENT CAUSE: Establish the obligation as a real constraint/);
-    assert.match(current, /DURABLE CONTEXT: An open-ended survival and institutional-conflict story/);
+    assert.match(current, /SELECTED FUTURE CAUSE: Establish the obligation as a real constraint/);
+    assert.doesNotMatch(current, /DURABLE CONTEXT/);
     assert.match(current, /CURRENT SITUATION: An intimate home exchange constrained by Jedi obligations/);
     assert.match(current, /LOCAL ACTIVITY: A quiet tea conversation with Mara\. \[DEVELOPMENTAL\]/);
     assert.match(current, /LATEST USER ACTION: I ask Mara what comes next/);
@@ -411,7 +456,7 @@ test('prompt payload keeps user directives active and only includes usable guida
     assert.match(current, /filed petition awaits an official response/);
     assert.match(current, /ACTIVE CAUSAL FORCES: Jedi obligations constrain time and candor; Droids participate in domestic routine/);
     assert.match(current, /STORY OPERATION: SEED/);
-    assert.match(current, /Tale Fairy controls narrative function, pressure, and scale/);
+    assert.match(current, /Tale Fairy controls future narrative function, pressure, and scale/);
     assert.match(current, /realize exact events, NPC actions, dialogue, outcomes, and prose/);
     assert.match(current, /AUTHORIAL INTENT: Let Mara answer plainly/);
     assert.match(current, /BEAT REALIZATION/);
@@ -548,11 +593,12 @@ test('the lean guide preserves player agency without a general narrative-policy 
     assert.doesNotMatch(payload, /<tale-fairy-narrative-policy>|Carry its declared actions|Before ending|Routine logistics/);
 });
 
-test('v42 planning migrates into the author board without forcing another planner call', () => {
+test('v42 planning migrates only future work into the author board without retaining a model-authored story identity', () => {
     const migrated = normalizeState({ version: 42, ...currentPlan, canonBootstrapPending: false });
-    assert.equal(migrated.version, 43);
+    assert.equal(migrated.version, 44);
     assert.equal(migrated.canonBootstrapPending, false);
-    assert.equal(migrated.authorBoard.story.identity, currentPlan.narrativeLayers.durableTrajectory);
+    assert.equal(migrated.authorBoard.story.identity, '');
+    assert.equal(migrated.authorBoard.activeArc.id, '');
     assert.equal(migrated.authorBoard.scene.purpose, currentPlan.directorScore.sceneFunction);
     assert.ok(migrated.authorBoard.scene.requiredDevelopments.length > 0);
 });

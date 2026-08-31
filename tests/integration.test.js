@@ -12,13 +12,13 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.111');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.111');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.111');
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.111'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.111'/);
-    assert.match(source, /from '\.\/author-board\.js\?v=0\.11\.111'/);
-    assert.match(source, /from '\.\/conductor\.js\?v=0\.11\.111'/);
+    assert.equal(manifest.version, '0.11.112');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.112');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.112');
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.112'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.112'/);
+    assert.match(source, /from '\.\/author-board\.js\?v=0\.11\.112'/);
+    assert.match(source, /from '\.\/conductor\.js\?v=0\.11\.112'/);
     assert.match(source, /from '\.\/pacing\.js\?v=0\.11\.101'/);
     assert.match(source, /from '\.\/planner-scheduler\.js\?v=0\.11\.101'/);
     assert.match(source, /from '\.\/completion-response\.js\?v=0\.11\.100'/);
@@ -34,7 +34,7 @@ test('injection sends layered authorial control while concrete realization and f
     assert.match(stateSource, /STORY FUNCTION:/);
     assert.match(stateSource, /IMPACT ENVELOPE:/);
     assert.match(stateSource, /binding at narrative-purpose level/);
-    assert.match(stateSource, /Tale Fairy controls narrative function, pressure, and scale/);
+    assert.match(stateSource, /Tale Fairy controls future narrative function, pressure, and scale/);
     assert.match(stateSource, /realize exact events, NPC actions, dialogue, outcomes, and prose/);
     assert.match(stateSource, /LATEST USER ACTION/);
     assert.match(stateSource, /IMMEDIATE CONTEXT/);

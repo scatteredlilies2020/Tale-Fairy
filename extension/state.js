@@ -1,10 +1,10 @@
-import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.11.111';
+import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.11.112';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
 import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js';
 
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 43;
+export const STATE_VERSION = 44;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -129,12 +129,12 @@ function normalizeDirectorScore(value = {}) {
     const change = text(value.change, 'replace').toLowerCase();
     const future = value.futureSetup ?? value.future_setup ?? {};
     return {
-        storyIdentity: clippedText(value.storyIdentity ?? value.story_identity, 180),
+        storyIdentity: '',
         sceneFunction: clippedText(value.sceneFunction ?? value.scene_function, 120),
         settingIdentity: clippedText(value.settingIdentity ?? value.setting_identity, 120),
         settingForces: cap(value.settingForces ?? value.setting_forces, 3).map(item => clippedText(item, 140)).filter(Boolean),
         causalTempo: ['hold', 'seed', 'advance', 'converge', 'payoff', 'redirect', 'recover'].includes(causalTempo) ? causalTempo : 'hold',
-        arcDirection: clippedText(value.arcDirection ?? value.arc_direction, 240),
+        arcDirection: '',
         futureSetup: {
             id: clippedText(future.id, 100),
             development: clippedText(future.development, 220),
@@ -156,7 +156,7 @@ function normalizeNarrativeLayers(value = {}) {
         localActivity: clippedText(value.localActivity ?? value.local_activity, 180),
         situation: clippedText(value.situation, 220),
         widerWorld: clippedText(value.widerWorld ?? value.wider_world, 240),
-        durableTrajectory: clippedText(value.durableTrajectory ?? value.durable_trajectory, 260),
+        durableTrajectory: '',
         activityRole: ['incidental', 'routine', 'developmental', 'central', 'transition'].includes(activityRole) ? activityRole : 'routine',
         temporalScope: ['moment', 'action', 'activity', 'scene', 'extended'].includes(temporalScope) ? temporalScope : 'action',
     };
@@ -179,6 +179,9 @@ function normalizePathway(value = {}) {
         origin: ['established', 'inferred', 'original'].includes(origin) ? origin : 'inferred',
         mechanismStatus: ['evidenced', 'new'].includes(mechanismStatus) ? mechanismStatus : '',
         mechanismBasis: clippedText(value.mechanismBasis ?? value.mechanism_basis, 180),
+        evidenceRefs: cap(value.evidenceRefs ?? value.evidence_refs, 4).map(item => clippedText(item, 80)).filter(Boolean),
+        unresolvedBasis: clippedText(value.unresolvedBasis ?? value.unresolved_basis, 180),
+        completionCheck: ['unresolved', 'new-cause'].includes(text(value.completionCheck ?? value.completion_check).toLowerCase()) ? text(value.completionCheck ?? value.completion_check).toLowerCase() : '',
         direction: text(value.direction).slice(0, 320),
         when: text(value.when).slice(0, 240),
         responseBias: text(value.responseBias ?? value.response_bias).slice(0, 300),
@@ -310,6 +313,9 @@ function normalizeHorizon(value = {}, index = 0, items = [value]) {
         origin: ['established', 'inferred', 'original'].includes(origin) ? origin : 'inferred',
         mechanismStatus: ['evidenced', 'new'].includes(mechanismStatus) ? mechanismStatus : '',
         mechanismBasis: clippedText(value.mechanismBasis ?? value.mechanism_basis, 180),
+        evidenceRefs: cap(value.evidenceRefs ?? value.evidence_refs, 4).map(item => clippedText(item, 80)).filter(Boolean),
+        unresolvedBasis: clippedText(value.unresolvedBasis ?? value.unresolved_basis, 180),
+        completionCheck: ['unresolved', 'new-cause'].includes(text(value.completionCheck ?? value.completion_check).toLowerCase()) ? text(value.completionCheck ?? value.completion_check).toLowerCase() : '',
         direction: text(value.direction).slice(0, 360),
         timeframe: (!rawTimeframe || GENERIC_HORIZON_TIMEFRAME.test(rawTimeframe)
             ? inferredHorizonTimeframe(index, items.length)
@@ -401,7 +407,9 @@ export function normalizeState(input = {}) {
     // v42 binds each selected guide to its route's engine so it cannot consume
     // another route's signature development. v43 adds an author board,
     // deterministic conductor, pacing state, and periodic planner scheduler;
-    // v42 plans migrate into that layer without spending a forced AI call.
+    // v42 plans migrate into that layer without spending a forced AI call;
+    // v44 removes AI-authored interpretations of past story and keeps only a
+    // future agenda with explicit unresolved/completion evidence.
     const unsafePlannerUpgrade = inputVersion > 0 && inputVersion < 18;
     const movementUpgrade = inputVersion > 0 && inputVersion < 42;
     const recoveryUpgrade = inputVersion > 0 && inputVersion < 26;
@@ -425,7 +433,7 @@ export function normalizeState(input = {}) {
         },
         scene: chronologyAuditUpgrade ? base.scene : { ...base.scene, ...(value.scene || {}) },
         narrativeLayers: chronologyAuditUpgrade
-            ? { ...base.narrativeLayers, widerWorld: normalizedLayers.widerWorld, durableTrajectory: normalizedLayers.durableTrajectory }
+            ? { ...base.narrativeLayers, widerWorld: normalizedLayers.widerWorld }
             : normalizedLayers,
         storyFrame: { ...base.storyFrame, ...(value.storyFrame || {}) },
         directorScore: normalizeDirectorScore(value.directorScore),
@@ -448,7 +456,7 @@ export function normalizeState(input = {}) {
         guidance: recoveryUpgrade ? '' : text(value.guidance).slice(0, 700),
         lastInject: recoveryUpgrade ? false : value.lastInject === true,
         lastReason: text(value.lastReason).slice(0, 500),
-        contextLedger: chronologyAuditUpgrade ? '' : text(value.contextLedger).slice(0, 3000),
+        contextLedger: inputVersion > 0 && inputVersion < 44 ? '' : (chronologyAuditUpgrade ? '' : text(value.contextLedger).slice(0, 3000)),
         ledgerMessageCount: Math.max(0, Number(value.ledgerMessageCount) || 0),
         ledgerUpdatedAt: Number(value.ledgerUpdatedAt) || 0,
         narrativeEvents: recoveryUpgrade || chronologyAuditUpgrade ? [] : cap(value.narrativeEvents, MAX_EVENTS).map(normalizeEvent).filter(event => event.title && event.summary && event.engine),
@@ -505,7 +513,7 @@ export function stateForPrompt(state) {
     return {
         mode: s.mode,
         scene: Object.fromEntries(Object.entries(s.scene).map(([key, value]) => [key, typeof value === 'string' ? value.slice(0, 100) : value])),
-        narrativeLayers: { ...s.narrativeLayers },
+        narrativeLayers: { immediateAction: s.narrativeLayers.immediateAction, localActivity: s.narrativeLayers.localActivity, situation: s.narrativeLayers.situation, widerWorld: s.narrativeLayers.widerWorld, activityRole: s.narrativeLayers.activityRole, temporalScope: s.narrativeLayers.temporalScope },
         loreModel: { ...s.loreModel },
         objectives: s.objectives.slice(-8).map(item => ({ title: item.title, detail: item.detail.slice(0, 180), status: item.status })),
         continuityThreads: s.continuityThreads.map(item => ({ id: item.id, thread: item.thread, state: item.state, status: item.status, basis: item.basis })),
@@ -522,14 +530,14 @@ export function stateForPrompt(state) {
             item.conditions[0] ? `if ${item.conditions[0].slice(0, 60)}` : '',
             `[${item.lane || 'extra'}, ${item.horizon || 'unscoped'}, ${item.scale || 'scene'}, ${item.origin || 'inferred'}, ${item.force.slice(0, 12) || 'light'}]`,
         ].filter(Boolean).join(' | ')),
-        pathways: s.pathways.map(item => ({ id: item.id, lane: item.lane, agent: item.agent, engine: item.engine, relation: item.relation, scale: item.scale, origin: item.origin, mechanismStatus: item.mechanismStatus, mechanismBasis: item.mechanismBasis, direction: item.direction.slice(0, 220), when: item.when.slice(0, 180), responseBias: item.responseBias.slice(0, 200), horizon: item.horizon, status: item.status, conditions: item.conditions.slice(0, 2), change: item.change })),
+        pathways: s.pathways.map(item => ({ id: item.id, lane: item.lane, agent: item.agent, engine: item.engine, relation: item.relation, scale: item.scale, origin: item.origin, mechanismStatus: item.mechanismStatus, mechanismBasis: item.mechanismBasis, evidenceRefs: item.evidenceRefs, unresolvedBasis: item.unresolvedBasis, completionCheck: item.completionCheck, direction: item.direction.slice(0, 220), when: item.when.slice(0, 180), responseBias: item.responseBias.slice(0, 200), horizon: item.horizon, status: item.status, conditions: item.conditions.slice(0, 2), change: item.change })),
         nextGuides: s.nextGuides.map(item => ({ id: item.id, routeLane: item.routeLane, causalAgent: item.causalAgent, causalEngine: item.causalEngine, scale: item.scale, direction: item.direction.slice(0, 240), useWhen: item.useWhen.slice(0, 160), dropWhen: item.dropWhen.slice(0, 160), causalRole: item.causalRole.slice(0, 180), worldDelta: item.worldDelta.slice(0, 180), origin: item.origin, mechanismStatus: item.mechanismStatus, mechanismBasis: item.mechanismBasis, basis: item.basis.slice(0, 140), strength: item.strength, sourcePathways: item.sourcePathways, causalEventIds: item.causalEventIds, disclosure: item.disclosure })),
         // Carry the old live beat only long enough for a v9 state to be
         // converted. Current pathway states do not spend prompt tokens on it.
         activeBeat: s.pathways.length ? undefined : { id: s.activeBeat.id, objective: s.activeBeat.objective, nextAction: s.activeBeat.nextAction, completion: s.activeBeat.completion, lifecycle: s.activeBeat.lifecycle },
         beatHistory: s.beatHistory.slice(-1).map(beat => ({ id: beat.id, objective: beat.objective, completion: beat.completion, lifecycle: beat.lifecycle })),
         planHorizons: {
-            items: s.planHorizons.items.map(item => ({ id: item.id, lane: item.lane, branch: item.branch, agent: item.agent, engine: item.engine, relation: item.relation, scale: item.scale, origin: item.origin, mechanismStatus: item.mechanismStatus, mechanismBasis: item.mechanismBasis, direction: item.direction.slice(0, 240), timeframe: item.timeframe, stability: item.stability, conditions: item.conditions.slice(0, 1), change: item.change })),
+            items: s.planHorizons.items.map(item => ({ id: item.id, lane: item.lane, branch: item.branch, agent: item.agent, engine: item.engine, relation: item.relation, scale: item.scale, origin: item.origin, mechanismStatus: item.mechanismStatus, mechanismBasis: item.mechanismBasis, evidenceRefs: item.evidenceRefs, unresolvedBasis: item.unresolvedBasis, completionCheck: item.completionCheck, direction: item.direction.slice(0, 240), timeframe: item.timeframe, stability: item.stability, conditions: item.conditions.slice(0, 1), change: item.change })),
             deviation: s.planHorizons.deviation,
         },
         canonConstraints: s.canonConstraints.slice(-8).map(item => item.slice(0, 360)),
@@ -538,18 +546,22 @@ export function stateForPrompt(state) {
         contextLedger: s.contextLedger.slice(0, 1400),
         storyFrame: { frame: s.storyFrame.frame, confidence: s.storyFrame.confidence, basis: s.storyFrame.basis.slice(0, 180) },
         directorScore: {
-            storyIdentity: s.directorScore.storyIdentity,
             sceneFunction: s.directorScore.sceneFunction,
             settingIdentity: s.directorScore.settingIdentity,
             settingForces: s.directorScore.settingForces,
             causalTempo: s.directorScore.causalTempo,
-            arcDirection: s.directorScore.arcDirection,
             futureSetup: s.directorScore.futureSetup,
             meaningfulAim: s.directorScore.meaningfulAim,
             change: s.directorScore.change,
             basis: s.directorScore.basis,
         },
-        authorBoard: s.authorBoard,
+        authorBoard: {
+            setups: s.authorBoard.setups,
+            offscreenDevelopments: s.authorBoard.offscreenDevelopments,
+            scene: { requiredDevelopments: s.authorBoard.scene.requiredDevelopments },
+            milestones: s.authorBoard.milestones,
+            revision: s.authorBoard.revision,
+        },
         pacing: s.pacing,
         conductor: s.conductor,
         plannerSchedule: s.plannerSchedule,
@@ -592,8 +604,8 @@ export function isStateAligned(state, messages = [], chatId = '') {
 // without waiting for another planner request.
 export function isGuidanceUsable(state, messages = [], chatId = '') {
     const s = normalizeState(state);
-    if (!s.lastInject || !s.nextGuides.length || !s.directorScore.storyIdentity || !s.directorScore.meaningfulAim) return false;
-    if (!s.narrativeLayers.situation || !s.narrativeLayers.durableTrajectory) return false;
+    if (!s.lastInject || !s.nextGuides.length || !s.directorScore.meaningfulAim) return false;
+    if (!s.narrativeLayers.situation) return false;
     if (s.planHorizons.items.length < 5 || s.planHorizons.items.at(-1)?.stability !== 'slow') return false;
     if (isStateAligned(s, messages, chatId)) return true;
     if (s.sourceChatId && chatId && s.sourceChatId !== String(chatId)) return false;
@@ -656,15 +668,14 @@ function authorialDirective(guide) {
 
 function narrativeConductor(score, layers, continuityThreads = [], latestUserAction = '') {
     const forces = score.settingForces.length ? score.settingForces.map(item => clippedText(item, 55).replace(/[.;:,]+$/u, '')).join('; ') : 'Use only setting forces established by context.';
-    const durable = layers.durableTrajectory || score.storyIdentity || 'Preserve the broad trajectory established in the complete context.';
     const situation = layers.situation || score.sceneFunction || 'Use the current situation established in the latest conversation.';
     const widerWorld = layers.widerWorld || score.settingIdentity || 'Keep established world processes coherent without forcing them onscreen.';
-    const presentPressure = score.futureSetup?.currentStep || score.arcDirection || 'Let the durable trajectory shape one current non-player cause without predetermining its outcome.';
+    const presentPressure = score.futureSetup?.currentStep || 'Let one unresolved or genuinely new future cause develop without predetermining its outcome.';
     const currentAction = clippedText(latestUserAction || layers.immediateAction || 'Follow the latest authorized action.', 110);
     const actionLabel = latestUserAction ? 'LATEST USER ACTION' : 'IMMEDIATE CONTEXT';
     const openThreads = continuityThreads.slice(0, 5).map(item => `${item.status}: ${clippedText(item.thread, 62)} — ${clippedText(item.state, 78)}`).join(' | ');
     const threadLine = openThreads ? `\nESTABLISHED OPEN THREADS (continuity only; do not force onscreen): ${openThreads}` : '';
-    return `TALE FAIRY AUTHORIAL FRAME:\nDURABLE CONTEXT: ${clippedText(durable, 75)}\nCURRENT CAUSE: ${clippedText(presentPressure, 90)}\nCURRENT SITUATION: ${clippedText(situation, 100)}\nLOCAL ACTIVITY: ${clippedText(layers.localActivity || 'Use the latest established activity.', 90)} [${layers.activityRole.toUpperCase()}]\n${actionLabel}: ${currentAction}\nAUTHORIZED SCOPE: ${layers.temporalScope.toUpperCase()} (a ceiling, not a quota)\nWIDER WORLD: ${clippedText(widerWorld, 65)}${threadLine}\nACTIVE CAUSAL FORCES: ${forces}\nSTORY OPERATION: ${score.causalTempo.toUpperCase()}\nTale Fairy controls narrative function, pressure, and scale—not outcomes or player action; realize exact events, NPC actions, dialogue, outcomes, and prose from context.`;
+    return `TALE FAIRY AUTHORIAL FRAME:\nSELECTED FUTURE CAUSE: ${clippedText(presentPressure, 90)}\nCURRENT SITUATION: ${clippedText(situation, 100)}\nLOCAL ACTIVITY: ${clippedText(layers.localActivity || 'Use the latest established activity.', 90)} [${layers.activityRole.toUpperCase()}]\n${actionLabel}: ${currentAction}\nAUTHORIZED SCOPE: ${layers.temporalScope.toUpperCase()} (a ceiling, not a quota)\nWIDER WORLD: ${clippedText(widerWorld, 65)}${threadLine}\nACTIVE CAUSAL FORCES: ${forces}\nSTORY OPERATION: ${score.causalTempo.toUpperCase()}\nTale Fairy controls future narrative function, pressure, and scale—not the meaning of past events, outcomes, or player action; realize exact events, NPC actions, dialogue, outcomes, and prose from context.`;
 }
 function normalizeLoreModel(value = {}) {
     const confidence = text(value.confidence, 'low').toLowerCase();
