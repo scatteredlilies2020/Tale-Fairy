@@ -67,6 +67,17 @@ test('GLM and other native SillyTavern sources use normalized reasoning controls
     );
 });
 
+test('an explicit Kimi model is not mistaken for Qwen by a proxy route name', () => {
+    const result = buildReasoningRequest({
+        mode: 'low',
+        source: 'custom',
+        model: 'kimi-k3',
+        url: 'http://127.0.0.1:17777/cute/qwen',
+    });
+    assert.equal(result.adapter, 'openai-compatible');
+    assert.deepEqual(JSON.parse(result.payload.custom_include_body), { reasoning_effort: 'low' });
+});
+
 test('mandatory reasoning fallback enables a provider-safe minimum', () => {
     const result = reasoningFallbackPayload(new Error('Reasoning is mandatory and cannot be disabled.'), { include_reasoning: false, reasoning_effort: 'none' });
     assert.deepEqual(result, { include_reasoning: true, reasoning_effort: 'low' });

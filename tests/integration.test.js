@@ -11,9 +11,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.79');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.79');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.79');
+    assert.equal(manifest.version, '0.11.81');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.81');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.81');
 });
 
 test('injection sends layered authorial control while concrete realization and future outcomes stay private', () => {
@@ -96,7 +96,8 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /async function requestAnalysisOnce/);
     assert.match(source, /async function requestAnalysis\([^)]*\)\s*{\s*return requestAnalysisOnce\(prompt, externalSignal\);\s*}/s);
     assert.match(source, /structured \? \{ json_schema: ANALYSIS_SCHEMA \} : \{\}/);
-    assert.match(source, /JSON\.stringify\(ANALYSIS_SCHEMA\.value\)/);
+    assert.match(source, /const PLANNER_SYSTEM_PROMPT = `\$\{SYSTEM\}[\s\S]*?\$\{JSON\.stringify\(ANALYSIS_SCHEMA\.value\)\}`/);
+    assert.doesNotMatch(source, /fallbackSystemPrompt/);
     assert.match(source, /text: submittedNote\.text/);
     assert.match(source, /Instruction saved/);
     assert.match(source, /function stopAnalysis\(\)/);
@@ -107,7 +108,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /waitForAbortable\(generateRaw/);
     assert.match(source, /PLANNER_RESPONSE_TOKENS = 6144/);
     assert.doesNotMatch(source, /PLANNER_REQUEST_TIMEOUT_MS|planner request reached its/);
-    assert.match(source, /const fixedEnvelope = `\$\{SYSTEM\}\\n\$\{JSON\.stringify\(ANALYSIS_SCHEMA\.value\)\}`/);
+    assert.match(source, /const fixedEnvelope = PLANNER_SYSTEM_PROMPT/);
     assert.match(source, /estimateTokenCount\(`\$\{fixedEnvelope\}\\n\$\{prompt\}`\)/);
     assert.doesNotMatch(source, /finalizeAnalysisResult|buildFinalizationEvidence|requireValidAnalysisResult/);
     assert.match(source, /PLANNER_MAX_AUTO_RETRIES = 2/);

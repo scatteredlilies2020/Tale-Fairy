@@ -17,7 +17,7 @@ import { collectSummarySources, summarySourceAudit } from './summary-context.js'
 import { estimateTokenCount } from './token-budget.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.79';
+const RUNTIME_VERSION = '0.11.81';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -50,6 +50,12 @@ const PLANNER_MAX_AUTO_RETRIES = 2;
 const UI_MOUNT_TIMEOUT_MS = 30000;
 const LEGACY_UPGRADE_MAX_ATTEMPTS = 1;
 const INTERNAL_PLANNER_MARKER = 'You are Tale Fairy, the private authorial planning layer for SillyTavern roleplay.';
+// Some OpenAI-compatible servers accept response_format/json_schema but
+// silently ignore it. Put the authoritative contract in the first prompt as
+// well as the native request field so the one model call is self-contained.
+// buildTokenBudgetedAnalysisPrompt counts this exact envelope inside the
+// configured total prompt-token budget.
+const PLANNER_SYSTEM_PROMPT = `${SYSTEM}\n\nOUTPUT SCHEMA (authoritative even when the provider ignores native structured-output controls)\nComplete the entire object before elaborating any field. Never omit a required key.\n${JSON.stringify(ANALYSIS_SCHEMA.value)}`;
 
 globalThis.taleFairyRuntime = Object.freeze({ version: RUNTIME_VERSION, loadedAt: Date.now() });
 console.info(`[${EXTENSION_ID}] Tale Fairy runtime ${RUNTIME_VERSION} loaded`);
@@ -158,7 +164,7 @@ function currentContext() { return getContext(); }
 
 async function buildTokenBudgetedAnalysisPrompt(messages, state, note, bootstrap, options) {
     const tokenBudget = Math.max(9000, Math.min(30000, Number(options.maxPromptTokens) || 12000));
-    const fixedEnvelope = `${SYSTEM}\n${JSON.stringify(ANALYSIS_SCHEMA.value)}`;
+    const fixedEnvelope = PLANNER_SYSTEM_PROMPT;
     const estimatedOverhead = estimateTokenCount(fixedEnvelope);
     const context = currentContext();
     const tokenCounter = typeof context?.getTokenCountAsync === 'function'
@@ -804,10 +810,6 @@ function parseAnalysisResponse(value) {
     }
 }
 
-function fallbackSystemPrompt() {
-    return `${SYSTEM}\nThe provider did not honor structured output. Return exactly one JSON object matching this schema, with no Markdown fences or surrounding text:\n${JSON.stringify(ANALYSIS_SCHEMA.value)}`;
-}
-
 function waitForAbortable(promise, signal) {
     if (signal.aborted) return Promise.reject(signal.reason);
     return Promise.race([
@@ -952,9 +954,9 @@ async function requestAnalysisOnce(prompt, externalSignal) {
             });
             let reasoningPayload = reasoning.payload;
             let samplingEnabled = !plannerModelRejectsTemperature(profile.model);
-            const sendProfileRaw = (structured, systemPrompt = SYSTEM) => ConnectionManagerRequestService.sendRequest(
+            const sendProfileRaw = structured => ConnectionManagerRequestService.sendRequest(
                 model.profileId,
-                [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }],
+                [{ role: 'system', content: PLANNER_SYSTEM_PROMPT }, { role: 'user', content: prompt }],
                 PLANNER_RESPONSE_TOKENS,
                 { stream: false, extractData: false, includePreset: false, includeInstruct: false, signal: controller.signal },
                 {
@@ -964,8 +966,8 @@ async function requestAnalysisOnce(prompt, externalSignal) {
                     ...reasoningPayload,
                 },
             );
-            const sendProfile = (structured, systemPrompt = SYSTEM) => retryWithoutUnsupportedTemperature(
-                () => sendProfileRaw(structured, systemPrompt),
+            const sendProfile = structured => retryWithoutUnsupportedTemperature(
+                () => sendProfileRaw(structured),
                 () => { samplingEnabled = false; },
             );
             try {
@@ -982,14 +984,13 @@ async function requestAnalysisOnce(prompt, externalSignal) {
                 if (isReasoningControlError(error) && (reasoning.controlled || isMandatoryReasoningError(error))) {
                     reasoningPayload = reasoningFallbackPayload(error, reasoningPayload);
                 }
-                const fallbackSystem = fallbackSystemPrompt();
                 let response;
                 try {
-                    response = await sendProfile(false, fallbackSystem);
+                    response = await sendProfile(false);
                 } catch (fallbackError) {
                     if (!isReasoningControlError(fallbackError) || (!reasoning.controlled && !isMandatoryReasoningError(fallbackError))) throw fallbackError;
                     reasoningPayload = reasoningFallbackPayload(fallbackError, reasoningPayload);
-                    response = await sendProfile(false, fallbackSystem);
+                    response = await sendProfile(false);
                 }
                 controller.signal.throwIfAborted();
                 return parseAnalysisResponse(response);
@@ -1014,7 +1015,7 @@ async function requestAnalysisOnce(prompt, externalSignal) {
                     // The planner must not inherit the user's text-completion
                     // instruct template or preset formatting.
                     instructOverride: true,
-                    systemPrompt: structured ? SYSTEM : fallbackSystemPrompt(),
+                    systemPrompt: PLANNER_SYSTEM_PROMPT,
                     suppressErrorToasts: true,
                     ...(structured ? { jsonSchema: ANALYSIS_SCHEMA } : {}),
                     trimNames: false,
@@ -1065,8 +1066,7 @@ async function requestAnalysisOnce(prompt, externalSignal) {
         let reasoningPayload = reasoning.payload;
         let samplingEnabled = !plannerModelRejectsTemperature(model.model);
         const sendRaw = async structured => {
-            const systemPrompt = structured ? SYSTEM : fallbackSystemPrompt();
-            const body = { chat_completion_source: model.provider, model: model.model, messages: [{ role: 'system', content: systemPrompt }, { role: 'user', content: prompt }], max_tokens: PLANNER_RESPONSE_TOKENS, stream: false, ...plannerTemperaturePayload(temperature, samplingEnabled), ...reasoningPayload, ...(structured ? { json_schema: ANALYSIS_SCHEMA } : {}), ...(model.provider === 'openrouter' ? { api_url: model.url.replace(/\/$/, '') } : { custom_url: model.url.replace(/\/$/, '') }) };
+            const body = { chat_completion_source: model.provider, model: model.model, messages: [{ role: 'system', content: PLANNER_SYSTEM_PROMPT }, { role: 'user', content: prompt }], max_tokens: PLANNER_RESPONSE_TOKENS, stream: false, ...plannerTemperaturePayload(temperature, samplingEnabled), ...reasoningPayload, ...(structured ? { json_schema: ANALYSIS_SCHEMA } : {}), ...(model.provider === 'openrouter' ? { api_url: model.url.replace(/\/$/, '') } : { custom_url: model.url.replace(/\/$/, '') }) };
             if (model.secretId) body.secret_id = model.secretId;
             const response = await fetch('/api/backends/chat-completions/generate', { method: 'POST', headers: currentContext().getRequestHeaders?.() || getRequestHeaders?.() || { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
             const payload = await response.json();

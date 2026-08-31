@@ -69,6 +69,7 @@ test('runtime planner logic contains no scenario-specific character or franchise
 test('planner system is compact but preserves the causal planning contract', () => {
     assert.match(SYSTEM, /one possibility pool spanning local, near, middle, far, and wildcard horizons/);
     assert.match(SYSTEM, /six to ten horizon items/);
+    assert.match(SYSTEM, /final, highest horizon must use slow stability/);
     assert.match(SYSTEM, /at least three materially different causal families/);
     assert.match(SYSTEM, /Every future path must grow from a present cause/);
     assert.match(SYSTEM, /three or four ranked next_guides with genuinely contrasting authorial functions/);
@@ -158,6 +159,7 @@ test('planner schema uses SillyTavern structured-output packaging', () => {
     assert.equal(ANALYSIS_SCHEMA.value.properties.inject.const, true);
     assert.equal(ANALYSIS_SCHEMA.value.properties.possibilities.minItems, 12);
     assert.equal(ANALYSIS_SCHEMA.value.properties.possibilities.maxItems, 18);
+    assert.deepEqual(ANALYSIS_SCHEMA.value.properties.story_frame.properties.frame.enum, ['grounded', 'heightened', 'surreal']);
     assert.deepEqual(ANALYSIS_SCHEMA.value.properties.possibilities.items.properties.horizon.enum, ['local', 'near', 'mid', 'far', 'wildcard']);
     assert.equal(ANALYSIS_SCHEMA.returnInvalid, true);
     assert.equal(ANALYSIS_SCHEMA.strict, true);
