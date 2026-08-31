@@ -4,23 +4,24 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.97';
-import { buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.97';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.97';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.97';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.97';
-import { normalizeModelListResponse } from './models.js?v=0.11.97';
-import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.97';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.97';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.97';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.97';
-import { estimateTokenCount } from './token-budget.js?v=0.11.97';
-import { completionText } from './completion-response.js?v=0.11.97';
-import { customOutputPayload, negotiateOutputModes, plannerMessages, plannerPrompt, PLANNER_OUTPUT_MODE } from './output-negotiation.js?v=0.11.97';
-import { clearPlannerPending, markPlannerPending, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.97';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.98';
+import { buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.98';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.98';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.98';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.98';
+import { normalizeModelListResponse } from './models.js?v=0.11.98';
+import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.98';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.98';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.98';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.98';
+import { effectivePlannerTemperature, normalizePlannerTemperature } from './sampling-policy.js?v=0.11.98';
+import { estimateTokenCount } from './token-budget.js?v=0.11.98';
+import { completionText } from './completion-response.js?v=0.11.98';
+import { customOutputPayload, negotiateOutputModes, plannerMessages, plannerPrompt, PLANNER_OUTPUT_MODE } from './output-negotiation.js?v=0.11.98';
+import { clearPlannerPending, markPlannerPending, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.98';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.97';
+const RUNTIME_VERSION = '0.11.98';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -166,14 +167,8 @@ function getSettings() {
     return settings;
 }
 
-function normalizePlannerTemperature(value) {
-    const temperature = Number(value);
-    if (!Number.isFinite(temperature)) return DEFAULT_SETTINGS.analysisTemperature;
-    return Math.round(Math.min(2, Math.max(0, temperature)) * 100) / 100;
-}
-
 function plannerTemperature() {
-    return normalizePlannerTemperature(getSettings().analysisTemperature);
+    return normalizePlannerTemperature(getSettings().analysisTemperature, DEFAULT_SETTINGS.analysisTemperature);
 }
 
 function messagesFromChat(chat = []) { return chat.map(m => ({ mes: m?.mes || '', is_user: Boolean(m?.is_user), name: m?.name || '' })); }
@@ -1000,14 +995,14 @@ async function recoverDetachedPlannerJobs() {
     }
 }
 
-async function negotiatePlannerOutput(run, modes, label, signal, cacheKey = '') {
+async function negotiatePlannerOutput(run, modes, label, signal, cacheKey = '', { retryInvalidOutput = true } = {}) {
     return negotiateOutputModes({
         run,
         modes,
         signal,
         cache: plannerOutputModeCache,
         cacheKey,
-        canFallback: error => error instanceof AnalysisValidationError || isUnsupportedStructuredOutputError(error),
+        canFallback: error => (retryInvalidOutput && error instanceof AnalysisValidationError) || isUnsupportedStructuredOutputError(error),
         onFallback: (error, mode, nextMode) => {
             console.warn(`[${EXTENSION_ID}] ${label} returned unusable ${mode} output; retrying with ${nextMode} compatibility`, error);
         },
@@ -1028,7 +1023,7 @@ function isUnsupportedTemperatureError(error) {
     const text = [error?.message, error?.error?.message, error?.cause?.message, serialized, String(error || '')]
         .filter(Boolean)
         .join('\n');
-    return /(?:unsupported parameter.{0,160}temperature|temperature.{0,160}(?:not supported|unsupported))/is.test(text);
+    return /(?:unsupported parameter.{0,160}temperature|temperature.{0,160}(?:not supported|unsupported|out of range|must be|less than|greater than|between|maximum|at most|invalid))/is.test(text);
 }
 
 async function retryWithoutUnsupportedTemperature(run, disableSampling) {
@@ -1042,8 +1037,10 @@ async function retryWithoutUnsupportedTemperature(run, disableSampling) {
     }
 }
 
-function plannerTemperaturePayload(temperature, samplingEnabled) {
-    return samplingEnabled ? { temperature: normalizePlannerTemperature(temperature) } : {};
+function plannerTemperaturePayload(temperature, samplingEnabled, target = {}) {
+    return samplingEnabled
+        ? { temperature: effectivePlannerTemperature(temperature, target, DEFAULT_SETTINGS.analysisTemperature) }
+        : {};
 }
 
 function plannerModelRejectsTemperature(model) {
@@ -1058,7 +1055,11 @@ function isolatePlannerGenerationData(generateData, reasoningMode, temperature =
     generateData.stream = false;
     generateData.n = 1;
     if (samplingEnabled) {
-        generateData.temperature = normalizePlannerTemperature(temperature);
+        generateData.temperature = effectivePlannerTemperature(temperature, {
+            source: generateData.chat_completion_source,
+            model: generateData.model,
+            url: generateData.custom_url || generateData.reverse_proxy || generateData.zai_endpoint,
+        }, DEFAULT_SETTINGS.analysisTemperature);
         generateData.top_p = 1;
         generateData.frequency_penalty = 0;
         generateData.presence_penalty = 0;
@@ -1169,7 +1170,11 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null) 
                 {
                     ...(mode === PLANNER_OUTPUT_MODE.JSON_SCHEMA ? { json_schema: ANALYSIS_SCHEMA } : {}),
                     custom_prompt_post_processing: '',
-                    ...plannerTemperaturePayload(temperature, samplingEnabled),
+                    ...plannerTemperaturePayload(temperature, samplingEnabled, {
+                        source: apiMap.source,
+                        model: profile.model,
+                        url: profile['api-url'],
+                    }),
                     ...reasoningPayload,
                     ...detachedMarker,
                 },
@@ -1266,7 +1271,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null) 
         let samplingEnabled = !plannerModelRejectsTemperature(model.model);
         const sendRaw = async mode => {
             const modePayload = model.provider === 'custom' ? customOutputPayload(reasoningPayload, mode) : reasoningPayload;
-            const body = { chat_completion_source: model.provider, model: model.model, messages: plannerMessages(PLANNER_SYSTEM_PROMPT, prompt, ANALYSIS_SCHEMA, mode), max_tokens: PLANNER_RESPONSE_TOKENS, stream: false, ...plannerTemperaturePayload(temperature, samplingEnabled), ...modePayload, ...(mode === PLANNER_OUTPUT_MODE.JSON_SCHEMA ? { json_schema: ANALYSIS_SCHEMA } : {}), ...(model.provider === 'openrouter' ? { api_url: model.url.replace(/\/$/, '') } : { custom_url: model.url.replace(/\/$/, '') }), ...detachedMarker };
+            const body = { chat_completion_source: model.provider, model: model.model, messages: plannerMessages(PLANNER_SYSTEM_PROMPT, prompt, ANALYSIS_SCHEMA, mode), max_tokens: PLANNER_RESPONSE_TOKENS, stream: false, ...plannerTemperaturePayload(temperature, samplingEnabled, { source: model.provider, model: model.model, url: model.url }), ...modePayload, ...(mode === PLANNER_OUTPUT_MODE.JSON_SCHEMA ? { json_schema: ANALYSIS_SCHEMA } : {}), ...(model.provider === 'openrouter' ? { api_url: model.url.replace(/\/$/, '') } : { custom_url: model.url.replace(/\/$/, '') }), ...detachedMarker };
             if (model.secretId) body.secret_id = model.secretId;
             const response = await fetch('/api/backends/chat-completions/generate', { method: 'POST', headers: currentContext().getRequestHeaders?.() || getRequestHeaders?.() || { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
             const payload = await response.json();
@@ -1289,9 +1294,10 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null) 
                 return send(mode);
             }
         };
+        const glmTarget = model.provider === 'custom' && /^(?:.*\/)?glm[-_.]/i.test(model.model);
         const modes = model.provider === 'custom'
-            ? (/^(?:.*\/)?glm[-_.]/i.test(model.model)
-                ? [PLANNER_OUTPUT_MODE.JSON_OBJECT, PLANNER_OUTPUT_MODE.JSON_SCHEMA, PLANNER_OUTPUT_MODE.PROMPT_ONLY]
+            ? (glmTarget
+                ? [PLANNER_OUTPUT_MODE.JSON_OBJECT, PLANNER_OUTPUT_MODE.PROMPT_ONLY]
                 : [PLANNER_OUTPUT_MODE.JSON_SCHEMA, PLANNER_OUTPUT_MODE.JSON_OBJECT, PLANNER_OUTPUT_MODE.PROMPT_ONLY])
             : [PLANNER_OUTPUT_MODE.JSON_SCHEMA, PLANNER_OUTPUT_MODE.PROMPT_ONLY];
         return negotiatePlannerOutput(
@@ -1300,6 +1306,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null) 
             'direct model',
             controller.signal,
             `direct:${model.provider}:${model.model}:${model.url}`,
+            { retryInvalidOutput: !glmTarget },
         );
     } finally {
         externalSignal?.removeEventListener('abort', forwardAbort);
