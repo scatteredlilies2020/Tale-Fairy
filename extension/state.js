@@ -1,5 +1,5 @@
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 40;
+export const STATE_VERSION = 42;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -28,7 +28,7 @@ export function defaultState() {
         loreModel: { worldIdentity: '', baseline: '', variantRules: [], continuitySignatures: [], baselineDepartures: [], trajectorySignals: [], activeForces: [], confidence: 'low' },
         objectives: [],
         continuityThreads: [],
-        selfChallenge: { weakness: '', counterRoute: '', decision: '' },
+        selfChallenge: { weakness: '', counterRoute: '', mechanismCheck: '', decision: '' },
         entities: [],
         possibilities: [],
         pathways: [],
@@ -87,6 +87,7 @@ function normalizeSelfChallenge(value = {}) {
     return {
         weakness: clippedText(value.weakness, 260),
         counterRoute: clippedText(value.counterRoute ?? value.counter_route, 260),
+        mechanismCheck: clippedText(value.mechanismCheck ?? value.mechanism_check, 280),
         decision: clippedText(value.decision, 320),
     };
 }
@@ -112,7 +113,7 @@ function normalizePossibility(value = {}) {
     const origin = text(value.origin, 'inferred').toLowerCase();
     const rawDescription = text(value.description);
     const description = clippedText(rawDescription.length === 120 && !/[.!?…]$/u.test(rawDescription) ? `${rawDescription}\u2060` : rawDescription, 120);
-    return { description, horizon: ['local', 'near', 'mid', 'far', 'wildcard'].includes(horizon) ? horizon : '', conditions: cap(value.conditions, 1).map(item => clippedText(item, 90)).filter(Boolean), force: text(value.force).slice(0, 20), lane: ROUTE_LANES.has(lane) ? lane : 'extra', agent: clippedText(value.agent, 100), scale: ROUTE_SCALES.has(scale) ? scale : 'scene', origin: ['established', 'inferred', 'original'].includes(origin) ? origin : 'inferred' };
+    return { description, horizon: ['local', 'near', 'mid', 'far', 'wildcard'].includes(horizon) ? horizon : '', conditions: cap(value.conditions, 1).map(item => clippedText(item, 90)).filter(Boolean), force: text(value.force).slice(0, 20), lane: ROUTE_LANES.has(lane) ? lane : 'extra', agent: clippedText(value.agent, 100), engine: clippedText(value.engine, 100), scale: ROUTE_SCALES.has(scale) ? scale : 'scene', origin: ['established', 'inferred', 'original'].includes(origin) ? origin : 'inferred' };
 }
 function normalizeDirectorScore(value = {}) {
     const causalTempo = text(value.causalTempo ?? value.causal_tempo, 'hold').toLowerCase();
@@ -158,13 +159,17 @@ function normalizePathway(value = {}) {
     const relation = text(value.relation, 'independent').toLowerCase();
     const scale = text(value.scale, 'scene').toLowerCase();
     const origin = text(value.origin, 'inferred').toLowerCase();
+    const mechanismStatus = text(value.mechanismStatus ?? value.mechanism_status).toLowerCase();
     return {
         id: text(value.id).slice(0, 100),
         lane: ROUTE_LANES.has(lane) ? lane : 'extra',
         agent: clippedText(value.agent, 100),
+        engine: clippedText(value.engine, 100),
         relation: ROUTE_RELATIONS.has(relation) ? relation : 'independent',
         scale: ROUTE_SCALES.has(scale) ? scale : 'scene',
         origin: ['established', 'inferred', 'original'].includes(origin) ? origin : 'inferred',
+        mechanismStatus: ['evidenced', 'new'].includes(mechanismStatus) ? mechanismStatus : '',
+        mechanismBasis: clippedText(value.mechanismBasis ?? value.mechanism_basis, 180),
         direction: text(value.direction).slice(0, 320),
         when: text(value.when).slice(0, 240),
         responseBias: text(value.responseBias ?? value.response_bias).slice(0, 300),
@@ -181,6 +186,7 @@ function normalizeNextGuide(value = {}) {
     const disclosure = text(value.disclosure, 'none').toLowerCase();
     const routeLane = text(value.routeLane ?? value.route_lane, 'extra').toLowerCase();
     const scale = text(value.scale, 'scene').toLowerCase();
+    const mechanismStatus = text(value.mechanismStatus ?? value.mechanism_status).toLowerCase();
     return {
         id: clippedText(value.id, 100),
         direction: clippedText(value.direction, 280),
@@ -190,8 +196,11 @@ function normalizeNextGuide(value = {}) {
         worldDelta: clippedText(value.worldDelta ?? value.world_delta, 140),
         routeLane: ROUTE_LANES.has(routeLane) ? routeLane : 'extra',
         causalAgent: clippedText(value.causalAgent ?? value.causal_agent, 100),
+        causalEngine: clippedText(value.causalEngine ?? value.causal_engine, 100),
         scale: ROUTE_SCALES.has(scale) ? scale : 'scene',
         origin: ['established', 'inferred', 'original'].includes(origin) ? origin : 'inferred',
+        mechanismStatus: ['evidenced', 'new'].includes(mechanismStatus) ? mechanismStatus : '',
+        mechanismBasis: clippedText(value.mechanismBasis ?? value.mechanism_basis, 180),
         basis: clippedText(value.basis, 100),
         strength: ['strong', 'moderate', 'light'].includes(strength) ? strength : 'moderate',
         sourcePathways: cap(value.sourcePathways ?? value.source_pathways, 3).map(item => clippedText(item, 100)).filter(Boolean),
@@ -219,6 +228,7 @@ function normalizeEvent(value = {}) {
     const confidence = text(value.confidence, 'low').toLowerCase();
     return {
         id: text(value.id).slice(0, 80),
+        engine: text(value.engine).slice(0, 100),
         title: text(value.title).slice(0, 120),
         summary: text(value.summary).slice(0, 360),
         scope: ['onscreen', 'offscreen'].includes(scope) ? scope : 'onscreen',
@@ -279,14 +289,18 @@ function normalizeHorizon(value = {}, index = 0, items = [value]) {
     const relation = text(value.relation, 'independent').toLowerCase();
     const scale = text(value.scale, 'scene').toLowerCase();
     const origin = text(value.origin, 'inferred').toLowerCase();
+    const mechanismStatus = text(value.mechanismStatus ?? value.mechanism_status).toLowerCase();
     return {
         id: text(value.id).slice(0, 100),
         lane: ROUTE_LANES.has(lane) ? lane : 'extra',
         branch: text(value.branch, 'current-trajectory').slice(0, 80),
         agent: clippedText(value.agent, 100),
+        engine: clippedText(value.engine, 100),
         relation: ROUTE_RELATIONS.has(relation) ? relation : 'independent',
         scale: ROUTE_SCALES.has(scale) ? scale : 'scene',
         origin: ['established', 'inferred', 'original'].includes(origin) ? origin : 'inferred',
+        mechanismStatus: ['evidenced', 'new'].includes(mechanismStatus) ? mechanismStatus : '',
+        mechanismBasis: clippedText(value.mechanismBasis ?? value.mechanism_basis, 180),
         direction: text(value.direction).slice(0, 360),
         timeframe: (!rawTimeframe || GENERIC_HORIZON_TIMEFRAME.test(rawTimeframe)
             ? inferredHorizonTimeframe(index, items.length)
@@ -362,7 +376,7 @@ export function normalizeState(input = {}) {
     // v32 gives future horizons explicit branches; v33 rebuilds once to seed
     // the durable established-open-thread inventory; v34 requires the planner
     // to challenge its preferred route before committing to it; v35 rebuilds
-    // ranked alternatives with durable-hook diversity and tolerant schema repair;
+    // ranked alternatives with durable-hook diversity and tolerant schema handling;
     // v37 rebuilds once for persistent omniscient actors, lore, RP-specific
     // continuity signatures, and explicit departures from inferred baselines;
     // v38 rebuilds once after clipped historical evidence could displace
@@ -370,7 +384,11 @@ export function normalizeState(input = {}) {
     // rebuilds with a token-adaptive raw recent tail instead of a fixed turn
     // count while retaining persistent summaries and historical retrieval;
     // v40 preserves the complete typed route portfolio instead of silently
-    // dropping three future paths and rebuilds route-specific guide functions.
+    // dropping three future paths and rebuilds route-specific guide functions;
+    // v41 separates the underlying causal engines so one recent matter cannot
+    // masquerade as several independent futures by changing actor or timing;
+    // v42 binds each selected guide to its route's engine so it cannot consume
+    // another route's signature development.
     const unsafePlannerUpgrade = inputVersion > 0 && inputVersion < 18;
     const movementUpgrade = inputVersion > 0 && inputVersion < STATE_VERSION;
     const recoveryUpgrade = inputVersion > 0 && inputVersion < 26;
@@ -420,7 +438,7 @@ export function normalizeState(input = {}) {
         contextLedger: chronologyAuditUpgrade ? '' : text(value.contextLedger).slice(0, 3000),
         ledgerMessageCount: Math.max(0, Number(value.ledgerMessageCount) || 0),
         ledgerUpdatedAt: Number(value.ledgerUpdatedAt) || 0,
-        narrativeEvents: recoveryUpgrade || chronologyAuditUpgrade ? [] : cap(value.narrativeEvents, MAX_EVENTS).map(normalizeEvent).filter(event => event.title && event.summary),
+        narrativeEvents: recoveryUpgrade || chronologyAuditUpgrade ? [] : cap(value.narrativeEvents, MAX_EVENTS).map(normalizeEvent).filter(event => event.title && event.summary && event.engine),
         cueAudit: normalizeCueAudit(value.cueAudit),
         lastAnalysisFingerprint: text(value.lastAnalysisFingerprint),
         sourceMessageCount: Math.max(0, Number(value.sourceMessageCount) || 0),
@@ -478,14 +496,14 @@ export function stateForPrompt(state) {
             item.conditions[0] ? `if ${item.conditions[0].slice(0, 60)}` : '',
             `[${item.lane || 'extra'}, ${item.horizon || 'unscoped'}, ${item.scale || 'scene'}, ${item.origin || 'inferred'}, ${item.force.slice(0, 12) || 'light'}]`,
         ].filter(Boolean).join(' | ')),
-        pathways: s.pathways.map(item => ({ id: item.id, lane: item.lane, agent: item.agent, relation: item.relation, scale: item.scale, origin: item.origin, direction: item.direction.slice(0, 220), when: item.when.slice(0, 180), responseBias: item.responseBias.slice(0, 200), horizon: item.horizon, status: item.status, conditions: item.conditions.slice(0, 2), change: item.change })),
-        nextGuides: s.nextGuides.map(item => ({ id: item.id, routeLane: item.routeLane, causalAgent: item.causalAgent, scale: item.scale, direction: item.direction.slice(0, 240), useWhen: item.useWhen.slice(0, 160), dropWhen: item.dropWhen.slice(0, 160), causalRole: item.causalRole.slice(0, 180), worldDelta: item.worldDelta.slice(0, 180), origin: item.origin, basis: item.basis.slice(0, 140), strength: item.strength, sourcePathways: item.sourcePathways, causalEventIds: item.causalEventIds, disclosure: item.disclosure })),
+        pathways: s.pathways.map(item => ({ id: item.id, lane: item.lane, agent: item.agent, engine: item.engine, relation: item.relation, scale: item.scale, origin: item.origin, mechanismStatus: item.mechanismStatus, mechanismBasis: item.mechanismBasis, direction: item.direction.slice(0, 220), when: item.when.slice(0, 180), responseBias: item.responseBias.slice(0, 200), horizon: item.horizon, status: item.status, conditions: item.conditions.slice(0, 2), change: item.change })),
+        nextGuides: s.nextGuides.map(item => ({ id: item.id, routeLane: item.routeLane, causalAgent: item.causalAgent, causalEngine: item.causalEngine, scale: item.scale, direction: item.direction.slice(0, 240), useWhen: item.useWhen.slice(0, 160), dropWhen: item.dropWhen.slice(0, 160), causalRole: item.causalRole.slice(0, 180), worldDelta: item.worldDelta.slice(0, 180), origin: item.origin, mechanismStatus: item.mechanismStatus, mechanismBasis: item.mechanismBasis, basis: item.basis.slice(0, 140), strength: item.strength, sourcePathways: item.sourcePathways, causalEventIds: item.causalEventIds, disclosure: item.disclosure })),
         // Carry the old live beat only long enough for a v9 state to be
         // converted. Current pathway states do not spend prompt tokens on it.
         activeBeat: s.pathways.length ? undefined : { id: s.activeBeat.id, objective: s.activeBeat.objective, nextAction: s.activeBeat.nextAction, completion: s.activeBeat.completion, lifecycle: s.activeBeat.lifecycle },
         beatHistory: s.beatHistory.slice(-1).map(beat => ({ id: beat.id, objective: beat.objective, completion: beat.completion, lifecycle: beat.lifecycle })),
         planHorizons: {
-            items: s.planHorizons.items.map(item => ({ id: item.id, lane: item.lane, branch: item.branch, agent: item.agent, relation: item.relation, scale: item.scale, origin: item.origin, direction: item.direction.slice(0, 240), timeframe: item.timeframe, stability: item.stability, conditions: item.conditions.slice(0, 1), change: item.change })),
+            items: s.planHorizons.items.map(item => ({ id: item.id, lane: item.lane, branch: item.branch, agent: item.agent, engine: item.engine, relation: item.relation, scale: item.scale, origin: item.origin, mechanismStatus: item.mechanismStatus, mechanismBasis: item.mechanismBasis, direction: item.direction.slice(0, 240), timeframe: item.timeframe, stability: item.stability, conditions: item.conditions.slice(0, 1), change: item.change })),
             deviation: s.planHorizons.deviation,
         },
         canonConstraints: s.canonConstraints.slice(-8).map(item => item.slice(0, 360)),
@@ -507,6 +525,7 @@ export function stateForPrompt(state) {
         },
         narrativeEvents: s.narrativeEvents.slice(-6).map(event => ({
             id: event.id,
+            engine: event.engine,
             title: event.title,
             summary: event.summary.slice(0, 180),
             scope: event.scope,

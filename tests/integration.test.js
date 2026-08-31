@@ -11,9 +11,12 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.84');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.84');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.84');
+    assert.equal(manifest.version, '0.11.94');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.94');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.94');
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.94'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.94'/);
+    assert.match(source, /from '\.\/completion-response\.js\?v=0\.11\.94'/);
 });
 
 test('injection sends layered authorial control while concrete realization and future outcomes stay private', () => {
@@ -298,6 +301,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(template, /No generated next guides yet\./);
     assert.match(template, /No generated pathways yet\./);
     assert.match(template, /No generated planning horizons yet\./);
+    assert.match(source, /Mechanism: \$\{item\.mechanismStatus\}/);
     assert.match(source, /const generatedValue = value => analyzed \? value : ''/);
     assert.match(source, /No generated narrative events yet\./);
     assert.match(source, /Preferred current beat/);

@@ -1,6 +1,6 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js';
-import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js';
-import { compactSummarySources } from './summary-context.js';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.11.94';
+import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.94';
+import { compactSummarySources } from './summary-context.js?v=0.11.94';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 12000;
 
@@ -48,14 +48,14 @@ export const ANALYSIS_SCHEMA_VALUE = {
         }, required: ['identity', 'baseline', 'variant_rules', 'rp_changes', 'signatures', 'trajectory_signals', 'forces', 'confidence'] },
         thread_updates: { type: 'array', maxItems: 6, items: { type: 'object', additionalProperties: false, properties: { op: { type: 'string', enum: ['upsert', 'retire'] }, id: text(100), thread: text(180), state: text(240), status: { type: 'string', enum: ['active', 'dormant', 'due', 'blocked'] }, basis: text(160) }, required: ['op', 'id', 'thread', 'state', 'status', 'basis'] } },
         actor_updates: { type: 'array', maxItems: 6, items: { type: 'object', additionalProperties: false, properties: { op: { type: 'string', enum: ['upsert', 'retire'] }, name: text(100), state: text(220), location: text(140), perspective: text(180), motivation: text(180), knowledge: text(180), constraints: text(160), agenda: text(180), window: text(100) }, required: ['op', 'name', 'state', 'location', 'perspective', 'motivation', 'knowledge', 'constraints', 'agenda', 'window'] } },
-        routes: { type: 'array', minItems: 6, maxItems: 8, items: { type: 'object', additionalProperties: false, properties: { id: text(100), lane: { type: 'string', enum: ROUTE_LANES }, branch: text(80), agent: text(100), relation: { type: 'string', enum: ROUTE_RELATIONS }, scale: { type: 'string', enum: ROUTE_SCALES }, direction: text(280), horizon: { type: 'string', enum: ['local', 'near', 'mid', 'far', 'wildcard'] }, timeframe: text(120), conditions: strings(2, 140), status: { type: 'string', enum: ['foreground', 'available', 'latent', 'blocked'] }, origin: { type: 'string', enum: ['established', 'inferred', 'original'] }, basis: text(140), strength: { type: 'string', enum: ['strong', 'moderate', 'light'] } }, required: ['id', 'lane', 'branch', 'agent', 'relation', 'scale', 'direction', 'horizon', 'timeframe', 'conditions', 'status', 'origin', 'basis', 'strength'] } },
+        routes: { type: 'array', minItems: 6, maxItems: 8, items: { type: 'object', additionalProperties: false, properties: { id: text(100), lane: { type: 'string', enum: ROUTE_LANES }, branch: text(80), agent: text(100), engine: text(100), relation: { type: 'string', enum: ROUTE_RELATIONS }, scale: { type: 'string', enum: ROUTE_SCALES }, direction: text(280), horizon: { type: 'string', enum: ['local', 'near', 'mid', 'far', 'wildcard'] }, timeframe: text(120), conditions: strings(2, 140), status: { type: 'string', enum: ['foreground', 'available', 'latent', 'blocked'] }, origin: { type: 'string', enum: ['established', 'inferred', 'original'] }, basis: text(140), mechanism_status: { type: 'string', enum: ['evidenced', 'new'] }, mechanism_basis: text(180), strength: { type: 'string', enum: ['strong', 'moderate', 'light'] } }, required: ['id', 'lane', 'branch', 'agent', 'engine', 'relation', 'scale', 'direction', 'horizon', 'timeframe', 'conditions', 'status', 'origin', 'basis', 'mechanism_status', 'mechanism_basis', 'strength'] } },
         portfolio: { type: 'object', additionalProperties: false, properties: { immediate: text(100), character: text(100), relationship_institution: text(100), lore_world: text(100), original: text(100), long_range: text(100) }, required: ['immediate', 'character', 'relationship_institution', 'lore_world', 'original', 'long_range'] },
-        guides: { type: 'array', minItems: 4, maxItems: 4, items: { type: 'object', additionalProperties: false, properties: { id: text(100), route_id: text(100), direction: text(280), use_when: text(140), drop_when: text(120), operation: { type: 'string', enum: ['hold', 'seed', 'advance', 'converge', 'payoff', 'redirect', 'recover'] }, function: text(160), world_delta: text(160), disclosure: { type: 'string', enum: ['none', 'consequence-only', 'partial-clue', 'reveal-cause'] }, event_ids: strings(2, 80) }, required: ['id', 'route_id', 'direction', 'use_when', 'drop_when', 'operation', 'function', 'world_delta', 'disclosure', 'event_ids'] } },
-        event_updates: { type: 'array', maxItems: 4, items: { type: 'object', additionalProperties: false, properties: { op: { type: 'string', enum: ['upsert', 'retire'] }, id: text(80), title: text(120), summary: text(300), scope: { type: 'string', enum: ['onscreen', 'offscreen'] }, epistemic_status: { type: 'string', enum: ['established', 'simulated', 'inferred', 'possible', 'disproved'] }, disclosure: { type: 'string', enum: ['hidden', 'signaled', 'revealed'] }, status: { type: 'string', enum: ['active', 'latent', 'manifested', 'resolved', 'retired'] }, timing: text(120), due_state: { type: 'string', enum: ['unscheduled', 'pending', 'due', 'overdue'] }, cause: text(220), requirements: strings(3, 120), basis: text(160) }, required: ['op', 'id', 'title', 'summary', 'scope', 'epistemic_status', 'disclosure', 'status', 'timing', 'due_state', 'cause', 'requirements', 'basis'] } },
+        guides: { type: 'array', minItems: 4, maxItems: 4, items: { type: 'object', additionalProperties: false, properties: { id: text(100), route_id: text(100), engine: text(100), direction: text(280), use_when: text(140), drop_when: text(120), operation: { type: 'string', enum: ['hold', 'seed', 'advance', 'converge', 'payoff', 'redirect', 'recover'] }, function: text(160), world_delta: text(160), disclosure: { type: 'string', enum: ['none', 'consequence-only', 'partial-clue', 'reveal-cause'] }, event_ids: strings(2, 80) }, required: ['id', 'route_id', 'engine', 'direction', 'use_when', 'drop_when', 'operation', 'function', 'world_delta', 'disclosure', 'event_ids'] } },
+        event_updates: { type: 'array', maxItems: 4, items: { type: 'object', additionalProperties: false, properties: { op: { type: 'string', enum: ['upsert', 'retire'] }, id: text(80), engine: text(100), title: text(120), summary: text(300), scope: { type: 'string', enum: ['onscreen', 'offscreen'] }, epistemic_status: { type: 'string', enum: ['established', 'simulated', 'inferred', 'possible', 'disproved'] }, disclosure: { type: 'string', enum: ['hidden', 'signaled', 'revealed'] }, status: { type: 'string', enum: ['active', 'latent', 'manifested', 'resolved', 'retired'] }, timing: text(120), due_state: { type: 'string', enum: ['unscheduled', 'pending', 'due', 'overdue'] }, cause: text(220), requirements: strings(3, 120), basis: text(160) }, required: ['op', 'id', 'engine', 'title', 'summary', 'scope', 'epistemic_status', 'disclosure', 'status', 'timing', 'due_state', 'cause', 'requirements', 'basis'] } },
         canon_updates: { type: 'array', maxItems: 4, items: { type: 'object', additionalProperties: false, properties: { op: { type: 'string', enum: ['add', 'remove'] }, fact: text(500) }, required: ['op', 'fact'] } },
         ledger: text(1800),
         note_resolution: { anyOf: [{ type: 'object', additionalProperties: false, properties: { kind: { type: 'string', enum: ['suggest', 'correct', 'establish', 'forbid'] } }, required: ['kind'] }, { type: 'null' }] },
-        audit: { type: 'object', additionalProperties: false, properties: { weakness: text(220), counter_route: text(220), decision: text(260) }, required: ['weakness', 'counter_route', 'decision'] },
+        audit: { type: 'object', additionalProperties: false, properties: { weakness: text(220), counter_route: text(220), mechanism_check: text(240), decision: text(260) }, required: ['weakness', 'counter_route', 'mechanism_check', 'decision'] },
         guidance: text(700),
     },
     required: ['contract_version', 'current', 'decision', 'world', 'thread_updates', 'actor_updates', 'routes', 'portfolio', 'guides', 'event_updates', 'canon_updates', 'ledger', 'note_resolution', 'audit', 'guidance'],
@@ -105,17 +105,21 @@ function validateCompactAnalysisResult(result) {
     stringsPresent(result.current, ['frame', 'frame_basis', 'status', 'immediate_action', 'activity', 'situation', 'wider_world', 'durable_trajectory'], 'current');
     stringsPresent(result.decision, ['operation', 'story_identity', 'scene_function', 'arc_direction', 'aim', 'basis'], 'decision');
     stringsPresent(result.world, ['identity', 'baseline'], 'world');
-    stringsPresent(result.audit, ['weakness', 'counter_route', 'decision'], 'audit');
+    stringsPresent(result.audit, ['weakness', 'counter_route', 'mechanism_check', 'decision'], 'audit');
     stringsPresent(result.portfolio, Object.keys(PORTFOLIO_LANES), 'portfolio');
 
     for (const key of ['thread_updates', 'actor_updates', 'routes', 'guides', 'event_updates', 'canon_updates']) {
         if (!Array.isArray(result[key])) errors.push(`${key} must be an array`);
     }
+    for (const [index, event] of (Array.isArray(result.event_updates) ? result.event_updates : []).entries()) {
+        if (typeof event?.engine !== 'string' || !event.engine.trim()) errors.push(`event_updates[${index}].engine must be a non-empty string`);
+    }
     if (Array.isArray(result.routes) && (result.routes.length < 6 || result.routes.length > 8)) errors.push('routes must contain 6 to 8 varied directions');
     for (const [index, route] of (Array.isArray(result.routes) ? result.routes : []).entries()) {
-        for (const key of ['id', 'lane', 'branch', 'agent', 'relation', 'scale', 'direction', 'timeframe', 'basis']) {
+        for (const key of ['id', 'lane', 'branch', 'agent', 'engine', 'relation', 'scale', 'direction', 'timeframe', 'basis', 'mechanism_basis']) {
             if (typeof route?.[key] !== 'string' || !route[key].trim()) errors.push(`routes[${index}].${key} must be a non-empty string`);
         }
+        if (!['evidenced', 'new'].includes(route?.mechanism_status)) errors.push(`routes[${index}].mechanism_status must be evidenced or new`);
         if (!Array.isArray(route?.conditions)) errors.push(`routes[${index}].conditions must be an array`);
     }
     const routes = Array.isArray(result.routes) ? result.routes : [];
@@ -123,11 +127,12 @@ function validateCompactAnalysisResult(result) {
     if (new Set(routeIds).size !== routeIds.length) errors.push('routes must use distinct ids');
     for (const lane of REQUIRED_ROUTE_LANES) {
         if (!routes.some(route => route?.lane === lane)) errors.push(`routes must include the ${lane} lane`);
-        if (routes.filter(route => route?.lane === lane).length > 1) errors.push(`routes may use the ${lane} lane only once; additional routes use extra`);
     }
-    if (routes.filter(route => route?.lane === 'extra').length !== Math.max(0, routes.length - REQUIRED_ROUTE_LANES.length)) errors.push('routes beyond the six required lanes must use the extra lane');
-    const routeBranches = routes.map(route => String(route?.branch || '').trim().toLocaleLowerCase()).filter(Boolean);
-    if (new Set(routeBranches).size !== routeBranches.length) errors.push('routes must use distinct causal branches');
+    const routeEngines = routes.map(route => String(route?.engine || '').trim().toLocaleLowerCase()).filter(Boolean);
+    if (new Set(routeEngines).size < Math.min(5, routes.length)) errors.push('routes must use at least five distinct causal engines');
+    const immediateEngine = String(routes.find(route => route?.lane === 'immediate')?.engine || '').trim().toLocaleLowerCase();
+    const longRangeEngine = String(routes.find(route => route?.lane === 'long-range')?.engine || '').trim().toLocaleLowerCase();
+    if (immediateEngine && longRangeEngine && immediateEngine === longRangeEngine) errors.push('the long-range route must not be a delayed version of the immediate causal engine');
     if (!routes.some(route => route?.lane === 'original' && route?.origin === 'original')) errors.push('the original lane must identify a compatible new cause as original');
     if (!routes.some(route => route?.lane === 'long-range' && ['months-years', 'open-ended'].includes(route?.scale))) errors.push('the long-range lane must reach months-years or open-ended scale');
     if (new Set(routes.map(route => String(route?.agent || '').trim().toLocaleLowerCase()).filter(Boolean)).size < 3) errors.push('routes must use at least three independent causal agents or centers');
@@ -137,7 +142,7 @@ function validateCompactAnalysisResult(result) {
     }
     if (Array.isArray(result.guides) && result.guides.length !== 4) errors.push('guides must contain exactly 4 ranked directions');
     for (const [index, guide] of (Array.isArray(result.guides) ? result.guides : []).entries()) {
-        for (const key of ['id', 'route_id', 'direction', 'use_when', 'drop_when', 'operation', 'function', 'world_delta']) {
+        for (const key of ['id', 'route_id', 'engine', 'direction', 'use_when', 'drop_when', 'operation', 'function', 'world_delta']) {
             if (typeof guide?.[key] !== 'string' || !guide[key].trim()) errors.push(`guides[${index}].${key} must be a non-empty string`);
         }
         if (!Array.isArray(guide?.event_ids)) errors.push(`guides[${index}].event_ids must be an array`);
@@ -145,6 +150,18 @@ function validateCompactAnalysisResult(result) {
     const guideRouteIds = (Array.isArray(result.guides) ? result.guides : []).map(guide => String(guide?.route_id || '').trim().toLocaleLowerCase());
     if (new Set(guideRouteIds).size !== guideRouteIds.length) errors.push('guides must reference four distinct routes');
     if (guideRouteIds.some(id => !routeIds.includes(id))) errors.push('every guide must reference a returned route');
+    for (const [index, guide] of (Array.isArray(result.guides) ? result.guides : []).entries()) {
+        const route = routes.find(item => String(item?.id || '').trim().toLocaleLowerCase() === guideRouteIds[index]);
+        if (route && String(guide?.engine || '').trim().toLocaleLowerCase() !== String(route.engine || '').trim().toLocaleLowerCase()) {
+            errors.push(`guides[${index}].engine must match its source route engine`);
+        }
+        for (const eventId of asArray(guide?.event_ids)) {
+            const event = asArray(result.event_updates).find(item => item?.op !== 'retire' && String(item?.id || '').trim().toLocaleLowerCase() === String(eventId || '').trim().toLocaleLowerCase());
+            if (event && String(event.engine || '').trim().toLocaleLowerCase() !== String(guide?.engine || '').trim().toLocaleLowerCase()) {
+                errors.push(`guides[${index}] may link only events owned by its causal engine`);
+            }
+        }
+    }
     const guideLanes = guideRouteIds.map(id => routes.find(route => String(route?.id || '').trim().toLocaleLowerCase() === id)?.lane).filter(Boolean);
     if (new Set(guideLanes).size !== guideLanes.length) errors.push('guides must draw from four distinct route lanes');
     if (typeof result.ledger !== 'string') errors.push('ledger must be a string');
@@ -567,14 +584,14 @@ function compactPromptStateForPriority(current = {}) {
         scene: current.scene,
         objectives: (current.objectives || []).slice(-5).map(item => ({ title: compactText(item.title, 80), detail: compactText(item.detail, 90), status: compactText(item.status, 30) })),
         continuityThreads: (current.continuityThreads || []).slice(0, 8).map(item => ({ id: compactText(item.id, 60), thread: compactText(item.thread, 110), state: compactText(item.state, 130), status: item.status, basis: compactText(item.basis, 90) })),
-        selfChallenge: current.selfChallenge ? { weakness: compactText(current.selfChallenge.weakness, 150), counterRoute: compactText(current.selfChallenge.counterRoute, 150), decision: compactText(current.selfChallenge.decision, 180) } : undefined,
+        selfChallenge: current.selfChallenge ? { weakness: compactText(current.selfChallenge.weakness, 150), counterRoute: compactText(current.selfChallenge.counterRoute, 150), mechanismCheck: compactText(current.selfChallenge.mechanismCheck, 150), decision: compactText(current.selfChallenge.decision, 180) } : undefined,
         entities: (current.entities || []).slice(-3).map(item => ({ name: compactText(item.name, 80), state: compactText(item.state, 100), location: compactText(item.location, 60), relevance: compactText(item.relevance, 60), perspective: compactText(item.perspective, 90), motivation: compactText(item.motivation, 100), knowledge: compactText(item.knowledge, 80), constraints: compactText(item.constraints, 80), agenda: compactText(item.agenda, 100) })),
         possibilities: (current.possibilities || []).slice(-6).map(item => compactText(item, 100)),
-        pathways: (current.pathways || []).slice(0, 8).map(item => ({ id: compactText(item.id, 60), lane: item.lane, agent: compactText(item.agent, 60), relation: item.relation, scale: item.scale, origin: item.origin, direction: compactText(item.direction, 140), when: compactText(item.when, 100), responseBias: compactText(item.responseBias, 120), horizon: compactText(item.horizon, 40), status: item.status, change: item.change })),
-        nextGuides: (current.nextGuides || []).slice(0, 4).map(item => ({ id: compactText(item.id, 60), routeLane: item.routeLane, causalAgent: compactText(item.causalAgent, 60), scale: item.scale, direction: compactText(item.direction, 140), useWhen: compactText(item.useWhen, 100), dropWhen: compactText(item.dropWhen, 100), causalRole: compactText(item.causalRole, 100), worldDelta: compactText(item.worldDelta, 100), origin: item.origin, basis: compactText(item.basis, 100), strength: item.strength, causalEventIds: item.causalEventIds, disclosure: item.disclosure })),
+        pathways: (current.pathways || []).slice(0, 8).map(item => ({ id: compactText(item.id, 60), lane: item.lane, agent: compactText(item.agent, 60), engine: compactText(item.engine, 60), relation: item.relation, scale: item.scale, origin: item.origin, mechanismStatus: item.mechanismStatus, mechanismBasis: compactText(item.mechanismBasis, 110), direction: compactText(item.direction, 140), when: compactText(item.when, 100), responseBias: compactText(item.responseBias, 120), horizon: compactText(item.horizon, 40), status: item.status, change: item.change })),
+        nextGuides: (current.nextGuides || []).slice(0, 4).map(item => ({ id: compactText(item.id, 60), routeLane: item.routeLane, causalAgent: compactText(item.causalAgent, 60), causalEngine: compactText(item.causalEngine, 60), scale: item.scale, direction: compactText(item.direction, 140), useWhen: compactText(item.useWhen, 100), dropWhen: compactText(item.dropWhen, 100), causalRole: compactText(item.causalRole, 100), worldDelta: compactText(item.worldDelta, 100), origin: item.origin, mechanismStatus: item.mechanismStatus, mechanismBasis: compactText(item.mechanismBasis, 110), basis: compactText(item.basis, 100), strength: item.strength, causalEventIds: item.causalEventIds, disclosure: item.disclosure })),
         activeBeat: current.pathways?.length ? undefined : current.activeBeat,
         planHorizons: {
-            items: (horizons.items || []).map(item => ({ id: compactText(item.id, 80), lane: item.lane, branch: compactText(item.branch, 60), agent: compactText(item.agent, 60), relation: item.relation, scale: item.scale, origin: item.origin, direction: compactText(item.direction, 140), timeframe: compactText(item.timeframe, 80), stability: item.stability, change: item.change })),
+            items: (horizons.items || []).map(item => ({ id: compactText(item.id, 80), lane: item.lane, branch: compactText(item.branch, 60), agent: compactText(item.agent, 60), engine: compactText(item.engine, 60), relation: item.relation, scale: item.scale, origin: item.origin, mechanismStatus: item.mechanismStatus, mechanismBasis: compactText(item.mechanismBasis, 110), direction: compactText(item.direction, 140), timeframe: compactText(item.timeframe, 80), stability: item.stability, change: item.change })),
             deviation: { level: horizons.deviation?.level, reason: compactText(horizons.deviation?.reason, 140) },
         },
         canonConstraints: (current.canonConstraints || []).slice(-6).map(item => compactText(item, 240)),
@@ -604,14 +621,14 @@ function compactPromptStateForBudget(current = {}) {
         scene: current.scene,
         objectives: (current.objectives || []).slice(-2).map(item => ({ title: compactText(item.title, 70), detail: compactText(item.detail, 70), status: compactText(item.status, 24) })),
         continuityThreads: (current.continuityThreads || []).slice(0, 5).map(item => ({ id: compactText(item.id, 40), thread: compactText(item.thread, 70), state: compactText(item.state, 80), status: item.status })),
-        selfChallenge: current.selfChallenge ? { weakness: compactText(current.selfChallenge.weakness, 90), counterRoute: compactText(current.selfChallenge.counterRoute, 90), decision: compactText(current.selfChallenge.decision, 110) } : undefined,
+        selfChallenge: current.selfChallenge ? { weakness: compactText(current.selfChallenge.weakness, 90), counterRoute: compactText(current.selfChallenge.counterRoute, 90), mechanismCheck: compactText(current.selfChallenge.mechanismCheck, 90), decision: compactText(current.selfChallenge.decision, 110) } : undefined,
         entities: (current.entities || []).slice(-2).map(item => ({ name: compactText(item.name, 70), state: compactText(item.state, 70), perspective: compactText(item.perspective, 70), motivation: compactText(item.motivation, 80), knowledge: compactText(item.knowledge, 65), constraints: compactText(item.constraints, 65), agenda: compactText(item.agenda, 80) })),
         possibilities: (current.possibilities || []).slice(-2).map(item => compactText(item, 80)),
-        pathways: (current.pathways || []).slice(0, 6).map(item => ({ id: compactText(item.id, 50), lane: item.lane, agent: compactText(item.agent, 40), relation: item.relation, scale: item.scale, origin: item.origin, direction: compactText(item.direction, 90), when: compactText(item.when, 70), horizon: compactText(item.horizon, 30), status: item.status })),
-        nextGuides: (current.nextGuides || []).slice(0, 2).map(item => ({ id: compactText(item.id, 50), routeLane: item.routeLane, causalAgent: compactText(item.causalAgent, 40), scale: item.scale, direction: compactText(item.direction, 100), useWhen: compactText(item.useWhen, 70), dropWhen: compactText(item.dropWhen, 70), worldDelta: compactText(item.worldDelta, 80), origin: item.origin, basis: compactText(item.basis, 80), strength: item.strength, causalEventIds: (item.causalEventIds || []).slice(0, 1), disclosure: item.disclosure })),
+        pathways: (current.pathways || []).slice(0, 6).map(item => ({ id: compactText(item.id, 50), lane: item.lane, agent: compactText(item.agent, 40), engine: compactText(item.engine, 45), relation: item.relation, scale: item.scale, origin: item.origin, mechanismStatus: item.mechanismStatus, mechanismBasis: compactText(item.mechanismBasis, 75), direction: compactText(item.direction, 90), when: compactText(item.when, 70), horizon: compactText(item.horizon, 30), status: item.status })),
+        nextGuides: (current.nextGuides || []).slice(0, 2).map(item => ({ id: compactText(item.id, 50), routeLane: item.routeLane, causalAgent: compactText(item.causalAgent, 40), causalEngine: compactText(item.causalEngine, 45), scale: item.scale, direction: compactText(item.direction, 100), useWhen: compactText(item.useWhen, 70), dropWhen: compactText(item.dropWhen, 70), worldDelta: compactText(item.worldDelta, 80), origin: item.origin, mechanismStatus: item.mechanismStatus, mechanismBasis: compactText(item.mechanismBasis, 75), basis: compactText(item.basis, 80), strength: item.strength, causalEventIds: (item.causalEventIds || []).slice(0, 1), disclosure: item.disclosure })),
         activeBeat: current.pathways?.length ? undefined : { id: compactText(beat.id, 80), objective: compactText(beat.objective, 180), nextAction: compactText(beat.nextAction, 260), completion: compactText(beat.completion, 180), lifecycle: beat.lifecycle },
         planHorizons: {
-            items: sampleHorizonItems(horizons.items || []).map(item => ({ id: compactText(item.id, 50), lane: item.lane, agent: compactText(item.agent, 32), scale: item.scale, direction: compactText(item.direction, 60), timeframe: compactText(item.timeframe, 50), stability: item.stability })),
+            items: sampleHorizonItems(horizons.items || []).map(item => ({ id: compactText(item.id, 50), lane: item.lane, agent: compactText(item.agent, 32), engine: compactText(item.engine, 40), scale: item.scale, mechanismStatus: item.mechanismStatus, mechanismBasis: compactText(item.mechanismBasis, 70), direction: compactText(item.direction, 60), timeframe: compactText(item.timeframe, 50), stability: item.stability })),
             deviation: { level: horizons.deviation?.level, reason: compactText(horizons.deviation?.reason, 100) },
         },
         canonConstraints: (current.canonConstraints || []).slice(-4).map(item => compactText(item, 150)),
@@ -1422,6 +1439,7 @@ function applyCompactAnalysis(next, value, messages) {
         force: route.strength,
         lane: route.lane,
         agent: route.agent,
+        engine: route.engine,
         scale: route.scale,
         origin: route.origin,
     })) }).possibilities;
@@ -1429,9 +1447,12 @@ function applyCompactAnalysis(next, value, messages) {
         id: route.id,
         lane: route.lane,
         agent: route.agent,
+        engine: route.engine,
         relation: route.relation,
         scale: route.scale,
         origin: route.origin,
+        mechanism_status: route.mechanism_status,
+        mechanism_basis: route.mechanism_basis,
         direction: route.direction,
         when: asArray(route.conditions).join('; ') || route.timeframe,
         response_bias: route.direction,
@@ -1447,9 +1468,12 @@ function applyCompactAnalysis(next, value, messages) {
             lane: route.lane,
             branch: route.branch,
             agent: route.agent,
+            engine: route.engine,
             relation: route.relation,
             scale: route.scale,
             origin: route.origin,
+            mechanism_status: route.mechanism_status,
+            mechanism_basis: route.mechanism_basis,
             direction: route.direction,
             timeframe: route.timeframe,
             stability: index === orderedRoutes.length - 1 ? 'slow' : route.horizon === 'local' ? 'fluid' : route.horizon === 'near' ? 'adaptive' : route.horizon === 'mid' ? 'stable' : 'slow',
@@ -1460,14 +1484,15 @@ function applyCompactAnalysis(next, value, messages) {
         deviation: { level: decision.operation === 'redirect' || decision.operation === 'recover' ? 'major' : 'none', reason: decision.basis },
     } }).planHorizons;
 
-    const knownEventIds = new Set([
-        ...next.narrativeEvents.map(event => event.id),
-        ...asArray(value.event_updates).filter(event => event.op !== 'retire').map(event => event.id),
-    ].map(id => String(id || '').trim().toLocaleLowerCase()).filter(Boolean));
+    const knownEventEngines = new Map([
+        ...next.narrativeEvents.map(event => [event.id, event.engine]),
+        ...asArray(value.event_updates).filter(event => event.op !== 'retire').map(event => [event.id, event.engine]),
+    ].map(([id, engine]) => [String(id || '').trim().toLocaleLowerCase(), String(engine || '').trim().toLocaleLowerCase()]).filter(([id, engine]) => id && engine));
     next.nextGuides = normalizeState({ nextGuides: guides.map((guide, index) => {
         const routeId = String(guide.route_id || '').trim().toLocaleLowerCase();
         const route = routes.find(item => String(item.id || '').trim().toLocaleLowerCase() === routeId) || routes[index] || {};
-        const eventIds = asArray(guide.event_ids).map(id => String(id || '').trim()).filter(id => knownEventIds.has(id.toLocaleLowerCase())).slice(0, 2);
+        const guideEngine = String(guide.engine || route.engine || '').trim().toLocaleLowerCase();
+        const eventIds = asArray(guide.event_ids).map(id => String(id || '').trim()).filter(id => knownEventEngines.get(id.toLocaleLowerCase()) === guideEngine).slice(0, 2);
         return {
             id: guide.id,
             direction: guide.direction,
@@ -1476,8 +1501,11 @@ function applyCompactAnalysis(next, value, messages) {
             causal_role: `${String(guide.operation || decision.operation || 'hold').toUpperCase()}: ${guide.function || route.direction || decision.scene_function}`,
             world_delta: guide.world_delta,
             origin: route.origin || 'inferred',
+            mechanism_status: route.mechanism_status,
+            mechanism_basis: route.mechanism_basis,
             route_lane: route.lane || 'extra',
             causal_agent: route.agent || '',
+            causal_engine: guide.engine || route.engine || '',
             scale: route.scale || 'scene',
             basis: route.basis || decision.basis,
             strength: route.strength || 'moderate',
@@ -1505,7 +1533,9 @@ function applyCompactAnalysis(next, value, messages) {
     } }).directorScore;
 
     const eventUpdates = asArray(value.event_updates).map(update => {
-        const consequences = guides.filter(guide => asArray(guide.event_ids).includes(update.id)).map(guide => guide.world_delta).filter(Boolean).slice(0, 3);
+        const updateEngine = String(update.engine || '').trim().toLocaleLowerCase();
+        const updateId = String(update.id || '').trim().toLocaleLowerCase();
+        const consequences = guides.filter(guide => asArray(guide.event_ids).some(id => String(id || '').trim().toLocaleLowerCase() === updateId) && String(guide.engine || '').trim().toLocaleLowerCase() === updateEngine).map(guide => guide.world_delta).filter(Boolean).slice(0, 3);
         return {
             ...update,
             confidence: update.epistemic_status === 'established' ? 'high' : update.epistemic_status === 'possible' ? 'low' : 'moderate',
@@ -1537,7 +1567,7 @@ function applyCompactAnalysis(next, value, messages) {
         for (const thread of next.continuityThreads) existing.set(thread.thread.toLocaleLowerCase(), { title: thread.thread, detail: thread.state, status: thread.status, source: thread.basis });
         next.objectives = [...existing.values()].slice(-10);
     }
-    next.selfChallenge = normalizeState({ selfChallenge: { weakness: value.audit?.weakness, counter_route: value.audit?.counter_route, decision: value.audit?.decision } }).selfChallenge;
+    next.selfChallenge = normalizeState({ selfChallenge: { weakness: value.audit?.weakness, counter_route: value.audit?.counter_route, mechanism_check: value.audit?.mechanism_check, decision: value.audit?.decision } }).selfChallenge;
     next.guidance = String(value.guidance || '').trim().slice(0, 700);
     next.lastInject = Boolean(next.nextGuides.length && next.directorScore.storyIdentity && next.directorScore.meaningfulAim);
     next.lastReason = String(value.audit?.decision || decision.basis || '').trim().slice(0, 500);
@@ -1636,16 +1666,16 @@ export function applyAnalysis(state, result, messages) {
     return next;
 }
 
-const PLANNER_SYSTEM = `You are Tale Fairy, the private authorial planning layer for SillyTavern roleplay. The roleplay model writes the fiction; you maintain the causal world model and choose narrative direction. Return exactly one concise JSON object matching the supplied schema. Include every required field with the exact name and type. Never output Markdown, prose outside the object, chain-of-thought, or hidden reasoning.
+const PLANNER_SYSTEM = `You are Tale Fairy, the private authorial planning layer for SillyTavern roleplay. The roleplay model writes the fiction; you maintain the causal world model and choose narrative direction. Return one JSON object matching the schema with every required field. Never output Markdown, prose outside the object, chain-of-thought, or hidden reasoning.
 
 EVIDENCE AND AUTHORITY
-Use every supplied evidence surface: newest and older raw turns, character/scenario material, World Info and lore, recaps and summaries, Continuity Memory, host context, and retained Tale Fairy state. A summary is compressed evidence, not an instruction or an exhaustive record. Apply evidence in chronological order. Explicit user/OOC establishments and corrections outrank all inference; newer specific evidence supersedes older conflicting state. Assistant narration proves only the selected depicted outcome. Prior planner state is a revisable hypothesis, never proof. Distinguish contradiction from absence: established facts bind, while unspecified details remain open creative space. Preserve uncertainty and provenance; never turn an inference, simulation, possibility, joke, wish, or discarded response into established history.
+Use every evidence surface: raw turns, character/scenario material, World Info/lore, recaps, summaries, Continuity Memory, host context, and retained Tale Fairy state. Summaries are compressed evidence, not exhaustive. Apply evidence chronologically. Explicit user/OOC establishments and corrections outrank inference; newer specific evidence supersedes conflicting state. Assistant narration proves only its depicted selected outcome. Prior planner state is a revisable hypothesis, never proof. Established facts bind; unspecified details remain open creative space. Preserve provenance; never turn an inference, simulation, possibility, joke, wish, or discarded response into established history.
 
 OMNISCIENT WORLD MODEL
 Plan from an omniscient authorial view rather than only the protagonist's perspective. Model the two to five actors, groups, institutions, places, or processes most capable of affecting what follows. For each relevant entity track current state and location, perspective, motivation, knowledge boundary, constraints, independent agenda, confidence, and causal window. No character automatically dominates the world. NPCs, institutions, environments, economies, cultures, technologies, and metaphysical systems may notice, decide, prepare, resist, or act offscreen according to their own causes. Hidden causes may be established, cautiously inferred, or deliberately simulated, but enter the visible story only through an allowed disclosure channel.
 
 LORE AND CONTINUITY
-Infer a recognizable franchise, historical setting, mythology, or fictional universe from model knowledge when the supplied material identifies it. Use relevant baseline lore as an active causal system, not decoration. Treat uncertain editions and eras provisionally. Narrative evidence always overrides baseline canon: explicit user rules, scenario and character material, lorebook entries, depicted facts, and consequences define variant_rules and rp_changes. Record distinctive RP-specific identities, relationships, abilities, possessions, institutions, places, choices, and accumulated consequences as signatures. Never snap alternate continuity back to default canon.
+Infer a recognizable franchise, historical setting, mythology, or fictional universe from model knowledge when the supplied material identifies it. Use relevant baseline lore as an active causal system, not decoration. Treat uncertain editions and eras provisionally. Narrative evidence always overrides baseline canon: explicit user rules, scenario and character material, lorebook entries, depicted facts, and consequences define variant_rules and rp_changes. Record distinctive RP-specific identities, relationships, abilities, possessions, institutions, places, choices, and accumulated consequences as signatures. Never snap alternate continuity back to default canon. Reject any route whose mechanism relies on baseline canon that variant_rules or rp_changes override.
 
 Maintain a factual inventory of established unresolved processes: correspondence, applications, decisions, appointments, investigations, commitments, relationships, debts, journeys, returns, schedules, and comparable live matters. Use thread_updates, actor_updates, event_updates, and canon_updates only for information that is new, changed, completed, contradicted, or retired; an empty update array means the retained state stays authoritative. Do not force dormant threads onscreen. The ledger must compactly preserve open routes, important lore changes, character/world state changes, and durable trajectory.
 
@@ -1655,19 +1685,19 @@ The newest user turn controls the immediate direction and maximum temporal scope
 Treat immediate_action, activity, situation, wider_world, and durable_trajectory as nested layers. A long routine activity does not become the whole story merely because it occupies many turns. Quiet scenes may remain quiet while independent world processes continue privately. Do not manufacture interruptions, danger, trivial notifications, or equal opposition merely to create movement. Apply extraordinary established capabilities and limitations proportionately; do not normalize them toward setting averages or negate them to manufacture tension.
 
 CAUSAL PLANNING
-Return one current pool of six to eight materially different routes spanning local, near, middle, far, and wildcard horizons. Routes are conditional options, not facts. Use each required lane exactly once before adding extras: immediate; character; relationship-institution; lore-world; original; long-range. Record the actual causal center in agent, whether it is direct, independent, or emergent in relation, and its story scale. The portfolio object must point each required lane to its route id; use this as a final diversity check, not decoration. Across the pool use at least four distinct causal families and at least three genuinely independent centers of agency. At least two routes must not resolve, escalate, or rename the newest dominant hook. A wildcard must change the kind or source of possibility, not simply intensify that hook. The long-range lane must concern a months-to-years or open-ended life, relationship, social, institutional, national, or world trajectory beyond the current obligation—not merely label coming days as far. Preserve meaningful far futures rather than paraphrasing one recent subject at several timeframes. Different wording, timing, departments, or consequences from the same actor/process/outcome axis do not create a distinct route. Draw variety from separate live or dormant hooks, relationships, places, institutions, ambitions, conflicts, discoveries, departures, returns, identities, world systems, and compatible unexplored space.
+Return one current pool of six to eight materially different routes spanning local, near, middle, far, and wildcard horizons. Routes are conditional options, not facts. Include every required lane: immediate; character; relationship-institution; lore-world; original; long-range. Extra routes may reuse a lane; portfolio identifies the core six. Record the causal center in agent, process in engine, relation, and scale. Routes driven by the same pending matter use the same engine despite different people, departments, wording, timing, or consequences. A route must not absorb, preview, or realize another route's signature development. A shared signature event means one route: merge it and replace the duplicate with another engine. Use at least five distinct engines and at least three genuinely independent centers of agency. The immediate may serve the newest hook; three other required lanes must survive without it. A wildcard must change the kind or source of possibility, not intensify that hook. The long-range lane must use an engine independent of the immediate lane and concern a months-to-years or open-ended life, relationship, social, institutional, national, or world trajectory—not that matter's delayed payoff or coming days labeled far. Preserve far futures rather than paraphrasing one subject at several timeframes. Draw variety from separate hooks, relationships, places, institutions, ambitions, conflicts, discoveries, identities, world systems, and compatible unexplored space.
 
-Every future path must grow from a present cause: a motive, secret, preparation, relationship pressure, institutional process, environmental change, opportunity, obligation, or constraint. An original route may introduce a compatible cause into still-open space, but must label it original and state the condition that would make it relevant. Conditions determine whether a route matures, changes, or retires. Mutually exclusive alternatives remain inert until evidence selects one. Distant horizons exert only subtle background influence unless events bring them nearer. A quiet or tightly bounded immediate scene constrains what happens now, not the diversity of private future planning or credible offscreen motion. Plan through milestones rather than treating an ambition, victory, relationship, or transformation as the ending of play.
+Every future path must grow from a present cause: a motive, secret, preparation, relationship pressure, institutional process, environmental change, opportunity, obligation, or constraint. For every route, audit the exact capability converting cause to result. mechanism_status=evidenced only when narrative evidence or unoverridden lore supports that exact function; mechanism_basis names that support, not merely two adjacent facts. Otherwise use new and name a distinct future cause, initiation, and condition. A completed or established process cannot acquire a new assay, measurement, detection, interpretation, result, or power retroactively; rereading an old artifact cannot reveal data it was never shown to contain. An original route may introduce one compatible cause into still-open space, but it must use a genuinely new engine rather than relabeling, combining, or administratively updating named pending hooks; label it original and state the condition that would make it relevant. Conditions determine whether a route matures, changes, or retires. Mutually exclusive alternatives remain inert until evidence selects one. Distant horizons exert only subtle background influence unless events bring them nearer. A quiet scene constrains what happens now, not diverse private planning or credible offscreen motion. Plan through milestones rather than treating an ambition, victory, relationship, or transformation as the ending of play.
 
 Use causal operations precisely: hold preserves larger state while making the bounded activity substantive; seed advances one enabling condition; advance moves a live process; converge connects already-active forces; payoff realizes a due consequence; redirect follows a genuine user pivot; recover corrects prior overreach without erasing established facts. These operations control story-state change, never prose style, mood, formatting, dialogue delivery, verbosity, or sentence rhythm.
 
-Return exactly four ranked guides linked to four distinct routes from four distinct lanes, with genuinely contrasting authorial functions, causal agents, and outcomes. Give each guide a route-specific function and support rather than repeating the preferred decision's scene function or basis. Every guide needs an in-story use condition, invalidation condition, causal operation, distinct bounded world_delta, and a function stating what causal thread changes and how. It must leave the concrete incident and prose to the roleplay model. Never defer an already-ready development with another promise to address it later. Never use a trivial ping, gesture, or atmospheric detail as a meaningful delta. Link a hidden event only when it exists; otherwise use disclosure=none and an empty event_ids array.
+Return exactly four ranked guides linked to four distinct routes from four distinct lanes, with contrasting functions, causal agents, and outcomes. Copy each source route engine verbatim to its guide. Its direction, function, and world_delta follow only that engine, never another route. Give each guide route-specific support rather than repeating the preferred decision. Every guide needs in-story use/drop conditions, a causal operation, distinct bounded world_delta, and a function stating what thread changes and how. Leave the incident and prose to the roleplay model. Never defer a ready development with a promise, or use a trivial ping, gesture, or atmosphere as meaningful delta. Every event update names its owning engine. Link a hidden event only when that exact engine owns it; otherwise use disclosure=none and empty event_ids.
 
 SIMULATION AND INVENTION
 Country, society, institution, life, relationship, and character simulations follow the same causal rules at different scales. Track relevant agents, resources, incentives, constraints, information, processes, and elapsed time. You may create a compatible new actor, motive, pressure, opportunity, complication, or consequence when evidence leaves room; mark it original and never claim it previously happened. Prefer independent world movement and meaningful causal consequences over disconnected randomness, forced safety, generic refusal, or repetition of the newest subject.
 
 DECISION AUDIT
-Before finalizing, privately compare the apparent preferred route with the strongest materially different supported route. Test for recency fixation, repeated causal engines, arbitrary escalation, genre bias, neglected lore, forgotten continuity, simulation inconsistency, and avoidable restriction of player agency. Revise when the counter-route is stronger. Expose only the concise audit required by the schema: weakness, counter_route, and decision—not private reasoning.
+Before finalizing, privately compare the preferred route with the strongest materially different supported route. Then delete the newest dominant hook: character, original, and long-range plans must retain independent causal lives. Test for recency fixation, repeated engines, escalation, genre bias, neglected lore, forgotten continuity, simulation inconsistency, player-agency loss, and any mismatch between each mechanism_basis and claimed result. Revise failures. mechanism_check lists route ids changed or rejected, or confirms every route passed. Expose only that concise audit—not private reasoning.
 
 OUTPUT DISCIPLINE
 Return the compact current, decision, world, routes, guides, audit, ledger, and guidance plus change-only update arrays. Do not copy unchanged retained threads, actors, events, or canon facts into their update arrays. Keep strings specific and short. General guidance is private summary material; exact future outcomes, hidden causes, and unused alternatives must not be copied into the roleplay prompt.`;
@@ -1677,8 +1707,8 @@ current={frame,frame_basis,status,immediate_action,activity,situation,wider_worl
 decision={operation,story_identity,scene_function,arc_direction,aim,setup,conditions,earliest,disclosure,basis}
 world={identity,baseline,variant_rules,rp_changes,signatures,trajectory_signals,forces,confidence}
 thread_updates[]={op,id,thread,state,status,basis}; actor_updates[]={op,name,state,location,perspective,motivation,knowledge,constraints,agenda,window}; canon_updates[]={op,fact}.
-routes[6..8]={id,lane,branch,agent,relation,scale,direction,horizon,timeframe,conditions,status,origin,basis,strength}; lane is immediate, character, relationship-institution, lore-world, original, long-range, or extra. portfolio={immediate,character,relationship_institution,lore_world,original,long_range} containing matching route ids. guides[4]={id,route_id,direction,use_when,drop_when,operation,function,world_delta,disclosure,event_ids}.
-event_updates[]={op,id,title,summary,scope,epistemic_status,disclosure,status,timing,due_state,cause,requirements,basis}.
-audit={weakness,counter_route,decision}; note_resolution is null unless resolving a planner note. Empty update arrays mean no change. Do not emit any other keys.`;
+routes[6..8]={id,lane,branch,agent,engine,relation,scale,direction,horizon,timeframe,conditions,status,origin,basis,mechanism_status,mechanism_basis,strength}; mechanism_status is evidenced or new. lane is immediate, character, relationship-institution, lore-world, original, long-range, or extra. portfolio={immediate,character,relationship_institution,lore_world,original,long_range} containing matching route ids. guides[4]={id,route_id,engine,direction,use_when,drop_when,operation,function,world_delta,disclosure,event_ids}.
+event_updates[]={op,id,engine,title,summary,scope,epistemic_status,disclosure,status,timing,due_state,cause,requirements,basis}.
+audit={weakness,counter_route,mechanism_check,decision}; note_resolution is null unless resolving a planner note. Empty update arrays mean no change. Do not emit any other keys.`;
 
 export { PLANNER_SYSTEM as SYSTEM, extractJson };

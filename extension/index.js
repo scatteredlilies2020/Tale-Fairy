@@ -4,20 +4,21 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js';
-import { buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js';
-import { resolveInjectionPlacement } from './injection-placement.js';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js';
-import { normalizeModelListResponse } from './models.js';
-import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js';
-import { estimateTokenCount } from './token-budget.js';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.94';
+import { buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.94';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.94';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.94';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.94';
+import { normalizeModelListResponse } from './models.js?v=0.11.94';
+import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.94';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.94';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.94';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.94';
+import { estimateTokenCount } from './token-budget.js?v=0.11.94';
+import { completionText } from './completion-response.js?v=0.11.94';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.84';
+const RUNTIME_VERSION = '0.11.94';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -666,12 +667,6 @@ function plannerReasoningMode(profile = null) {
         openai_settings,
         oai_settings?.reasoning_effort,
     );
-}
-
-function completionText(value) {
-    const content = value?.choices?.[0]?.message?.content ?? value?.choices?.[0]?.text ?? value?.content ?? value?.text ?? value;
-    if (Array.isArray(content)) return content.map(item => item?.text || item?.content || '').join('');
-    return String(content ?? '');
 }
 
 function analysisErrorMessage(error) {
@@ -1357,12 +1352,15 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const requiredRouteLanes = ['immediate', 'character', 'relationship-institution', 'lore-world', 'original', 'long-range'];
     const representedRouteLanes = new Set(pathways.map(item => item.lane).filter(Boolean));
     const causalCenters = new Set(pathways.map(item => item.agent?.trim().toLocaleLowerCase()).filter(Boolean));
+    const causalEngines = new Set(pathways.map(item => item.engine?.trim().toLocaleLowerCase()).filter(Boolean));
     const routePortfolioAudit = pathways.length
-        ? `Portfolio: ${requiredRouteLanes.filter(lane => representedRouteLanes.has(lane)).length}/${requiredRouteLanes.length} core lanes · ${causalCenters.size} causal centers · ${pathways.length} retained routes`
+        ? `Portfolio: ${requiredRouteLanes.filter(lane => representedRouteLanes.has(lane)).length}/${requiredRouteLanes.length} core lanes · ${causalEngines.size} causal engines · ${causalCenters.size} causal centers · ${pathways.length} retained routes`
         : '';
     const pathwayLines = pathways.map(item => [
         `${item.id} [${[item.lane, item.status, item.horizon, item.scale, item.origin, item.change !== 'keep' ? item.change : ''].filter(Boolean).join(' · ')}] — ${item.direction}`,
         item.agent && `Causal center: ${item.agent}${item.relation ? ` (${item.relation})` : ''}`,
+        item.engine && `Engine: ${item.engine}`,
+        item.mechanismStatus && `Mechanism: ${item.mechanismStatus}${item.mechanismBasis ? ` — ${item.mechanismBasis}` : ''}`,
         `Use when: ${item.when}`,
         item.responseBias && `If chosen: ${item.responseBias}`,
         item.conditions?.length && `Needs: ${item.conditions.join('; ')}`,
@@ -1374,6 +1372,8 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         `${index === 0 ? 'Preferred current beat' : `Alternative ${index + 1}`} · ${item.id} [${[item.routeLane, item.causalAgent, item.scale, item.strength].filter(Boolean).join(' · ')}] — ${item.direction}`,
         `Impact envelope: ${item.worldDelta}`,
         `Grounding: ${item.origin} — ${item.basis}`,
+        item.causalEngine && `Engine: ${item.causalEngine}`,
+        item.mechanismStatus && `Mechanism: ${item.mechanismStatus}${item.mechanismBasis ? ` — ${item.mechanismBasis}` : ''}`,
         `Use if: ${item.useWhen}`,
         `Drop if: ${item.dropWhen}`,
         item.causalRole && `Causal role: ${item.causalRole}`,
@@ -1390,6 +1390,8 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
             `${item.timeframe || 'Future'} [${item.stability || 'adaptive'} · ${horizonInfluence(index, items.length)} influence${change}] — ${item.direction}`,
             item.branch && `Branch: ${item.branch}${item.lane ? ` · ${item.lane}` : ''}${item.scale ? ` · ${item.scale}` : ''}${item.origin ? ` · ${item.origin}` : ''}`,
             item.agent && `Causal center: ${item.agent}${item.relation ? ` (${item.relation})` : ''}`,
+            item.engine && `Engine: ${item.engine}`,
+            item.mechanismStatus && `Mechanism: ${item.mechanismStatus}${item.mechanismBasis ? ` — ${item.mechanismBasis}` : ''}`,
             item.conditions?.length && `Needs: ${item.conditions.join('; ')}`,
             item.reason && `Basis: ${item.reason}`,
         ].filter(Boolean).join('\n');
@@ -1402,6 +1404,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const challengeText = [
         challenge.weakness && `Weakness tested: ${challenge.weakness}`,
         challenge.counterRoute && `Strongest counter-route: ${challenge.counterRoute}`,
+        challenge.mechanismCheck && `Mechanism scope check: ${challenge.mechanismCheck}`,
         challenge.decision && `Decision: ${challenge.decision}`,
     ].filter(Boolean).join('\n');
     scratchpadText(board, 'scratchpad-self-challenge', generatedValue(challengeText), boardFallback('Weakness tested: The first idea may be overfocused on the newest local beat.\nStrongest counter-route: Compare a distinct established continuity or wider-world route.\nDecision: Keep or revise the preference according to causal support, variety, simulation integrity, and player agency.', 'No planner self-challenge yet.'));
@@ -1496,10 +1499,11 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         if (!item?.title) return '';
         const stateLabels = [item.scope, item.epistemicStatus, item.disclosure, item.status].filter(Boolean).join(' · ');
         const timing = [item.timing, item.dueState].filter(Boolean).join(' · ');
+        const engine = item.engine ? `\n  Engine: ${item.engine}` : '';
         const cause = item.cause ? `\n  Cause: ${item.cause}` : '';
         const requirements = Array.isArray(item.requirements) && item.requirements.length ? `\n  Needs: ${item.requirements.join('; ')}` : '';
         const effects = Array.isArray(item.consequences) && item.consequences.length ? `\n  Consequences: ${item.consequences.join('; ')}` : '';
-        return `${item.title}${stateLabels ? ` [${stateLabels}]` : ''}${item.summary ? ` — ${item.summary}` : ''}${timing ? `\n  Timing: ${timing}` : ''}${cause}${requirements}${effects}${item.basis ? `\n  Basis: ${item.basis}` : ''}`;
+        return `${item.title}${stateLabels ? ` [${stateLabels}]` : ''}${item.summary ? ` — ${item.summary}` : ''}${engine}${timing ? `\n  Timing: ${timing}` : ''}${cause}${requirements}${effects}${item.basis ? `\n  Basis: ${item.basis}` : ''}`;
     }, '') : '', boardFallback('No new independent causal event was established in this analysis; conditional future routes remain available.', 'No generated narrative events yet.'));
 
     scratchpadText(board, 'scratchpad-notes', scratchpadList(state.userNotes, item => item?.text ? `[${String(item.kind || 'note').toUpperCase()}] ${item.text}` : '', ''), 'No user notes.');

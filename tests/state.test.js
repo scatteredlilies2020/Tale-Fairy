@@ -11,7 +11,7 @@ const currentPlan = {
     narrativeLayers: { immediateAction: 'Continue the tea conversation.', localActivity: 'A quiet tea conversation with Mara.', situation: 'An intimate home exchange constrained by Jedi obligations.', widerWorld: 'Star Wars institutions, droids, duties, and ongoing life beyond this room.', durableTrajectory: 'An open-ended survival and institutional-conflict story about trust under Jedi obligations.', activityRole: 'developmental', temporalScope: 'action' },
     continuityThreads: [{ id: 'chancellor-petition', thread: 'Letter to the Chancellor', state: 'The filed petition awaits an official response.', status: 'dormant', basis: 'The intake clerk filed it.' }],
     selfChallenge: { weakness: 'The preferred route may be too local.', counterRoute: 'Advance the Chancellor petition independently.', decision: 'Keep the local route for this action while retaining the petition.' },
-    pathways: [{ id: 'answer', direction: 'Continue the active exchange.', when: 'The user continues or asks Mara.', responseBias: 'Have Mara answer.', horizon: 'near', status: 'foreground', conditions: [], change: 'keep', reason: 'The exchange is current.' }],
+    pathways: [{ id: 'answer', direction: 'Continue the active exchange.', when: 'The user continues or asks Mara.', responseBias: 'Have Mara answer.', horizon: 'near', status: 'foreground', mechanismStatus: 'evidenced', mechanismBasis: 'The depicted exchange establishes that answering can change shared understanding.', conditions: [], change: 'keep', reason: 'The exchange is current.' }],
     nextGuides: stateNextGuides,
     planHorizons: { items: Array.from({ length: 6 }, (_, index) => ({ id: `h${index}`, direction: `Direction ${index}`, timeframe: index === 5 ? 'later arcs / open-ended' : `range ${index}`, stability: index < 2 ? 'adaptive' : index === 5 ? 'slow' : 'stable', conditions: [], change: 'keep', reason: 'Still relevant.' })), deviation: { level: 'none', reason: 'Aligned.' } },
 };
@@ -41,6 +41,9 @@ test('state normalizes caps and invalid mode', () => {
     assert.equal(promptIdeas.length, 18);
     assert.ok(promptIdeas.every(item => typeof item === 'string' && item.length <= 180));
     assert.ok(JSON.stringify(promptIdeas).length < 3400, 'the complete idea bank should remain token-cheap');
+    const mechanismRoute = normalizeState({ pathways: [{ id: 'route', direction: 'A distinct process produces a result.', when: 'The process begins.', mechanism_status: 'new', mechanism_basis: 'A separate future process must be initiated first.' }] }).pathways[0];
+    assert.equal(mechanismRoute.mechanismStatus, 'new');
+    assert.equal(stateForPrompt(normalizeState({ pathways: [mechanismRoute] })).pathways[0].mechanismBasis, 'A separate future process must be initiated first.');
     assert.equal(state.version, STATE_VERSION);
 });
 
@@ -66,6 +69,7 @@ test('state retains compact summary-evidence audit data across reloads', () => {
 test('offscreen causes persist privately while injection exposes only their consequence', () => {
     const causalEvent = {
         id: 'school-conflict',
+        engine: 'peer-conflict-escalation',
         title: 'Conflict at school',
         summary: 'A classmate struck Eli during an offscreen dispute.',
         scope: 'offscreen',
@@ -83,6 +87,7 @@ test('offscreen causes persist privately while injection exposes only their cons
     const guide = {
         ...stateNextGuides[0],
         id: 'eli-returns-marked',
+        causalEngine: 'peer-conflict-escalation',
         direction: 'Eli returns from school with a black eye and does not volunteer an explanation.',
         worldDelta: 'Eli arrives home with a visible black eye.',
         causalEventIds: ['school-conflict'],
@@ -98,6 +103,19 @@ test('offscreen causes persist privately while injection exposes only their cons
     assert.match(payload, /Eli arrives home with a visible black eye/);
     assert.match(payload, /Show only the perceivable consequence/);
     assert.doesNotMatch(payload, /classmate struck|peer conflict escalated|school-conflict/iu);
+});
+
+test('legacy causal events without an owning engine are discarded', () => {
+    const state = normalizeState({
+        ...defaultState(),
+        narrativeEvents: [{
+            id: 'legacy-unowned',
+            title: 'Legacy event',
+            summary: 'An old event carried a consequence without causal ownership.',
+            consequences: ['An unrelated route was attached to it.'],
+        }],
+    });
+    assert.deepEqual(state.narrativeEvents, []);
 });
 
 test('state round trips through portable metadata', () => {

@@ -1,4 +1,4 @@
-import { PROMPT_MANAGER_SLOTS } from './injection-placement.js';
+import { PROMPT_MANAGER_SLOTS } from './injection-placement.js?v=0.11.94';
 
 export const PROMPT_MANAGER_ID = 'tale_fairy_dynamic';
 
