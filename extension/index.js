@@ -17,7 +17,7 @@ import { collectSummarySources, summarySourceAudit } from './summary-context.js'
 import { estimateTokenCount } from './token-budget.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.83';
+const RUNTIME_VERSION = '0.11.84';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -1353,17 +1353,25 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     ].filter(Boolean).join('\n') : '';
     scratchpadText(board, 'scratchpad-director-score', generatedValue(directorScore), boardFallback('Overall story: An open-ended character story that will specialize around the first concrete action.\nCurrent scene function: Establish and deepen a playable situation while preserving every player choice.\nSetting: The opening location as a source of sensory context and causally supported possibilities.\nCausal tempo: HOLD\nNear-term arc: Let current evidence determine whether to sustain, advance, reveal, introduce, or pay off.\nPrivate future setup: Keep one distant transformation available without making it canon.\nMeaningful aim: Change knowledge, relationships, pressures, or available choices without controlling the player.', 'No generated director plan yet.'));
 
-    const pathwayLines = (state.pathways || []).map(item => [
-        `${item.id} [${item.status}${item.horizon ? ` · ${item.horizon}` : ''}${item.change !== 'keep' ? ` · ${item.change}` : ''}] — ${item.direction}`,
+    const pathways = state.pathways || [];
+    const requiredRouteLanes = ['immediate', 'character', 'relationship-institution', 'lore-world', 'original', 'long-range'];
+    const representedRouteLanes = new Set(pathways.map(item => item.lane).filter(Boolean));
+    const causalCenters = new Set(pathways.map(item => item.agent?.trim().toLocaleLowerCase()).filter(Boolean));
+    const routePortfolioAudit = pathways.length
+        ? `Portfolio: ${requiredRouteLanes.filter(lane => representedRouteLanes.has(lane)).length}/${requiredRouteLanes.length} core lanes · ${causalCenters.size} causal centers · ${pathways.length} retained routes`
+        : '';
+    const pathwayLines = pathways.map(item => [
+        `${item.id} [${[item.lane, item.status, item.horizon, item.scale, item.origin, item.change !== 'keep' ? item.change : ''].filter(Boolean).join(' · ')}] — ${item.direction}`,
+        item.agent && `Causal center: ${item.agent}${item.relation ? ` (${item.relation})` : ''}`,
         `Use when: ${item.when}`,
         item.responseBias && `If chosen: ${item.responseBias}`,
         item.conditions?.length && `Needs: ${item.conditions.join('; ')}`,
         item.reason && `Basis: ${item.reason}`,
     ].filter(Boolean).join('\n'));
-    scratchpadText(board, 'scratchpad-pathways', generatedValue(pathwayLines.join('\n\n')), boardFallback('opening-depth [foreground · first scene] — Develop the first declared activity through its own actions, sensory state, and immediate consequences.\nUse when: No wider development has a supported route into the beat.\n\nopening-horizon [available · early scenes] — Prepare a setting-compatible reaction, process, or opportunity.\nUse when: Current evidence provides a credible causal bridge.', 'No generated pathways yet.'));
+    scratchpadText(board, 'scratchpad-pathways', generatedValue([routePortfolioAudit, pathwayLines.join('\n\n')].filter(Boolean).join('\n\n')), boardFallback('opening-depth [foreground · first scene] — Develop the first declared activity through its own actions, sensory state, and immediate consequences.\nUse when: No wider development has a supported route into the beat.\n\nopening-horizon [available · early scenes] — Prepare a setting-compatible reaction, process, or opportunity.\nUse when: Current evidence provides a credible causal bridge.', 'No generated pathways yet.'));
 
     const guideLines = (state.nextGuides || []).map((item, index) => [
-        `${index === 0 ? 'Preferred current beat' : `Alternative ${index + 1}`} · ${item.id} [${item.strength}] — ${item.direction}`,
+        `${index === 0 ? 'Preferred current beat' : `Alternative ${index + 1}`} · ${item.id} [${[item.routeLane, item.causalAgent, item.scale, item.strength].filter(Boolean).join(' · ')}] — ${item.direction}`,
         `Impact envelope: ${item.worldDelta}`,
         `Grounding: ${item.origin} — ${item.basis}`,
         `Use if: ${item.useWhen}`,
@@ -1380,7 +1388,8 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         const change = item.change && item.change !== 'keep' ? ` · ${item.change}` : '';
         return [
             `${item.timeframe || 'Future'} [${item.stability || 'adaptive'} · ${horizonInfluence(index, items.length)} influence${change}] — ${item.direction}`,
-            item.branch && `Branch: ${item.branch}`,
+            item.branch && `Branch: ${item.branch}${item.lane ? ` · ${item.lane}` : ''}${item.scale ? ` · ${item.scale}` : ''}${item.origin ? ` · ${item.origin}` : ''}`,
+            item.agent && `Causal center: ${item.agent}${item.relation ? ` (${item.relation})` : ''}`,
             item.conditions?.length && `Needs: ${item.conditions.join('; ')}`,
             item.reason && `Basis: ${item.reason}`,
         ].filter(Boolean).join('\n');

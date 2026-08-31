@@ -30,12 +30,13 @@ const loreModel = { world_identity: 'An established speculative setting', baseli
 const requiredPlanning = { story_frame: { frame: 'grounded', confidence: 'high', basis: 'ordinary scene' }, director_score: directorScore, lore_model: loreModel, narrative_layers: narrativeLayers, pathways, next_guides: nextGuides, plan_horizons: planHorizons, continuity_threads: continuityThreads, canon_constraints: [], note_resolution: null, ledger: 'Tea conversation is active.\nOpen routes: the filed Chancellor petition remains unresolved.', narrative_events: [], cue_audit: { offered_ids: [], manifested_ids: [], unused_ids: [], contradicted_ids: [], pacing: 'respected', reason: 'No prior cues were offered.' }, self_challenge: selfChallenge };
 
 const compactRoutes = [
-    ['reply', 'conversation', 'Let the immediate answer change what the participants understand.', 'local'],
-    ['duty', 'institutional-duty', 'Let an existing obligation independently constrain a later choice.', 'near'],
-    ['trust', 'relationship-trust', 'Let accumulated trust produce a materially different decision point.', 'mid'],
-    ['petition', 'formal-process', 'Let a dormant formal process mature according to its own institutional causes.', 'far'],
-    ['departure', 'open-departure', 'Keep a compatible departure or reinvention available if present loyalties change.', 'wildcard'],
-].map(([id, branch, direction, horizon]) => ({ id, branch, direction, horizon, timeframe: horizon, conditions: ['Its stated cause remains active.'], status: horizon === 'local' ? 'foreground' : 'available', origin: id === 'departure' ? 'original' : 'inferred', basis: 'Current evidence supports this as a conditional route.', strength: horizon === 'local' ? 'strong' : 'moderate' }));
+    ['reply', 'immediate', 'conversation', 'the current participants', 'direct', 'scene', 'Let the immediate answer change what the participants understand.', 'local', 'established'],
+    ['duty', 'character', 'personal-duty', 'an independently motivated character', 'independent', 'days', 'Let an existing personal obligation independently constrain a later choice.', 'near', 'inferred'],
+    ['trust', 'relationship-institution', 'relationship-trust', 'the relationship', 'emergent', 'arc', 'Let accumulated trust produce a materially different decision point.', 'mid', 'inferred'],
+    ['process', 'lore-world', 'formal-process', 'a world institution', 'independent', 'arc', 'Let a dormant formal process mature according to its own institutional causes.', 'far', 'established'],
+    ['departure', 'original', 'open-departure', 'a compatible new opportunity', 'emergent', 'arc', 'Keep a compatible departure or reinvention available if present loyalties change.', 'wildcard', 'original'],
+    ['life-course', 'long-range', 'open-vocation', 'the character and wider society', 'emergent', 'open-ended', 'Let accumulated choices eventually reshape vocation, belonging, or social position.', 'far', 'inferred'],
+].map(([id, lane, branch, agent, relation, scale, direction, horizon, origin]) => ({ id, lane, branch, agent, relation, scale, direction, horizon, timeframe: scale, conditions: ['Its stated cause remains active.'], status: horizon === 'local' ? 'foreground' : 'available', origin, basis: 'Current evidence supports this as a conditional route.', strength: horizon === 'local' ? 'strong' : 'moderate' }));
 const compactResult = {
     contract_version: 2,
     current: { frame: 'grounded', frame_basis: 'The depicted exchange follows established physical and social rules.', status: 'A quiet exchange is active.', immediate_action: 'Answer the immediate question.', activity: 'A private conversation.', situation: 'Trust is changing under an external obligation.', wider_world: 'Independent institutions and relationships continue beyond the room.', durable_trajectory: 'An open story about trust, duty, and self-directed change.', activity_role: 'developmental', temporal_scope: 'action', location: 'home', time: 'evening', loop: false },
@@ -44,7 +45,8 @@ const compactResult = {
     thread_updates: [{ op: 'upsert', id: 'formal-process', thread: 'Pending formal process', state: 'It remains filed and unresolved.', status: 'dormant', basis: 'A prior depicted filing established it.' }],
     actor_updates: [{ op: 'upsert', name: 'Mara', state: 'Waiting beyond the current room.', location: 'outer hall', perspective: 'The obligation is real but candor still carries a cost.', motivation: 'Protect trust without abandoning duty.', knowledge: 'Knows the obligation is active.', constraints: 'Cannot abandon the obligation without consequences.', agenda: 'Decide how candid to be.', window: 'current scene' }],
     routes: compactRoutes,
-    guides: compactRoutes.slice(0, 3).map((route, index) => ({ id: `guide-${index}`, route_id: route.id, direction: route.direction, use_when: 'The route remains compatible with the newest user action.', drop_when: 'New evidence contradicts its cause.', operation: index ? 'seed' : 'advance', world_delta: `The ${route.branch} process gains one concrete condition.`, disclosure: 'none', event_ids: [] })),
+    portfolio: { immediate: 'reply', character: 'duty', relationship_institution: 'trust', lore_world: 'process', original: 'departure', long_range: 'life-course' },
+    guides: compactRoutes.slice(0, 4).map((route, index) => ({ id: `guide-${index}`, route_id: route.id, direction: route.direction, use_when: 'The route remains compatible with the newest user action.', drop_when: 'New evidence contradicts its cause.', operation: index ? 'seed' : 'advance', function: `Change the ${route.branch} thread through its own causal process.`, world_delta: `The ${route.branch} process gains one concrete condition.`, disclosure: 'none', event_ids: [] })),
     event_updates: [], canon_updates: [], ledger: 'The conversation is active; trust, duty, and the pending formal process remain independent routes.', note_resolution: null,
     audit: { weakness: 'The immediate exchange could overfocus the latest subject.', counter_route: 'An independent formal process can mature without intruding now.', decision: 'Advance the exchange while retaining genuinely separate future causes.' },
     guidance: 'Make the current answer consequential while preserving independent actors and open routes.',
@@ -88,12 +90,14 @@ test('runtime planner logic contains no scenario-specific character or franchise
 });
 
 test('planner system is compact but preserves the causal planning contract', () => {
-    assert.match(SYSTEM, /one current pool of five to eight materially different routes spanning local, near, middle, far, and wildcard horizons/);
+    assert.match(SYSTEM, /one current pool of six to eight materially different routes spanning local, near, middle, far, and wildcard horizons/);
+    assert.match(SYSTEM, /Use each required lane exactly once before adding extras/);
+    assert.match(SYSTEM, /long-range lane must concern a months-to-years or open-ended/);
     assert.match(SYSTEM, /at least four distinct causal families/);
-    assert.match(SYSTEM, /at least three independent centers of agency/);
+    assert.match(SYSTEM, /at least three genuinely independent centers of agency/);
     assert.match(SYSTEM, /A quiet or tightly bounded immediate scene constrains what happens now, not the diversity/);
     assert.match(SYSTEM, /Every future path must grow from a present cause/);
-    assert.match(SYSTEM, /three or four ranked guides with genuinely contrasting authorial functions/);
+    assert.match(SYSTEM, /exactly four ranked guides linked to four distinct routes from four distinct lanes/);
     assert.match(SYSTEM, /omniscient authorial view/);
     assert.match(SYSTEM, /Narrative evidence always overrides baseline canon/);
     assert.match(SYSTEM, /Country, society, institution, life, relationship, and character simulations/);
@@ -106,13 +110,22 @@ test('planner system is compact but preserves the causal planning contract', () 
 
 test('compact planner result accepts creative state deltas without semantic over-repair', () => {
     assert.equal(validateAnalysisResult(compactResult).valid, true);
-    assert.equal(validateAnalysisResult({ ...compactResult, routes: compactResult.routes.slice(0, 4) }).valid, false);
-    assert.equal(validateAnalysisResult({ ...compactResult, guides: compactResult.guides.slice(0, 2) }).valid, false);
+    assert.equal(validateAnalysisResult({ ...compactResult, routes: compactResult.routes.slice(0, 5) }).valid, false);
+    assert.equal(validateAnalysisResult({ ...compactResult, guides: compactResult.guides.slice(0, 3) }).valid, false);
+    assert.equal(validateAnalysisResult({ ...compactResult, routes: compactResult.routes.map(route => ({ ...route, agent: 'one causal center' })) }).valid, false);
+    assert.equal(validateAnalysisResult({ ...compactResult, routes: compactResult.routes.map(route => route.lane === 'long-range' ? { ...route, scale: 'days' } : route) }).valid, false);
+    assert.equal(validateAnalysisResult({ ...compactResult, portfolio: { ...compactResult.portfolio, lore_world: 'duty' } }).valid, false);
+    assert.equal(validateAnalysisResult({ ...compactResult, guides: compactResult.guides.map((guide, index) => index === 3 ? { ...guide, route_id: 'reply' } : guide) }).valid, false);
     const resultWithUnlinkedDisclosure = { ...compactResult, guides: compactResult.guides.map((guide, index) => index === 0 ? { ...guide, disclosure: 'partial-clue', event_ids: ['missing-event'] } : guide) };
     assert.equal(validateAnalysisResult(resultWithUnlinkedDisclosure).valid, true);
     const next = applyAnalysis(defaultState(), resultWithUnlinkedDisclosure, [{ mes: 'Answer the question without deciding for me.', is_user: true }]);
-    assert.equal(next.planHorizons.items.length, 5);
+    assert.equal(next.pathways.length, 6);
+    assert.equal(next.planHorizons.items.length, 6);
     assert.equal(next.planHorizons.items.at(-1).stability, 'slow');
+    assert.deepEqual(new Set(next.pathways.map(route => route.lane)), new Set(['immediate', 'character', 'relationship-institution', 'lore-world', 'original', 'long-range']));
+    assert.equal(next.pathways.find(route => route.id === 'life-course')?.scale, 'open-ended');
+    assert.equal(new Set(next.nextGuides.map(guide => guide.causalRole)).size, 4);
+    assert.match(next.nextGuides[0].causalRole, /conversation thread/);
     assert.equal(next.nextGuides[0].disclosure, 'none');
     assert.deepEqual(next.nextGuides[0].causalEventIds, []);
     assert.ok(next.continuityThreads.some(thread => thread.id === 'formal-process'));
@@ -195,12 +208,15 @@ test('planner schema uses SillyTavern structured-output packaging', () => {
     assert.equal(ANALYSIS_SCHEMA.value, ANALYSIS_SCHEMA_VALUE);
     assert.equal(ANALYSIS_SCHEMA.value.type, 'object');
     assert.equal(ANALYSIS_SCHEMA.value.properties.contract_version.const, 2);
-    assert.equal(ANALYSIS_SCHEMA.value.properties.routes.minItems, 5);
+    assert.equal(ANALYSIS_SCHEMA.value.properties.routes.minItems, 6);
     assert.equal(ANALYSIS_SCHEMA.value.properties.routes.maxItems, 8);
     assert.deepEqual(ANALYSIS_SCHEMA.value.properties.current.properties.frame.enum, ['grounded', 'heightened', 'surreal']);
     assert.deepEqual(ANALYSIS_SCHEMA.value.properties.routes.items.properties.horizon.enum, ['local', 'near', 'mid', 'far', 'wildcard']);
-    assert.equal(ANALYSIS_SCHEMA.value.properties.guides.minItems, 3);
+    assert.deepEqual(ANALYSIS_SCHEMA.value.properties.routes.items.properties.lane.enum, ['immediate', 'character', 'relationship-institution', 'lore-world', 'original', 'long-range', 'extra']);
+    assert.equal(ANALYSIS_SCHEMA.value.properties.guides.minItems, 4);
     assert.equal(ANALYSIS_SCHEMA.value.properties.guides.maxItems, 4);
+    assert.ok(ANALYSIS_SCHEMA.value.required.includes('portfolio'));
+    assert.ok(ANALYSIS_SCHEMA.value.properties.guides.items.required.includes('function'));
     assert.equal(ANALYSIS_SCHEMA.returnInvalid, true);
     assert.equal(ANALYSIS_SCHEMA.strict, true);
     assert.equal(ANALYSIS_SCHEMA.type, undefined);
