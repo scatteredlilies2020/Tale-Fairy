@@ -60,7 +60,15 @@ function customBody(adapter, mode, model, effort = '') {
     if (mode === 'default') return {};
     const off = mode === 'off';
     switch (adapter) {
-        case 'deepseek': return { thinking: { type: off ? 'disabled' : 'enabled' } };
+        case 'deepseek': return {
+            thinking: { type: off ? 'disabled' : 'enabled' },
+            // SillyTavern's custom provider forwards custom_include_body
+            // verbatim. Keep the on/off switch, but also send the selected
+            // effort instead of silently reducing every enabled mode to the
+            // provider default. DeepSeek-compatible proxies generally expose
+            // minimum effort as "low" rather than "min".
+            reasoning_effort: mode === 'minimum' ? 'low' : (effort || (off ? 'none' : 'low')),
+        };
         case 'openrouter': return { reasoning: { effort: effort || (off ? 'none' : 'minimal'), exclude: true } };
         case 'ollama': return { think: off ? false : (String(model).toLowerCase().includes('gpt-oss') ? 'low' : true) };
         case 'qwen': return { enable_thinking: !off };

@@ -24,6 +24,25 @@ test('reasoning choices translate for native and custom providers', () => {
     assert.equal(buildReasoningRequest({ mode: 'minimum', source: 'openai', model: 'gpt-5.6' }).payload.reasoning_effort, 'low');
 });
 
+test('custom DeepSeek forwards the selected effort as well as the thinking switch', () => {
+    for (const mode of ['low', 'medium', 'high', 'max']) {
+        const result = buildReasoningRequest({ mode, source: 'custom', model: 'deepseek-v4-pro' });
+        assert.equal(result.payload.reasoning_effort, mode);
+        assert.deepEqual(JSON.parse(result.payload.custom_include_body), {
+            thinking: { type: 'enabled' },
+            reasoning_effort: mode,
+        });
+    }
+    assert.deepEqual(
+        JSON.parse(buildReasoningRequest({ mode: 'minimum', source: 'custom', model: 'deepseek-v4-pro' }).payload.custom_include_body),
+        { thinking: { type: 'enabled' }, reasoning_effort: 'low' },
+    );
+    assert.deepEqual(
+        JSON.parse(buildReasoningRequest({ mode: 'off', source: 'custom', model: 'deepseek-v4-pro' }).payload.custom_include_body),
+        { thinking: { type: 'disabled' }, reasoning_effort: 'none' },
+    );
+});
+
 test('Google and Gemini variants receive model-compatible thinking levels', () => {
     assert.deepEqual(
         buildReasoningRequest({ mode: 'off', source: 'google', model: 'gemini-3.1-pro-preview' }).payload,
