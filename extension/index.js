@@ -4,23 +4,23 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.99';
-import { buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.99';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.99';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.99';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.99';
-import { normalizeModelListResponse } from './models.js?v=0.11.99';
-import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.99';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.99';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.99';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.99';
-import { estimateTokenCount } from './token-budget.js?v=0.11.99';
-import { completionText } from './completion-response.js?v=0.11.99';
-import { customOutputPayload, negotiateOutputModes, plannerMessages, plannerPrompt, PLANNER_OUTPUT_MODE } from './output-negotiation.js?v=0.11.99';
-import { clearPlannerPending, markPlannerPending, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.99';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.100';
+import { buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.100';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.100';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.100';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.100';
+import { normalizeModelListResponse } from './models.js?v=0.11.100';
+import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.100';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.100';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.100';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.100';
+import { estimateTokenCount } from './token-budget.js?v=0.11.100';
+import { completionText } from './completion-response.js?v=0.11.100';
+import { customOutputPayload, negotiateOutputModes, plannerMessages, plannerPrompt, PLANNER_OUTPUT_MODE } from './output-negotiation.js?v=0.11.100';
+import { clearPlannerPending, markPlannerPending, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.100';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.99';
+const RUNTIME_VERSION = '0.11.100';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -812,7 +812,10 @@ function cancelRunningAnalysis(reason, status) {
     analysisRunId++;
     analysisAbortController.abort(new DOMException(reason, 'AbortError'));
     analysisAbortController = null;
-    analysisPromise = null;
+    // Keep the aborted promise reachable until its request has actually
+    // settled and released this page's Web Lock. A replacement analysis can
+    // then await the real handoff instead of mistaking our own lock for one
+    // held by another page.
     analysisRequestFingerprint = '';
     if (status) renderAnalysisActivity(status, false);
     return true;
@@ -1441,8 +1444,8 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
             renderBoard(loadState(context.chatMetadata));
             return loadState(context.chatMetadata);
         }).finally(() => {
+            if (analysisPromise === promise) analysisPromise = null;
             if (runId !== analysisRunId) return;
-            analysisPromise = null;
             analysisAbortController = null;
             analysisRequestFingerprint = '';
             clearPlannerPending(plannerStorage(), chatId);
