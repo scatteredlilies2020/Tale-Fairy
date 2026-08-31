@@ -2,6 +2,8 @@ const MAX_SETUPS = 12;
 const MAX_OFFSCREEN = 10;
 const MAX_MILESTONES = 8;
 const MAX_DEVELOPMENTS = 8;
+const MAX_ARCS = 6;
+const MAX_THEMES = 5;
 
 const string = (value, limit = 240) => String(value ?? '').trim().slice(0, limit);
 const list = (value, limit, mapper = item => string(item)) => (Array.isArray(value) ? value : []).slice(0, limit).map(mapper).filter(Boolean);
@@ -95,12 +97,21 @@ export function normalizeAuthorBoard(value = {}, legacy = {}) {
         .map(event => ({ id: event.id, development: event.summary || event.title, status: ['due', 'overdue'].includes(event.dueState) ? 'ready' : 'active', progress: ['due', 'overdue'].includes(event.dueState) ? 100 : 25, releaseConditions: event.requirements, disclosure: event.disclosure, clockType: 'institutional' }));
     const required = scene.requiredDevelopments ?? scene.required_developments ?? source.requiredDevelopments;
     return {
-        // Tale Fairy owns a future queue, not an interpretation of history.
-        // Old generated story/arc fields are intentionally erased on load.
-        story: { identity: '', themes: [] },
-        activeArc: normalizeArc(),
-        characterArcs: [],
-        relationshipArcs: [],
+        // This is a provisional author map, not factual history. Keeping it
+        // separate from the current scene prevents a long recent activity from
+        // replacing the durable direction on every planner refresh.
+        story: {
+            identity: string(source.story?.identity ?? source.storyIdentity ?? director.storyIdentity, 240),
+            themes: list(source.story?.themes ?? source.themes, MAX_THEMES, item => string(item, 100)),
+        },
+        activeArc: normalizeArc(source.activeArc ?? source.active_arc ?? {
+            id: director.futureSetup?.id,
+            title: director.arcDirection,
+            purpose: director.arcDirection,
+            pressure: director.futureSetup?.development,
+        }),
+        characterArcs: list(source.characterArcs ?? source.character_arcs, MAX_ARCS, normalizeArc),
+        relationshipArcs: list(source.relationshipArcs ?? source.relationship_arcs, MAX_ARCS, normalizeArc),
         setups: list(source.setups ?? source.promises, MAX_SETUPS, normalizeSetup),
         offscreenDevelopments: list(source.offscreenDevelopments ?? source.offscreen_developments ?? migratedOffscreen, MAX_OFFSCREEN, normalizeOffscreen),
         scene: {

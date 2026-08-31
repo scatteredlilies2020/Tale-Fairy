@@ -13,6 +13,7 @@ test('summary discovery integrates continuity, extension prompts, metadata, mess
         },
         chatMetadata: {
             session_recap: { summary: 'The healer learned Mira survived.' },
+            continuityMemory: { world: { storySoFar: { active: { text: 'A differently serialized mirror says the embassy request remains pending.' } } } },
             unrelated_setting: 'not summary evidence',
         },
         chat: [
@@ -38,6 +39,8 @@ test('summary discovery integrates continuity, extension prompts, metadata, mess
     assert.match(combined, /Charter law permits one appeal/);
     assert.doesNotMatch(combined, /rhyming couplets|never ingest its own|secret chain of thought/);
     assert.equal(sources.filter(source => /embassy request remains pending/.test(source.text)).length, 1, 'the bridge and mirrored extension prompt are deduplicated');
+    assert.equal(sources.filter(source => source.kind === 'continuity-memory').length, 1, 'only one Continuity provenance is admitted even when mirrors differ');
+    assert.deepEqual(sources.filter(source => source.kind === 'continuity-memory').map(source => source.label), ['Continuity Memory snapshot']);
 });
 
 test('summary compaction is token bounded, fair across sources, and keeps both ends', () => {

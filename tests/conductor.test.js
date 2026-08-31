@@ -33,3 +33,15 @@ test('delivered development invalidates the old contract so the next one can be 
     const next = runConductor({ authorBoard: delivered, pacing: { inferred: 'natural' }, turnCount: 8 });
     assert.equal(next.contract.developmentId, 'question');
 });
+
+test('linger fallback supports a stated activity without manufacturing a procedural barrier', () => {
+    const result = runConductor({
+        authorBoard: { story: { identity: 'A general story.' }, scene: { purpose: 'Support the transition.', requiredDevelopments: [] } },
+        pacing: { inferred: 'linger' },
+        turnCount: 8,
+    });
+    const prompt = formatConductorContract(result.contract);
+    assert.match(prompt, /latest user-authorized activity or stated direction/iu);
+    assert.match(prompt, /keep its route open/iu);
+    assert.match(prompt, /Do not invent a new obstacle, access or escort requirement/iu);
+});

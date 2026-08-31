@@ -6,6 +6,8 @@ function state(schedule = {}) {
     return {
         plannerSchedule: schedule,
         pacing: { inferred: 'natural' },
+        sceneProfile: { promise: 'Continue the current scene.' },
+        beatDirective: { operation: 'deepen' },
         authorBoard: { story: { identity: 'Story' }, scene: { purpose: 'Scene', requiredDevelopments: [] }, revision: 1 },
         conductor: { status: 'active', requiredDevelopment: 'Develop the scene.', boardRevision: 1, pacing: 'natural' },
     };
@@ -37,6 +39,6 @@ test('replacement responses never retrigger a planner pivot or initialization', 
     const messages = [{ is_user: true, mes: 'OOC: correction - remain in the library.' }, { is_user: false, mes: 'A replacement reply.' }];
     assert.equal(plannerRefreshDecision({ state: state(), messages, event: 'replacement', swipe: true }).shouldRun, false);
     const uninitialized = state();
-    uninitialized.authorBoard.story.identity = '';
+    uninitialized.sceneProfile.promise = '';
     assert.equal(plannerRefreshDecision({ state: uninitialized, messages, event: 'replacement', swipe: true }).shouldRun, false);
 });

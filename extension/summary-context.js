@@ -6,6 +6,10 @@ const SUMMARY_SHAPE = /(?:^|\n)\s*(?:#{1,4}\s*)?(?:\[|<)?(?:summary|synopsis|rec
 const REASONING_KEY = /(?:reasoning|chain[\s_.-]*of[\s_.-]*thought|scratch[\s_.-]*pad|hidden[\s_.-]*thought|logprobs?|token[\s_.-]*usage|planner[\s_.-]*prompt)/iu;
 const TEXT_KEYS = new Set(['summary', 'text', 'content', 'value', 'prompt', 'memory', 'recap', 'synopsis', 'state', 'worldstate', 'world_state', 'lore', 'chronicle']);
 
+function isContinuityProviderKey(key) {
+    return String(key || '').replace(/[^a-z0-9]/giu, '').toLocaleLowerCase().includes('continuitymemory');
+}
+
 function cleanText(value) {
     return String(value || '')
         .replace(/\r\n?/gu, '\n')
@@ -189,24 +193,31 @@ function appendLeaves(target, value, base, { requireShape = false } = {}) {
 export async function collectSummarySources(context = {}, messages = [], options = {}) {
     const discovered = [];
     const ownPromptKey = String(options.ownPromptKey || 'living-world-guide_context');
-    if (options.continuityContext) {
+    let continuityOwner = '';
+    if (options.continuityContext && options.includeContinuity !== false) {
         discovered.push({ label: 'Continuity Memory snapshot', kind: 'continuity-memory', priority: 0, text: options.continuityContext });
+        continuityOwner = 'bridge';
     }
 
     for (const [key, value] of Object.entries(context.extensionPrompts || {})) {
         if (key === ownPromptKey) continue;
-        if (key === 'continuity_memory_context' && options.includeContinuity === false) continue;
+        const continuityKey = isContinuityProviderKey(key);
+        if (continuityKey && (options.includeContinuity === false || continuityOwner)) continue;
         const semanticKey = SUMMARY_KEY.test(key);
         appendLeaves(discovered, value, {
             label: `Extension prompt: ${key}`,
-            kind: key === 'continuity_memory_context' ? 'continuity-memory' : 'extension-summary',
-            priority: key === 'continuity_memory_context' ? 0 : 1,
+            kind: continuityKey ? 'continuity-memory' : 'extension-summary',
+            priority: continuityKey ? 0 : 1,
         }, { requireShape: !semanticKey });
+        if (continuityKey) continuityOwner = 'extension-prompt';
     }
 
     for (const [key, value] of Object.entries(context.chatMetadata || {})) {
         if (!SUMMARY_KEY.test(key) || REASONING_KEY.test(key)) continue;
-        appendLeaves(discovered, value, { label: `Chat metadata: ${key}`, kind: 'chat-summary', priority: 1 });
+        const continuityKey = isContinuityProviderKey(key);
+        if (continuityKey && (options.includeContinuity === false || continuityOwner)) continue;
+        appendLeaves(discovered, value, { label: `Chat metadata: ${key}`, kind: continuityKey ? 'continuity-memory' : 'chat-summary', priority: continuityKey ? 0 : 1 });
+        if (continuityKey) continuityOwner = 'chat-metadata';
     }
 
     const hostMessages = Array.isArray(context.chat) && context.chat.length ? context.chat : messages;

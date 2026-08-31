@@ -4,27 +4,25 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.114';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.114';
-import { markAuthorBeatDelivered, tickAuthorBoard } from './author-board.js?v=0.11.114';
-import { normalizeConductorState, runConductor } from './conductor.js?v=0.11.114';
-import { consumeAdvanceOverride, isReleaseSignal, updatePacing } from './pacing.js?v=0.11.101';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.119';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.119';
+import { updatePacing } from './pacing.js?v=0.11.101';
 import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.11.101';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.100';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.100';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.100';
-import { normalizeModelListResponse } from './models.js?v=0.11.100';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.119';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.119';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.119';
+import { normalizeModelListResponse } from './models.js?v=0.11.119';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.108';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.100';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.100';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.100';
-import { estimateTokenCount } from './token-budget.js?v=0.11.100';
-import { completionText } from './completion-response.js?v=0.11.100';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.119';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.119';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.119';
+import { estimateTokenCount } from './token-budget.js?v=0.11.119';
+import { completionText } from './completion-response.js?v=0.11.119';
 import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.11.105';
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.114';
+const RUNTIME_VERSION = '0.11.119';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -50,7 +48,6 @@ let analysisStopSequence = 0;
 let lastAnalysisError = '';
 let pendingRequestVerification = null;
 let generationGuideSelection = null;
-const swipeGuideCursors = new Map();
 let uiMountPromise = null;
 let uiMountObserver = null;
 let uiMountTimeout = null;
@@ -64,7 +61,7 @@ let detachedPlannerEnabled = false;
 let detachedPlannerRecovering = false;
 // Reasoning providers may count hidden thinking against this ceiling. The
 // planner prompt and schema separately target a concise visible JSON result.
-const PLANNER_RESPONSE_TOKENS = 16384;
+const PLANNER_RESPONSE_TOKENS = 4096;
 const PLANNER_MAX_AUTO_RETRIES = 2;
 const UI_MOUNT_TIMEOUT_MS = 30000;
 const LEGACY_UPGRADE_MAX_ATTEMPTS = 1;
@@ -534,6 +531,8 @@ function guideSelectionOptions(state, context = currentContext()) {
             regeneration: generationGuideSelection.regeneration,
             variationCue: generationGuideSelection.variationCue,
             canonConstraints: generationGuideSelection.canonConstraints,
+            sceneProfile: generationGuideSelection.sceneProfile,
+            beatDirective: generationGuideSelection.beatDirective,
             latestUserAction,
         };
     }
@@ -547,46 +546,25 @@ function guideSelectionOptions(state, context = currentContext()) {
     };
 }
 
-function guideTurnKey(context = currentContext()) {
-    const messages = messagesFromChat(context.chat || []);
-    if (messages.length && !messages.at(-1).is_user) messages.pop();
-    return `${String(context.getCurrentChatId?.() || '')}:${fingerprintMessages(messages)}`;
-}
-
 function prepareGenerationGuide(state, type) {
     const context = currentContext();
     const chatId = String(context.getCurrentChatId?.() || '');
-    const swipe = type === 'swipe' || type === 'regenerate';
-    const archived = state.lastRequestVerification?.guideCandidates || [];
-    const archivedUsable = swipe && archived.length > 1;
     const messages = messagesFromChat(context.chat || []);
-    // GENERATION_STARTED fires before SillyTavern removes the assistant turn
-    // being regenerated. Evaluate archive-less retry routes against the
-    // provider-bound trajectory, which ends on the preceding user turn.
-    const retrySource = generationRetrySource(messages, swipe);
-    const alignedUsable = !swipe && isGuidanceUsable(state, messages, chatId);
-    const retryCandidates = !archivedUsable && !alignedUsable ? guidesForDiscardedAssistant(state, retrySource, chatId) : [];
-    const retryUsable = retryCandidates.length > 1;
-    const candidates = swipe
-        ? (archivedUsable ? archived : retryCandidates)
-        : (alignedUsable ? state.nextGuides : retryCandidates);
-    const turnKey = guideTurnKey(context);
-    const archivedIndex = Number(state.lastRequestVerification?.selectedGuideIndex) || 0;
-    const previousIndex = swipe ? (swipeGuideCursors.get(turnKey) ?? archivedIndex) : -1;
-    const index = swipe && candidates.length > 1 ? (previousIndex + 1) % candidates.length : 0;
-    swipeGuideCursors.set(turnKey, index);
-    while (swipeGuideCursors.size > 20) swipeGuideCursors.delete(swipeGuideCursors.keys().next().value);
+    const replacement = type === 'swipe' || type === 'regenerate';
+    const archived = replacement ? state.lastRequestVerification : null;
+    const archivedUsable = Boolean(archived?.beatDirective);
     generationGuideSelection = {
         chatId,
-        candidates,
-        index,
-        usable: archivedUsable || retryUsable || alignedUsable,
-        regeneration: swipe || retryUsable,
-        replacement: swipe,
-        variationCue: swipe ? randomVariationNonce() : 0,
+        candidates: [], index: 0,
+        usable: archivedUsable || (!replacement && isGuidanceUsable(state, messages, chatId)),
+        regeneration: replacement,
+        replacement,
+        variationCue: replacement ? randomVariationNonce() : 0,
         // A replacement must not receive canon inferred from the assistant
         // reply being discarded. Reuse the exact pre-response canon snapshot.
-        canonConstraints: swipe ? (state.lastRequestVerification?.canonConstraints || []) : null,
+        canonConstraints: replacement ? (archived?.canonConstraints || []) : null,
+        sceneProfile: archivedUsable ? archived.sceneProfile : state.sceneProfile,
+        beatDirective: archivedUsable ? archived.beatDirective : state.beatDirective,
     };
 }
 
@@ -595,29 +573,8 @@ function assistantTurnNumber(messages = []) {
 }
 
 function prepareAuthorContract(state, type = '') {
-    const context = currentContext();
-    const messages = messagesFromChat(context.chat || []);
-    const latestUserAction = [...messages].reverse().find(message => message.is_user)?.mes || '';
-    const replacement = type === 'swipe' || type === 'regenerate';
-    const targetTurn = assistantTurnNumber(messages) + (messages.at(-1)?.is_user ? 1 : 0);
-    state.pacing = updatePacing(state.pacing, { latestUserAction, turnCount: targetTurn });
-
-    // Regenerations replay the same authorial obligation. Discarding wording
-    // must not consume a new beat or silently accelerate the story.
-    const archived = state.lastRequestVerification?.conductorContract;
-    if (replacement && archived?.requiredDevelopment) {
-        state.conductor = normalizeConductorState({ ...archived, status: 'active', updatedAtTurn: targetTurn });
-    } else {
-        const prepared = runConductor({
-            authorBoard: state.authorBoard,
-            pacing: state.pacing,
-            previous: state.conductor,
-            turnCount: targetTurn,
-        });
-        state.authorBoard = prepared.authorBoard;
-        state.conductor = prepared.contract;
-    }
-    context.updateChatMetadata(saveState(context.chatMetadata, state));
+    // Kept as a compatibility seam for hosts/tests that call this lifecycle.
+    // v46 issues no separate author contract and performs no AI call.
     return state;
 }
 
@@ -678,14 +635,13 @@ function rememberVerifiedRequest(payload, { provider = '', model = '' } = {}) {
         position: s.injectionPosition,
         role: s.injectionRole,
         depth: s.injectionPosition === 'at-depth' ? s.injectionDepth : 0,
-        guideCandidates: generationGuideSelection
-            ? (generationGuideSelection.usable ? generationGuideSelection.candidates : [])
-            : state.nextGuides,
+        guideCandidates: [],
         canonConstraints: state.canonConstraints,
         selectedGuideIndex: generationGuideSelection?.index || 0,
         replacementGeneration: generationGuideSelection?.replacement === true,
-        conductorDevelopmentId: state.conductor.status === 'active' ? state.conductor.developmentId : '',
-        conductorContract: state.conductor.status === 'active' ? state.conductor : null,
+        sceneProfile: generationGuideSelection?.sceneProfile || state.sceneProfile,
+        beatDirective: generationGuideSelection?.beatDirective || state.beatDirective,
+        conductorDevelopmentId: '', conductorContract: null,
     };
     renderBoard();
 }
@@ -733,12 +689,6 @@ async function confirmReturnedReplyUsedGuidance() {
         confirmedAt: Date.now(),
         responseMessageCount: messages.length,
     };
-    const turn = assistantTurnNumber(messages);
-    if (pending.conductorDevelopmentId) {
-        state.authorBoard = markAuthorBeatDelivered(state.authorBoard, pending.conductorDevelopmentId, pending.conductorContract?.developmentType, turn);
-    }
-    state.conductor = normalizeConductorState({ ...state.conductor, status: 'invalid' });
-    state.pacing = consumeAdvanceOverride(state.pacing);
     context.updateChatMetadata(saveState(context.chatMetadata, state));
     pendingRequestVerification = null;
     if (typeof context.saveMetadata === 'function') {
@@ -1024,6 +974,7 @@ async function recoverDetachedPlannerJobs() {
             next = applyPlannerAuthorLayer(next, {
                 turnCount: assistantTurnNumber(chat.slice(0, Number(meta.messageCount) || chat.length)),
                 fingerprint: String(meta.fingerprint || ''),
+                seedRequiredDevelopment: !meta.rebuild,
             });
             next.summaryEvidence = { ...(meta.summaryEvidence || {}), scannedAt: Date.now() };
             next.plannerSeed = Number(meta.plannerSeed) || 0;
@@ -1465,7 +1416,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
             return current;
         }
         let next = applyAnalysis(current, result, chat);
-        next = applyPlannerAuthorLayer(next, { turnCount: assistantTurnNumber(chat), fingerprint });
+        next = applyPlannerAuthorLayer(next, { turnCount: assistantTurnNumber(chat), fingerprint, seedRequiredDevelopment: !rebuild });
         next.summaryEvidence = { ...lastSummaryAudit, scannedAt: Date.now() };
         next.plannerSeed = variationNonce;
         next.sourceChatId = chatId;
@@ -1479,7 +1430,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         lastAnalysisError = '';
         finalStatus = userNote && !resolvedNote
             ? 'Note not applied · try again'
-            : `Pathways ready · ${elapsedLabel(Date.now() - startedAt)}`;
+            : `Current beat ready · ${elapsedLabel(Date.now() - startedAt)}`;
         renderBoard(next);
         return next;
     };
@@ -1525,268 +1476,89 @@ function scratchpadList(items, formatter, fallback) {
     return lines.length ? lines.map(line => `• ${line}`).join('\n') : fallback;
 }
 
-function readableScratchpadGuidance(state) {
-    let value = String(state.guidance || 'Choose a concrete beat from current evidence; deepen the present activity unless a supported horizon or due event justifies wider change.');
-    const routes = [...(state.pathways || []), ...(state.nextGuides || [])]
-        .filter(item => item?.id && item?.direction)
-        .sort((a, b) => String(b.id).length - String(a.id).length);
-    for (const route of routes) {
-        const id = String(route.id).trim();
-        if (!id || id.length > 60) continue;
-        const escaped = id.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-        const pattern = new RegExp(`(^|[^\\p{L}\\p{N}_-])${escaped}(?=$|[^\\p{L}\\p{N}_-])`, 'giu');
-        const direction = String(route.direction).trim().slice(0, 160);
-        value = value.replace(pattern, (_match, prefix) => `${prefix}“${direction}”`);
-    }
-    return value;
-}
-
 function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const board = document.querySelector(`#${EXTENSION_ID}-board`);
     if (!board) return;
-    const rebuildPending = state.canonBootstrapPending === true;
     const analyzed = state.scene.status !== 'uninitialized';
-    const generatedValue = value => analyzed ? value : '';
-    const boardFallback = (fallback, empty = 'No generated value yet.') => !analyzed
-        ? empty
-        : (rebuildPending
-            ? 'Not populated in the retained plan — the requested refresh has not produced a valid saved result yet.'
-            : fallback);
     const settingsRoot = document.querySelector(`#${EXTENSION_ID}-settings`);
     const pacingControl = settingsRoot?.querySelector('[data-setting="pacing"]');
     if (pacingControl) pacingControl.value = state.pacing.mode;
     const guideButton = settingsRoot?.querySelector('[data-action="guide"]');
     const guideLabel = guideButton?.querySelector('[data-role="guide-label"]');
     if (guideLabel) guideLabel.textContent = analyzed ? 'Re-evaluate' : 'Guide now';
-    if (guideButton) guideButton.title = analyzed
-        ? 'Analyze again while retaining Tale Fairy\'s accumulated guide state'
-        : 'Analyze the current chat and context';
+    if (guideButton) guideButton.title = analyzed ? 'Re-analyze the current scene and beat' : 'Analyze the current chat and context';
+
     const analyzedAt = state.lastAnalyzedAt ? new Date(state.lastAnalyzedAt).toLocaleString() : '';
-    const meta = rebuildPending
-        ? (analyzed
-            ? `Refresh pending · showing retained plan from ${analyzedAt || 'the previous version'} · not injected until refreshed`
-            : 'Full Rebuild pending · no replacement planner result has been saved yet')
-        : (analyzed ? `${state.mode} mode · updated ${analyzedAt || 'recently'}` : '');
-    scratchpadText(board, 'scratchpad-meta', meta, 'No planner result yet. Run Guide now or Full rebuild.');
+    const meta = state.canonBootstrapPending
+        ? 'Full rebuild pending · retained guidance is not injected'
+        : analyzed ? `${state.mode} mode · current beat updated ${analyzedAt || 'recently'}` : '';
+    scratchpadText(board, 'scratchpad-meta', meta, 'No beat analysis yet. Run Guide now or Full rebuild.');
     const continuityStatus = analyzed ? continuityContextState(currentContext()).status : 'unavailable';
     const summaryAudit = state.summaryEvidence?.scannedAt ? state.summaryEvidence : lastSummaryAudit;
-    const continuitySummaryIncluded = summaryAudit.labels?.some(label => /continuity/i.test(label));
     const summaryStatus = summaryAudit.scannedAt || summaryAudit.count
-        ? ` · summary evidence: ${summaryAudit.count} sources / ${summaryAudit.includedTokens.toLocaleString()} tokens${continuitySummaryIncluded ? ' · Continuity-derived source included' : ''}`
-        : ' · summary evidence will be scanned during analysis';
+        ? ` · evidence: ${summaryAudit.count} sources / ${summaryAudit.includedTokens.toLocaleString()} tokens`
+        : '';
     scratchpadText(board, 'scratchpad-continuity', `Direct Continuity connector: ${continuityStatus}${summaryStatus}`, 'Direct Continuity connector: unavailable');
 
-    const layers = state.narrativeLayers || {};
+    const profile = state.sceneProfile || {};
     const scene = [
-        state.pacing && `Tale Fairy pacing: ${state.pacing.effective.toUpperCase()} (${state.pacing.mode === 'auto' ? state.pacing.reason : `${state.pacing.mode} override`})`,
-        layers.immediateAction && `Immediate action: ${layers.immediateAction}`,
-        layers.localActivity && `Local activity: ${layers.localActivity} [${layers.activityRole || 'routine'}]`,
-        layers.situation && `Situation: ${layers.situation}`,
-        layers.widerWorld && `Wider world: ${layers.widerWorld}`,
-        layers.temporalScope && `Authorized scope: ${layers.temporalScope}`,
+        profile.promise && `Promise: ${profile.promise}`,
+        `Read: ${profile.phase || 'developing'} · ${profile.emotionalDirection || 'preserve'} · pressure ${profile.pressure || 'none'} · intrusion ${profile.intrusion || 'closed'} · novelty ${profile.noveltyCeiling || 'incidental'}`,
         state.scene.activity && `Activity: ${state.scene.activity}`,
         state.scene.intent && `Intent: ${state.scene.intent}`,
-        state.scene.pace && `Pace: ${state.scene.pace}`,
         state.scene.location && `Location: ${state.scene.location}`,
         state.scene.time && `Time: ${state.scene.time}`,
-        state.scene.loop && 'Pattern: the scene may be looping or repeating',
+        profile.basis && `Basis: ${profile.basis}`,
     ].filter(Boolean).join('\n');
-    scratchpadText(board, 'scratchpad-scene', generatedValue(scene), boardFallback('Immediate action: Await the first declared player action.\nLocal activity: Opening situation [transition]\nSituation: Establish the initial people, place, and pressures from the first story evidence.\nWider world: Track only pressures with a credible route toward the scene.', 'No generated scene state yet.'));
+    scratchpadText(board, 'scratchpad-scene', analyzed ? scene : '', 'No generated scene read yet.');
+
+    const beat = state.beatDirective || {};
+    const envelope = [beat.contentClass, beat.scope && `${beat.scope} scope`, beat.intensity && beat.intensity !== 'none' && `${beat.intensity} intensity`, beat.quantity && beat.quantity !== 'none' && beat.quantity, beat.relativePower && beat.relativePower !== 'none' && `${beat.relativePower} power`, beat.plotWeight && beat.plotWeight !== 'none' && `${beat.plotWeight} weight`, beat.duration && `${beat.duration} duration`, beat.resolutionCeiling && `${beat.resolutionCeiling} resolution`].filter(Boolean).join(' · ');
+    const beatText = [
+        `${String(beat.operation || 'retain').toUpperCase()} — ${beat.target || 'current activity'}`,
+        beat.requiredEffect || 'Keep the current activity and emotional promise coherent; no added incident is required.',
+        envelope && `Envelope: ${envelope}`,
+        beat.preserve?.length && `Preserve: ${beat.preserve.join('; ')}`,
+        beat.forbid?.length && `Do not: ${beat.forbid.join('; ')}`,
+        beat.basis && `Basis: ${beat.basis}`,
+    ].filter(Boolean).join('\n');
+    scratchpadText(board, 'scratchpad-next-guides', analyzed ? beatText : '', 'No generated current beat yet.');
 
     const frame = state.storyFrame.frame && state.storyFrame.frame !== 'unknown'
         ? `${state.storyFrame.frame}${state.storyFrame.confidence ? ` · ${state.storyFrame.confidence} confidence` : ''}${state.storyFrame.basis ? `\nBasis: ${state.storyFrame.basis}` : ''}`
         : '';
-    scratchpadText(board, 'scratchpad-frame', generatedValue(frame), boardFallback('grounded · low confidence\nBasis: Provisional opening classification; replace it immediately when the first story evidence supports heightened or surreal.', 'No generated story frame yet.'));
+    scratchpadText(board, 'scratchpad-frame', analyzed ? frame : '', 'No generated story frame yet.');
 
     const lore = state.loreModel || {};
     const loreText = [
-        lore.worldIdentity && `World: ${lore.worldIdentity}${lore.confidence ? ` · ${lore.confidence} confidence` : ''}`,
-        lore.baseline && `Inferred baseline: ${lore.baseline}`,
-        lore.variantRules?.length && `Narrative-supplied rules: ${lore.variantRules.join('; ')}`,
-        lore.continuitySignatures?.length && `Unique to this RP: ${lore.continuitySignatures.join('; ')}`,
-        lore.baselineDepartures?.length && `Changes from baseline: ${lore.baselineDepartures.join('; ')}`,
-        lore.trajectorySignals?.length && `Trajectory evidence: ${lore.trajectorySignals.join('; ')}`,
-        lore.activeForces?.length && `Active lore forces: ${lore.activeForces.join('; ')}`,
+        lore.worldIdentity && `World: ${lore.worldIdentity}`,
+        lore.baseline && `Baseline: ${lore.baseline}`,
+        lore.variantRules?.length && `Supplied rules: ${lore.variantRules.join('; ')}`,
+        lore.continuitySignatures?.length && `RP-specific canon: ${lore.continuitySignatures.join('; ')}`,
+        lore.baselineDepartures?.length && `Departures: ${lore.baselineDepartures.join('; ')}`,
+        lore.activeForces?.length && `Relevant forces: ${lore.activeForces.join('; ')}`,
     ].filter(Boolean).join('\n');
-    scratchpadText(board, 'scratchpad-lore', generatedValue(loreText), boardFallback('World: Infer the setting from supplied evidence.\nInferred baseline: Use recognized lore provisionally.\nUnique to this RP: Preserve distinctive established facts and accumulated changes.\nChanges from baseline: Record only evidenced departures.', 'No generated lore model yet.'));
+    scratchpadText(board, 'scratchpad-lore', analyzed ? loreText : '', 'No generated lore model yet.');
 
-    const score = state.directorScore || {};
-    const setup = score.futureSetup || {};
-    const directorScore = score.sceneFunction || score.meaningfulAim || setup.development ? [
-        score.sceneFunction && `Current scene function: ${score.sceneFunction}`,
-        score.settingIdentity && `Setting: ${score.settingIdentity}`,
-        score.settingForces?.length && `Active causal forces: ${score.settingForces.join('; ')}`,
-        `Causal tempo: ${String(score.causalTempo || 'hold').toUpperCase()}${score.change ? ` · ${score.change}` : ''}`,
-        setup.development && `Private future setup: ${setup.development}${setup.earliestWindow ? ` · earliest ${setup.earliestWindow}` : ''}`,
-        setup.currentStep && `Setup step: ${setup.currentStep}`,
-        setup.conditions?.length && `Setup needs: ${setup.conditions.join('; ')}`,
-        score.meaningfulAim && `Meaningful aim: ${score.meaningfulAim}`,
-        score.basis && `Basis: ${score.basis}`,
-    ].filter(Boolean).join('\n') : '';
-    scratchpadText(board, 'scratchpad-director-score', generatedValue(directorScore), boardFallback('Current scene function: Establish and deepen a playable situation while preserving every player choice.\nSetting: The opening location as a source of sensory context and causally supported possibilities.\nCausal tempo: HOLD\nPrivate future setup: Keep one conditional development available without making it canon.\nMeaningful aim: Change knowledge, relationships, pressures, or available choices without controlling the player.', 'No generated future agenda yet.'));
-
-    const pathways = state.pathways || [];
-    const requiredRouteLanes = ['immediate', 'character', 'relationship-institution', 'lore-world', 'original', 'long-range'];
-    const representedRouteLanes = new Set(pathways.map(item => item.lane).filter(Boolean));
-    const causalCenters = new Set(pathways.map(item => item.agent?.trim().toLocaleLowerCase()).filter(Boolean));
-    const causalEngines = new Set(pathways.map(item => item.engine?.trim().toLocaleLowerCase()).filter(Boolean));
-    const routePortfolioAudit = pathways.length
-        ? `Portfolio: ${requiredRouteLanes.filter(lane => representedRouteLanes.has(lane)).length}/${requiredRouteLanes.length} core lanes · ${causalEngines.size} causal engines · ${causalCenters.size} causal centers · ${pathways.length} retained routes`
-        : '';
-    const pathwayLines = pathways.map(item => [
-        `${item.id} [${[item.lane, item.status, item.horizon, item.scale, item.origin, item.change !== 'keep' ? item.change : ''].filter(Boolean).join(' · ')}] — ${item.direction}`,
-        item.agent && `Causal center: ${item.agent}${item.relation ? ` (${item.relation})` : ''}`,
-        item.engine && `Engine: ${item.engine}`,
-        item.evidenceRefs?.length && `Evidence: ${item.evidenceRefs.join('; ')}`,
-        item.completionCheck && `Completion audit: ${item.completionCheck}${item.unresolvedBasis ? ` — ${item.unresolvedBasis}` : ''}`,
-        item.mechanismStatus && `Mechanism: ${item.mechanismStatus}${item.mechanismBasis ? ` — ${item.mechanismBasis}` : ''}`,
-        `Use when: ${item.when}`,
-        item.responseBias && `If chosen: ${item.responseBias}`,
-        item.conditions?.length && `Needs: ${item.conditions.join('; ')}`,
-        item.reason && `Basis: ${item.reason}`,
-    ].filter(Boolean).join('\n'));
-    scratchpadText(board, 'scratchpad-pathways', generatedValue([routePortfolioAudit, pathwayLines.join('\n\n')].filter(Boolean).join('\n\n')), boardFallback('opening-depth [foreground · first scene] — Develop the first declared activity through its own actions, sensory state, and immediate consequences.\nUse when: No wider development has a supported route into the beat.\n\nopening-horizon [available · early scenes] — Prepare a setting-compatible reaction, process, or opportunity.\nUse when: Current evidence provides a credible causal bridge.', 'No generated pathways yet.'));
-
-    const guideLines = (state.nextGuides || []).map((item, index) => [
-        `${index === 0 ? 'Preferred current beat' : `Alternative ${index + 1}`} · ${item.id} [${[item.routeLane, item.causalAgent, item.scale, item.strength].filter(Boolean).join(' · ')}] — ${item.direction}`,
-        `Impact envelope: ${item.worldDelta}`,
-        `Grounding: ${item.origin} — ${item.basis}`,
-        item.causalEngine && `Engine: ${item.causalEngine}`,
-        item.mechanismStatus && `Mechanism: ${item.mechanismStatus}${item.mechanismBasis ? ` — ${item.mechanismBasis}` : ''}`,
-        `Use if: ${item.useWhen}`,
-        `Drop if: ${item.dropWhen}`,
-        item.causalRole && `Causal role: ${item.causalRole}`,
-        item.sourcePathways?.length && `Source pathways: ${item.sourcePathways.join('; ')}`,
-        item.causalEventIds?.length && `Causal events: ${item.causalEventIds.join('; ')}`,
-        item.disclosure && item.disclosure !== 'none' && `Disclosure: ${item.disclosure}`,
-        item.reason && `Why ranked here: ${item.reason}`,
-    ].filter(Boolean).join('\n'));
-    scratchpadText(board, 'scratchpad-next-guides', generatedValue(guideLines.join('\n\n')), boardFallback('Preferred current beat · opening-depth [moderate] — Deepen the first established activity through its own concrete process and sensory state.\nImpact envelope: The activity progresses while every consequential player choice remains open.\n\nAlternative 2 · opening-reaction [light] — Show a reaction or consequence only if current evidence supports it.\nImpact envelope: The scene gains meaning without forced escalation.\n\nAlternative 3 · opening-horizon [light] — Prepare one setting-compatible route without inserting it into the scene.\nImpact envelope: A future option becomes possible, not promised.', 'No generated next guides yet.'));
-
-    const horizonLines = (state.planHorizons?.items || []).map((item, index, items) => {
-        const change = item.change && item.change !== 'keep' ? ` · ${item.change}` : '';
-        return [
-            `${item.timeframe || 'Future'} [${item.stability || 'adaptive'} · ${horizonInfluence(index, items.length)} influence${change}] — ${item.direction}`,
-            item.branch && `Branch: ${item.branch}${item.lane ? ` · ${item.lane}` : ''}${item.scale ? ` · ${item.scale}` : ''}${item.origin ? ` · ${item.origin}` : ''}`,
-            item.agent && `Causal center: ${item.agent}${item.relation ? ` (${item.relation})` : ''}`,
-            item.engine && `Engine: ${item.engine}`,
-            item.mechanismStatus && `Mechanism: ${item.mechanismStatus}${item.mechanismBasis ? ` — ${item.mechanismBasis}` : ''}`,
-            item.conditions?.length && `Needs: ${item.conditions.join('; ')}`,
-            item.reason && `Basis: ${item.reason}`,
-        ].filter(Boolean).join('\n');
-    });
-    const deviation = state.planHorizons?.deviation;
-    if (deviation?.level && deviation.level !== 'none') horizonLines.push(`Deviation: ${deviation.level}${deviation.reason ? ` — ${deviation.reason}` : ''}`);
-    scratchpadText(board, 'scratchpad-horizons', generatedValue(horizonLines.join('\n')), boardFallback('First action [fluid · immediate influence] — Establish the opening activity and its direct response.\nCurrent scene [adaptive · strong influence] — Let relationships or practical conditions begin changing.\nNext scene [adaptive · moderate influence] — Carry forward one consequence or opportunity.\nSeveral scenes [stable · light influence] — Develop a recurring person, place, activity, or pressure.\nCurrent arc [stable · background influence] — Let accumulated choices reshape the character’s circumstances.\nLater arcs / open-ended [slow · background influence] — Keep multiple major life directions available and fully revisable.', 'No generated planning horizons yet.'));
-
-    const challenge = state.selfChallenge || {};
-    const challengeText = [
-        challenge.weakness && `Weakness tested: ${challenge.weakness}`,
-        challenge.counterRoute && `Strongest counter-route: ${challenge.counterRoute}`,
-        challenge.mechanismCheck && `Mechanism scope check: ${challenge.mechanismCheck}`,
-        challenge.decision && `Decision: ${challenge.decision}`,
-    ].filter(Boolean).join('\n');
-    scratchpadText(board, 'scratchpad-self-challenge', generatedValue(challengeText), boardFallback('Weakness tested: The first idea may be overfocused on the newest local beat.\nStrongest counter-route: Compare a distinct established continuity or wider-world route.\nDecision: Keep or revise the preference according to causal support, variety, simulation integrity, and player agency.', 'No planner self-challenge yet.'));
-
-    const audit = state.cueAudit;
-    const auditText = audit?.offeredIds?.length
-        ? `Cue audit: ${audit.pacing} pacing · ${audit.manifestedIds.length} manifested · ${audit.unusedIds.length} unused · ${audit.contradictedIds.length} contradicted${audit.reason ? `\n${audit.reason}` : ''}`
-        : '';
-    const recovered = state.nextGuides.some(guide => /^recovered-path-guide-/u.test(guide.id || ''))
-        && /Recovered (?:usable narrative guidance from incomplete planner output|ranked guidance from grounded planner pathways)/iu.test(state.lastReason || '');
-    const decision = [
-        readableScratchpadGuidance(state),
-        state.lastReason && (recovered
-            ? 'Recovery: the planner omitted ranked guides, so Tale Fairy rebuilt them from grounded pathways.'
-            : `Why: ${state.lastReason}`),
-        auditText,
-    ].filter(Boolean).join('\n\n');
-    scratchpadText(board, 'scratchpad-guidance', generatedValue(decision), boardFallback('Choose the current beat from present evidence. Deepen the authorized activity unless a selected horizon or due event provides a concrete reason for wider change.', 'No generated response guidance yet.'));
+    const auditText = [state.lastReason, state.selfChallenge?.weakness && `Stronger move rejected: ${state.selfChallenge.weakness}`].filter(Boolean).join('\n');
+    scratchpadText(board, 'scratchpad-self-challenge', analyzed ? auditText : '', 'No beat audit yet.');
 
     const chatId = String(currentContext().getCurrentChatId?.() || '');
-    const verification = pendingRequestVerification?.chatId === chatId
-        ? pendingRequestVerification
-        : state.lastRequestVerification;
-    const verificationText = verification
-        ? [
-            verification.status === 'confirmed'
-                ? 'CONFIRMED — the provider returned an assistant reply from a request containing this exact Tale Fairy block.'
-                : 'INCLUDED — this exact Tale Fairy block is in the outgoing provider request; waiting for its reply.',
-            verification.requestedAt ? `Request: ${new Date(verification.requestedAt).toLocaleString()}` : '',
-            verification.confirmedAt ? `Reply confirmed: ${new Date(verification.confirmedAt).toLocaleString()}` : '',
-            [verification.provider, verification.model].filter(Boolean).length ? `Provider: ${[verification.provider, verification.model].filter(Boolean).join(' · ')}` : '',
-            `Placement: ${verification.position || 'at-depth'} · ${verification.role || 'system'}${verification.position === 'at-depth' ? ` · depth ${verification.depth}` : ''}`,
-            `\nExact dynamic block:\n${verification.guidanceBlock}`,
-        ].filter(Boolean).join('\n')
-        : '';
+    const verification = pendingRequestVerification?.chatId === chatId ? pendingRequestVerification : state.lastRequestVerification;
+    const verificationText = verification ? [
+        verification.status === 'confirmed' ? 'CONFIRMED — provider reply used this exact Tale Fairy block.' : 'INCLUDED — waiting for the provider reply.',
+        verification.requestedAt ? `Request: ${new Date(verification.requestedAt).toLocaleString()}` : '',
+        [verification.provider, verification.model].filter(Boolean).length ? `Provider: ${[verification.provider, verification.model].filter(Boolean).join(' · ')}` : '',
+        `Placement: ${verification.position || 'at-depth'} · ${verification.role || 'system'}`,
+        `\nExact dynamic block:\n${verification.guidanceBlock}`,
+    ].filter(Boolean).join('\n') : '';
     scratchpadText(board, 'scratchpad-request-verification', verificationText, 'No roleplay-generation guide injection has been verified yet.');
 
-    const displayedObjectives = state.objectives?.length
-        ? state.objectives
-        : (state.planHorizons?.items || []).slice(0, 4).map(item => ({
-            title: `Open direction · ${item.timeframe || 'future'}`,
-            detail: item.direction,
-            status: item.stability,
-        }));
-    scratchpadText(board, 'scratchpad-objectives', analyzed ? scratchpadList(displayedObjectives, item => {
-        if (!item?.title && !item?.detail) return '';
-        return `${item.title || 'Open direction'}${item.detail ? ` — ${item.detail}` : ''}${item.status ? ` [${item.status}]` : ''}`;
-    }, '') : '', boardFallback('Opening objective — Establish what the character is doing, what can respond, and which choices remain open. [provisional]', 'No generated objectives yet.'));
-
-    scratchpadText(board, 'scratchpad-continuity-routes', analyzed ? scratchpadList(state.continuityThreads, item => {
-        if (!item?.thread) return '';
-        return `${item.thread} [${item.status || 'dormant'}] — ${item.state}${item.basis ? `\n  Basis: ${item.basis}` : ''}`;
-    }, '') : '', 'No established open routes yet.');
-
-    const displayedPossibilities = state.possibilities?.length
-        ? state.possibilities
-        : (state.pathways || []).filter(item => item?.status !== 'blocked').slice(0, 6).map(item => ({
-            description: item.direction,
-            horizon: item.status === 'foreground' ? 'local' : item.status === 'latent' ? 'mid' : 'near',
-            conditions: item.conditions,
-            force: item.status === 'foreground' ? 'strong' : item.status === 'latent' ? 'light' : 'moderate',
-        }));
-    scratchpadText(board, 'scratchpad-possibilities', analyzed ? scratchpadList(displayedPossibilities, item => {
-        if (!item?.description) return '';
-        const conditions = Array.isArray(item.conditions) && item.conditions.length ? ` Conditions: ${item.conditions.join('; ')}.` : '';
-        return `${item.horizon ? `[${item.horizon}] ` : ''}${item.description}${conditions}${item.force ? ` Weight: ${item.force}.` : ''}`;
-    }, '') : '', boardFallback('A relationship becomes important. Weight: moderate.\nA routine develops into a recurring source of change. Weight: light.\nA new ally, rival, mentor, neighbor, colleague, or institution takes interest. Weight: light.\nA practical opportunity opens. Weight: light.\nA misunderstanding creates quiet conflict. Weight: light.\nA success changes expectations. Weight: light.\nA setback redirects the current route. Weight: light.\nAn invitation opens a different social path. Weight: light.\nA hidden motive later becomes relevant. Weight: light.\nA departure or return changes a relationship. Weight: light.\nA moral or allegiance choice becomes possible. Weight: light.\nA distant transformation emerges from accumulated choices. Weight: light.', 'No generated possibilities yet.'));
-
-    scratchpadText(board, 'scratchpad-entities', analyzed ? scratchpadList(state.entities, item => {
-        if (!item?.name) return '';
-        const details = [
-            item.state,
-            item.perspective && `Perspective: ${item.perspective}`,
-            item.motivation && `Motivation: ${item.motivation}`,
-            item.knowledge && `Knowledge: ${item.knowledge}`,
-            item.constraints && `Constraints: ${item.constraints}`,
-            item.agenda && `Independent agenda: ${item.agenda}`,
-            item.location, item.relevance, item.confidence && `${item.confidence} confidence`, item.window,
-        ].filter(Boolean).join(' · ');
-        return `${item.name}${details ? ` — ${details}` : ''}`;
-    }, '') : '', boardFallback('Opening situation — Waiting to replace this provisional process with the first concrete people, institutions, places, and ongoing activities.', 'No generated entities or processes yet.'));
-
-    const displayedLedger = state.contextLedger || [
-        state.scene?.activity && `Working scene: ${state.scene.activity}.`,
-        state.narrativeLayers?.situation && `Situation: ${state.narrativeLayers.situation}`,
-        state.narrativeLayers?.widerWorld && `Wider context: ${state.narrativeLayers.widerWorld}`,
-    ].filter(Boolean).join('\n');
-    scratchpadText(board, 'scratchpad-ledger', generatedValue(displayedLedger), boardFallback('Opening state: no story facts have been established yet. First evidence will replace this line with concrete continuity.', 'No generated context ledger yet.'));
-
-    scratchpadText(board, 'scratchpad-events', analyzed ? scratchpadList(state.narrativeEvents, item => {
-        if (!item?.title) return '';
-        const stateLabels = [item.scope, item.epistemicStatus, item.disclosure, item.status].filter(Boolean).join(' · ');
-        const timing = [item.timing, item.dueState].filter(Boolean).join(' · ');
-        const engine = item.engine ? `\n  Engine: ${item.engine}` : '';
-        const cause = item.cause ? `\n  Cause: ${item.cause}` : '';
-        const requirements = Array.isArray(item.requirements) && item.requirements.length ? `\n  Needs: ${item.requirements.join('; ')}` : '';
-        const effects = Array.isArray(item.consequences) && item.consequences.length ? `\n  Consequences: ${item.consequences.join('; ')}` : '';
-        return `${item.title}${stateLabels ? ` [${stateLabels}]` : ''}${item.summary ? ` — ${item.summary}` : ''}${engine}${timing ? `\n  Timing: ${timing}` : ''}${cause}${requirements}${effects}${item.basis ? `\n  Basis: ${item.basis}` : ''}`;
-    }, '') : '', boardFallback('No new independent causal event was established in this analysis; conditional future routes remain available.', 'No generated narrative events yet.'));
-
+    scratchpadText(board, 'scratchpad-continuity-processes', analyzed ? scratchpadList(state.continuityThreads, item => item?.thread ? `${item.thread} [${item.status || 'dormant'}] — ${item.state}` : '', '') : '', 'No relevant unresolved processes.');
+    scratchpadText(board, 'scratchpad-entities', analyzed ? scratchpadList(state.entities, item => item?.name ? `${item.name}${item.state ? ` — ${item.state}` : ''}${item.agenda ? ` · Agenda: ${item.agenda}` : ''}` : '', '') : '', 'No relevant actors or systems.');
+    scratchpadText(board, 'scratchpad-ledger', analyzed ? state.contextLedger : '', 'No current continuity ledger yet.');
     scratchpadText(board, 'scratchpad-notes', scratchpadList(state.userNotes, item => item?.text ? `[${String(item.kind || 'note').toUpperCase()}] ${item.text}` : '', ''), 'No user notes.');
 }
-
 async function resetState({ rebuilding = false } = {}) {
     const context = currentContext();
     if (rebuilding) {
@@ -1992,7 +1764,6 @@ async function mountUI() {
             latestUserAction,
             turnCount: assistantTurnNumber(messages) + (messages.at(-1)?.is_user ? 1 : 0),
         });
-        state.conductor = normalizeConductorState({ ...state.conductor, status: 'invalid' });
         context.updateChatMetadata(saveState(context.chatMetadata, state));
         updatePrompt(state);
         renderBoard(state);
@@ -2174,11 +1945,6 @@ eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
     const messages = messagesFromChat(context.chat || []);
     const state = loadState(context.chatMetadata);
     const turn = assistantTurnNumber(messages);
-    const latestUserAction = [...messages].reverse().find(message => message.is_user)?.mes || '';
-    state.authorBoard = tickAuthorBoard(state.authorBoard, {
-        turnCount: turn,
-        storyTimeAdvanced: state.lastRequestVerification?.conductorContract?.pacing === 'advance' || isReleaseSignal(latestUserAction),
-    });
     const responseKey = `${String(context.getCurrentChatId?.() || '')}:${turn}`;
     const replacement = state.plannerSchedule.lastCountedResponseKey === responseKey;
     state.plannerSchedule = markAssistantTurn(state.plannerSchedule, responseKey);
@@ -2219,11 +1985,10 @@ eventSource.on(event_types.MESSAGE_SWIPED, messageId => {
 eventSource.on(event_types.CHAT_CHANGED, () => {
     pendingRequestVerification = null;
     generationGuideSelection = null;
-    swipeGuideCursors.clear();
     generationRevision++;
     cancelRunningAnalysis('The active chat changed while Tale Fairy was analyzing.', 'Ready');
     updatePrompt(loadState(currentContext().chatMetadata));
-    // Refresh a stale current plan as well as migrating legacy state. The
+    // Refresh a stale current beat as well as migrating legacy state. The
     // planner remains non-blocking and identical in-flight work is reused.
     setTimeout(() => {
         renderBoard();
@@ -2238,8 +2003,8 @@ for (const event of [event_types.CONNECTION_PROFILE_CREATED, event_types.CONNECT
 eventSource.on(event_types.EXTENSIONS_FIRST_LOAD, startUIMounting);
 startUIMounting();
 // CHAT_CHANGED may fire before a third-party module finishes loading. Audit
-// the active plan once on startup as well, so a stale or legacy chat cannot
-// remain route-less until another assistant response arrives.
+// the active beat once on startup as well, so stale or legacy guidance is
+// replaced without waiting for another assistant response.
 setTimeout(() => void refreshCurrentPlanIfNeeded(), 0);
 setInterval(() => void recoverDetachedPlannerJobs(), 3000);
 

@@ -1,10 +1,11 @@
-import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.11.114';
+import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.11.119';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
 import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js';
+import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, formatFreshBeatFallback, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile } from './beat-director.js';
 
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 44;
+export const STATE_VERSION = 46;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -27,6 +28,8 @@ export function defaultState() {
         analysisModel: { source: 'active', profileId: '', model: '', url: '' },
         summaryEvidence: { count: 0, includedTokens: 0, originalTokens: 0, labels: [], scannedAt: 0 },
         scene: { status: 'uninitialized', activity: '', pace: '', intent: '', location: '', time: '', loop: false },
+        sceneProfile: defaultSceneProfile(),
+        beatDirective: defaultBeatDirective(),
         narrativeLayers: { immediateAction: '', localActivity: '', situation: '', widerWorld: '', durableTrajectory: '', activityRole: 'routine', temporalScope: 'action' },
         storyFrame: { frame: 'unknown', confidence: 'low', basis: '' },
         directorScore: { storyIdentity: '', sceneFunction: '', settingIdentity: '', settingForces: [], causalTempo: 'hold', arcDirection: '', futureSetup: { id: '', development: '', currentStep: '', conditions: [], earliestWindow: '', disclosure: 'hidden' }, meaningfulAim: '', change: 'replace', basis: '' },
@@ -129,12 +132,12 @@ function normalizeDirectorScore(value = {}) {
     const change = text(value.change, 'replace').toLowerCase();
     const future = value.futureSetup ?? value.future_setup ?? {};
     return {
-        storyIdentity: '',
+        storyIdentity: clippedText(value.storyIdentity ?? value.story_identity, 240),
         sceneFunction: clippedText(value.sceneFunction ?? value.scene_function, 120),
         settingIdentity: clippedText(value.settingIdentity ?? value.setting_identity, 120),
         settingForces: cap(value.settingForces ?? value.setting_forces, 3).map(item => clippedText(item, 140)).filter(Boolean),
         causalTempo: ['hold', 'seed', 'advance', 'converge', 'payoff', 'redirect', 'recover'].includes(causalTempo) ? causalTempo : 'hold',
-        arcDirection: '',
+        arcDirection: clippedText(value.arcDirection ?? value.arc_direction, 260),
         futureSetup: {
             id: clippedText(future.id, 100),
             development: clippedText(future.development, 220),
@@ -156,7 +159,7 @@ function normalizeNarrativeLayers(value = {}) {
         localActivity: clippedText(value.localActivity ?? value.local_activity, 180),
         situation: clippedText(value.situation, 220),
         widerWorld: clippedText(value.widerWorld ?? value.wider_world, 240),
-        durableTrajectory: '',
+        durableTrajectory: clippedText(value.durableTrajectory ?? value.durable_trajectory, 300),
         activityRole: ['incidental', 'routine', 'developmental', 'central', 'transition'].includes(activityRole) ? activityRole : 'routine',
         temporalScope: ['moment', 'action', 'activity', 'scene', 'extended'].includes(temporalScope) ? temporalScope : 'action',
     };
@@ -361,6 +364,8 @@ function normalizeRequestVerification(value) {
         canonConstraints: cap(value.canonConstraints).map(item => text(item).slice(0, 500)).filter(Boolean),
         selectedGuideIndex: Math.max(0, Math.min(MAX_GUIDES - 1, Number(value.selectedGuideIndex) || 0)),
         replacementGeneration: value.replacementGeneration === true,
+        sceneProfile: normalizeSceneProfile(value.sceneProfile),
+        beatDirective: normalizeBeatDirective(value.beatDirective),
         conductorDevelopmentId: text(value.conductorDevelopmentId).slice(0, 100),
         conductorContract: normalizeConductorState(value.conductorContract),
     };
@@ -408,13 +413,18 @@ export function normalizeState(input = {}) {
     // another route's signature development. v43 adds an author board,
     // deterministic conductor, pacing state, and periodic planner scheduler;
     // v42 plans migrate into that layer without spending a forced AI call;
-    // v44 removes AI-authored interpretations of past story and keeps only a
-    // future agenda with explicit unresolved/completion evidence.
+    // v44 temporarily removed durable author direction; v45 restores it as a
+    // provisional future-facing author map, distinct from factual history and
+    // from the immediate pacing boundary. v46 retires that agenda at runtime:
+    // planning now describes only the current scene and one semantic beat.
     const unsafePlannerUpgrade = inputVersion > 0 && inputVersion < 18;
     const movementUpgrade = inputVersion > 0 && inputVersion < 42;
     const recoveryUpgrade = inputVersion > 0 && inputVersion < 26;
     const chronologyAuditUpgrade = inputVersion > 0 && inputVersion < 31;
+    const authorMapUpgrade = inputVersion > 0 && inputVersion < 45;
+    const beatContractUpgrade = inputVersion > 0 && inputVersion < 46;
     const normalizedLayers = normalizeNarrativeLayers(value.narrativeLayers);
+    const normalizedDirector = normalizeDirectorScore(value.directorScore);
     const state = {
         ...base,
         ...value,
@@ -432,34 +442,36 @@ export function normalizeState(input = {}) {
             scannedAt: Math.max(0, Number(value.summaryEvidence?.scannedAt) || 0),
         },
         scene: chronologyAuditUpgrade ? base.scene : { ...base.scene, ...(value.scene || {}) },
+        sceneProfile: beatContractUpgrade ? base.sceneProfile : normalizeSceneProfile(value.sceneProfile ?? value.scene_profile),
+        beatDirective: beatContractUpgrade ? base.beatDirective : normalizeBeatDirective(value.beatDirective ?? value.beat_directive),
         narrativeLayers: chronologyAuditUpgrade
             ? { ...base.narrativeLayers, widerWorld: normalizedLayers.widerWorld }
-            : normalizedLayers,
+            : authorMapUpgrade ? { ...normalizedLayers, durableTrajectory: '' } : normalizedLayers,
         storyFrame: { ...base.storyFrame, ...(value.storyFrame || {}) },
-        directorScore: normalizeDirectorScore(value.directorScore),
+        directorScore: authorMapUpgrade ? { ...normalizedDirector, storyIdentity: '', arcDirection: '' } : normalizedDirector,
         loreModel: normalizeLoreModel(value.loreModel ?? value.lore_model),
-        objectives: recoveryUpgrade ? [] : cap(value.objectives, MAX_OBJECTIVES).map(normalizeObjective).filter(item => item.title || item.detail),
+        objectives: beatContractUpgrade || recoveryUpgrade ? [] : cap(value.objectives, MAX_OBJECTIVES).map(normalizeObjective).filter(item => item.title || item.detail),
         continuityThreads: cap(value.continuityThreads ?? value.continuity_threads, MAX_CONTINUITY_THREADS).map(normalizeContinuityThread).filter(item => item.id && item.thread && item.state && item.basis),
-        selfChallenge: normalizeSelfChallenge(value.selfChallenge ?? value.self_challenge),
+        selfChallenge: beatContractUpgrade ? base.selfChallenge : normalizeSelfChallenge(value.selfChallenge ?? value.self_challenge),
         entities: cap(value.entities).map(normalizeEntity).filter(item => item.name),
-        possibilities: cap(value.possibilities, MAX_POSSIBILITIES).map(normalizePossibility).filter(item => item.description),
-        pathways: chronologyAuditUpgrade ? [] : cap(value.pathways, MAX_PATHWAYS).map(normalizePathway).filter(item => item.id && item.direction && item.when),
-        nextGuides: movementUpgrade ? [] : (Array.isArray(value.nextGuides) ? value.nextGuides.slice(0, MAX_GUIDES) : []).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen && item.causalRole && item.worldDelta && item.basis),
+        possibilities: beatContractUpgrade ? [] : cap(value.possibilities, MAX_POSSIBILITIES).map(normalizePossibility).filter(item => item.description),
+        pathways: beatContractUpgrade || chronologyAuditUpgrade ? [] : cap(value.pathways, MAX_PATHWAYS).map(normalizePathway).filter(item => item.id && item.direction && item.when),
+        nextGuides: beatContractUpgrade || movementUpgrade ? [] : (Array.isArray(value.nextGuides) ? value.nextGuides.slice(0, MAX_GUIDES) : []).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen && item.causalRole && item.worldDelta && item.basis),
         activeBeat: chronologyAuditUpgrade ? base.activeBeat : normalizeBeat(value.activeBeat),
-        beatHistory: cap(value.beatHistory, 6).map(normalizeBeat).filter(beat => beat.objective),
-        planHorizons: recoveryUpgrade ? base.planHorizons : normalizePlanHorizons(value.planHorizons),
+        beatHistory: beatContractUpgrade ? [] : cap(value.beatHistory, 6).map(normalizeBeat).filter(beat => beat.objective),
+        planHorizons: beatContractUpgrade || recoveryUpgrade ? base.planHorizons : normalizePlanHorizons(value.planHorizons),
         // Older migrated states have no reliable pre-response canon snapshot.
         // v18 already has one, so retain it until the upgrade pass refreshes it.
         canonConstraints: unsafePlannerUpgrade ? [] : cap(value.canonConstraints).map(item => text(item).slice(0, 500)).filter(Boolean),
         canonBootstrapPending: value.canonBootstrapPending === true || plannerUpgradePending,
         userNotes: cap(value.userNotes).map(normalizeNote).filter(note => note.text),
-        guidance: recoveryUpgrade ? '' : text(value.guidance).slice(0, 700),
-        lastInject: recoveryUpgrade ? false : value.lastInject === true,
+        guidance: beatContractUpgrade || recoveryUpgrade ? '' : text(value.guidance).slice(0, 700),
+        lastInject: beatContractUpgrade || recoveryUpgrade ? false : value.lastInject === true,
         lastReason: text(value.lastReason).slice(0, 500),
         contextLedger: inputVersion > 0 && inputVersion < 44 ? '' : (chronologyAuditUpgrade ? '' : text(value.contextLedger).slice(0, 3000)),
         ledgerMessageCount: Math.max(0, Number(value.ledgerMessageCount) || 0),
         ledgerUpdatedAt: Number(value.ledgerUpdatedAt) || 0,
-        narrativeEvents: recoveryUpgrade || chronologyAuditUpgrade ? [] : cap(value.narrativeEvents, MAX_EVENTS).map(normalizeEvent).filter(event => event.title && event.summary && event.engine),
+        narrativeEvents: beatContractUpgrade || recoveryUpgrade || chronologyAuditUpgrade ? [] : cap(value.narrativeEvents, MAX_EVENTS).map(normalizeEvent).filter(event => event.title && event.summary && event.engine),
         cueAudit: normalizeCueAudit(value.cueAudit),
         lastAnalysisFingerprint: text(value.lastAnalysisFingerprint),
         sourceMessageCount: Math.max(0, Number(value.sourceMessageCount) || 0),
@@ -467,11 +479,17 @@ export function normalizeState(input = {}) {
         lastAnalyzedAt: Number(value.lastAnalyzedAt) || 0,
         turnCount: Math.max(0, Number(value.turnCount) || 0),
         plannerSeed: Number.isInteger(value.plannerSeed) ? value.plannerSeed : 0,
-        lastRequestVerification: movementUpgrade ? null : normalizeRequestVerification(value.lastRequestVerification),
+        lastRequestVerification: beatContractUpgrade ? null : normalizeRequestVerification(value.lastRequestVerification),
     };
-    state.authorBoard = normalizeAuthorBoard(value.authorBoard, state);
+    state.authorBoard = beatContractUpgrade ? defaultAuthorBoard() : normalizeAuthorBoard(authorMapUpgrade ? {
+        ...(value.authorBoard || {}),
+        story: { identity: '', themes: [] },
+        activeArc: {},
+        characterArcs: [],
+        relationshipArcs: [],
+    } : value.authorBoard, state);
     state.pacing = normalizePacingState(value.pacing);
-    state.conductor = normalizeConductorState(value.conductor);
+    state.conductor = beatContractUpgrade ? defaultConductorState() : normalizeConductorState(value.conductor);
     state.plannerSchedule = normalizePlannerSchedule(value.plannerSchedule);
     state.objectives = state.objectives.map((objective, index) => {
         if (!/^Open direction · open[- ]ended future$/iu.test(objective.title)) return objective;
@@ -494,101 +512,34 @@ export function clearState(metadata) {
     return next;
 }
 
-export function applyPlannerAuthorLayer(state, { turnCount = 0, fingerprint = '' } = {}) {
+export function applyPlannerAuthorLayer(state, { turnCount = 0, fingerprint = '', seedRequiredDevelopment = true } = {}) {
     const next = normalizeState(state);
     const turn = Math.max(0, Number(turnCount) || next.turnCount);
-    next.authorBoard = refreshAuthorBoardFromLegacy(next.authorBoard, next, turn);
-    next.conductor = normalizeConductorState({ ...next.conductor, status: 'invalid', boardRevision: next.authorBoard.revision });
     next.plannerSchedule = markPlannerCompleted(next.plannerSchedule, { turnCount: turn, fingerprint });
     return next;
 }
 
 export function stateForPrompt(state) {
     const s = normalizeState(state);
-    const verified = s.lastRequestVerification;
-    const archivedCues = verified?.guideCandidates || [];
-    const offeredCues = archivedCues.length
-        ? [archivedCues[Math.max(0, Math.min(archivedCues.length - 1, Number(verified?.selectedGuideIndex) || 0))]]
-        : [];
     return {
         mode: s.mode,
         scene: Object.fromEntries(Object.entries(s.scene).map(([key, value]) => [key, typeof value === 'string' ? value.slice(0, 100) : value])),
-        narrativeLayers: { immediateAction: s.narrativeLayers.immediateAction, localActivity: s.narrativeLayers.localActivity, situation: s.narrativeLayers.situation, widerWorld: s.narrativeLayers.widerWorld, activityRole: s.narrativeLayers.activityRole, temporalScope: s.narrativeLayers.temporalScope },
+        sceneProfile: s.sceneProfile,
+        beatDirective: s.beatDirective,
+        narrativeLayers: { immediateAction: s.narrativeLayers.immediateAction, localActivity: s.narrativeLayers.localActivity, situation: s.narrativeLayers.situation, widerWorld: s.narrativeLayers.widerWorld, durableTrajectory: s.narrativeLayers.durableTrajectory, activityRole: s.narrativeLayers.activityRole, temporalScope: s.narrativeLayers.temporalScope },
         loreModel: { ...s.loreModel },
-        objectives: s.objectives.slice(-8).map(item => ({ title: item.title, detail: item.detail.slice(0, 180), status: item.status })),
         continuityThreads: s.continuityThreads.map(item => ({ id: item.id, thread: item.thread, state: item.state, status: item.status, basis: item.basis })),
-        selfChallenge: { ...s.selfChallenge },
         entities: s.entities.filter(e => e && e.relevance !== 'ambient').slice(-5).map(item => ({
             name: item.name, state: item.state.slice(0, 120), location: item.location.slice(0, 80), relevance: item.relevance.slice(0, 80),
             perspective: item.perspective.slice(0, 100), motivation: item.motivation.slice(0, 110), knowledge: item.knowledge.slice(0, 90),
             constraints: item.constraints.slice(0, 90), agenda: item.agenda.slice(0, 110),
         })),
-        // The large brainstorming bench stays cheap in the next planner prompt:
-        // one compact string per idea instead of repeating JSON field names.
-        possibilities: s.possibilities.map(item => [
-            item.description.slice(0, 100),
-            item.conditions[0] ? `if ${item.conditions[0].slice(0, 60)}` : '',
-            `[${item.lane || 'extra'}, ${item.horizon || 'unscoped'}, ${item.scale || 'scene'}, ${item.origin || 'inferred'}, ${item.force.slice(0, 12) || 'light'}]`,
-        ].filter(Boolean).join(' | ')),
-        pathways: s.pathways.map(item => ({ id: item.id, lane: item.lane, agent: item.agent, engine: item.engine, relation: item.relation, scale: item.scale, origin: item.origin, mechanismStatus: item.mechanismStatus, mechanismBasis: item.mechanismBasis, evidenceRefs: item.evidenceRefs, unresolvedBasis: item.unresolvedBasis, completionCheck: item.completionCheck, direction: item.direction.slice(0, 220), when: item.when.slice(0, 180), responseBias: item.responseBias.slice(0, 200), horizon: item.horizon, status: item.status, conditions: item.conditions.slice(0, 2), change: item.change })),
-        nextGuides: s.nextGuides.map(item => ({ id: item.id, routeLane: item.routeLane, causalAgent: item.causalAgent, causalEngine: item.causalEngine, scale: item.scale, direction: item.direction.slice(0, 240), useWhen: item.useWhen.slice(0, 160), dropWhen: item.dropWhen.slice(0, 160), causalRole: item.causalRole.slice(0, 180), worldDelta: item.worldDelta.slice(0, 180), origin: item.origin, mechanismStatus: item.mechanismStatus, mechanismBasis: item.mechanismBasis, basis: item.basis.slice(0, 140), strength: item.strength, sourcePathways: item.sourcePathways, causalEventIds: item.causalEventIds, disclosure: item.disclosure })),
-        // Carry the old live beat only long enough for a v9 state to be
-        // converted. Current pathway states do not spend prompt tokens on it.
-        activeBeat: s.pathways.length ? undefined : { id: s.activeBeat.id, objective: s.activeBeat.objective, nextAction: s.activeBeat.nextAction, completion: s.activeBeat.completion, lifecycle: s.activeBeat.lifecycle },
-        beatHistory: s.beatHistory.slice(-1).map(beat => ({ id: beat.id, objective: beat.objective, completion: beat.completion, lifecycle: beat.lifecycle })),
-        planHorizons: {
-            items: s.planHorizons.items.map(item => ({ id: item.id, lane: item.lane, branch: item.branch, agent: item.agent, engine: item.engine, relation: item.relation, scale: item.scale, origin: item.origin, mechanismStatus: item.mechanismStatus, mechanismBasis: item.mechanismBasis, evidenceRefs: item.evidenceRefs, unresolvedBasis: item.unresolvedBasis, completionCheck: item.completionCheck, direction: item.direction.slice(0, 240), timeframe: item.timeframe, stability: item.stability, conditions: item.conditions.slice(0, 1), change: item.change })),
-            deviation: s.planHorizons.deviation,
-        },
         canonConstraints: s.canonConstraints.slice(-8).map(item => item.slice(0, 360)),
         userNotes: s.userNotes.slice(-4),
         lastReason: s.lastReason.slice(0, 180),
         contextLedger: s.contextLedger.slice(0, 1400),
         storyFrame: { frame: s.storyFrame.frame, confidence: s.storyFrame.confidence, basis: s.storyFrame.basis.slice(0, 180) },
-        directorScore: {
-            sceneFunction: s.directorScore.sceneFunction,
-            settingIdentity: s.directorScore.settingIdentity,
-            settingForces: s.directorScore.settingForces,
-            causalTempo: s.directorScore.causalTempo,
-            futureSetup: s.directorScore.futureSetup,
-            meaningfulAim: s.directorScore.meaningfulAim,
-            change: s.directorScore.change,
-            basis: s.directorScore.basis,
-        },
-        authorBoard: {
-            setups: s.authorBoard.setups,
-            offscreenDevelopments: s.authorBoard.offscreenDevelopments,
-            scene: { requiredDevelopments: s.authorBoard.scene.requiredDevelopments },
-            milestones: s.authorBoard.milestones,
-            revision: s.authorBoard.revision,
-        },
-        pacing: s.pacing,
-        conductor: s.conductor,
         plannerSchedule: s.plannerSchedule,
-        narrativeEvents: s.narrativeEvents.slice(-6).map(event => ({
-            id: event.id,
-            engine: event.engine,
-            title: event.title,
-            summary: event.summary.slice(0, 180),
-            scope: event.scope,
-            epistemicStatus: event.epistemicStatus,
-            disclosure: event.disclosure,
-            status: event.status,
-            timing: event.timing,
-            dueState: event.dueState,
-            cause: event.cause.slice(0, 140),
-            consequences: event.consequences.slice(0, 2).map(item => item.slice(0, 120)),
-            basis: event.basis.slice(0, 120),
-            requirements: event.requirements.slice(0, 2),
-        })),
-        lastOfferedCues: offeredCues.length ? offeredCues.map(cue => ({
-            id: cue.id,
-            direction: cue.direction.slice(0, 220),
-            useWhen: cue.useWhen.slice(0, 140),
-            dropWhen: cue.dropWhen.slice(0, 120),
-            worldDelta: cue.worldDelta.slice(0, 160),
-            requestConfirmed: true,
-        })) : undefined,
     };
 }
 
@@ -604,13 +555,7 @@ export function isStateAligned(state, messages = [], chatId = '') {
 // without waiting for another planner request.
 export function isGuidanceUsable(state, messages = [], chatId = '') {
     const s = normalizeState(state);
-    if (!s.lastInject || !s.nextGuides.length || !s.directorScore.meaningfulAim) return false;
-    if (!s.narrativeLayers.situation) return false;
-    if (s.planHorizons.items.length < 5 || s.planHorizons.items.at(-1)?.stability !== 'slow') return false;
-    if (isStateAligned(s, messages, chatId)) return true;
-    if (s.sourceChatId && chatId && s.sourceChatId !== String(chatId)) return false;
-    if (!messages.at(-1)?.is_user || s.sourceMessageCount !== messages.length - 1) return false;
-    return s.lastAnalysisFingerprint === fingerprintMessages(messages.slice(0, -1));
+    return s.lastInject && hasUsableBeatDirective(s.beatDirective) && isStateAligned(s, messages, chatId);
 }
 
 // If a generation has no archived routes yet, a plan made from the discarded
@@ -704,7 +649,7 @@ function boundedPromptLines(items, prefix, perItem, total) {
     return items.map(item => `${prefix}${compact(item)}`).join('\n').slice(0, total);
 }
 
-export function buildPromptPayload(state, { enabled = true, guidanceUsable = false, guideCandidates = null, guideIndex = 0, regeneration = false, variationCue = 0, canonConstraints = null, latestUserAction = '' } = {}) {
+export function buildPromptPayload(state, { enabled = true, guidanceUsable = false, guideCandidates = null, guideIndex = 0, regeneration = false, variationCue = 0, canonConstraints = null, latestUserAction = '', sceneProfile = null, beatDirective = null } = {}) {
     if (!enabled) return '';
     const s = normalizeState(state);
     const noteLabels = { suggest: 'OPTIONAL SUGGESTION', correct: 'USER CORRECTION', establish: 'USER-ESTABLISHED CANON', forbid: 'HARD EXCLUSION' };
@@ -717,23 +662,9 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
     const notePrompt = notes
         ? `\n<tale-fairy-user-notes>\nUser directives: exclusions, corrections, and canon are binding; suggestions are optional.\n${notes}\n</tale-fairy-user-notes>`
         : '';
-    const candidates = Array.isArray(guideCandidates)
-        ? guideCandidates.slice(0, MAX_GUIDES).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen && item.causalRole && item.worldDelta && item.basis)
-        : s.nextGuides;
-    const selectedIndex = candidates.length ? Math.max(0, Math.min(candidates.length - 1, Number(guideIndex) || 0)) : 0;
-    const selectedCandidate = candidates[selectedIndex] || null;
-    const conductorPrompt = guidanceUsable ? `${narrativeConductor(s.directorScore, s.narrativeLayers, s.continuityThreads, latestUserAction)}\n\n` : '';
-    const beatRealization = 'BEAT REALIZATION: Realize the beat. Introduce an event, actor, object, or world change only when the direction or active horizon supports it. Otherwise deepen the activity through action, sensory state, progress, or consequence; calm may remain calm. Never invent intrusion or player tasks to prove movement; leave choices open.';
-    const pacingBoundary = 'Primary user and roleplay instructions control voice, dialogue, prose, format, length, and response shape; Tale Fairy changes none of them; travel stops at arrival. A moment or named action preserves the established clock except for its immediate duration; never treat a future activity as completed. A broad activity may progress, but a named action permits one instance and immediate result—not repetition, onward movement, obeying a request, or unstated reaction. Never invent player dialogue, thoughts, feelings, choices, compliance, reactions, or activities. NPC requests/orders are world actions, not player authorization. Tale Fairy movement comes from independent character/world change, not assigning the player a task. Only simulate low-stakes procedure implicit in broad scope. Apply established strengths/limits proportionately; never cancel exceptional advantages. Keep unresolved choices open.';
-    const fallbackPacingBoundary = 'AUTHORITY: User and roleplay instructions control expression; Tale Fairy supplies only movement. PLAYER AGENCY: Stay within latest user scope. Never invent player dialogue, thoughts, feelings, choices, compliance, reactions, or extra activities. NPC requests are events, not authorization.';
-    const contractActive = s.conductor.status === 'active' && Boolean(s.conductor.requiredDevelopment);
-    const routePrompt = contractActive
-        ? `TALE FAIRY — NEXT RESPONSE CONTRACT\n${formatConductorContract(s.conductor)}\nTreat this contract as binding narrative direction. Accomplish the required development concretely in this response while respecting PACE and RELEASE ONLY WHEN. Do not replace it with a menu of possibilities, generic foreshadowing, or a promise to act later. Hidden background contents are deliberately omitted; never invent or reveal them.\n${pacingBoundary}`
-        : guidanceUsable && selectedCandidate
-        ? `${conductorPrompt}Conditional authorial direction${regeneration ? ' for a different regeneration' : ''}:\n${authorialDirective(selectedCandidate)}\nWhen APPLY holds and its exclusion does not, fulfill STORY FUNCTION within IMPACT ENVELOPE. This direction is binding at narrative-purpose level, not a prescribed incident. If invalid, do not force it; choose another supported beat function from current context.${regeneration ? ' Do not reuse the discarded reply\'s concrete realization.' : ''} Keep private future developments offscreen and preserve established meanings and player agency.\n${beatRealization}\n${pacingBoundary}`
-        : regeneration
-            ? `Background variation ${Math.max(1, Number(variationCue) || 1)}: realize a different supported beat function; do not repeat the discarded event, alter established meanings, or invent a crisis.\n${beatRealization}\n${fallbackPacingBoundary}`
-            : `No current route is safe to reuse: derive from the latest turn and full context, not stale planning. Do not repeat completed events or alter established meanings.\n${beatRealization}\n${fallbackPacingBoundary}`;
+    const routePrompt = guidanceUsable
+        ? formatBeatContract(sceneProfile || s.sceneProfile, beatDirective || s.beatDirective, { regeneration })
+        : formatFreshBeatFallback({ regeneration });
     const guidancePrompt = `\n<living-world-guide>\n${routePrompt}\n</living-world-guide>`;
     return `<tale-fairy-context>${notePrompt}${canonPrompt}${guidancePrompt}\n</tale-fairy-context>`;
 }

@@ -104,28 +104,26 @@ test('repairs text-completion prompts and recognizes the current guide', () => {
     assert.equal(ensureGuidanceInText(repaired, payload), repaired);
 });
 
-test('provider-bound request receives one complete rotated conditional cue', () => {
-    const routes = [
-        { id: 'reveal', direction: 'Vekk gives the concrete war update now.', use_when: 'The user remains present or asks about the war.', drop_when: 'The user leaves or forbids the topic.', causal_role: 'Payoff the established report thread by changing shared knowledge.', world_delta: 'The actual military situation becomes known.', origin: 'inferred', basis: 'Vekk has the report and intended to speak privately.', strength: 'strong', source_pathways: ['war-news'] },
-        { id: 'interruption', direction: 'An urgent contradiction reaches Vekk before he can finish.', use_when: 'The channel remains open and outside contact is possible.', drop_when: 'The user isolates the room or time advances past it.', causal_role: 'Advance the unstable-war-information thread with contradictory evidence.', world_delta: 'New evidence forces Vekk to revise part of the report.', origin: 'original', basis: 'The war is active and information remains unstable.', strength: 'moderate', source_pathways: ['war-news'] },
-    ];
-    const prompt = buildPromptPayload({ ...defaultState(), nextGuides: routes }, { guidanceUsable: true, guideCandidates: routes, guideIndex: 1, regeneration: true });
+test('provider-bound request receives one complete semantic beat on regeneration', () => {
+    const state = {
+        ...defaultState(),
+        sceneProfile: { promise: 'A tense report is being discussed.', phase: 'developing', emotionalDirection: 'intensify', pressure: 'active', intrusion: 'open', noveltyCeiling: 'moderate' },
+        beatDirective: { operation: 'complicate', target: 'the report discussion', requiredEffect: 'Add a credible difficulty that changes how the current information is understood.', contentClass: 'information', scope: 'social', intensity: 'moderate', quantity: 'single', relativePower: 'peer', plotWeight: 'supporting', duration: 'beat', resolutionCeiling: 'partial', preserve: ['user authority'], forbid: ['a predetermined incident'], basis: 'The information is already unstable.' },
+    };
+    const prompt = buildPromptPayload(state, { guidanceUsable: true, regeneration: true });
     const chat = [{ role: 'user', content: 'Tell me what happened.' }];
 
     assert.equal(ensureGuidanceInChat(chat, prompt, { role: 'user', depth: 1, inlineLatestUser: true }), true);
     assert.equal(chatHasCurrentGuidance(chat, prompt), true);
     assert.equal(chat.length, 1);
     assert.equal(chat.at(-1).role, 'user');
-    assert.match(chat.at(-1).content, /Conditional authorial direction for a different regeneration/);
-    assert.match(chat.at(-1).content, /AUTHORIAL INTENT: An urgent contradiction reaches Vekk/);
-    assert.match(chat.at(-1).content, /APPLY WHEN: The channel remains open/);
-    assert.match(chat.at(-1).content, /DO NOT APPLY WHEN: The user isolates the room/);
-    assert.match(chat.at(-1).content, /STORY FUNCTION: Advance the unstable-war-information thread/);
-    assert.match(chat.at(-1).content, /IMPACT ENVELOPE: New evidence forces Vekk/);
-    assert.doesNotMatch(chat.at(-1).content, /Vekk gives the concrete war update now/);
-    assert.match(chat.at(-1).content, /Do not reuse the discarded reply's concrete realization/);
+    assert.match(chat.at(-1).content, /BEAT MOVE: COMPLICATE — the report discussion/);
+    assert.match(chat.at(-1).content, /REQUIRED EFFECT: Add a credible difficulty/);
+    assert.match(chat.at(-1).content, /Freely invent a compatible context-native realization/);
+    assert.match(chat.at(-1).content, /keep the semantic beat if still valid but realize it differently/);
+    assert.doesNotMatch(chat.at(-1).content, /Vekk|war update|urgent contradiction/);
     assert.match(chat.at(-1).content, /Tell me what happened\.$/);
     assert.doesNotMatch(chat.at(-1).content, /GROUNDING:|EXECUTION:/);
     assert.equal(chat.map(message => String(message.content)).join('\n').match(/<tale-fairy-context>/g)?.length, 1);
-    assert.ok(prompt.length < 3000, `expected bounded conductor payload, got ${prompt.length} characters`);
+    assert.ok(prompt.length < 3000, `expected bounded beat payload, got ${prompt.length} characters`);
 });

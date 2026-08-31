@@ -1,4 +1,4 @@
-import { markAuthorBeatIssued, normalizeAuthorBoard } from './author-board.js?v=0.11.114';
+import { markAuthorBeatIssued, normalizeAuthorBoard } from './author-board.js?v=0.11.119';
 import { normalizePacingState } from './pacing.js';
 
 const clean = (value, fallback) => String(value || fallback || '').trim().slice(0, 320);
@@ -34,7 +34,13 @@ function selectedDevelopment(board, pacing) {
     if (required) return { id: required.id, type: 'required', text: required.instruction };
     const milestone = board.milestones.find(item => ['available', 'active'].includes(item.status));
     if (milestone) return { id: milestone.id, type: 'milestone', text: milestone.development };
-    return { id: '', type: '', text: 'Make one concrete, measurable development inside the current activity without ending it.' };
+    return {
+        id: '',
+        type: '',
+        text: pacing === 'linger'
+            ? 'Add substance to the latest user-authorized activity or stated direction without ending it. If the activity has not begun, respond naturally and keep its route open rather than performing it for the player.'
+            : 'Make one concrete development that supports the latest user-authorized action or direction without taking control of the player.',
+    };
 }
 
 export function runConductor({ authorBoard, pacing, previous, turnCount = 0 } = {}) {
@@ -48,9 +54,11 @@ export function runConductor({ authorBoard, pacing, previous, turnCount = 0 } = 
         : pace.effective === 'linger'
             ? 'Deepen the present activity through concrete progress, substance, NPC response, sensory detail, or immediate consequence.'
             : 'Move only as far as the latest user action authorizes while delivering the required development.';
+    const agencyBoundary = 'Do not author the player character\'s dialogue, thoughts, feelings, decisions, compliance, or movement beyond the latest user action.';
+    const antiObstruction = 'Do not invent a new obstacle, access or escort requirement, delay, interruption, or unrelated task merely to manufacture development or prevent the user\'s stated direction; only use one when it is already established or the selected required development explicitly demands it.';
     const forbidden = board.scene.forbiddenMovement.length
-        ? board.scene.forbiddenMovement.join('; ')
-        : 'Do not author the player character\'s dialogue, thoughts, feelings, decisions, compliance, or movement beyond the latest user action.';
+        ? `${board.scene.forbiddenMovement.join('; ')}; ${agencyBoundary} ${antiObstruction}`
+        : `${agencyBoundary} ${antiObstruction}`;
     const gates = board.scene.exitGates.length
         ? board.scene.exitGates.join('; ')
         : 'Release the scene only when the user leaves the activity, skips time, checks for developments, or explicitly advances.';

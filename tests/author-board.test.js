@@ -38,7 +38,7 @@ test('offscreen clocks tick once per accepted turn and honor their clock type', 
     assert.deepEqual(second.offscreenDevelopments.map(item => item.progress), [30, 30, 50]);
 });
 
-test('a routine scene hold stays local instead of becoming a model-authored story interpretation', () => {
+test('a routine scene hold stays local without erasing the durable author map', () => {
     const board = normalizeAuthorBoard({
         story: { identity: 'Lucia grows from institutional childhood into a life shaped by extraordinary Force potential.' },
         activeArc: { id: 'placement', title: 'Who will shape Lucia\'s future?', phase: 'setup', purpose: 'Let institutional custody and Jedi attention converge over multiple scenes.', pressure: 'The Council petition remains unresolved.' },
@@ -47,14 +47,14 @@ test('a routine scene hold stays local instead of becoming a model-authored stor
         narrativeLayers: { localActivity: 'Quiet garden reading', durableTrajectory: board.story.identity, activityRole: 'routine' },
         directorScore: { storyIdentity: 'A quiet morning interlude before an uncertain future.', sceneFunction: 'Let Lucia read without interruption.', causalTempo: 'hold', arcDirection: 'Read page 42.', meaningfulAim: 'Enjoy the garden.', futureSetup: { id: 'g_garden', currentStep: 'Lucia reads in the garden.', conditions: [] } },
     }, 361);
-    assert.equal(board.story.identity, '');
-    assert.equal(refreshed.story.identity, '');
-    assert.equal(refreshed.activeArc.id, '');
+    assert.match(board.story.identity, /institutional childhood/);
+    assert.equal(refreshed.story.identity, board.story.identity);
+    assert.equal(refreshed.activeArc.id, 'placement');
     assert.equal(refreshed.scene.identity, 'Quiet garden reading');
     assert.equal(refreshed.scene.purpose, 'Let Lucia read without interruption.');
 });
 
-test('a clean rescan builds a future queue without reconstructing a story identity or active arc', () => {
+test('a clean rescan preserves an explicit author identity and active arc', () => {
     const localIdentity = 'A quiet morning interlude in a structured facility before an uncertain future.';
     const durable = 'Lucia survives institutional childhood while extraordinary Force potential may draw Jedi and Republic attention.';
     const weakBoard = {
@@ -68,15 +68,15 @@ test('a clean rescan builds a future queue without reconstructing a story identi
         nextGuides: [{ id: 'council-review', direction: 'The unresolved Council petition reaches a procedurally supported next step.', useWhen: 'The review remains unresolved and its prerequisites are met.', dropWhen: 'A newer event completes, cancels, or invalidates the review.', causalRole: 'Advance the existing institutional process.', worldDelta: 'The review acquires one concrete procedural state.', disclosure: 'none' }],
     };
     const loaded = normalizeAuthorBoard(weakBoard, legacy);
-    assert.equal(loaded.story.identity, '');
-    assert.equal(loaded.activeArc.id, '');
-    const refreshed = refreshAuthorBoardFromLegacy(normalizeAuthorBoard(), legacy, 361);
-    assert.equal(refreshed.story.identity, '');
-    assert.equal(refreshed.activeArc.id, '');
+    assert.equal(loaded.story.identity, localIdentity);
+    assert.equal(loaded.activeArc.id, 'g_garden');
+    const refreshed = refreshAuthorBoardFromLegacy(loaded, legacy, 361);
+    assert.equal(refreshed.story.identity, localIdentity);
+    assert.equal(refreshed.activeArc.id, 'g_garden');
     assert.ok(refreshed.scene.requiredDevelopments.some(item => item.id === 'council-review'));
 });
 
-test('an advancing recent scene also cannot create an established story interpretation', () => {
+test('an advancing recent scene cannot replace an established durable author map', () => {
     const board = normalizeAuthorBoard({
         story: { identity: 'A broad institutional coming-of-age story.' },
         activeArc: { id: 'custody', title: 'Lucia\'s placement', purpose: 'Resolve who will shape Lucia\'s future.', pressure: 'Competing responsibilities remain open.' },
@@ -86,9 +86,9 @@ test('an advancing recent scene also cannot create an established story interpre
         directorScore: { storyIdentity: 'A decisive garden chess drama.', sceneFunction: 'End the match.', causalTempo: 'advance', arcDirection: 'Win at chess.', meaningfulAim: 'Checkmate.', futureSetup: { id: 'chess-win', currentStep: 'Move the queen.', conditions: [] } },
         pathways: [{ id: 'chess-win', lane: 'character', scale: 'arc', status: 'foreground', direction: 'The chess victory defines Lucia\'s future.', engine: 'garden chess' }],
     }, 362);
-    assert.equal(board.story.identity, '');
-    assert.equal(refreshed.story.identity, '');
-    assert.equal(refreshed.activeArc.id, '');
+    assert.equal(board.story.identity, 'A broad institutional coming-of-age story.');
+    assert.equal(refreshed.story.identity, board.story.identity);
+    assert.equal(refreshed.activeArc.id, 'custody');
     assert.equal(refreshed.scene.purpose, 'End the match.');
 });
 
