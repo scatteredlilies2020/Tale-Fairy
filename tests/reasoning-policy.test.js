@@ -24,22 +24,23 @@ test('reasoning choices translate for native and custom providers', () => {
     assert.equal(buildReasoningRequest({ mode: 'minimum', source: 'openai', model: 'gpt-5.6' }).payload.reasoning_effort, 'low');
 });
 
-test('custom DeepSeek forwards the selected effort as well as the thinking switch', () => {
-    for (const mode of ['low', 'medium', 'high', 'max']) {
+test('custom DeepSeek forwards its documented effort without sending thinking enabled', () => {
+    const expectedEffort = { low: 'low', medium: 'high', high: 'high', max: 'max' };
+    for (const [mode, effort] of Object.entries(expectedEffort)) {
         const result = buildReasoningRequest({ mode, source: 'custom', model: 'deepseek-v4-pro' });
-        assert.equal(result.payload.reasoning_effort, mode);
+        assert.equal(result.payload.reasoning_effort, effort);
         assert.deepEqual(JSON.parse(result.payload.custom_include_body), {
-            thinking: { type: 'enabled' },
-            reasoning_effort: mode,
+            reasoning_effort: effort,
         });
+        assert.equal(result.payload.custom_include_body.includes('enabled'), false);
     }
     assert.deepEqual(
         JSON.parse(buildReasoningRequest({ mode: 'minimum', source: 'custom', model: 'deepseek-v4-pro' }).payload.custom_include_body),
-        { thinking: { type: 'enabled' }, reasoning_effort: 'low' },
+        { reasoning_effort: 'low' },
     );
     assert.deepEqual(
         JSON.parse(buildReasoningRequest({ mode: 'off', source: 'custom', model: 'deepseek-v4-pro' }).payload.custom_include_body),
-        { thinking: { type: 'disabled' }, reasoning_effort: 'none' },
+        { thinking: { type: 'disabled' } },
     );
 });
 
@@ -100,4 +101,15 @@ test('an explicit Kimi model is not mistaken for Qwen by a proxy route name', ()
 test('mandatory reasoning fallback enables a provider-safe minimum', () => {
     const result = reasoningFallbackPayload(new Error('Reasoning is mandatory and cannot be disabled.'), { include_reasoning: false, reasoning_effort: 'none' });
     assert.deepEqual(result, { include_reasoning: true, reasoning_effort: 'low' });
+});
+
+test('mandatory DeepSeek fallback relies on provider default instead of sending thinking enabled', () => {
+    const result = reasoningFallbackPayload(new Error('Thinking is mandatory and cannot be disabled.'), {
+        include_reasoning: false,
+        reasoning_effort: 'none',
+        custom_include_body: JSON.stringify({ thinking: { type: 'disabled' } }),
+    });
+    assert.equal(result.reasoning_effort, 'low');
+    assert.deepEqual(JSON.parse(result.custom_include_body), {});
+    assert.equal(result.custom_include_body.includes('enabled'), false);
 });

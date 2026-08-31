@@ -12,9 +12,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.107');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.107');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.107');
+    assert.equal(manifest.version, '0.11.108');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.108');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.108');
     assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.100'/);
     assert.match(source, /from '\.\/state\.js\?v=0\.11\.101'/);
     assert.match(source, /from '\.\/author-board\.js\?v=0\.11\.101'/);

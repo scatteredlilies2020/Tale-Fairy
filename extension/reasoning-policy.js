@@ -60,15 +60,14 @@ function customBody(adapter, mode, model, effort = '') {
     if (mode === 'default') return {};
     const off = mode === 'off';
     switch (adapter) {
-        case 'deepseek': return {
-            thinking: { type: off ? 'disabled' : 'enabled' },
-            // SillyTavern's custom provider forwards custom_include_body
-            // verbatim. Keep the on/off switch, but also send the selected
-            // effort instead of silently reducing every enabled mode to the
-            // provider default. DeepSeek-compatible proxies generally expose
-            // minimum effort as "low" rather than "min".
-            reasoning_effort: mode === 'minimum' ? 'low' : (effort || (off ? 'none' : 'low')),
-        };
+        case 'deepseek': return off
+            ? { thinking: { type: 'disabled' } }
+            : {
+                // DeepSeek thinking defaults to enabled at High. Select its
+                // documented effort directly without redundantly enabling it.
+                // DeepSeek maps OpenAI-compatible Medium to High.
+                reasoning_effort: mode === 'minimum' ? 'low' : (mode === 'medium' ? 'high' : (effort || 'high')),
+            };
         case 'openrouter': return { reasoning: { effort: effort || (off ? 'none' : 'minimal'), exclude: true } };
         case 'ollama': return { think: off ? false : (String(model).toLowerCase().includes('gpt-oss') ? 'low' : true) };
         case 'qwen': return { enable_thinking: !off };
@@ -104,9 +103,13 @@ export function buildReasoningRequest({ mode, source = '', model = '', url = '',
         return { adapter: gemini ? 'gemini' : (source || 'sillytavern-active'), payload: normalized, controlled: true };
     }
     const adapter = customAdapter({ model, url, profileName });
+    const body = customBody(adapter, mode, model, effort);
+    // Keep the ST-facing control consistent with the exact provider value.
+    // SillyTavern forwards custom_include_body verbatim for custom endpoints.
+    const providerEffort = typeof body.reasoning_effort === 'string' ? body.reasoning_effort : normalized.reasoning_effort;
     return {
         adapter: gemini ? `gemini-${adapter}` : adapter,
-        payload: { ...normalized, custom_include_body: JSON.stringify(customBody(adapter, mode, model, effort)) },
+        payload: { ...normalized, reasoning_effort: providerEffort, custom_include_body: JSON.stringify(body) },
         controlled: true,
     };
 }
@@ -132,7 +135,7 @@ export function reasoningFallbackPayload(error, payload = {}) {
         try {
             const body = JSON.parse(fallback.custom_include_body);
             if (body.reasoning && typeof body.reasoning === 'object') body.reasoning = { ...body.reasoning, effort: body.reasoning.effort === 'none' ? 'low' : (body.reasoning.effort || 'low'), exclude: false };
-            if (body.thinking?.type === 'disabled') body.thinking.type = 'enabled';
+            if (body.thinking?.type === 'disabled') delete body.thinking;
             if ('enable_thinking' in body) body.enable_thinking = true;
             if ('think' in body && body.think === false) body.think = true;
             fallback.custom_include_body = JSON.stringify(body);
