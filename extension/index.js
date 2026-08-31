@@ -4,10 +4,10 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.112';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.112';
-import { markAuthorBeatDelivered, tickAuthorBoard } from './author-board.js?v=0.11.112';
-import { normalizeConductorState, runConductor } from './conductor.js?v=0.11.112';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.113';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.113';
+import { markAuthorBeatDelivered, tickAuthorBoard } from './author-board.js?v=0.11.113';
+import { normalizeConductorState, runConductor } from './conductor.js?v=0.11.113';
 import { consumeAdvanceOverride, isReleaseSignal, updatePacing } from './pacing.js?v=0.11.101';
 import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.11.101';
 import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.100';
@@ -24,7 +24,7 @@ import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOut
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.112';
+const RUNTIME_VERSION = '0.11.113';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -1196,6 +1196,24 @@ function rebuildState() {
     return defaultState();
 }
 
+function rebuildPendingState(context = currentContext()) {
+    const pending = defaultState();
+    pending.canonBootstrapPending = true;
+    pending.sourceChatId = String(context.getCurrentChatId?.() || '');
+    pending.lastReason = 'Full Rebuild requested; no replacement planner result has been saved yet.';
+    return pending;
+}
+
+async function persistRebuildPending(context = currentContext()) {
+    const pending = rebuildPendingState(context);
+    // This replaces only Tale Fairy's state. It deliberately retains no fields
+    // from the deleted guide, while making the requested full-history rebuild
+    // durable across reloads, navigation, and an interrupted model request.
+    context.updateChatMetadata(saveState(clearState(context.chatMetadata), pending), true);
+    if (typeof context.saveMetadata === 'function') await context.saveMetadata();
+    return pending;
+}
+
 async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null) {
     const controller = new AbortController();
     const forwardAbort = () => controller.abort(externalSignal?.reason || new DOMException('Tale Fairy analysis stopped.', 'AbortError'));
@@ -1545,7 +1563,9 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         : 'Analyze the current chat and context';
     const analyzedAt = state.lastAnalyzedAt ? new Date(state.lastAnalyzedAt).toLocaleString() : '';
     const meta = rebuildPending
-        ? `Refresh pending · showing retained plan from ${analyzedAt || 'the previous version'} · not injected until refreshed`
+        ? (analyzed
+            ? `Refresh pending · showing retained plan from ${analyzedAt || 'the previous version'} · not injected until refreshed`
+            : 'Full Rebuild pending · no replacement planner result has been saved yet')
         : (analyzed ? `${state.mode} mode · updated ${analyzedAt || 'recently'}` : '');
     scratchpadText(board, 'scratchpad-meta', meta, 'No planner result yet. Run Guide now or Full rebuild.');
     const continuityStatus = analyzed ? continuityContextState(currentContext()).status : 'unavailable';
@@ -1779,19 +1799,22 @@ async function resetState({ rebuilding = false } = {}) {
     // normal update therefore leaves the previous Tale Fairy state intact.
     // Replacement mode removes only our key from the complete current
     // metadata snapshot while preserving every other chat/extension field.
-    context.updateChatMetadata(clearState(context.chatMetadata), true);
+    const visibleState = rebuilding
+        ? await persistRebuildPending(context)
+        : defaultState();
+    if (!rebuilding) context.updateChatMetadata(clearState(context.chatMetadata), true);
     clearPromptManagerInjection(promptManager);
     setExtensionPrompt(PROMPT_KEY, '', 0, 0);
-    renderBoard(defaultState());
-    renderAnalysisActivity(rebuilding ? 'Old guide cleared · saving…' : 'Guide state deleted', rebuilding);
+    renderBoard(visibleState);
+    renderAnalysisActivity(rebuilding ? 'Old guide deleted · Full Rebuild saved as pending' : 'Guide state deleted', rebuilding);
     await context.saveMetadata?.();
 }
 
 async function rebuildGuideState() {
-    // Run the actual Delete guide state operation first so these actions cannot
-    // drift apart. A failed rebuild must leave the explicitly deleted state empty.
+    // Delete the old guide first, but retain a content-free pending marker so a
+    // failed or interrupted request resumes as a Full Rebuild after a reload.
     await resetState({ rebuilding: true });
-    renderAnalysisActivity('Old guide cleared · starting planner…', true);
+    renderAnalysisActivity('Old guide deleted · starting Full Rebuild…', true);
     return analyzeNow({ force: true, rebuild: true, waitForContinuity: true });
 }
 
@@ -1842,7 +1865,10 @@ async function upgradeLegacyPlanIfNeeded() {
                 || analysisStopSequence !== stopSequence
                 || String(activeContext.getCurrentChatId?.() || '') !== chatId
                 || fingerprintMessages(activeMessages) !== fingerprint) return;
-            renderAnalysisActivity(`Upgrading legacy Tale Fairy plan v${rawVersion} · attempt ${attempt}/${LEGACY_UPGRADE_MAX_ATTEMPTS}…`, true);
+            const activity = rawState?.canonBootstrapPending === true && rawVersion >= STATE_VERSION
+                ? `Resuming pending Full Rebuild · attempt ${attempt}/${LEGACY_UPGRADE_MAX_ATTEMPTS}…`
+                : `Upgrading legacy Tale Fairy plan v${rawVersion} · attempt ${attempt}/${LEGACY_UPGRADE_MAX_ATTEMPTS}…`;
+            renderAnalysisActivity(activity, true);
             upgraded = await analyzeNow({ messages, force: true, rebuild: true });
             const persistedState = currentContext().chatMetadata?.[STATE_KEY];
             const persistedVersion = Math.max(0, Number(persistedState?.version) || 0);
@@ -1852,7 +1878,7 @@ async function upgradeLegacyPlanIfNeeded() {
             if (persistedVersion >= STATE_VERSION && persistedState?.canonBootstrapPending !== true) {
                 completed = true;
                 renderBoard(upgraded);
-                renderAnalysisActivity('Legacy plan upgraded', false);
+                renderAnalysisActivity(rawState?.canonBootstrapPending === true ? 'Full Rebuild completed' : 'Legacy plan upgraded', false);
                 return;
             }
             if (attempt < LEGACY_UPGRADE_MAX_ATTEMPTS && analysisStopSequence === stopSequence) {
@@ -1886,6 +1912,13 @@ async function refreshCurrentPlanIfNeeded() {
     if (!getSettings().enabled || !chatId || !messages.length) {
         updatePrompt(state);
         return state;
+    }
+    if (!rawState) {
+        const pending = await persistRebuildPending(context);
+        updatePrompt(pending);
+        renderBoard(pending);
+        renderAnalysisActivity('No saved plan · starting Full Rebuild…', true);
+        return analyzeNow({ messages, force: true, rebuild: true, allowOneUserAppend: true, waitForContinuity: true });
     }
     if (plannerFailedForSnapshot(plannerStorage(), chatId, fingerprint)) {
         updatePrompt(state);

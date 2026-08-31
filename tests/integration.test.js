@@ -12,13 +12,13 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.112');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.112');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.112');
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.112'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.112'/);
-    assert.match(source, /from '\.\/author-board\.js\?v=0\.11\.112'/);
-    assert.match(source, /from '\.\/conductor\.js\?v=0\.11\.112'/);
+    assert.equal(manifest.version, '0.11.113');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.113');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.113');
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.113'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.113'/);
+    assert.match(source, /from '\.\/author-board\.js\?v=0\.11\.113'/);
+    assert.match(source, /from '\.\/conductor\.js\?v=0\.11\.113'/);
     assert.match(source, /from '\.\/pacing\.js\?v=0\.11\.101'/);
     assert.match(source, /from '\.\/planner-scheduler\.js\?v=0\.11\.101'/);
     assert.match(source, /from '\.\/completion-response\.js\?v=0\.11\.100'/);
@@ -123,9 +123,9 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /text: submittedNote\.text/);
     assert.match(source, /Instruction saved/);
     assert.match(source, /function stopAnalysis\(\)/);
-    assert.match(source, /Run the actual Delete guide state operation first/);
+    assert.match(source, /Delete the old guide first, but retain a content-free pending marker/);
     assert.match(source, /async function rebuildGuideState\(\) \{[\s\S]*?await resetState\(\{ rebuilding: true \}\)[\s\S]*?\n\}/);
-    assert.match(source, /updateChatMetadata\(clearState\(context\.chatMetadata\), true\)/);
+    assert.match(source, /updateChatMetadata\(saveState\(clearState\(context\.chatMetadata\), pending\), true\)/);
     assert.match(source, /analysisAbortController\.abort/);
     assert.match(source, /waitForAbortable\(generateRaw/);
     assert.match(source, /PLANNER_RESPONSE_TOKENS = 16384/);
@@ -267,6 +267,8 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /analyzeNow\(\{ messages, force: true, rebuild: true \}\)/);
     assert.match(source, /void upgradeLegacyPlanIfNeeded\(\)/);
     assert.match(source, /rawState\?\.canonBootstrapPending === true/);
+    assert.match(source, /if \(!rawState\)[\s\S]{0,600}persistRebuildPending\(context\)[\s\S]{0,600}analyzeNow\(\{ messages, force: true, rebuild: true, allowOneUserAppend: true, waitForContinuity: true \}\)/);
+    assert.match(source, /Full Rebuild pending · no replacement planner result has been saved yet/);
     assert.match(source, /Refresh pending · showing retained plan/);
     assert.match(source, /!upgradePending/);
     assert.match(source, /CHAT_CHANGED[\s\S]{0,900}void refreshCurrentPlanIfNeeded\(\)/);
@@ -288,9 +290,9 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.doesNotMatch(source, /rebuilt\.userNotes = previous\.userNotes|rebuilt\.lastRequestVerification = previous\.lastRequestVerification/);
     assert.match(source, /async function rebuildGuideState\(\)[\s\S]{0,500}await resetState\(\{ rebuilding: true \}\)[\s\S]{0,500}analyzeNow\(\{ force: true, rebuild: true, waitForContinuity: true \}\)/);
     assert.match(source, /buildTokenBudgetedAnalysisPrompt\([\s\S]{0,1000}fullRebuild:\s*rebuild/);
-    assert.match(source, /async function resetState\(\{ rebuilding = false \} = \{\}\)[\s\S]{0,500}pendingRequestVerification = null[\s\S]{0,700}renderBoard\(defaultState\(\)\)/);
-    assert.match(source, /Old guide cleared · saving…/);
-    assert.match(source, /Old guide cleared · starting planner…/);
+    assert.match(source, /async function resetState\(\{ rebuilding = false \} = \{\}\)[\s\S]{0,500}pendingRequestVerification = null[\s\S]{0,700}persistRebuildPending\(context\)/);
+    assert.match(source, /Old guide deleted · Full Rebuild saved as pending/);
+    assert.match(source, /Old guide deleted · starting Full Rebuild…/);
     assert.match(template, /data-action="guide"[\s\S]{0,180}data-role="guide-label"/);
     assert.match(template, /data-action="rebuild"/);
     assert.match(source, /async function reevaluateGuideState\(\) \{\s*return analyzeNow\(\{ force: true \}\);\s*\}/);
