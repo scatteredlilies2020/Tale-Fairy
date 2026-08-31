@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { customOutputPayload, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerPrompt, PLANNER_OUTPUT_MODE } from '../extension/output-negotiation.js';
+import { customOutputPayload, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from '../extension/output-negotiation.js';
 
 const schema = { value: { type: 'object', required: ['contract_version'] } };
 
@@ -72,6 +72,33 @@ test('negotiation never masks non-compatible failures', async () => {
         modes: [PLANNER_OUTPUT_MODE.JSON_SCHEMA, PLANNER_OUTPUT_MODE.PROMPT_ONLY],
         canFallback: () => false,
     }), permanent);
+});
+
+test('prompt-only mode removes inherited structured-output controls at every request layer', () => {
+    const payload = {
+        response_format: { type: 'json_object' },
+        json_schema: schema,
+        jsonSchema: schema,
+        include_reasoning: true,
+        custom_include_body: JSON.stringify({
+            reasoning_effort: 'low',
+            response_format: { type: 'json_object' },
+            json_schema: schema,
+        }),
+    };
+    const result = stripStructuredOutputControls(payload);
+    assert.equal(Object.hasOwn(result, 'response_format'), false);
+    assert.equal(Object.hasOwn(result, 'json_schema'), false);
+    assert.equal(Object.hasOwn(result, 'jsonSchema'), false);
+    assert.equal(result.include_reasoning, true);
+    assert.deepEqual(JSON.parse(result.custom_include_body), { reasoning_effort: 'low' });
+});
+
+test('custom prompt-only payload cannot retain a response format from reasoning metadata', () => {
+    const result = customOutputPayload({
+        custom_include_body: JSON.stringify({ response_format: { type: 'json_object' }, thinking: { type: 'enabled' } }),
+    }, PLANNER_OUTPUT_MODE.PROMPT_ONLY);
+    assert.deepEqual(JSON.parse(result.custom_include_body), { thinking: { type: 'enabled' } });
 });
 
 test('DeepSeek proxy response-format unavailability triggers prompt-only fallback', async () => {

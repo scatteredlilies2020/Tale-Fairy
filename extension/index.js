@@ -20,11 +20,11 @@ import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } fro
 import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.100';
 import { estimateTokenCount } from './token-budget.js?v=0.11.100';
 import { completionText } from './completion-response.js?v=0.11.100';
-import { customOutputPayload, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerPrompt, PLANNER_OUTPUT_MODE } from './output-negotiation.js?v=0.11.102';
+import { customOutputPayload, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.11.103';
 import { clearPlannerPending, markPlannerPending, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.100';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.102';
+const RUNTIME_VERSION = '0.11.103';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -1104,7 +1104,7 @@ function plannerModelRejectsTemperature(model) {
     return /(?:^|\/)(?:gpt-5(?:[.\-]|$)|o[134](?:[.\-]|$))/i.test(id);
 }
 
-function isolatePlannerGenerationData(generateData, reasoningMode, temperature = plannerTemperature(), samplingEnabled = true) {
+function isolatePlannerGenerationData(generateData, reasoningMode, temperature = plannerTemperature(), samplingEnabled = true, outputMode = PLANNER_OUTPUT_MODE.JSON_SCHEMA) {
     if (!generateData || typeof generateData !== 'object') return;
     generateData.stream = false;
     generateData.n = 1;
@@ -1133,6 +1133,10 @@ function isolatePlannerGenerationData(generateData, reasoningMode, temperature =
         url: generateData.custom_url || generateData.reverse_proxy,
     });
     Object.assign(generateData, reasoning.payload);
+    // generateRaw starts from the active SillyTavern preset. A provider-level
+    // response_format can therefore survive even when Tale Fairy retries in
+    // prompt-only mode unless it is removed from the final request object.
+    if (outputMode === PLANNER_OUTPUT_MODE.PROMPT_ONLY) stripStructuredOutputControls(generateData);
     for (const key of ['stop', 'stopping_strings', 'logit_bias', 'tools', 'tool_choice', 'enable_web_search', 'request_images', 'request_image_resolution', 'request_image_aspect_ratio']) {
         delete generateData[key];
     }
@@ -1265,7 +1269,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null) 
                     const requestSamplingEnabled = samplingEnabled
                         && Object.hasOwn(generateData, 'temperature')
                         && !plannerModelRejectsTemperature(generateData.model);
-                    isolatePlannerGenerationData(generateData, activeReasoningMode, temperature, requestSamplingEnabled);
+                    isolatePlannerGenerationData(generateData, activeReasoningMode, temperature, requestSamplingEnabled, mode);
                     Object.assign(generateData, detachedMarker);
                 };
                 eventSource.on(seedEvent, configurePlanner);

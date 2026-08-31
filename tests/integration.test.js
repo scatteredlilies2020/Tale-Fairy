@@ -12,9 +12,9 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.102');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.102');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.102');
+    assert.equal(manifest.version, '0.11.103');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.103');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.103');
     assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.100'/);
     assert.match(source, /from '\.\/state\.js\?v=0\.11\.101'/);
     assert.match(source, /from '\.\/author-board\.js\?v=0\.11\.101'/);
@@ -22,7 +22,7 @@ test('manifest identifies the adaptive planning release', () => {
     assert.match(source, /from '\.\/pacing\.js\?v=0\.11\.101'/);
     assert.match(source, /from '\.\/planner-scheduler\.js\?v=0\.11\.101'/);
     assert.match(source, /from '\.\/completion-response\.js\?v=0\.11\.100'/);
-    assert.match(source, /from '\.\/output-negotiation\.js\?v=0\.11\.102'/);
+    assert.match(source, /from '\.\/output-negotiation\.js\?v=0\.11\.103'/);
     assert.match(source, /from '\.\/planner-lifecycle\.js\?v=0\.11\.100'/);
 });
 
@@ -149,7 +149,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /function plannerReasoningMode/);
     assert.match(source, /openai_setting_names,[\s\S]*openai_settings,[\s\S]*oai_settings\?\.reasoning_effort/);
     assert.match(source, /\.\.\.reasoningPayload/);
-    assert.match(source, /isolatePlannerGenerationData\(generateData, activeReasoningMode, temperature, requestSamplingEnabled\)/);
+    assert.match(source, /isolatePlannerGenerationData\(generateData, activeReasoningMode, temperature, requestSamplingEnabled, mode\)/);
     assert.match(source, /isGuidanceUsable\(state, messages/);
     assert.match(source, /buildPromptPayload\(state/);
     assert.match(source, /function renderBoard/);
@@ -236,7 +236,8 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /glmTarget[\s\S]{0,300}PLANNER_OUTPUT_MODE\.JSON_OBJECT, PLANNER_OUTPUT_MODE\.PROMPT_ONLY/);
     assert.match(source, /retryInvalidOutput: !glmTarget/);
     assert.match(source, /\['temperature', 'top_p', 'frequency_penalty', 'presence_penalty', 'repetition_penalty'\]/);
-    assert.match(source, /isolatePlannerGenerationData\(generateData, activeReasoningMode, temperature, requestSamplingEnabled\)/);
+    assert.match(source, /isolatePlannerGenerationData\(generateData, activeReasoningMode, temperature, requestSamplingEnabled, mode\)/);
+    assert.match(source, /outputMode === PLANNER_OUTPUT_MODE\.PROMPT_ONLY\) stripStructuredOutputControls\(generateData\)/);
     assert.doesNotMatch(source, /generateData\.seed\s*=|generateData\.sampler_seed\s*=|seed:\s*variation/);
     assert.match(source, /generateData\.custom_prompt_post_processing = ''/);
     assert.match(source, /generateData\[key\] = PLANNER_RESPONSE_TOKENS/);

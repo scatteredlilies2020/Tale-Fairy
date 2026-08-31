@@ -19,6 +19,25 @@ export function isUnsupportedStructuredOutputError(error) {
     return namesStructuredControl && describesRejection;
 }
 
+export function stripStructuredOutputControls(payload) {
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return payload;
+    for (const key of ['response_format', 'json_schema', 'jsonSchema']) delete payload[key];
+
+    if (typeof payload.custom_include_body === 'string') {
+        try {
+            const included = JSON.parse(payload.custom_include_body);
+            if (included && typeof included === 'object' && !Array.isArray(included)) {
+                for (const key of ['response_format', 'json_schema', 'jsonSchema']) delete included[key];
+                payload.custom_include_body = JSON.stringify(included);
+            }
+        } catch {
+            // Preserve malformed provider data; this helper only removes fields
+            // it can identify without risking unrelated reasoning controls.
+        }
+    }
+    return payload;
+}
+
 function schemaInstruction(schema) {
     return `JSON schema for the response:\n${JSON.stringify(schema.value, null, 2)}`;
 }
@@ -42,6 +61,7 @@ export function plannerPrompt(prompt, schema, mode) {
 
 export function customOutputPayload(payload, mode) {
     const result = { ...payload };
+    if (mode === PLANNER_OUTPUT_MODE.PROMPT_ONLY) return stripStructuredOutputControls(result);
     if (mode !== PLANNER_OUTPUT_MODE.JSON_OBJECT) return result;
 
     let included = {};
