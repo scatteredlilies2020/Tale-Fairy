@@ -4,22 +4,23 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.95';
-import { buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.95';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.95';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.95';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.95';
-import { normalizeModelListResponse } from './models.js?v=0.11.95';
-import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.95';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.95';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.95';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.95';
-import { estimateTokenCount } from './token-budget.js?v=0.11.95';
-import { completionText } from './completion-response.js?v=0.11.95';
-import { customOutputPayload, negotiateOutputModes, plannerMessages, plannerPrompt, PLANNER_OUTPUT_MODE } from './output-negotiation.js?v=0.11.95';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.96';
+import { buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.96';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.96';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.96';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.96';
+import { normalizeModelListResponse } from './models.js?v=0.11.96';
+import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.96';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.96';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.96';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.96';
+import { estimateTokenCount } from './token-budget.js?v=0.11.96';
+import { completionText } from './completion-response.js?v=0.11.96';
+import { customOutputPayload, negotiateOutputModes, plannerMessages, plannerPrompt, PLANNER_OUTPUT_MODE } from './output-negotiation.js?v=0.11.96';
+import { clearPlannerPending, markPlannerPending, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.96';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.95';
+const RUNTIME_VERSION = '0.11.96';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -719,7 +720,7 @@ function showAnalysisPhase(label, runId, startedAt) {
 
 class PlannerBusyInAnotherTabError extends Error {
     constructor() {
-        super('Planner is already active for this chat in another SillyTavern tab.');
+        super('Planner is already active for this chat in another SillyTavern page.');
         this.name = 'PlannerBusyInAnotherTabError';
     }
 }
@@ -790,7 +791,17 @@ function interruptAnalysis(reason, status) {
 }
 
 function stopAnalysis() {
+    const context = currentContext();
+    clearPlannerPending(plannerStorage(), String(context.getCurrentChatId?.() || ''));
     interruptAnalysis('Tale Fairy analysis stopped by the user.', 'Stopped');
+}
+
+function plannerStorage() {
+    try {
+        return globalThis.localStorage;
+    } catch {
+        return null;
+    }
 }
 
 function parseAnalysisResponse(value) {
@@ -1141,8 +1152,10 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
     const fingerprint = fingerprintMessages(chat);
     const chatId = String(context.getCurrentChatId?.() || '');
     if (!force && !userNote && !rebuild && !state.canonBootstrapPending && isGuidanceUsable(state, chat, chatId)) { updatePrompt(state); return state; }
+    let previousAnalysisPromise = null;
     if (analysisPromise) {
         if (!force && !userNote && !rebuild && analysisRequestFingerprint === fingerprint) return analysisPromise;
+        previousAnalysisPromise = analysisPromise;
         cancelRunningAnalysis('A newer Tale Fairy analysis replaced this request.', 'Restarting…');
     }
     const revision = ++generationRevision;
@@ -1152,6 +1165,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
     const controller = new AbortController();
     analysisAbortController = controller;
     analysisRequestFingerprint = fingerprint;
+    markPlannerPending(plannerStorage(), chatId, fingerprint);
     showAnalysisPhase('Waiting for planner slot', runId, startedAt);
     let finalStatus = 'Updated';
     const runAnalysis = async () => {
@@ -1207,29 +1221,32 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         renderBoard(next);
         return next;
     };
-    const promise = withPlannerTabLock(chatId, runAnalysis).catch(error => {
-        const stopped = controller.signal.aborted;
-        if (!stopped) lastAnalysisError = analysisErrorMessage(error);
-        const retryable = shouldRetryPlannerError(error, stopped);
-        finalStatus = stopped
-            ? 'Stopped'
-            : error?.name === 'PlannerBusyInAnotherTabError'
-                ? 'Planner active in another tab'
-                : isPlannerTimeoutError(error)
-                    ? `Planner timed out after ${elapsedLabel(Date.now() - startedAt)} · automatic retry stopped`
-                    : retryable && analysisRetryAttempt < PLANNER_MAX_AUTO_RETRIES
-                ? scheduleAnalysisRetry(error, { note, rebuild, waitForContinuity }, chatId)
-                : `Analysis failed · ${lastAnalysisError}`;
-        if (!stopped && (!retryable || analysisRetryAttempt >= PLANNER_MAX_AUTO_RETRIES)) console.warn(`[${EXTENSION_ID}] analysis skipped`, error);
-        renderBoard(loadState(context.chatMetadata));
-        return loadState(context.chatMetadata);
-    }).finally(() => {
-        if (runId !== analysisRunId) return;
-        analysisPromise = null;
-        analysisAbortController = null;
-        analysisRequestFingerprint = '';
-        renderAnalysisActivity(finalStatus, false);
-    });
+    const promise = waitForPlannerHandoff(previousAnalysisPromise, controller.signal)
+        .then(() => withPlannerTabLock(chatId, runAnalysis))
+        .catch(error => {
+            const stopped = controller.signal.aborted;
+            if (!stopped) lastAnalysisError = analysisErrorMessage(error);
+            const retryable = shouldRetryPlannerError(error, stopped);
+            finalStatus = stopped
+                ? 'Stopped'
+                : error?.name === 'PlannerBusyInAnotherTabError'
+                    ? 'Planner active in another page'
+                    : isPlannerTimeoutError(error)
+                        ? `Planner timed out after ${elapsedLabel(Date.now() - startedAt)} · automatic retry stopped`
+                        : retryable && analysisRetryAttempt < PLANNER_MAX_AUTO_RETRIES
+                            ? scheduleAnalysisRetry(error, { note, rebuild, waitForContinuity }, chatId)
+                            : `Analysis failed · ${lastAnalysisError}`;
+            if (!stopped && (!retryable || analysisRetryAttempt >= PLANNER_MAX_AUTO_RETRIES)) console.warn(`[${EXTENSION_ID}] analysis skipped`, error);
+            renderBoard(loadState(context.chatMetadata));
+            return loadState(context.chatMetadata);
+        }).finally(() => {
+            if (runId !== analysisRunId) return;
+            analysisPromise = null;
+            analysisAbortController = null;
+            analysisRequestFingerprint = '';
+            clearPlannerPending(plannerStorage(), chatId);
+            renderAnalysisActivity(finalStatus, false);
+        });
     analysisPromise = promise;
     return promise;
 }
@@ -1613,8 +1630,10 @@ async function refreshCurrentPlanIfNeeded() {
 
     const chatId = String(context.getCurrentChatId?.() || '');
     const messages = messagesFromChat(context.chat || []);
+    const fingerprint = fingerprintMessages(messages);
+    const interrupted = plannerWasInterrupted(plannerStorage(), chatId, fingerprint);
     const state = loadState(context.chatMetadata);
-    if (!getSettings().enabled || !chatId || !messages.length || isGuidanceUsable(state, messages, chatId)) {
+    if (!getSettings().enabled || !chatId || !messages.length || (!interrupted && isGuidanceUsable(state, messages, chatId))) {
         updatePrompt(state);
         return state;
     }
@@ -1623,7 +1642,7 @@ async function refreshCurrentPlanIfNeeded() {
     // reload, or interrupted background request. Refresh it once on chat load;
     // analyzeNow deduplicates an identical in-flight request and never blocks
     // the user's generation.
-    return analyzeNow({ messages, allowOneUserAppend: true, waitForContinuity: true });
+    return analyzeNow({ messages, force: interrupted, allowOneUserAppend: true, waitForContinuity: true });
 }
 
 async function mountUI() {
@@ -1905,3 +1924,14 @@ startUIMounting();
 // the active plan once on startup as well, so a stale or legacy chat cannot
 // remain route-less until another assistant response arrives.
 setTimeout(() => void refreshCurrentPlanIfNeeded(), 0);
+
+// Android may discard or freeze the page while SillyTavern itself remains
+// available. Abort browser-owned work on page shutdown so its Web Lock is not
+// retained by a back/forward-cache document. Completed guidance stays in chat
+// metadata; a restored or newly loaded page refreshes only when it is stale.
+globalThis.addEventListener?.('pagehide', () => {
+    interruptAnalysis('Tale Fairy page is shutting down.', '');
+});
+globalThis.addEventListener?.('pageshow', event => {
+    if (event.persisted) setTimeout(() => void refreshCurrentPlanIfNeeded(), 0);
+});

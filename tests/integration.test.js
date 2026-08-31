@@ -11,13 +11,14 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.95');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.95');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.95');
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.95'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.95'/);
-    assert.match(source, /from '\.\/completion-response\.js\?v=0\.11\.95'/);
-    assert.match(source, /from '\.\/output-negotiation\.js\?v=0\.11\.95'/);
+    assert.equal(manifest.version, '0.11.96');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.96');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.96');
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.96'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.96'/);
+    assert.match(source, /from '\.\/completion-response\.js\?v=0\.11\.96'/);
+    assert.match(source, /from '\.\/output-negotiation\.js\?v=0\.11\.96'/);
+    assert.match(source, /from '\.\/planner-lifecycle\.js\?v=0\.11\.96'/);
 });
 
 test('injection sends layered authorial control while concrete realization and future outcomes stay private', () => {
@@ -123,7 +124,11 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.doesNotMatch(source, /finalizeAnalysisResult|buildFinalizationEvidence|requireValidAnalysisResult/);
     assert.match(source, /PLANNER_MAX_AUTO_RETRIES = 2/);
     assert.match(source, /Planner timed out after.*automatic retry stopped/);
-    assert.match(source, /withPlannerTabLock\(chatId, runAnalysis\)/);
+    assert.match(source, /previousAnalysisPromise = analysisPromise;[\s\S]{0,220}cancelRunningAnalysis/);
+    assert.match(source, /waitForPlannerHandoff\(previousAnalysisPromise, controller\.signal\)[\s\S]{0,120}withPlannerTabLock\(chatId, runAnalysis\)/);
+    assert.match(source, /Planner active in another page/);
+    assert.match(source, /markPlannerPending\(plannerStorage\(\), chatId, fingerprint\)/);
+    assert.match(source, /clearPlannerPending\(plannerStorage\(\), chatId\)/);
     assert.match(source, /Waiting for planner model/);
     assert.match(source, /Reading summaries and World Info/);
     assert.match(summarySource, /worldInfoActivationContext\(messages, options\.worldInfoActivationTokens \|\| 12000\)/);
@@ -231,7 +236,8 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /async function upgradeLegacyPlanIfNeeded/);
     assert.match(source, /async function refreshCurrentPlanIfNeeded/);
     assert.match(source, /refreshCurrentPlanIfNeeded[\s\S]{0,900}isGuidanceUsable\(state, messages, chatId\)/);
-    assert.match(source, /refreshCurrentPlanIfNeeded[\s\S]{0,1400}analyzeNow\(\{ messages, allowOneUserAppend: true, waitForContinuity: true \}\)/);
+    assert.match(source, /plannerWasInterrupted\(plannerStorage\(\), chatId, fingerprint\)/);
+    assert.match(source, /refreshCurrentPlanIfNeeded[\s\S]{0,1600}analyzeNow\(\{ messages, force: interrupted, allowOneUserAppend: true, waitForContinuity: true \}\)/);
     assert.match(source, /rawVersion < STATE_VERSION/);
     assert.match(source, /LEGACY_UPGRADE_MAX_ATTEMPTS = 1/);
     assert.match(source, /persistedVersion >= STATE_VERSION/);
@@ -243,6 +249,9 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /!upgradePending/);
     assert.match(source, /CHAT_CHANGED[\s\S]{0,900}void refreshCurrentPlanIfNeeded\(\)/);
     assert.match(source, /startUIMounting\(\);\s*\/\/ CHAT_CHANGED[\s\S]{0,500}setTimeout\(\(\) => void refreshCurrentPlanIfNeeded\(\), 0\)/);
+    assert.match(source, /addEventListener\?\.\('pagehide'[\s\S]{0,220}interruptAnalysis\('Tale Fairy page is shutting down\.'/);
+    assert.match(source, /addEventListener\?\.\('pageshow'[\s\S]{0,220}event\.persisted[\s\S]{0,120}refreshCurrentPlanIfNeeded\(\)/);
+    assert.match(source, /Completed guidance stays in chat[\s\S]{0,180}metadata/);
     assert.doesNotMatch(source, /setTimeout\(\(\) => \{ renderBoard\(\); scheduleBackgroundAnalysis\(300\); \}, 0\)/);
     assert.match(source, /CHAT_COMPLETION_PROMPT_READY, ensureChatCompletionRequestGuidance/);
     assert.match(source, /CHAT_COMPLETION_SETTINGS_READY, ensureProviderChatRequestGuidance/);

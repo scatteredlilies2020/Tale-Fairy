@@ -1,5 +1,5 @@
-import { compactContinuityPrompt } from './continuity.js?v=0.11.95';
-import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.95';
+import { compactContinuityPrompt } from './continuity.js?v=0.11.96';
+import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 
 const SUMMARY_KEY = /(?:summar(?:y|ies|i[sz](?:e|ed|er|ing|ation)?)|synopsis|recap|story[\s_.-]*so[\s_.-]*far|memory|continuity|chronicle|world[\s_.-]*(?:state|info|status|model)|lore|plot[\s_.-]*state|session[\s_.-]*state|context[\s_.-]*(?:ledger|summary|memory|state))/iu;
 const SUMMARY_SHAPE = /(?:^|\n)\s*(?:#{1,4}\s*)?(?:\[|<)?(?:summary|synopsis|recap|story\s+so\s+far|continuity|chronicle|world\s+(?:state|info|status)|lore|plot\s+state|session\s+state)(?:\]|>|\s*:|\s*$)/imu;

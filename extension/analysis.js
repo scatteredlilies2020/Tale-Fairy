@@ -1,6 +1,6 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.11.95';
-import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.95';
-import { compactSummarySources } from './summary-context.js?v=0.11.95';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.11.96';
+import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
+import { compactSummarySources } from './summary-context.js?v=0.11.96';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 12000;
 

@@ -1,4 +1,4 @@
-import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.95';
+import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 
 function cleanPrompt(value) {
     return String(value || '')
