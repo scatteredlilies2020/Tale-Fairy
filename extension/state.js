@@ -504,7 +504,7 @@ export function isGuidanceUsable(state, messages = [], chatId = '') {
     const s = normalizeState(state);
     if (!s.lastInject || !s.nextGuides.length || !s.directorScore.storyIdentity || !s.directorScore.meaningfulAim) return false;
     if (!s.narrativeLayers.situation || !s.narrativeLayers.durableTrajectory) return false;
-    if (s.planHorizons.items.length < 6 || s.planHorizons.items.at(-1)?.stability !== 'slow') return false;
+    if (s.planHorizons.items.length < 5 || s.planHorizons.items.at(-1)?.stability !== 'slow') return false;
     if (isStateAligned(s, messages, chatId)) return true;
     if (s.sourceChatId && chatId && s.sourceChatId !== String(chatId)) return false;
     if (!messages.at(-1)?.is_user || s.sourceMessageCount !== messages.length - 1) return false;

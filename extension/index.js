@@ -4,7 +4,7 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js';
 import { buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js';
 import { resolveInjectionPlacement } from './injection-placement.js';
 import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js';
@@ -17,7 +17,7 @@ import { collectSummarySources, summarySourceAudit } from './summary-context.js'
 import { estimateTokenCount } from './token-budget.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.81';
+const RUNTIME_VERSION = '0.11.82';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -50,12 +50,15 @@ const PLANNER_MAX_AUTO_RETRIES = 2;
 const UI_MOUNT_TIMEOUT_MS = 30000;
 const LEGACY_UPGRADE_MAX_ATTEMPTS = 1;
 const INTERNAL_PLANNER_MARKER = 'You are Tale Fairy, the private authorial planning layer for SillyTavern roleplay.';
-// Some OpenAI-compatible servers accept response_format/json_schema but
-// silently ignore it. Put the authoritative contract in the first prompt as
-// well as the native request field so the one model call is self-contained.
-// buildTokenBudgetedAnalysisPrompt counts this exact envelope inside the
-// configured total prompt-token budget.
-const PLANNER_SYSTEM_PROMPT = `${SYSTEM}\n\nOUTPUT SCHEMA (authoritative even when the provider ignores native structured-output controls)\nComplete the entire object before elaborating any field. Never omit a required key.\n${JSON.stringify(ANALYSIS_SCHEMA.value)}`;
+// Some OpenAI-compatible servers silently ignore native structured output.
+// Keep a compact human-readable contract in the prompt, while the native
+// request still carries the machine schema. Never duplicate the full schema in
+// prompt tokens: that space belongs to lore, summaries, and conversation evidence.
+const PLANNER_SYSTEM_PROMPT = `${SYSTEM}\n\n${ANALYSIS_OUTPUT_CONTRACT}`;
+// Native structured-output metadata is transmitted beside the messages, but it
+// still occupies provider context. Count it once in the 12k budget without
+// duplicating the full schema in the actual system prompt.
+const PLANNER_BUDGET_ENVELOPE = `${PLANNER_SYSTEM_PROMPT}\n${JSON.stringify(ANALYSIS_SCHEMA)}`;
 
 globalThis.taleFairyRuntime = Object.freeze({ version: RUNTIME_VERSION, loadedAt: Date.now() });
 console.info(`[${EXTENSION_ID}] Tale Fairy runtime ${RUNTIME_VERSION} loaded`);
@@ -164,7 +167,7 @@ function currentContext() { return getContext(); }
 
 async function buildTokenBudgetedAnalysisPrompt(messages, state, note, bootstrap, options) {
     const tokenBudget = Math.max(9000, Math.min(30000, Number(options.maxPromptTokens) || 12000));
-    const fixedEnvelope = PLANNER_SYSTEM_PROMPT;
+    const fixedEnvelope = PLANNER_BUDGET_ENVELOPE;
     const estimatedOverhead = estimateTokenCount(fixedEnvelope);
     const context = currentContext();
     const tokenCounter = typeof context?.getTokenCountAsync === 'function'
@@ -796,7 +799,7 @@ function stopAnalysis() {
 
 function parseAnalysisResponse(value) {
     try {
-        const rawResult = value && typeof value === 'object' && !Array.isArray(value) && value.scene
+        const rawResult = value && typeof value === 'object' && !Array.isArray(value) && (value.contract_version === 2 || value.scene)
             ? value
             : extractJson(completionText(value));
         const validation = validateAnalysisResult(rawResult);
@@ -983,7 +986,18 @@ async function requestAnalysisOnce(prompt, externalSignal) {
                 if (error instanceof AnalysisValidationError) throw error;
                 if (isReasoningControlError(error) && (reasoning.controlled || isMandatoryReasoningError(error))) {
                     reasoningPayload = reasoningFallbackPayload(error, reasoningPayload);
+                    try {
+                        const response = await sendProfile(true);
+                        controller.signal.throwIfAborted();
+                        return parseAnalysisResponse(response);
+                    } catch (retryError) {
+                        controller.signal.throwIfAborted();
+                        if (retryError instanceof AnalysisValidationError) throw retryError;
+                        error = retryError;
+                    }
                 }
+                if (!isUnsupportedStructuredOutputError(error)) throw error;
+                console.warn(`[${EXTENSION_ID}] profile does not support the structured-output control; retrying once with the compact JSON contract`, error);
                 let response;
                 try {
                     response = await sendProfile(false);
@@ -999,6 +1013,8 @@ async function requestAnalysisOnce(prompt, externalSignal) {
         if (model.active) {
             let activeReasoningMode = plannerReasoningMode();
             let samplingEnabled = true;
+            const activeSource = String(currentContext().chatCompletionSettings?.chat_completion_source || '');
+            const structured = activeSource !== 'openrouter';
             const runActive = structured => {
                 const mainApi = currentContext().mainApi;
                 const seedEvent = mainApi === 'openai' ? event_types.CHAT_COMPLETION_SETTINGS_READY : event_types.GENERATE_AFTER_DATA;
@@ -1026,13 +1042,7 @@ async function requestAnalysisOnce(prompt, externalSignal) {
                 () => { samplingEnabled = false; },
             );
             try {
-                const activeSource = String(currentContext().chatCompletionSettings?.chat_completion_source || '');
-                if (activeSource === 'openrouter') {
-                    const raw = await runActiveCompatible(false);
-                    controller.signal.throwIfAborted();
-                    return parseAnalysisResponse(raw);
-                }
-                const raw = await runActiveCompatible(true);
+                const raw = await runActiveCompatible(structured);
                 controller.signal.throwIfAborted();
                 return parseAnalysisResponse(raw);
             } catch (error) {
@@ -1041,16 +1051,17 @@ async function requestAnalysisOnce(prompt, externalSignal) {
                 if (isReasoningControlError(error)) {
                     activeReasoningMode = isMandatoryReasoningError(error) ? 'minimum' : 'default';
                     try {
-                        const activeSource = String(currentContext().chatCompletionSettings?.chat_completion_source || '');
-                        const raw = await runActiveCompatible(activeSource !== 'openrouter');
+                        const raw = await runActiveCompatible(structured);
                         controller.signal.throwIfAborted();
                         return parseAnalysisResponse(raw);
                     } catch (retryError) {
                         controller.signal.throwIfAborted();
+                        if (retryError instanceof AnalysisValidationError) throw retryError;
                         error = retryError;
                     }
                 }
-                console.warn(`[${EXTENSION_ID}] active model structured request failed; retrying with a JSON-only prompt`, error);
+                if (!structured || !isUnsupportedStructuredOutputError(error)) throw error;
+                console.warn(`[${EXTENSION_ID}] active model does not support the structured-output control; retrying once with the compact JSON contract`, error);
                 const raw = await runActiveCompatible(false);
                 controller.signal.throwIfAborted();
                 return parseAnalysisResponse(raw);
@@ -1095,7 +1106,8 @@ async function requestAnalysisOnce(prompt, externalSignal) {
                 }
             }
             if (!structured) throw error;
-            console.warn(`[${EXTENSION_ID}] direct model structured request failed; retrying with a JSON-only prompt`, error);
+            if (!isUnsupportedStructuredOutputError(error)) throw error;
+            console.warn(`[${EXTENSION_ID}] direct model does not support the structured-output control; retrying once with the compact JSON contract`, error);
             try {
                 return await send(false);
             } catch (fallbackError) {
@@ -1107,6 +1119,21 @@ async function requestAnalysisOnce(prompt, externalSignal) {
     } finally {
         externalSignal?.removeEventListener('abort', forwardAbort);
     }
+}
+
+function plannerErrorText(error) {
+    let serialized = '';
+    try { serialized = JSON.stringify(error); } catch { /* best effort */ }
+    return [error?.message, error?.error?.message, error?.cause?.message, serialized, String(error || '')]
+        .filter(Boolean)
+        .join('\n');
+}
+
+function isUnsupportedStructuredOutputError(error) {
+    const text = plannerErrorText(error);
+    const namesStructuredControl = /(?:json[_ -]?schema|response[_ -]?format|structured outputs?)/i.test(text);
+    const describesRejection = /(?:not supported|unsupported|unknown|unrecognized|invalid (?:parameter|argument|request|schema)|not permitted|extra inputs?|forbidden)/i.test(text);
+    return namesStructuredControl && describesRejection;
 }
 
 async function requestAnalysis(prompt, externalSignal) {

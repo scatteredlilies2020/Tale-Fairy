@@ -22,56 +22,42 @@ const HORIZON_ROUTE_STOPWORDS = new Set([
     'while', 'without', 'with', 'from', 'that', 'this', 'the', 'and', 'for', 'its', 'one',
 ]);
 
+const text = maxLength => ({ type: 'string', maxLength });
+const strings = (maxItems, maxLength) => ({ type: 'array', maxItems, items: text(maxLength) });
+
+// The model returns observations plus deltas, not a duplicate of Tale Fairy's
+// entire persistent state. applyAnalysis expands this compact wire contract into
+// the rich internal state used by the UI and prompt injector.
 export const ANALYSIS_SCHEMA_VALUE = {
     type: 'object', additionalProperties: false,
     properties: {
-        story_frame: { type: 'object', additionalProperties: false, properties: { frame: { type: 'string', enum: ['grounded','heightened','surreal'] }, confidence: { type: 'string' }, basis: { type: 'string' } }, required: ['frame','confidence','basis'] },
-        director_score: { type: 'object', additionalProperties: false, properties: {
-            story_identity: { type: 'string', maxLength: 180 }, scene_function: { type: 'string', maxLength: 120 }, setting_identity: { type: 'string', maxLength: 120 }, setting_forces: { type: 'array', maxItems: 3, items: { type: 'string', maxLength: 140 } }, causal_tempo: { type: 'string', enum: ['hold','seed','advance','converge','payoff','redirect','recover'] }, arc_direction: { type: 'string', maxLength: 240 }, future_setup: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', maxLength: 100 }, development: { type: 'string', maxLength: 220 }, current_step: { type: 'string', maxLength: 180 }, conditions: { type: 'array', maxItems: 4, items: { type: 'string', maxLength: 120 } }, earliest_window: { type: 'string', maxLength: 120 }, disclosure: { type: 'string', enum: ['hidden','signaled','ready'] } }, required: ['id','development','current_step','conditions','earliest_window','disclosure'] }, meaningful_aim: { type: 'string', maxLength: 200 }, change: { type: 'string', enum: ['keep','adjust','advance','payoff','replace'] }, basis: { type: 'string', maxLength: 180 },
-        }, required: ['story_identity','scene_function','setting_identity','setting_forces','causal_tempo','arc_direction','future_setup','meaningful_aim','change','basis'] },
-        lore_model: { type: 'object', additionalProperties: false, properties: {
-            world_identity: { type: 'string', maxLength: 140 }, baseline: { type: 'string', maxLength: 300 }, variant_rules: { type: 'array', maxItems: 6, items: { type: 'string', maxLength: 220 } }, continuity_signatures: { type: 'array', maxItems: 8, items: { type: 'string', maxLength: 220 } }, baseline_departures: { type: 'array', maxItems: 8, items: { type: 'string', maxLength: 240 } }, trajectory_signals: { type: 'array', maxItems: 6, items: { type: 'string', maxLength: 220 } }, active_forces: { type: 'array', maxItems: 5, items: { type: 'string', maxLength: 180 } }, confidence: { type: 'string', enum: ['low','moderate','high'] },
-        }, required: ['world_identity','baseline','variant_rules','continuity_signatures','baseline_departures','trajectory_signals','active_forces','confidence'] },
-        narrative_layers: { type: 'object', additionalProperties: false, properties: {
-            immediate_action: { type: 'string', maxLength: 140 }, local_activity: { type: 'string', maxLength: 180 }, situation: { type: 'string', maxLength: 220 }, wider_world: { type: 'string', maxLength: 240 }, durable_trajectory: { type: 'string', maxLength: 260 }, activity_role: { type: 'string', enum: ['incidental','routine','developmental','central','transition'] }, temporal_scope: { type: 'string', enum: ['moment','action','activity','scene','extended'] },
-        }, required: ['immediate_action','local_activity','situation','wider_world','durable_trajectory','activity_role','temporal_scope'] },
-        scene: { type: 'object', additionalProperties: false, properties: {
-            status: { type: 'string' }, activity: { type: 'string' }, pace: { type: 'string' }, intent: { type: 'string' }, location: { type: 'string' }, time: { type: 'string' }, loop: { type: 'boolean' },
-        }, required: ['status','activity','pace','intent','location','time','loop'] },
-        objectives: { type: 'array', maxItems: 10, items: { type: 'object', additionalProperties: false, properties: { title: { type: 'string', maxLength: 120 }, detail: { type: 'string', maxLength: 300 }, status: { type: 'string', maxLength: 40 }, source: { type: 'string', maxLength: 120 } }, required: ['title','detail','status','source'] } },
-        continuity_threads: { type: 'array', maxItems: 10, items: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', maxLength: 100 }, thread: { type: 'string', maxLength: 180 }, state: { type: 'string', maxLength: 240 }, status: { type: 'string', enum: ['active','dormant','due','blocked'] }, basis: { type: 'string', maxLength: 160 } }, required: ['id','thread','state','status','basis'] } },
-        entities: { type: 'array', maxItems: 8, items: { type: 'object', additionalProperties: false, properties: { name: { type: 'string', maxLength: 100 }, state: { type: 'string', maxLength: 220 }, location: { type: 'string', maxLength: 140 }, relevance: { type: 'string', maxLength: 140 }, perspective: { type: 'string', maxLength: 180 }, motivation: { type: 'string', maxLength: 180 }, knowledge: { type: 'string', maxLength: 180 }, constraints: { type: 'string', maxLength: 180 }, agenda: { type: 'string', maxLength: 180 }, confidence: { type: 'string', maxLength: 40 }, window: { type: 'string', maxLength: 100 } }, required: ['name','state','location','relevance','perspective','motivation','knowledge','constraints','agenda','confidence','window'] } },
-        possibilities: { type: 'array', minItems: 12, maxItems: 18, items: { type: 'object', additionalProperties: false, properties: { description: { type: 'string', maxLength: 120 }, horizon: { type: 'string', enum: ['local','near','mid','far','wildcard'] }, conditions: { type: 'array', maxItems: 1, items: { type: 'string', maxLength: 90 } }, force: { type: 'string', enum: ['light','moderate','strong'] } }, required: ['description','horizon','conditions','force'] } },
-        pathways: { type: 'array', minItems: 1, maxItems: 5, items: { type: 'object', additionalProperties: false, properties: {
-            id: { type: 'string', maxLength: 100 }, direction: { type: 'string', maxLength: 320 }, when: { type: 'string', maxLength: 240 }, response_bias: { type: 'string', maxLength: 300 }, horizon: { type: 'string', maxLength: 80 }, status: { type: 'string', enum: ['foreground','available','latent','blocked'] }, conditions: { type: 'array', maxItems: 3, items: { type: 'string', maxLength: 140 } }, change: { type: 'string', enum: ['keep','adjust','activate','deactivate','replace','retire'] }, reason: { type: 'string', maxLength: 220 },
-        }, required: ['id','direction','when','response_bias','horizon','status','conditions','change','reason'] } },
-        next_guides: { type: 'array', minItems: 3, maxItems: 4, items: { type: 'object', additionalProperties: false, properties: {
-            id: { type: 'string', maxLength: 100 }, direction: { type: 'string', maxLength: 280 }, use_when: { type: 'string', maxLength: 120 }, drop_when: { type: 'string', maxLength: 100 }, causal_role: { type: 'string', minLength: 1, maxLength: 130 }, world_delta: { type: 'string', maxLength: 140 }, origin: { type: 'string', enum: ['established','inferred','original'] }, basis: { type: 'string', maxLength: 100 }, strength: { type: 'string', enum: ['strong','moderate','light'] }, source_pathways: { type: 'array', maxItems: 3, items: { type: 'string', maxLength: 100 } }, causal_event_ids: { type: 'array', maxItems: 2, items: { type: 'string', maxLength: 80 } }, disclosure: { type: 'string', enum: ['none','consequence-only','partial-clue','reveal-cause'] }, reason: { type: 'string', maxLength: 220 },
-        }, required: ['id','direction','use_when','drop_when','causal_role','world_delta','origin','basis','strength','source_pathways','causal_event_ids','disclosure','reason'] } },
-        plan_horizons: { type: 'object', additionalProperties: false, properties: {
-            items: { type: 'array', minItems: 6, maxItems: 10, items: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', maxLength: 100 }, branch: { type: 'string', maxLength: 80 }, direction: { type: 'string', maxLength: 360 }, timeframe: { type: 'string', maxLength: 120 }, stability: { type: 'string', enum: ['fluid','adaptive','stable','slow'] }, conditions: { type: 'array', maxItems: 3, items: { type: 'string', maxLength: 140 } }, change: { type: 'string', enum: ['keep','adjust','replace'] }, reason: { type: 'string', maxLength: 220 } }, required: ['id','branch','direction','timeframe','stability','conditions','change','reason'] } },
-            deviation: { type: 'object', additionalProperties: false, properties: { level: { type: 'string', enum: ['none','minor','major'] }, reason: { type: 'string' } }, required: ['level','reason'] },
-        }, required: ['items','deviation'] },
-        canon_constraints: { type: 'array', maxItems: 12, items: { type: 'string', maxLength: 500 } },
-        note_resolution: { anyOf: [
-            { type: 'object', additionalProperties: false, properties: { kind: { type: 'string', enum: ['suggest','correct','establish','forbid'] } }, required: ['kind'] },
-            { type: 'null' },
-        ] },
-        ledger: { type: 'string', maxLength: 3000 },
-        narrative_events: { type: 'array', maxItems: 6, items: { type: 'object', additionalProperties: false, properties: { id: { type: 'string', maxLength: 80 }, title: { type: 'string', maxLength: 120 }, summary: { type: 'string', maxLength: 300 }, scope: { type: 'string', enum: ['onscreen','offscreen'] }, epistemic_status: { type: 'string', enum: ['established','simulated','inferred','possible','disproved'] }, disclosure: { type: 'string', enum: ['hidden','signaled','revealed'] }, status: { type: 'string', enum: ['active','latent','manifested','resolved','retired'] }, confidence: { type: 'string', enum: ['low','moderate','high'] }, timing: { type: 'string', maxLength: 120 }, due_state: { type: 'string', enum: ['unscheduled','pending','due','overdue'] }, cause: { type: 'string', maxLength: 220 }, consequences: { type: 'array', maxItems: 3, items: { type: 'string', maxLength: 160 } }, basis: { type: 'string', maxLength: 160 }, requirements: { type: 'array', maxItems: 4, items: { type: 'string', maxLength: 120 } }, interpretation: { type: 'string', maxLength: 40 } }, required: ['id','title','summary','scope','epistemic_status','disclosure','status','confidence','timing','due_state','cause','consequences','basis','requirements','interpretation'] } },
-        cue_audit: { type: 'object', additionalProperties: false, properties: {
-            offered_ids: { type: 'array', maxItems: 4, items: { type: 'string', maxLength: 100 } }, manifested_ids: { type: 'array', maxItems: 4, items: { type: 'string', maxLength: 100 } }, unused_ids: { type: 'array', maxItems: 4, items: { type: 'string', maxLength: 100 } }, contradicted_ids: { type: 'array', maxItems: 4, items: { type: 'string', maxLength: 100 } }, pacing: { type: 'string', enum: ['respected','exceeded','uncertain'] }, reason: { type: 'string', maxLength: 300 },
-        }, required: ['offered_ids','manifested_ids','unused_ids','contradicted_ids','pacing','reason'] },
-        self_challenge: { type: 'object', additionalProperties: false, properties: {
-            weakness: { type: 'string', maxLength: 260 }, counter_route: { type: 'string', maxLength: 260 }, decision: { type: 'string', maxLength: 320 },
-        }, required: ['weakness','counter_route','decision'] },
-        guidance: { type: 'string', maxLength: 700 }, inject: { type: 'boolean', const: true }, reason: { type: 'string', maxLength: 300 },
-    }, required: ['story_frame','director_score','lore_model','narrative_layers','scene','objectives','continuity_threads','entities','possibilities','pathways','next_guides','plan_horizons','canon_constraints','note_resolution','ledger','narrative_events','cue_audit','self_challenge','guidance','inject','reason'],
+        contract_version: { type: 'integer', const: 2 },
+        current: { type: 'object', additionalProperties: false, properties: {
+            frame: { type: 'string', enum: ['grounded', 'heightened', 'surreal'] }, frame_basis: text(180), status: text(180), immediate_action: text(140), activity: text(180), situation: text(220), wider_world: text(240), durable_trajectory: text(260), activity_role: { type: 'string', enum: ['incidental', 'routine', 'developmental', 'central', 'transition'] }, temporal_scope: { type: 'string', enum: ['moment', 'action', 'activity', 'scene', 'extended'] }, location: text(140), time: text(100), loop: { type: 'boolean' },
+        }, required: ['frame', 'frame_basis', 'status', 'immediate_action', 'activity', 'situation', 'wider_world', 'durable_trajectory', 'activity_role', 'temporal_scope', 'location', 'time', 'loop'] },
+        decision: { type: 'object', additionalProperties: false, properties: {
+            operation: { type: 'string', enum: ['hold', 'seed', 'advance', 'converge', 'payoff', 'redirect', 'recover'] }, story_identity: text(180), scene_function: text(120), arc_direction: text(240), aim: text(200), setup: text(220), conditions: strings(3, 120), earliest: text(120), disclosure: { type: 'string', enum: ['hidden', 'signaled', 'ready'] }, basis: text(180),
+        }, required: ['operation', 'story_identity', 'scene_function', 'arc_direction', 'aim', 'setup', 'conditions', 'earliest', 'disclosure', 'basis'] },
+        world: { type: 'object', additionalProperties: false, properties: {
+            identity: text(140), baseline: text(300), variant_rules: strings(4, 220), rp_changes: strings(5, 240), signatures: strings(6, 220), trajectory_signals: strings(4, 220), forces: strings(4, 180), confidence: { type: 'string', enum: ['low', 'moderate', 'high'] },
+        }, required: ['identity', 'baseline', 'variant_rules', 'rp_changes', 'signatures', 'trajectory_signals', 'forces', 'confidence'] },
+        thread_updates: { type: 'array', maxItems: 6, items: { type: 'object', additionalProperties: false, properties: { op: { type: 'string', enum: ['upsert', 'retire'] }, id: text(100), thread: text(180), state: text(240), status: { type: 'string', enum: ['active', 'dormant', 'due', 'blocked'] }, basis: text(160) }, required: ['op', 'id', 'thread', 'state', 'status', 'basis'] } },
+        actor_updates: { type: 'array', maxItems: 6, items: { type: 'object', additionalProperties: false, properties: { op: { type: 'string', enum: ['upsert', 'retire'] }, name: text(100), state: text(220), motivation: text(180), knowledge: text(180), agenda: text(180), window: text(100) }, required: ['op', 'name', 'state', 'motivation', 'knowledge', 'agenda', 'window'] } },
+        routes: { type: 'array', minItems: 5, maxItems: 8, items: { type: 'object', additionalProperties: false, properties: { id: text(100), branch: text(80), direction: text(280), horizon: { type: 'string', enum: ['local', 'near', 'mid', 'far', 'wildcard'] }, timeframe: text(120), conditions: strings(2, 140), status: { type: 'string', enum: ['foreground', 'available', 'latent', 'blocked'] }, origin: { type: 'string', enum: ['established', 'inferred', 'original'] }, basis: text(140), strength: { type: 'string', enum: ['strong', 'moderate', 'light'] } }, required: ['id', 'branch', 'direction', 'horizon', 'timeframe', 'conditions', 'status', 'origin', 'basis', 'strength'] } },
+        guides: { type: 'array', minItems: 3, maxItems: 4, items: { type: 'object', additionalProperties: false, properties: { id: text(100), route_id: text(100), direction: text(280), use_when: text(140), drop_when: text(120), operation: { type: 'string', enum: ['hold', 'seed', 'advance', 'converge', 'payoff', 'redirect', 'recover'] }, world_delta: text(160), disclosure: { type: 'string', enum: ['none', 'consequence-only', 'partial-clue', 'reveal-cause'] }, event_ids: strings(2, 80) }, required: ['id', 'route_id', 'direction', 'use_when', 'drop_when', 'operation', 'world_delta', 'disclosure', 'event_ids'] } },
+        event_updates: { type: 'array', maxItems: 4, items: { type: 'object', additionalProperties: false, properties: { op: { type: 'string', enum: ['upsert', 'retire'] }, id: text(80), title: text(120), summary: text(300), scope: { type: 'string', enum: ['onscreen', 'offscreen'] }, epistemic_status: { type: 'string', enum: ['established', 'simulated', 'inferred', 'possible', 'disproved'] }, disclosure: { type: 'string', enum: ['hidden', 'signaled', 'revealed'] }, status: { type: 'string', enum: ['active', 'latent', 'manifested', 'resolved', 'retired'] }, timing: text(120), due_state: { type: 'string', enum: ['unscheduled', 'pending', 'due', 'overdue'] }, cause: text(220), requirements: strings(3, 120), basis: text(160) }, required: ['op', 'id', 'title', 'summary', 'scope', 'epistemic_status', 'disclosure', 'status', 'timing', 'due_state', 'cause', 'requirements', 'basis'] } },
+        canon_updates: { type: 'array', maxItems: 4, items: { type: 'object', additionalProperties: false, properties: { op: { type: 'string', enum: ['add', 'remove'] }, fact: text(500) }, required: ['op', 'fact'] } },
+        ledger: text(1800),
+        note_resolution: { anyOf: [{ type: 'object', additionalProperties: false, properties: { kind: { type: 'string', enum: ['suggest', 'correct', 'establish', 'forbid'] } }, required: ['kind'] }, { type: 'null' }] },
+        audit: { type: 'object', additionalProperties: false, properties: { weakness: text(220), counter_route: text(220), decision: text(260) }, required: ['weakness', 'counter_route', 'decision'] },
+        guidance: text(700),
+    },
+    required: ['contract_version', 'current', 'decision', 'world', 'thread_updates', 'actor_updates', 'routes', 'guides', 'event_updates', 'canon_updates', 'ledger', 'note_resolution', 'audit', 'guidance'],
 };
 
 export const ANALYSIS_SCHEMA = Object.freeze({
-    name: 'tale_fairy_analysis',
-    description: 'Tale Fairy narrative planner state update.',
+    name: 'tale_fairy_delta',
+    description: 'Compact Tale Fairy observations and state deltas.',
     strict: true,
     returnInvalid: true,
     value: ANALYSIS_SCHEMA_VALUE,
@@ -85,7 +71,7 @@ export const MODE_INSTRUCTIONS = Object.freeze({
 
 export const PACING_INSTRUCTION = 'USER-CONTROLLED PACING — Infer the maximum temporal scope authorized by the complete latest user turn: moment, action, activity, scene, or extended. Treat it as a ceiling, not a quota. A narrow action may receive depth; a broad bounded activity may receive representative progression. A specifically named action authorizes exactly one instance and its immediate consequences—not repetition, onward movement, accepting an NPC\'s next task, or an unstated player reaction. NPC requests, orders, invitations, and suggestions are in-world events, never player authorization. Tale Fairy must not use a player-facing assignment as its planned story movement; plan independent NPC/world change instead. This is an agency and causality boundary, not a dialogue or prose policy: primary user and roleplay instructions control voice, wording, format, length, and response shape. Broad authorization delegates only low-stakes procedure within that activity, never consequential choices, dialogue, feelings, or a new activity. Allocate attention by current user engagement and narrative yield while staying inside the authorized endpoint. Mode changes narrative pressure and breadth—not speed or player control.';
 
-export const EXTREME_CANON_INSTRUCTION = 'USER-ESTABLISHED CANON FIDELITY — Explicit user/OOC continuity assertions are authoritative even when statistically extreme, unprecedented, off-scale, unique, or beyond familiar setting records. Preserve their semantic magnitude, rank, scope, comparisons, and qualifiers exactly in canon_constraints and in any relevant guidance. Do not regress an outlier toward the mean, cap it at a franchise record, reinterpret it as rumor, or downgrade “off the charts” or “among the highest in history” to merely high. Operationalize established capabilities, limitations, knowledge, condition, equipment, and environmental advantages as causal modifiers: exceptional strengths must make relevant tasks proportionately easier or more effective, while relevant limitations must make them harder. Show that difference through concrete process and result rather than stating the trait decoratively, and never manufacture equal odds merely to preserve tension. Setting averages and records provide contrast, not a ceiling. Unspecified details are open creative space, not prohibited unknowns. When no exact number or other detail was established, the planner and story may freely invent one or leave it relational according to what best fits the narrative. An invented detail need only fit the narrative and remain consistent with established canon; it need not be conservative or supplied by the user. Never turn missing specificity into a refusal, hedge, delay, or demand for verification unless the narrative itself calls for one, and never mention this policy in narration or dialogue. This fixes the established fact, not its unstated details, reactions, causes, complications, or future consequences. A later explicit user/OOC correction may replace the constraint. Return canon_constraints as the complete current list of durable explicit user/OOC semantic constraints that must survive future context loss; preserve existing constraints until explicitly corrected.';
+export const EXTREME_CANON_INSTRUCTION = 'USER-ESTABLISHED CANON FIDELITY — Explicit user/OOC continuity assertions are authoritative even when statistically extreme, unprecedented, off-scale, unique, or beyond familiar setting records. Preserve their semantic magnitude, rank, scope, comparisons, and qualifiers exactly through canon_updates and relevant guidance. Do not regress an outlier toward the mean, cap it at a franchise record, reinterpret it as rumor, or downgrade “off the charts” or “among the highest in history” to merely high. Operationalize established capabilities, limitations, knowledge, condition, equipment, and environmental advantages as causal modifiers: exceptional strengths must make relevant tasks proportionately easier or more effective, while relevant limitations must make them harder. Show that difference through concrete process and result rather than stating the trait decoratively, and never manufacture equal odds merely to preserve tension. Setting averages and records provide contrast, not a ceiling. Unspecified details are open creative space, not prohibited unknowns. When no exact number or other detail was established, the planner and story may freely invent one or leave it relational according to what best fits the narrative. An invented detail need only fit the narrative and remain consistent with established canon; it need not be conservative or supplied by the user. Never turn missing specificity into a refusal, hedge, delay, or demand for verification unless the narrative itself calls for one, and never mention this policy in narration or dialogue. This fixes the established fact, not its unstated details, reactions, causes, complications, or future consequences. A later explicit user/OOC correction may replace the constraint. Add only new or changed durable assertions to canon_updates; retained planner state persists unchanged facts automatically.';
 
 
 function extractJson(raw) {
@@ -93,7 +79,53 @@ function extractJson(raw) {
     try { return JSON.parse(source); } catch { const start = source.indexOf('{'); const end = source.lastIndexOf('}'); if (start >= 0 && end > start) return JSON.parse(source.slice(start, end + 1)); throw new Error('Analysis model did not return JSON.'); }
 }
 
+function validateCompactAnalysisResult(result) {
+    const errors = [];
+    const object = (value, name) => {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            errors.push(`${name} must be an object`);
+            return false;
+        }
+        return true;
+    };
+    const stringsPresent = (value, keys, name) => {
+        if (!object(value, name)) return;
+        for (const key of keys) {
+            if (typeof value[key] !== 'string' || !value[key].trim()) errors.push(`${name}.${key} must be a non-empty string`);
+        }
+    };
+
+    if (result.contract_version !== 2) errors.push('contract_version must be 2');
+    stringsPresent(result.current, ['frame', 'frame_basis', 'status', 'immediate_action', 'activity', 'situation', 'wider_world', 'durable_trajectory'], 'current');
+    stringsPresent(result.decision, ['operation', 'story_identity', 'scene_function', 'arc_direction', 'aim', 'basis'], 'decision');
+    stringsPresent(result.world, ['identity', 'baseline'], 'world');
+    stringsPresent(result.audit, ['weakness', 'counter_route', 'decision'], 'audit');
+
+    for (const key of ['thread_updates', 'actor_updates', 'routes', 'guides', 'event_updates', 'canon_updates']) {
+        if (!Array.isArray(result[key])) errors.push(`${key} must be an array`);
+    }
+    if (Array.isArray(result.routes) && (result.routes.length < 5 || result.routes.length > 8)) errors.push('routes must contain 5 to 8 varied directions');
+    for (const [index, route] of (Array.isArray(result.routes) ? result.routes : []).entries()) {
+        for (const key of ['id', 'branch', 'direction', 'timeframe', 'basis']) {
+            if (typeof route?.[key] !== 'string' || !route[key].trim()) errors.push(`routes[${index}].${key} must be a non-empty string`);
+        }
+        if (!Array.isArray(route?.conditions)) errors.push(`routes[${index}].conditions must be an array`);
+    }
+    if (Array.isArray(result.guides) && (result.guides.length < 3 || result.guides.length > 4)) errors.push('guides must contain 3 to 4 ranked directions');
+    for (const [index, guide] of (Array.isArray(result.guides) ? result.guides : []).entries()) {
+        for (const key of ['id', 'route_id', 'direction', 'use_when', 'drop_when', 'operation', 'world_delta']) {
+            if (typeof guide?.[key] !== 'string' || !guide[key].trim()) errors.push(`guides[${index}].${key} must be a non-empty string`);
+        }
+        if (!Array.isArray(guide?.event_ids)) errors.push(`guides[${index}].event_ids must be an array`);
+    }
+    if (typeof result.ledger !== 'string') errors.push('ledger must be a string');
+    if (typeof result.guidance !== 'string') errors.push('guidance must be a string');
+    if (!Object.hasOwn(result, 'note_resolution')) errors.push('note_resolution must be present');
+    return { valid: errors.length === 0, errors };
+}
+
 export function validateAnalysisResult(result) {
+    if (result?.contract_version === 2) return validateCompactAnalysisResult(result);
     const errors = [];
     if (!result || typeof result !== 'object' || Array.isArray(result)) {
         return { valid: false, errors: ['result must be a JSON object'] };
@@ -1046,7 +1078,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     const canonClaims = explicitCanonClaims(messages);
     if (canonClaims.length) {
         payload.required_canon_claims = canonClaims;
-        payload.required_canon_instruction = 'These are explicit factual OOC assertions recovered independently from the full chat. Preserve every claim semantically in canon_constraints, including its magnitude and qualifiers; consolidate overlaps, but do not omit or normalize them. Procedural OOC commands and questions are excluded from this list.';
+        payload.required_canon_instruction = 'These are explicit factual OOC assertions recovered independently from the full chat. Preserve every claim semantically, including its magnitude and qualifiers. Add a canon_update only when the retained state does not already contain the claim; never normalize it. Procedural OOC commands and questions are excluded.';
     }
     if (playerName) {
         payload.player_character = { name: playerName };
@@ -1058,7 +1090,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     }
     if (candidateDormantHooks.length) {
         payload.candidate_dormant_hooks = candidateDormantHooks;
-        payload.dormant_hook_instruction = 'These full-chat candidates were selected because they resemble durable player initiatives, formal processes, schedules, investigations, commitments, or journeys. They are leads to audit, not proof that a thread remains open. Check newer supplied evidence and current state for completion, cancellation, contradiction, or loss of relevance. When a candidate is still unresolved and consequential, retain it in continuity_threads and objectives even while offscreen, and give it fair consideration as one distinct future-route family. Cover distinct established live or dormant hooks before filling far futures with alternate phrasings of one current concern; do not force any hook into the immediate reply.';
+        payload.dormant_hook_instruction = 'These full-chat candidates resemble durable player initiatives, formal processes, schedules, investigations, commitments, or journeys. They are leads to audit, not proof. Check newer evidence and retained state for completion, cancellation, contradiction, or irrelevance. If a consequential candidate is newly discovered or changed, upsert it through thread_updates; unchanged retained threads need no update. Give distinct live or dormant hooks fair consideration as separate route families before filling far futures with variations of one current concern. Do not force a hook into the immediate reply.';
     }
     payload.mode_instruction = MODE_INSTRUCTIONS[payload.current.mode] || MODE_INSTRUCTIONS.balanced;
     payload.pacing_instruction = PROMPT_PACING_INSTRUCTION;
@@ -1272,10 +1304,210 @@ function mergePathways(previous = [], proposed = []) {
     }).slice(0, 5);
 }
 
+function upsertByKey(previous, updates, key) {
+    const items = [...previous];
+    for (const update of updates) {
+        const identity = String(update?.[key] || '').trim().toLocaleLowerCase();
+        if (!identity) continue;
+        const index = items.findIndex(item => String(item?.[key] || '').trim().toLocaleLowerCase() === identity);
+        if (update.op === 'retire') {
+            if (index >= 0) items.splice(index, 1);
+        } else if (index >= 0) items[index] = { ...items[index], ...update };
+        else items.push(update);
+    }
+    return items;
+}
+
+function applyCompactAnalysis(next, value, messages) {
+    const current = value.current || {};
+    const decision = value.decision || {};
+    const world = value.world || {};
+    const routes = [...new Map(asArray(value.routes)
+        .filter(route => route?.id && route?.direction)
+        .map(route => [String(route.id).trim().toLocaleLowerCase(), route])).values()];
+    const guides = asArray(value.guides);
+
+    next.storyFrame = {
+        frame: String(current.frame || 'grounded').slice(0, 40),
+        confidence: String(world.confidence || 'low').slice(0, 40),
+        basis: String(current.frame_basis || '').slice(0, 240),
+    };
+    next.narrativeLayers = normalizeState({ narrativeLayers: {
+        immediate_action: current.immediate_action,
+        local_activity: current.activity,
+        situation: current.situation,
+        wider_world: current.wider_world,
+        durable_trajectory: current.durable_trajectory,
+        activity_role: current.activity_role,
+        temporal_scope: current.temporal_scope,
+    } }).narrativeLayers;
+    next.scene = {
+        ...next.scene,
+        status: String(current.status || '').slice(0, 300),
+        activity: String(current.activity || '').slice(0, 300),
+        pace: String(decision.operation || 'hold').slice(0, 80),
+        intent: String(decision.aim || '').slice(0, 300),
+        location: String(current.location || '').slice(0, 200),
+        time: String(current.time || '').slice(0, 160),
+        loop: current.loop === true,
+    };
+    next.loreModel = normalizeState({ loreModel: {
+        world_identity: world.identity,
+        baseline: world.baseline,
+        variant_rules: world.variant_rules,
+        continuity_signatures: world.signatures,
+        baseline_departures: world.rp_changes,
+        trajectory_signals: world.trajectory_signals,
+        active_forces: world.forces,
+        confidence: world.confidence,
+    } }).loreModel;
+
+    const previousThreads = [...next.continuityThreads];
+    const threadUpdates = asArray(value.thread_updates).map(update => ({ ...update }));
+    next.continuityThreads = normalizeState({ continuityThreads: upsertByKey(next.continuityThreads, threadUpdates, 'id') }).continuityThreads;
+    const actorUpdates = asArray(value.actor_updates).map(update => {
+        const existing = next.entities.find(item => item.name.toLocaleLowerCase() === String(update?.name || '').trim().toLocaleLowerCase()) || {};
+        return {
+            ...existing,
+            ...update,
+            location: existing.location || current.location,
+            relevance: existing.relevance || 'independent causal actor',
+            perspective: existing.perspective || update.knowledge,
+            constraints: existing.constraints || '',
+            confidence: existing.confidence || world.confidence,
+        };
+    });
+    next.entities = normalizeState({ entities: upsertByKey(next.entities, actorUpdates, 'name') }).entities;
+
+    const routeOrder = { local: 0, near: 1, mid: 2, far: 3, wildcard: 4 };
+    const orderedRoutes = routes.map((route, index) => ({ route, index }))
+        .sort((a, b) => (routeOrder[a.route.horizon] ?? 3) - (routeOrder[b.route.horizon] ?? 3) || a.index - b.index)
+        .map(item => item.route);
+    next.possibilities = normalizeState({ possibilities: orderedRoutes.map(route => ({
+        description: route.direction,
+        horizon: route.horizon,
+        conditions: asArray(route.conditions).slice(0, 1),
+        force: route.strength,
+    })) }).possibilities;
+    next.pathways = normalizeState({ pathways: orderedRoutes.slice(0, 5).map(route => ({
+        id: route.id,
+        direction: route.direction,
+        when: asArray(route.conditions).join('; ') || route.timeframe,
+        response_bias: route.direction,
+        horizon: route.timeframe || route.horizon,
+        status: route.status,
+        conditions: route.conditions,
+        change: 'adjust',
+        reason: route.basis,
+    })) }).pathways;
+    next.planHorizons = normalizeState({ planHorizons: {
+        items: orderedRoutes.map((route, index) => ({
+            id: route.id,
+            branch: route.branch,
+            direction: route.direction,
+            timeframe: route.timeframe,
+            stability: index === orderedRoutes.length - 1 ? 'slow' : route.horizon === 'local' ? 'fluid' : route.horizon === 'near' ? 'adaptive' : route.horizon === 'mid' ? 'stable' : 'slow',
+            conditions: route.conditions,
+            change: 'adjust',
+            reason: route.basis,
+        })),
+        deviation: { level: decision.operation === 'redirect' || decision.operation === 'recover' ? 'major' : 'none', reason: decision.basis },
+    } }).planHorizons;
+
+    const knownEventIds = new Set([
+        ...next.narrativeEvents.map(event => event.id),
+        ...asArray(value.event_updates).filter(event => event.op !== 'retire').map(event => event.id),
+    ].map(id => String(id || '').trim().toLocaleLowerCase()).filter(Boolean));
+    next.nextGuides = normalizeState({ nextGuides: guides.map((guide, index) => {
+        const routeId = String(guide.route_id || '').trim().toLocaleLowerCase();
+        const route = routes.find(item => String(item.id || '').trim().toLocaleLowerCase() === routeId) || routes[index] || {};
+        const eventIds = asArray(guide.event_ids).map(id => String(id || '').trim()).filter(id => knownEventIds.has(id.toLocaleLowerCase())).slice(0, 2);
+        return {
+            id: guide.id,
+            direction: guide.direction,
+            use_when: guide.use_when,
+            drop_when: guide.drop_when,
+            causal_role: `${String(guide.operation || decision.operation || 'hold').toUpperCase()}: ${decision.scene_function || guide.direction}`,
+            world_delta: guide.world_delta,
+            origin: route.origin || 'inferred',
+            basis: route.basis || decision.basis,
+            strength: route.strength || 'moderate',
+            source_pathways: route.id ? [route.id] : [],
+            causal_event_ids: eventIds,
+            disclosure: eventIds.length ? guide.disclosure : 'none',
+            reason: decision.basis,
+        };
+    }) }).nextGuides;
+
+    const primary = next.nextGuides[0] || {};
+    const operation = String(decision.operation || 'hold').toLowerCase();
+    const change = operation === 'hold' ? 'keep' : operation === 'payoff' ? 'payoff' : operation === 'advance' || operation === 'converge' ? 'advance' : 'adjust';
+    next.directorScore = normalizeState({ directorScore: {
+        story_identity: decision.story_identity,
+        scene_function: decision.scene_function,
+        setting_identity: world.identity,
+        setting_forces: world.forces,
+        causal_tempo: operation,
+        arc_direction: decision.arc_direction,
+        future_setup: { id: primary.id || '', development: decision.setup, current_step: primary.direction || '', conditions: decision.conditions, earliest_window: decision.earliest, disclosure: decision.disclosure },
+        meaningful_aim: decision.aim,
+        change,
+        basis: decision.basis,
+    } }).directorScore;
+
+    const eventUpdates = asArray(value.event_updates).map(update => {
+        const consequences = guides.filter(guide => asArray(guide.event_ids).includes(update.id)).map(guide => guide.world_delta).filter(Boolean).slice(0, 3);
+        return {
+            ...update,
+            confidence: update.epistemic_status === 'established' ? 'high' : update.epistemic_status === 'possible' ? 'low' : 'moderate',
+            consequences,
+        };
+    });
+    next.narrativeEvents = normalizeState({ narrativeEvents: upsertByKey(next.narrativeEvents, eventUpdates, 'id') }).narrativeEvents;
+
+    let canon = [...next.canonConstraints];
+    for (const update of asArray(value.canon_updates)) {
+        const fact = String(update?.fact || '').trim().slice(0, 500);
+        if (!fact) continue;
+        const index = canon.findIndex(item => item.toLocaleLowerCase() === fact.toLocaleLowerCase());
+        if (update.op === 'remove') {
+            if (index >= 0) canon.splice(index, 1);
+        } else if (index < 0) canon.push(fact);
+    }
+    for (const claim of explicitCanonClaims(messages)) {
+        if (!canon.some(item => item.toLocaleLowerCase() === claim.toLocaleLowerCase())) canon.push(claim);
+    }
+    next.canonConstraints = canon.slice(-12);
+
+    if (threadUpdates.length) {
+        const retiredNames = new Set(threadUpdates.filter(item => item.op === 'retire').flatMap(update => {
+            const prior = previousThreads.find(item => String(item.id || '').trim().toLocaleLowerCase() === String(update.id || '').trim().toLocaleLowerCase());
+            return [update.thread, prior?.thread].map(name => String(name || '').trim().toLocaleLowerCase()).filter(Boolean);
+        }));
+        const existing = new Map(next.objectives.filter(item => !retiredNames.has(item.title.toLocaleLowerCase())).map(item => [item.title.toLocaleLowerCase(), item]));
+        for (const thread of next.continuityThreads) existing.set(thread.thread.toLocaleLowerCase(), { title: thread.thread, detail: thread.state, status: thread.status, source: thread.basis });
+        next.objectives = [...existing.values()].slice(-10);
+    }
+    next.selfChallenge = normalizeState({ selfChallenge: { weakness: value.audit?.weakness, counter_route: value.audit?.counter_route, decision: value.audit?.decision } }).selfChallenge;
+    next.guidance = String(value.guidance || '').trim().slice(0, 700);
+    next.lastInject = Boolean(next.nextGuides.length && next.directorScore.storyIdentity && next.directorScore.meaningfulAim);
+    next.lastReason = String(value.audit?.decision || decision.basis || '').trim().slice(0, 500);
+    if (typeof value.ledger === 'string' && value.ledger.trim()) next.contextLedger = value.ledger.trim().slice(0, 3000);
+    next.lastAnalysisFingerprint = fingerprintMessages(messages);
+    next.sourceMessageCount = messages.length;
+    next.ledgerMessageCount = messages.length;
+    next.ledgerUpdatedAt = Date.now();
+    next.lastAnalyzedAt = Date.now();
+    next.canonBootstrapPending = false;
+    next.turnCount += 1;
+    return next;
+}
+
 export function applyAnalysis(state, result, messages) {
     const playerName = playerCharacterName(messages);
     const next = normalizeState(useSpecificPlayerName(state, playerName));
     const value = result && typeof result === 'object' ? useSpecificPlayerName(result, playerName) : {};
+    if (value.contract_version === 2) return applyCompactAnalysis(next, value, messages);
     if (value.story_frame && typeof value.story_frame === 'object') next.storyFrame = { ...next.storyFrame, frame: String(value.story_frame.frame || 'unknown').slice(0, 40), confidence: String(value.story_frame.confidence || 'low').slice(0, 40), basis: String(value.story_frame.basis || '').slice(0, 240) };
     if (value.director_score && typeof value.director_score === 'object') {
         next.directorScore = normalizeState({ directorScore: value.director_score }).directorScore;
@@ -1364,31 +1596,40 @@ OMNISCIENT WORLD MODEL
 Plan from an omniscient authorial view rather than only the protagonist's perspective. Model the two to five actors, groups, institutions, places, or processes most capable of affecting what follows. For each relevant entity track current state and location, perspective, motivation, knowledge boundary, constraints, independent agenda, confidence, and causal window. No character automatically dominates the world. NPCs, institutions, environments, economies, cultures, technologies, and metaphysical systems may notice, decide, prepare, resist, or act offscreen according to their own causes. Hidden causes may be established, cautiously inferred, or deliberately simulated, but enter the visible story only through an allowed disclosure channel.
 
 LORE AND CONTINUITY
-Infer a recognizable franchise, historical setting, mythology, or fictional universe from model knowledge when the supplied material identifies it. Use relevant baseline lore as an active causal system, not decoration. Treat uncertain editions and eras provisionally. Narrative evidence always overrides baseline canon: explicit user rules, scenario and character material, lorebook entries, depicted facts, and consequences define variant_rules and baseline_departures. Record distinctive RP-specific identities, relationships, abilities, possessions, institutions, places, choices, and accumulated consequences as continuity_signatures. Never snap alternate continuity back to default canon.
+Infer a recognizable franchise, historical setting, mythology, or fictional universe from model knowledge when the supplied material identifies it. Use relevant baseline lore as an active causal system, not decoration. Treat uncertain editions and eras provisionally. Narrative evidence always overrides baseline canon: explicit user rules, scenario and character material, lorebook entries, depicted facts, and consequences define variant_rules and rp_changes. Record distinctive RP-specific identities, relationships, abilities, possessions, institutions, places, choices, and accumulated consequences as signatures. Never snap alternate continuity back to default canon.
 
-Maintain continuity_threads as a factual inventory of established unresolved processes: correspondence, applications, decisions, appointments, investigations, commitments, relationships, debts, journeys, returns, schedules, and comparable live matters. Preserve separate supported routes across scene changes and scene-focused summaries until newer evidence completes, cancels, contradicts, blocks, or makes them irrelevant. Do not force dormant threads onscreen. The ledger must compactly preserve open routes, important lore changes, character/world state changes, and durable trajectory.
+Maintain a factual inventory of established unresolved processes: correspondence, applications, decisions, appointments, investigations, commitments, relationships, debts, journeys, returns, schedules, and comparable live matters. Use thread_updates, actor_updates, event_updates, and canon_updates only for information that is new, changed, completed, contradicted, or retired; an empty update array means the retained state stays authoritative. Do not force dormant threads onscreen. The ledger must compactly preserve open routes, important lore changes, character/world state changes, and durable trajectory.
 
 PLAYER AGENCY AND TIME
 The newest user turn controls the immediate direction and maximum temporal scope: moment, action, activity, scene, or extended span. It is a ceiling, not a quota. Never invent the player's dialogue, feelings, consequential choices, commitments, or movement beyond the authorized endpoint. An NPC request is an event, not player consent. Broadly authorized training, work, play, travel, or another bounded activity permits ordinary low-stakes procedure through the requested endpoint, but never a new activity or major decision. Mode changes narrative pressure and breadth, not user-controlled pacing.
 
-Treat immediate_action, local_activity, situation, wider_world, and durable_trajectory as nested layers. A long routine activity does not become the whole story merely because it occupies many turns. Quiet scenes may remain quiet while independent world processes continue privately. Do not manufacture interruptions, danger, trivial notifications, or equal opposition merely to create movement. Apply extraordinary established capabilities and limitations proportionately; do not normalize them toward setting averages or negate them to manufacture tension.
+Treat immediate_action, activity, situation, wider_world, and durable_trajectory as nested layers. A long routine activity does not become the whole story merely because it occupies many turns. Quiet scenes may remain quiet while independent world processes continue privately. Do not manufacture interruptions, danger, trivial notifications, or equal opposition merely to create movement. Apply extraordinary established capabilities and limitations proportionately; do not normalize them toward setting averages or negate them to manufacture tension.
 
 CAUSAL PLANNING
-Keep one possibility pool spanning local, near, middle, far, and wildcard horizons. Possibilities are conditional options, not facts. Maintain one to five editable pathways and six to ten horizon items ordered from the next few turns through a distant open-ended phase; the final, highest horizon must use slow stability. Preserve at least three materially different causal families among the farthest horizons. Different wording, timing, or consequences from the same actor/process/outcome axis do not create a distinct route. Draw variety first from separate live or dormant hooks, then relationships, places, institutions, ambitions, conflicts, discoveries, departures, returns, identities, world systems, and setting-compatible original opportunities.
+Return one current pool of five to eight materially different routes spanning local, near, middle, far, and wildcard horizons. Routes are conditional options, not facts. Include at least three distinct causal families overall and preserve meaningful far futures rather than paraphrasing one recent subject at several timeframes. Different wording, timing, or consequences from the same actor/process/outcome axis do not create a distinct route. Draw variety first from separate live or dormant hooks, then relationships, places, institutions, ambitions, conflicts, discoveries, departures, returns, identities, world systems, and setting-compatible original opportunities.
 
 Every future path must grow from a present cause: a motive, secret, preparation, relationship pressure, institutional process, environmental change, opportunity, obligation, or constraint. Conditions determine whether it matures, changes, or retires. Mutually exclusive alternatives remain inert until evidence selects one. Distant horizons exert only subtle background influence unless events bring them nearer. Plan through milestones rather than treating an ambition, victory, relationship, or transformation as the ending of play.
 
 Use causal operations precisely: hold preserves larger state while making the bounded activity substantive; seed advances one enabling condition; advance moves a live process; converge connects already-active forces; payoff realizes a due consequence; redirect follows a genuine user pivot; recover corrects prior overreach without erasing established facts. These operations control story-state change, never prose style, mood, formatting, dialogue delivery, verbosity, or sentence rhythm.
 
-Return three or four ranked next_guides with genuinely contrasting authorial functions. Each guide needs an in-story use condition, invalidation condition, causal operation, bounded impact envelope, provenance, evidence basis, and distinct world_delta. It must leave the concrete incident and prose to the roleplay model. Never defer an already-ready development with another promise to address it later. Never use a trivial ping, gesture, or atmospheric detail as a meaningful delta. Link any guide that reveals or manifests a hidden narrative_event and respect its disclosure boundary.
+Return three or four ranked guides with genuinely contrasting authorial functions, each linked to one route. Every guide needs an in-story use condition, invalidation condition, causal operation, and distinct bounded world_delta. It must leave the concrete incident and prose to the roleplay model. Never defer an already-ready development with another promise to address it later. Never use a trivial ping, gesture, or atmospheric detail as a meaningful delta. Link a hidden event only when it exists; otherwise use disclosure=none and an empty event_ids array.
 
 SIMULATION AND INVENTION
 Country, society, institution, life, relationship, and character simulations follow the same causal rules at different scales. Track relevant agents, resources, incentives, constraints, information, processes, and elapsed time. You may create a compatible new actor, motive, pressure, opportunity, complication, or consequence when evidence leaves room; mark it original and never claim it previously happened. Prefer independent world movement and meaningful causal consequences over disconnected randomness, forced safety, generic refusal, or repetition of the newest subject.
 
 DECISION AUDIT
-Before finalizing, privately compare the apparent preferred route with the strongest materially different supported route. Test for recency fixation, repeated causal engines, arbitrary escalation, genre bias, neglected lore, forgotten continuity, simulation inconsistency, and avoidable restriction of player agency. Revise when the counter-route is stronger. Expose only the concise self_challenge audit required by the schema: weakness, counter_route, and decision—not private reasoning.
+Before finalizing, privately compare the apparent preferred route with the strongest materially different supported route. Test for recency fixation, repeated causal engines, arbitrary escalation, genre bias, neglected lore, forgotten continuity, simulation inconsistency, and avoidable restriction of player agency. Revise when the counter-route is stronger. Expose only the concise audit required by the schema: weakness, counter_route, and decision—not private reasoning.
 
 OUTPUT DISCIPLINE
-Populate the complete structured state once. possibilities, pathways, horizons, next_guides, director_score, narrative_layers, entities, continuity_threads, lore_model, events, cue audit, canon constraints, ledger, guidance, reason, and self_challenge must agree. Keep strings specific and short. Always return inject=true. General guidance is private summary material; exact future outcomes, hidden causes, and unused alternatives must not be copied into the roleplay prompt.`;
+Return the compact current, decision, world, routes, guides, audit, ledger, and guidance plus change-only update arrays. Do not copy unchanged retained threads, actors, events, or canon facts into their update arrays. Keep strings specific and short. General guidance is private summary material; exact future outcomes, hidden causes, and unused alternatives must not be copied into the roleplay prompt.`;
+
+export const ANALYSIS_OUTPUT_CONTRACT = `OUTPUT CONTRACT — Return exactly these top-level keys: contract_version=2, current, decision, world, thread_updates, actor_updates, routes, guides, event_updates, canon_updates, ledger, note_resolution, audit, guidance.
+current={frame,frame_basis,status,immediate_action,activity,situation,wider_world,durable_trajectory,activity_role,temporal_scope,location,time,loop}
+decision={operation,story_identity,scene_function,arc_direction,aim,setup,conditions,earliest,disclosure,basis}
+world={identity,baseline,variant_rules,rp_changes,signatures,trajectory_signals,forces,confidence}
+thread_updates[]={op,id,thread,state,status,basis}; actor_updates[]={op,name,state,motivation,knowledge,agenda,window}; canon_updates[]={op,fact}.
+routes[5..8]={id,branch,direction,horizon,timeframe,conditions,status,origin,basis,strength}. guides[3..4]={id,route_id,direction,use_when,drop_when,operation,world_delta,disclosure,event_ids}.
+event_updates[]={op,id,title,summary,scope,epistemic_status,disclosure,status,timing,due_state,cause,requirements,basis}.
+audit={weakness,counter_route,decision}; note_resolution is null unless resolving a planner note. Empty update arrays mean no change. Do not emit any other keys.`;
 
 export { PLANNER_SYSTEM as SYSTEM, extractJson };

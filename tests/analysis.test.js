@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, MODE_INSTRUCTIONS, applyAnalysis, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from '../extension/analysis.js';
+import { ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, MODE_INSTRUCTIONS, applyAnalysis, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from '../extension/analysis.js';
 import { defaultState } from '../extension/state.js';
 import { estimateTokenCount } from '../extension/token-budget.js';
 
@@ -28,6 +28,27 @@ const continuityThreads = [{ id: 'chancellor-petition', thread: 'Letter to the C
 const selfChallenge = { weakness: 'The direct answer may overfocus the newest local exchange.', counter_route: 'Let the unresolved Chancellor petition create independent institutional movement.', decision: 'Keep the direct answer now because it has stronger immediate support, while retaining the petition as a distinct future route.' };
 const loreModel = { world_identity: 'An established speculative setting', baseline: 'Institutions, technology, and social obligations operate according to the supplied setting lore.', variant_rules: [], continuity_signatures: ['The current relationship and its accumulated trust are specific to this roleplay.'], baseline_departures: [], trajectory_signals: ['Trust and institutional duty are moving toward a consequential choice.'], active_forces: ['Institutional obligations', 'Relationship trust'], confidence: 'high' };
 const requiredPlanning = { story_frame: { frame: 'grounded', confidence: 'high', basis: 'ordinary scene' }, director_score: directorScore, lore_model: loreModel, narrative_layers: narrativeLayers, pathways, next_guides: nextGuides, plan_horizons: planHorizons, continuity_threads: continuityThreads, canon_constraints: [], note_resolution: null, ledger: 'Tea conversation is active.\nOpen routes: the filed Chancellor petition remains unresolved.', narrative_events: [], cue_audit: { offered_ids: [], manifested_ids: [], unused_ids: [], contradicted_ids: [], pacing: 'respected', reason: 'No prior cues were offered.' }, self_challenge: selfChallenge };
+
+const compactRoutes = [
+    ['reply', 'conversation', 'Let the immediate answer change what the participants understand.', 'local'],
+    ['duty', 'institutional-duty', 'Let an existing obligation independently constrain a later choice.', 'near'],
+    ['trust', 'relationship-trust', 'Let accumulated trust produce a materially different decision point.', 'mid'],
+    ['petition', 'formal-process', 'Let a dormant formal process mature according to its own institutional causes.', 'far'],
+    ['departure', 'open-departure', 'Keep a compatible departure or reinvention available if present loyalties change.', 'wildcard'],
+].map(([id, branch, direction, horizon]) => ({ id, branch, direction, horizon, timeframe: horizon, conditions: ['Its stated cause remains active.'], status: horizon === 'local' ? 'foreground' : 'available', origin: id === 'departure' ? 'original' : 'inferred', basis: 'Current evidence supports this as a conditional route.', strength: horizon === 'local' ? 'strong' : 'moderate' }));
+const compactResult = {
+    contract_version: 2,
+    current: { frame: 'grounded', frame_basis: 'The depicted exchange follows established physical and social rules.', status: 'A quiet exchange is active.', immediate_action: 'Answer the immediate question.', activity: 'A private conversation.', situation: 'Trust is changing under an external obligation.', wider_world: 'Independent institutions and relationships continue beyond the room.', durable_trajectory: 'An open story about trust, duty, and self-directed change.', activity_role: 'developmental', temporal_scope: 'action', location: 'home', time: 'evening', loop: false },
+    decision: { operation: 'advance', story_identity: 'A character and institutional story about trust under pressure.', scene_function: 'Change mutual understanding.', arc_direction: 'Let choices emerge from both personal trust and independent world processes.', aim: 'Make the answer consequential without deciding for the player.', setup: 'An obligation will become harder to ignore.', conditions: ['The obligation remains active.'], earliest: 'later in the current arc', disclosure: 'hidden', basis: 'The active exchange and retained state support bounded movement.' },
+    world: { identity: 'An established speculative setting', baseline: 'Its institutions and technology operate according to supplied lore.', variant_rules: [], rp_changes: ['This relationship and its history are specific to the roleplay.'], signatures: ['Accumulated trust is consequential.'], trajectory_signals: ['Duty and trust are approaching a choice.'], forces: ['Institutional obligation', 'Relationship trust'], confidence: 'high' },
+    thread_updates: [{ op: 'upsert', id: 'formal-process', thread: 'Pending formal process', state: 'It remains filed and unresolved.', status: 'dormant', basis: 'A prior depicted filing established it.' }],
+    actor_updates: [{ op: 'upsert', name: 'Mara', state: 'Present in the exchange.', motivation: 'Protect trust without abandoning duty.', knowledge: 'Knows the obligation is active.', agenda: 'Decide how candid to be.', window: 'current scene' }],
+    routes: compactRoutes,
+    guides: compactRoutes.slice(0, 3).map((route, index) => ({ id: `guide-${index}`, route_id: route.id, direction: route.direction, use_when: 'The route remains compatible with the newest user action.', drop_when: 'New evidence contradicts its cause.', operation: index ? 'seed' : 'advance', world_delta: `The ${route.branch} process gains one concrete condition.`, disclosure: 'none', event_ids: [] })),
+    event_updates: [], canon_updates: [], ledger: 'The conversation is active; trust, duty, and the pending formal process remain independent routes.', note_resolution: null,
+    audit: { weakness: 'The immediate exchange could overfocus the latest subject.', counter_route: 'An independent formal process can mature without intruding now.', decision: 'Advance the exchange while retaining genuinely separate future causes.' },
+    guidance: 'Make the current answer consequential while preserving independent actors and open routes.',
+};
 
 test('extractJson accepts fenced and wrapped JSON', () => {
     assert.deepEqual(extractJson('```json\n{"inject":false}\n```'), { inject: false });
@@ -67,20 +88,32 @@ test('runtime planner logic contains no scenario-specific character or franchise
 });
 
 test('planner system is compact but preserves the causal planning contract', () => {
-    assert.match(SYSTEM, /one possibility pool spanning local, near, middle, far, and wildcard horizons/);
-    assert.match(SYSTEM, /six to ten horizon items/);
-    assert.match(SYSTEM, /final, highest horizon must use slow stability/);
-    assert.match(SYSTEM, /at least three materially different causal families/);
+    assert.match(SYSTEM, /one current pool of five to eight materially different routes spanning local, near, middle, far, and wildcard horizons/);
+    assert.match(SYSTEM, /at least three distinct causal families/);
     assert.match(SYSTEM, /Every future path must grow from a present cause/);
-    assert.match(SYSTEM, /three or four ranked next_guides with genuinely contrasting authorial functions/);
+    assert.match(SYSTEM, /three or four ranked guides with genuinely contrasting authorial functions/);
     assert.match(SYSTEM, /omniscient authorial view/);
     assert.match(SYSTEM, /Narrative evidence always overrides baseline canon/);
     assert.match(SYSTEM, /Country, society, institution, life, relationship, and character simulations/);
     assert.match(SYSTEM, /privately compare the apparent preferred route with the strongest materially different supported route/);
     assert.match(SYSTEM, /Never output.*chain-of-thought/);
     assert.ok(estimateTokenCount(SYSTEM) < 2500, `system contract should stay compact; got ${estimateTokenCount(SYSTEM)} tokens`);
-    const fixedEnvelope = `${SYSTEM}\n${JSON.stringify(ANALYSIS_SCHEMA.value)}`;
-    assert.ok(estimateTokenCount(fixedEnvelope) < 8000, `fixed planner envelope should leave evidence room in a 12k budget; got ${estimateTokenCount(fixedEnvelope)} tokens`);
+    const fixedEnvelope = `${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}`;
+    assert.ok(estimateTokenCount(fixedEnvelope) < 3500, `fixed planner envelope should leave evidence room in a 12k budget; got ${estimateTokenCount(fixedEnvelope)} tokens`);
+});
+
+test('compact planner result accepts creative state deltas without semantic over-repair', () => {
+    assert.equal(validateAnalysisResult(compactResult).valid, true);
+    assert.equal(validateAnalysisResult({ ...compactResult, routes: compactResult.routes.slice(0, 4) }).valid, false);
+    assert.equal(validateAnalysisResult({ ...compactResult, guides: compactResult.guides.slice(0, 2) }).valid, false);
+    const resultWithUnlinkedDisclosure = { ...compactResult, guides: compactResult.guides.map((guide, index) => index === 0 ? { ...guide, disclosure: 'partial-clue', event_ids: ['missing-event'] } : guide) };
+    assert.equal(validateAnalysisResult(resultWithUnlinkedDisclosure).valid, true);
+    const next = applyAnalysis(defaultState(), resultWithUnlinkedDisclosure, [{ mes: 'Answer the question without deciding for me.', is_user: true }]);
+    assert.equal(next.planHorizons.items.length, 5);
+    assert.equal(next.planHorizons.items.at(-1).stability, 'slow');
+    assert.equal(next.nextGuides[0].disclosure, 'none');
+    assert.deepEqual(next.nextGuides[0].causalEventIds, []);
+    assert.ok(next.continuityThreads.some(thread => thread.id === 'formal-process'));
 });
 test('planner validates an automatically resolved AI-assisted note', () => {
     const result = {
@@ -149,18 +182,20 @@ test('planner rejects cosmetically different horizons that collapse into one fut
     const validation = validateAnalysisResult(collapsed);
     assert.equal(validation.valid, false);
     assert.ok(validation.errors.some(error => /three meaningfully distinct future routes/i.test(error)));
-    assert.ok(ANALYSIS_SCHEMA.value.properties.plan_horizons.properties.items.items.required.includes('branch'));
+    assert.ok(ANALYSIS_SCHEMA.value.properties.routes.items.required.includes('branch'));
 });
 
 test('planner schema uses SillyTavern structured-output packaging', () => {
-    assert.equal(ANALYSIS_SCHEMA.name, 'tale_fairy_analysis');
+    assert.equal(ANALYSIS_SCHEMA.name, 'tale_fairy_delta');
     assert.equal(ANALYSIS_SCHEMA.value, ANALYSIS_SCHEMA_VALUE);
     assert.equal(ANALYSIS_SCHEMA.value.type, 'object');
-    assert.equal(ANALYSIS_SCHEMA.value.properties.inject.const, true);
-    assert.equal(ANALYSIS_SCHEMA.value.properties.possibilities.minItems, 12);
-    assert.equal(ANALYSIS_SCHEMA.value.properties.possibilities.maxItems, 18);
-    assert.deepEqual(ANALYSIS_SCHEMA.value.properties.story_frame.properties.frame.enum, ['grounded', 'heightened', 'surreal']);
-    assert.deepEqual(ANALYSIS_SCHEMA.value.properties.possibilities.items.properties.horizon.enum, ['local', 'near', 'mid', 'far', 'wildcard']);
+    assert.equal(ANALYSIS_SCHEMA.value.properties.contract_version.const, 2);
+    assert.equal(ANALYSIS_SCHEMA.value.properties.routes.minItems, 5);
+    assert.equal(ANALYSIS_SCHEMA.value.properties.routes.maxItems, 8);
+    assert.deepEqual(ANALYSIS_SCHEMA.value.properties.current.properties.frame.enum, ['grounded', 'heightened', 'surreal']);
+    assert.deepEqual(ANALYSIS_SCHEMA.value.properties.routes.items.properties.horizon.enum, ['local', 'near', 'mid', 'far', 'wildcard']);
+    assert.equal(ANALYSIS_SCHEMA.value.properties.guides.minItems, 3);
+    assert.equal(ANALYSIS_SCHEMA.value.properties.guides.maxItems, 4);
     assert.equal(ANALYSIS_SCHEMA.returnInvalid, true);
     assert.equal(ANALYSIS_SCHEMA.strict, true);
     assert.equal(ANALYSIS_SCHEMA.type, undefined);
@@ -429,7 +464,7 @@ test('canon bootstrap retains labeled OOC turns outside ordinary sampling points
     const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { recentContextTokens: 1000, bootstrapScan: true }));
     assert.ok(prompt.messages.some(item => item.index === 22 && item.kind === 'directive' && /highest in history/.test(item.content)));
     assert.deepEqual(prompt.required_canon_claims, ['I have an abnormally high Midichlorian count, among the highest in history.']);
-    assert.match(prompt.required_canon_instruction, /Preserve every claim semantically in canon_constraints/);
+    assert.match(prompt.required_canon_instruction, /add a canon_update only when the retained state does not already contain the claim/i);
 });
 
 test('analysis application keeps layered guidance bounded and records its injection decision', () => {
@@ -637,8 +672,8 @@ test('analysis prompt independently recovers dormant formal hooks for future-rou
     const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { recentContextTokens: 1000, maxPromptTokens: 12000 }));
     assert.ok(prompt.candidate_dormant_hooks.some(item => item.hook_type === 'correspondence-or-petition' && /Chancellor|petition/iu.test(item.content)));
     assert.ok(prompt.candidate_dormant_hooks.some(item => item.hook_type === 'scheduled-decision' && /placement panel/iu.test(item.content)));
-    assert.match(prompt.dormant_hook_instruction, /retain it in continuity_threads and objectives even while offscreen/);
-    assert.match(prompt.dormant_hook_instruction, /distinct future-route family/);
+    assert.match(prompt.dormant_hook_instruction, /newly discovered or changed, upsert it through thread_updates/i);
+    assert.match(prompt.dormant_hook_instruction, /distinct live or dormant hooks.*separate route families/i);
 });
 
 test('repeated schedules cannot crowd a filed petition out of dormant-hook retrieval', () => {
