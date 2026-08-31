@@ -17,6 +17,7 @@ export function defaultState() {
         enabled: true,
         mode: 'balanced',
         analysisModel: { source: 'active', profileId: '', model: '', url: '' },
+        summaryEvidence: { count: 0, includedTokens: 0, originalTokens: 0, labels: [], scannedAt: 0 },
         scene: { status: 'uninitialized', activity: '', pace: '', intent: '', location: '', time: '', loop: false },
         narrativeLayers: { immediateAction: '', localActivity: '', situation: '', widerWorld: '', durableTrajectory: '', activityRole: 'routine', temporalScope: 'action' },
         storyFrame: { frame: 'unknown', confidence: 'low', basis: '' },
@@ -351,6 +352,15 @@ export function normalizeState(input = {}) {
         enabled: value.enabled !== false,
         mode: MODES.has(value.mode) ? value.mode : base.mode,
         analysisModel: { ...base.analysisModel, ...(value.analysisModel || {}) },
+        summaryEvidence: {
+            count: Math.max(0, Number(value.summaryEvidence?.count) || 0),
+            includedTokens: Math.max(0, Number(value.summaryEvidence?.includedTokens) || 0),
+            originalTokens: Math.max(0, Number(value.summaryEvidence?.originalTokens) || 0),
+            // Summary sources are priority ordered, so retain the leading
+            // witnesses (including Continuity) rather than the newest tail.
+            labels: (Array.isArray(value.summaryEvidence?.labels) ? value.summaryEvidence.labels.slice(0, 12) : []).map(item => text(item).slice(0, 120)).filter(Boolean),
+            scannedAt: Math.max(0, Number(value.summaryEvidence?.scannedAt) || 0),
+        },
         scene: chronologyAuditUpgrade ? base.scene : { ...base.scene, ...(value.scene || {}) },
         narrativeLayers: chronologyAuditUpgrade
             ? { ...base.narrativeLayers, widerWorld: normalizedLayers.widerWorld, durableTrajectory: normalizedLayers.durableTrajectory }

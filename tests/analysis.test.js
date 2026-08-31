@@ -42,7 +42,7 @@ const compactResult = {
     decision: { operation: 'advance', story_identity: 'A character and institutional story about trust under pressure.', scene_function: 'Change mutual understanding.', arc_direction: 'Let choices emerge from both personal trust and independent world processes.', aim: 'Make the answer consequential without deciding for the player.', setup: 'An obligation will become harder to ignore.', conditions: ['The obligation remains active.'], earliest: 'later in the current arc', disclosure: 'hidden', basis: 'The active exchange and retained state support bounded movement.' },
     world: { identity: 'An established speculative setting', baseline: 'Its institutions and technology operate according to supplied lore.', variant_rules: [], rp_changes: ['This relationship and its history are specific to the roleplay.'], signatures: ['Accumulated trust is consequential.'], trajectory_signals: ['Duty and trust are approaching a choice.'], forces: ['Institutional obligation', 'Relationship trust'], confidence: 'high' },
     thread_updates: [{ op: 'upsert', id: 'formal-process', thread: 'Pending formal process', state: 'It remains filed and unresolved.', status: 'dormant', basis: 'A prior depicted filing established it.' }],
-    actor_updates: [{ op: 'upsert', name: 'Mara', state: 'Present in the exchange.', motivation: 'Protect trust without abandoning duty.', knowledge: 'Knows the obligation is active.', agenda: 'Decide how candid to be.', window: 'current scene' }],
+    actor_updates: [{ op: 'upsert', name: 'Mara', state: 'Waiting beyond the current room.', location: 'outer hall', perspective: 'The obligation is real but candor still carries a cost.', motivation: 'Protect trust without abandoning duty.', knowledge: 'Knows the obligation is active.', constraints: 'Cannot abandon the obligation without consequences.', agenda: 'Decide how candid to be.', window: 'current scene' }],
     routes: compactRoutes,
     guides: compactRoutes.slice(0, 3).map((route, index) => ({ id: `guide-${index}`, route_id: route.id, direction: route.direction, use_when: 'The route remains compatible with the newest user action.', drop_when: 'New evidence contradicts its cause.', operation: index ? 'seed' : 'advance', world_delta: `The ${route.branch} process gains one concrete condition.`, disclosure: 'none', event_ids: [] })),
     event_updates: [], canon_updates: [], ledger: 'The conversation is active; trust, duty, and the pending formal process remain independent routes.', note_resolution: null,
@@ -89,7 +89,9 @@ test('runtime planner logic contains no scenario-specific character or franchise
 
 test('planner system is compact but preserves the causal planning contract', () => {
     assert.match(SYSTEM, /one current pool of five to eight materially different routes spanning local, near, middle, far, and wildcard horizons/);
-    assert.match(SYSTEM, /at least three distinct causal families/);
+    assert.match(SYSTEM, /at least four distinct causal families/);
+    assert.match(SYSTEM, /at least three independent centers of agency/);
+    assert.match(SYSTEM, /A quiet or tightly bounded immediate scene constrains what happens now, not the diversity/);
     assert.match(SYSTEM, /Every future path must grow from a present cause/);
     assert.match(SYSTEM, /three or four ranked guides with genuinely contrasting authorial functions/);
     assert.match(SYSTEM, /omniscient authorial view/);
@@ -114,6 +116,9 @@ test('compact planner result accepts creative state deltas without semantic over
     assert.equal(next.nextGuides[0].disclosure, 'none');
     assert.deepEqual(next.nextGuides[0].causalEventIds, []);
     assert.ok(next.continuityThreads.some(thread => thread.id === 'formal-process'));
+    assert.equal(next.entities.find(entity => entity.name === 'Mara')?.location, 'outer hall');
+    assert.equal(next.entities.find(entity => entity.name === 'Mara')?.perspective, 'The obligation is real but candor still carries a cost.');
+    assert.equal(next.entities.find(entity => entity.name === 'Mara')?.constraints, 'Cannot abandon the obligation without consequences.');
 });
 test('planner validates an automatically resolved AI-assisted note', () => {
     const result = {

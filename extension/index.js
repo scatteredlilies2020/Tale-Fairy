@@ -17,7 +17,7 @@ import { collectSummarySources, summarySourceAudit } from './summary-context.js'
 import { estimateTokenCount } from './token-budget.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.82';
+const RUNTIME_VERSION = '0.11.83';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -1203,6 +1203,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
             return current;
         }
         const next = applyAnalysis(current, result, chat);
+        next.summaryEvidence = { ...lastSummaryAudit, scannedAt: Date.now() };
         next.plannerSeed = variationNonce;
         next.sourceChatId = chatId;
         next.analysisModel = analysisSelection;
@@ -1294,10 +1295,12 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         : (analyzed ? `${state.mode} mode · updated ${analyzedAt || 'recently'}` : '');
     scratchpadText(board, 'scratchpad-meta', meta, 'No planner result yet. Run Guide now or Full rebuild.');
     const continuityStatus = analyzed ? continuityContextState(currentContext()).status : 'unavailable';
-    const summaryStatus = lastSummaryAudit.count
-        ? ` · summaries: ${lastSummaryAudit.count} sources / ${lastSummaryAudit.includedTokens.toLocaleString()} tokens`
-        : ' · summary scan runs with each analysis';
-    scratchpadText(board, 'scratchpad-continuity', `Continuity: ${continuityStatus}${summaryStatus}`, 'Continuity: unavailable');
+    const summaryAudit = state.summaryEvidence?.scannedAt ? state.summaryEvidence : lastSummaryAudit;
+    const continuitySummaryIncluded = summaryAudit.labels?.some(label => /continuity/i.test(label));
+    const summaryStatus = summaryAudit.scannedAt || summaryAudit.count
+        ? ` · summary evidence: ${summaryAudit.count} sources / ${summaryAudit.includedTokens.toLocaleString()} tokens${continuitySummaryIncluded ? ' · Continuity-derived source included' : ''}`
+        : ' · summary evidence will be scanned during analysis';
+    scratchpadText(board, 'scratchpad-continuity', `Direct Continuity connector: ${continuityStatus}${summaryStatus}`, 'Direct Continuity connector: unavailable');
 
     const layers = state.narrativeLayers || {};
     const scene = [
@@ -1425,7 +1428,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
             `\nExact dynamic block:\n${verification.guidanceBlock}`,
         ].filter(Boolean).join('\n')
         : '';
-    scratchpadText(board, 'scratchpad-request-verification', verificationText, 'No provider request has been verified yet.');
+    scratchpadText(board, 'scratchpad-request-verification', verificationText, 'No roleplay-generation guide injection has been verified yet.');
 
     const displayedObjectives = state.objectives?.length
         ? state.objectives
@@ -1488,7 +1491,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         const requirements = Array.isArray(item.requirements) && item.requirements.length ? `\n  Needs: ${item.requirements.join('; ')}` : '';
         const effects = Array.isArray(item.consequences) && item.consequences.length ? `\n  Consequences: ${item.consequences.join('; ')}` : '';
         return `${item.title}${stateLabels ? ` [${stateLabels}]` : ''}${item.summary ? ` — ${item.summary}` : ''}${timing ? `\n  Timing: ${timing}` : ''}${cause}${requirements}${effects}${item.basis ? `\n  Basis: ${item.basis}` : ''}`;
-    }, '') : '', boardFallback('No independent causal event is currently supported.', 'No generated narrative events yet.'));
+    }, '') : '', boardFallback('No new independent causal event was established in this analysis; conditional future routes remain available.', 'No generated narrative events yet.'));
 
     scratchpadText(board, 'scratchpad-notes', scratchpadList(state.userNotes, item => item?.text ? `[${String(item.kind || 'note').toUpperCase()}] ${item.text}` : '', ''), 'No user notes.');
 }

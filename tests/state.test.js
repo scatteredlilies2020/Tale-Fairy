@@ -44,6 +44,25 @@ test('state normalizes caps and invalid mode', () => {
     assert.equal(state.version, STATE_VERSION);
 });
 
+test('state retains compact summary-evidence audit data across reloads', () => {
+    const state = normalizeState({
+        summaryEvidence: {
+            count: 3,
+            includedTokens: 2400,
+            originalTokens: 5700,
+            labels: ['Continuity Memory', 'World state summary', ...Array.from({ length: 20 }, (_, index) => `Summary ${index}`)],
+            scannedAt: 123456,
+        },
+    });
+    assert.deepEqual(state.summaryEvidence, {
+        count: 3,
+        includedTokens: 2400,
+        originalTokens: 5700,
+        labels: ['Continuity Memory', 'World state summary', ...Array.from({ length: 10 }, (_, index) => `Summary ${index}`)],
+        scannedAt: 123456,
+    });
+});
+
 test('offscreen causes persist privately while injection exposes only their consequence', () => {
     const causalEvent = {
         id: 'school-conflict',
