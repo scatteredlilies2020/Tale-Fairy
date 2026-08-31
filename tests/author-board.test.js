@@ -53,7 +53,7 @@ test('a routine scene hold cannot replace the durable story and arc with the cur
     assert.equal(refreshed.scene.purpose, 'Let Lucia read without interruption.');
 });
 
-test('legacy scene-derived board repairs its story identity from durable trajectory', () => {
+test('a clean rescan rebuilds broad scope without rewriting the existing board on load', () => {
     const localIdentity = 'A quiet morning interlude in a structured facility before an uncertain future.';
     const durable = 'Lucia survives institutional childhood while extraordinary Force potential may draw Jedi and Republic attention.';
     const weakBoard = {
@@ -66,9 +66,9 @@ test('legacy scene-derived board repairs its story identity from durable traject
         pathways: [{ id: 'council-review', lane: 'relationship-institution', scale: 'arc', status: 'active', direction: 'The unresolved Council petition changes who may take responsibility for Lucia.', conditions: ['The filed petition reaches a decision.'], engine: 'Jedi Council review' }],
     };
     const loaded = normalizeAuthorBoard(weakBoard, legacy);
-    assert.equal(loaded.story.identity, durable);
-    assert.equal(loaded.activeArc.id, 'council-review');
-    const refreshed = refreshAuthorBoardFromLegacy(weakBoard, legacy, 361);
+    assert.equal(loaded.story.identity, localIdentity);
+    assert.equal(loaded.activeArc.id, 'g_garden');
+    const refreshed = refreshAuthorBoardFromLegacy(normalizeAuthorBoard(), legacy, 361);
     assert.equal(refreshed.story.identity, durable);
     assert.equal(refreshed.activeArc.id, 'council-review');
     assert.match(refreshed.activeArc.purpose, /Council petition/);

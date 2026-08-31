@@ -106,25 +106,9 @@ export function normalizeAuthorBoard(value = {}, legacy = {}) {
         .filter(event => event?.scope === 'offscreen' && !['resolved', 'retired'].includes(event?.status))
         .map(event => ({ id: event.id, development: event.summary || event.title, status: ['due', 'overdue'].includes(event.dueState) ? 'ready' : 'active', progress: ['due', 'overdue'].includes(event.dueState) ? 100 : 25, releaseConditions: event.requirements, disclosure: event.disclosure, clockType: 'institutional' }));
     const required = scene.requiredDevelopments ?? scene.required_developments ?? source.requiredDevelopments;
-    const rawStoryIdentity = string(source.story?.identity ?? source.storyIdentity, 240);
-    const durableTrajectory = string(layers.durableTrajectory, 240);
-    const currentDecisionIdentity = string(director.storyIdentity, 240);
-    const quietLocalDecision = ['hold', 'seed'].includes(string(director.causalTempo, 30).toLowerCase())
-        && ['incidental', 'routine'].includes(string(layers.activityRole, 30).toLowerCase());
-    const storyIdentity = quietLocalDecision && rawStoryIdentity === currentDecisionIdentity
-        && durableTrajectory && durableTrajectory !== rawStoryIdentity
-        ? durableTrajectory
-        : rawStoryIdentity || durableTrajectory || currentDecisionIdentity;
-    const rawActiveArc = source.activeArc ?? source.active_arc;
-    const rawActiveArcId = string(rawActiveArc?.id, 80);
-    const activeArcFallback = { id: director.futureSetup?.id, title: durableTrajectory || currentDecisionIdentity, phase: director.causalTempo, purpose: director.arcDirection, pressure: director.meaningfulAim };
-    const activeArc = quietLocalDecision && rawActiveArcId
-        && rawActiveArcId === string(director.futureSetup?.id, 80)
-        ? durableArcFromLegacy(legacy, activeArcFallback)
-        : normalizeArc(rawActiveArc ?? activeArcFallback);
     return {
-        story: { identity: storyIdentity, themes: list(source.story?.themes ?? source.themes, 6, item => string(item, 120)) },
-        activeArc,
+        story: { identity: string(source.story?.identity ?? source.storyIdentity ?? layers.durableTrajectory ?? director.storyIdentity, 240), themes: list(source.story?.themes ?? source.themes, 6, item => string(item, 120)) },
+        activeArc: normalizeArc(source.activeArc ?? source.active_arc ?? { id: director.futureSetup?.id, title: layers.durableTrajectory ?? director.storyIdentity, phase: director.causalTempo, purpose: director.arcDirection, pressure: director.meaningfulAim }),
         characterArcs: list(source.characterArcs ?? source.character_arcs, MAX_ARCS, normalizeCharacterArc),
         relationshipArcs: list(source.relationshipArcs ?? source.relationship_arcs, MAX_ARCS, normalizeRelationshipArc),
         setups: list(source.setups ?? source.promises, MAX_SETUPS, normalizeSetup),
