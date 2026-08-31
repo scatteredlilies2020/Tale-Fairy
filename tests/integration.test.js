@@ -4,15 +4,16 @@ import test from 'node:test';
 
 const source = await readFile(new URL('../extension/index.js', import.meta.url), 'utf8');
 const continuitySource = await readFile(new URL('../extension/continuity.js', import.meta.url), 'utf8');
+const summarySource = await readFile(new URL('../extension/summary-context.js', import.meta.url), 'utf8');
 const stateSource = await readFile(new URL('../extension/state.js', import.meta.url), 'utf8');
 const template = await readFile(new URL('../extension/settings.html', import.meta.url), 'utf8');
 const styles = await readFile(new URL('../extension/style.css', import.meta.url), 'utf8');
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.58');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.58');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.58');
+    assert.equal(manifest.version, '0.11.63');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.63');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.63');
 });
 
 test('injection sends layered authorial control while concrete realization and future outcomes stay private', () => {
@@ -78,9 +79,12 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /chat_completion_source: openRouter \? 'openrouter' : 'custom'/);
     assert.match(source, /secret_id: s.analysisSecretId/);
     assert.match(source, /\/api\/backends\/chat-completions\/status/);
-    assert.match(source, /async function collectHostContext/);
-    assert.match(source, /getWorldInfoPrompt\(chatForWorldInfo/);
-    assert.doesNotMatch(source, /Object\.entries\(context\.extensionPrompts/);
+    assert.match(source, /collectSummarySources\(context, chat/);
+    assert.match(summarySource, /getWorldInfoPrompt\(chatForWorldInfo/);
+    assert.match(summarySource, /Object\.entries\(context\.extensionPrompts/);
+    assert.match(summarySource, /Message \$\{index \+ 1\} extra/);
+    assert.match(summarySource, /Chat metadata:/);
+    assert.match(summarySource, /In-text recap at message/);
     assert.match(source, /\['description', 'personality', 'scenario', 'persona'\]/);
     assert.match(source, /result\.cardSystemReference = String\(fields\.system\)/);
     assert.match(source, /function parseAnalysisResponse/);
@@ -162,13 +166,18 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /previousContextVersion > 0 && previousContextVersion < 5/);
     assert.match(source, /previousContextVersion > 0 && previousContextVersion < 6/);
     assert.match(source, /settings\.contextSettingsVersion = DEFAULT_SETTINGS\.contextSettingsVersion/);
-    assert.match(source, /messageTokenLimit: 700, maxPromptTokens: 12000/);
-    assert.match(source, /continuityContextTokens: 3500, contextSettingsVersion: 7/);
+    assert.match(source, /recentContextTokens: 4000, messageTokenLimit: 700, maxPromptTokens: 12000/);
+    assert.match(source, /summaryContextTokens: 4000, contextSettingsVersion: 9/);
     assert.match(source, /getTokenCountAsync/);
     assert.match(source, /actualTokens <= tokenBudget/);
     assert.match(source, /could not be fitted within the \$\{tokenBudget\}-token limit/);
     assert.match(template, /Planner context budget \(tokens\)/);
     assert.match(template, /value="12000"/);
+    assert.match(template, /Recent raw context budget \(tokens\)/);
+    assert.match(template, /Summary evidence budget \(tokens\)/);
+    assert.match(template, /Continuity Memory, extension summaries, recaps, world state/);
+    assert.match(template, /as many newest turns as fit/);
+    assert.doesNotMatch(template, /Recent messages sent to planner/);
     assert.match(source, /inlineLatestUser: s\.injectionPosition === 'at-depth'/);
     assert.match(template, /<option value="user">User \(default\)<\/option>/);
     assert.match(source, /export async function livingWorldGuideGenerateInterceptor/);

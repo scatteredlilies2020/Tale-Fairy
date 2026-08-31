@@ -1,5 +1,5 @@
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 37;
+export const STATE_VERSION = 39;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -334,7 +334,11 @@ export function normalizeState(input = {}) {
     // to challenge its preferred route before committing to it; v35 rebuilds
     // ranked alternatives with durable-hook diversity and tolerant schema repair;
     // v37 rebuilds once for persistent omniscient actors, lore, RP-specific
-    // continuity signatures, and explicit departures from inferred baselines.
+    // continuity signatures, and explicit departures from inferred baselines;
+    // v38 rebuilds once after clipped historical evidence could displace
+    // authored alternatives and the planner's own self-challenge; v39
+    // rebuilds with a token-adaptive raw recent tail instead of a fixed turn
+    // count while retaining persistent summaries and historical retrieval.
     const unsafePlannerUpgrade = inputVersion > 0 && inputVersion < 18;
     const movementUpgrade = inputVersion > 0 && inputVersion < STATE_VERSION;
     const recoveryUpgrade = inputVersion > 0 && inputVersion < 26;

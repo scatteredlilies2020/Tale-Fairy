@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, AnalysisValidationError, MODE_INSTRUCTIONS, applyAnalysis, buildAnalysisPrompt, buildFinalizationEvidence, extractJson, finalizeAnalysisResult, requireValidAnalysisResult, SYSTEM, validateAnalysisResult } from '../extension/analysis.js';
+import { ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, AnalysisValidationError, MODE_INSTRUCTIONS, applyAnalysis, buildAnalysisPrompt, buildFinalizationEvidence, extractJson, finalizeAnalysisResult, requireCompleteProviderResult, requireValidAnalysisResult, SYSTEM, validateAnalysisResult } from '../extension/analysis.js';
 import { defaultState } from '../extension/state.js';
 import { estimateTokenCount } from '../extension/token-budget.js';
 
@@ -143,11 +143,125 @@ test('finalization generically restores an unrelated filed route dropped by the 
     assert.ok(result.objectives.some(item => item.title === restored.thread));
     assert.ok(result.possibilities.some(item => /harbor guild appeal/iu.test(item.description)));
     assert.ok(result.pathways.some(item => item.id === `continuity-${restored.id}` && item.status === 'latent'));
-    assert.ok(result.next_guides.some(item => item.id === `continuity-${restored.id}-guide` && item.origin === 'established'));
+    assert.deepEqual(result.next_guides, nextGuides);
     assert.ok(result.plan_horizons.items.some(item => item.branch === restored.id));
-    assert.match(result.self_challenge.decision, /independent conditional future route/iu);
+    assert.deepEqual(result.self_challenge, selfChallenge);
     const restoredValidation = validateAnalysisResult(result);
     assert.deepEqual(restoredValidation.errors, []);
+});
+
+test('entity repair derives concrete state and knowledge from supplied fields instead of generic placeholders', () => {
+    const result = requireValidAnalysisResult({
+        ...requiredPlanning,
+        entities: [{
+            name: 'Archive board',
+            location: 'North annex',
+            relevance: 'It controls the pending permit review.',
+            perspective: 'The board has the filed record but not the applicant’s private notes.',
+            motivation: 'Apply the charter consistently.',
+            constraints: 'A quorum is not available until Friday.',
+        }],
+    });
+    assert.match(result.entities[0].state, /North annex|quorum|pending permit/iu);
+    assert.match(result.entities[0].knowledge, /filed record|private notes/iu);
+    assert.doesNotMatch(result.entities[0].state, /must be inferred/iu);
+    assert.doesNotMatch(result.entities[0].agenda, /Continue acting independently from this motivation/iu);
+});
+
+test('first provider pass must supply semantic content before compatibility recovery', () => {
+    const complete = {
+        ...requiredPlanning,
+        scene: { status: 'active', activity: 'Tea', pace: 'steady', intent: 'Talk', location: 'home', time: 'evening', loop: false },
+        objectives: [],
+        entities: [],
+        possibilities: Array.from({ length: 12 }, (_, index) => ({
+            description: `Distinct supported possibility ${index + 1}.`,
+            horizon: ['local', 'near', 'mid', 'far', 'wildcard'][index % 5],
+            conditions: [],
+            force: 'moderate',
+        })),
+        guidance: 'Advance the strongest supported route without collapsing the alternatives.',
+        inject: true,
+        reason: 'The selected routes span current, institutional, relational, and long-range causes.',
+    };
+    assert.equal(requireCompleteProviderResult(complete), complete);
+    assert.throws(
+        () => requireCompleteProviderResult({ ...complete, possibilities: complete.possibilities.slice(0, 4) }),
+        /12 to 18 distinct future candidates/i,
+    );
+    assert.throws(
+        () => requireCompleteProviderResult({
+            ...complete,
+            entities: [{ name: 'Mara', motivation: 'Protect trust.', agenda: 'Seek a candid answer.' }],
+        }),
+        /entities\[0\]\.state must be a string/i,
+    );
+});
+
+test('finalization preserves authored variety when a dormant route is already represented', () => {
+    const existingChallenge = {
+        weakness: 'The preferred practical route may underweight a social alternative.',
+        counter_route: 'Let the household relationship change before the institution moves.',
+        decision: 'Keep both live, preferring the practical route only while its evidence is stronger.',
+    };
+    const result = requireValidAnalysisResult({
+        ...requiredPlanning,
+        continuity_threads: [],
+        self_challenge: existingChallenge,
+        pathways: [{
+            ...pathways[0],
+            id: 'guild-appeal-route',
+            direction: 'Let the pending harbor guild appeal advance through its established regional process.',
+        }],
+    });
+    const beforeGuides = structuredClone(result.next_guides);
+    const beforeHorizons = structuredClone(result.plan_horizons.items);
+    finalizeAnalysisResult(result, JSON.stringify({ candidate_dormant_hooks: [{
+        index: 22,
+        role: 'assistant',
+        hook_type: 'correspondence-or-petition',
+        content: 'The harbor guild appeal was filed and accepted under reference HG-204; it remains pending in regional routing.',
+    }] }));
+    assert.equal(result.continuity_threads.length, 1, 'a creative pathway does not replace the factual continuity inventory');
+    assert.match(result.continuity_threads[0].thread, /harbor guild appeal/iu);
+    assert.deepEqual(result.next_guides, beforeGuides);
+    assert.deepEqual(result.plan_horizons.items, beforeHorizons);
+    assert.deepEqual(result.self_challenge, existingChallenge);
+});
+
+test('planner-audited RP continuity signatures can restore a missing factual lifecycle', () => {
+    const result = requireValidAnalysisResult({
+        ...requiredPlanning,
+        continuity_threads: [],
+        lore_model: {
+            ...loreModel,
+            continuity_signatures: ['The winter scholarship assessment remains pending while the academy reviews the portfolio.'],
+        },
+    });
+    finalizeAnalysisResult(result, '{}');
+    assert.equal(result.continuity_threads.length, 1);
+    assert.match(`${result.continuity_threads[0].thread} ${result.continuity_threads[0].state}`, /winter scholarship assessment/iu);
+    assert.match(result.continuity_threads[0].basis, /planner-audited continuity signature/iu);
+});
+
+test('finalization never promotes clipped retrieval fragments into planning state', () => {
+    const result = requireValidAnalysisResult({ ...requiredPlanning, continuity_threads: [], objectives: [] });
+    const before = structuredClone(result);
+    finalizeAnalysisResult(result, JSON.stringify({ candidate_dormant_hooks: [
+        {
+            index: 8,
+            role: 'assistant',
+            hook_type: 'scheduled-decision',
+            content: 'The placement review remains scheduled … their status will be decided once the panel convenes.',
+        },
+        {
+            index: 9,
+            role: 'assistant',
+            hook_type: 'investigation-or-search',
+            content: '“That inquiry requires an authorized request.” “I am not asking t',
+        },
+    ] }));
+    assert.deepEqual(result, before);
 });
 
 test('finalization evidence retains dormant routes independently of the provider prompt budget', () => {
@@ -182,7 +296,7 @@ test('generic lifecycle recovery covers unrelated correspondence, decisions, inv
         ['planned-journey-or-return', 'Passage to Northport was booked and departure remains planned for next month.'],
     ];
     finalizeAnalysisResult(result, JSON.stringify({ candidate_dormant_hooks: examples.map(([hook_type, content], index) => ({ index, role: index % 2 ? 'assistant' : 'user', hook_type, content })) }));
-    assert.equal(result.continuity_threads.length, examples.length);
+    assert.equal(result.continuity_threads.length, examples.length, JSON.stringify(result.continuity_threads.map(item => item.id)));
     assert.equal(new Set(result.continuity_threads.map(item => item.id)).size, examples.length);
     for (const [hookType] of examples) assert.ok(result.continuity_threads.some(item => item.id.startsWith(`open-${hookType}-`)));
     assert.ok(result.pathways.filter(item => item.id.startsWith('continuity-open-')).length >= 3);
@@ -788,16 +902,26 @@ test('analysis prompt maintains a lightweight world model', () => {
     assert.equal('world_model_instruction' in prompt, false);
 });
 
-test('analysis prompt limits sent messages and accepts optional continuity context', () => {
+test('analysis prompt expands its recent tail by tokens and assimilates optional continuity context', () => {
     const messages = Array.from({ length: 5 }, (_, i) => ({ mes: `message-${i}`, is_user: i % 2 === 0 }));
-    const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { messageWindow: 2, messageTokenLimit: 20, continuityContext: 'older context' }));
-    assert.equal(prompt.messages.length, 2);
-    assert.equal(prompt.optional_continuity_context, 'older context');
-    assert.match(prompt.continuity_instruction, /not a privileged memory authority or dependency/);
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { recentContextTokens: 1000, messageTokenLimit: 200, continuityContext: 'older context' }));
+    assert.equal(prompt.messages.length, 5, 'short turns should not be cut off by an arbitrary message count');
+    assert.equal(prompt.summary_sources[0].text, 'older context');
+    assert.equal(prompt.summary_sources[0].kind, 'continuity-memory');
+    assert.match(prompt.summary_sources_instruction, /no provider is required or automatically authoritative/);
+});
+
+test('recent raw context is bounded by tokens while the latest completed turn survives', () => {
+    const messages = Array.from({ length: 20 }, (_, i) => ({ mes: `${i} ${'long turn '.repeat(180)}`, is_user: i % 2 === 0 }));
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { recentContextTokens: 1000, messageTokenLimit: 700 }));
+    const recent = prompt.messages.filter(item => item.kind === 'recent');
+    assert.ok(recent.length < messages.length);
+    assert.equal(recent.at(-1).index, 19);
+    assert.ok(recent.reduce((sum, item) => sum + estimateTokenCount(item.content) + 24, 0) <= 1008);
 });
 
 test('analysis prompt retrieves a few relevant older turns without continuity memory', () => {
-    const messages = Array.from({ length: 70 }, (_, index) => ({ mes: `Unrelated turn ${index} about corridor lighting.`, is_user: index % 2 === 0 }));
+    const messages = Array.from({ length: 70 }, (_, index) => ({ mes: `Unrelated turn ${index} about corridor lighting. `.repeat(2), is_user: index % 2 === 0 }));
     messages[44] = { mes: 'I want the message to discuss the war and my homeworld.', is_user: true };
     messages[46] = { mes: 'I wish for the war to stop and help the affected families. That is what I truly want.', is_user: true };
     messages[68] = { mes: 'What should the Chancellor message say?', is_user: false };
@@ -807,11 +931,11 @@ test('analysis prompt retrieves a few relevant older turns without continuity me
         pathways: [{ ...pathways[0], direction: 'Resolve the Chancellor petition about peace and aid for affected families.' }],
         contextLedger: 'The current thread concerns Lucia’s message to the Chancellor about the war.',
     };
-    const prompt = JSON.parse(buildAnalysisPrompt(messages, state, '', {}, { messageWindow: 6, maxPromptTokens: 12000 }));
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, state, '', {}, { recentContextTokens: 1000, maxPromptTokens: 12000 }));
     assert.ok(prompt.retrieved_historical_evidence.length <= 4);
     assert.ok(prompt.retrieved_historical_evidence.some(item => item.index === 46 && /affected families/.test(item.content)));
     assert.match(prompt.retrieval_instruction, /older turns from the active chat/);
-    assert.equal('optional_continuity_context' in prompt, false);
+    assert.equal('summary_sources' in prompt, false);
 });
 
 test('standalone retrieval includes an old assistant payoff instead of preserving only its setup', () => {
@@ -829,7 +953,7 @@ test('standalone retrieval includes an old assistant payoff instead of preservin
         pathways: [{ ...pathways[0], id: 'private-vision', direction: 'Lucia discloses the private clone vision.', when: 'Lucia chooses to tell Vekk.' }],
         contextLedger: 'Lucia still has a private clone vision to disclose.',
     };
-    const prompt = JSON.parse(buildAnalysisPrompt(messages, state, '', {}, { messageWindow: 6, maxPromptTokens: 12000 }));
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, state, '', {}, { recentContextTokens: 1000, maxPromptTokens: 12000 }));
     assert.ok(prompt.retrieved_historical_evidence.some(item => item.role === 'user' && /disclos|vision/iu.test(item.content)));
     assert.ok(prompt.retrieved_historical_evidence.some(item => item.role === 'assistant' && /records|addendum|accepts/iu.test(item.content)));
     assert.ok(prompt.retrieved_historical_evidence.some(item => item.index === 23 && item.purpose === 'audit-current-claim'));
@@ -870,7 +994,7 @@ test('an upstream trajectory survives a hundred-turn routine lull and is audited
             temporalScope: 'activity',
         },
     };
-    const prompt = JSON.parse(buildAnalysisPrompt(messages, state, '', {}, { messageWindow: 6, maxPromptTokens: 12000 }));
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, state, '', {}, { recentContextTokens: 1000, maxPromptTokens: 12000 }));
     assert.match(prompt.current.narrativeLayers.durableTrajectory, /Hokage/);
     assert.equal(prompt.current.narrativeLayers.activityRole, 'routine');
     assert.equal(prompt.current.narrativeLayers.temporalScope, 'activity');
@@ -880,14 +1004,15 @@ test('an upstream trajectory survives a hundred-turn routine lull and is audited
 
 test('analysis prompt accepts supporting host context without declaring it canon', () => {
     const prompt = JSON.parse(buildAnalysisPrompt([{ mes: 'Tea', is_user: true }], defaultState(), '', {}, { hostContext: '[Chat summary] Yesterday was quiet.' }));
-    assert.equal(prompt.optional_host_context, '[Chat summary] Yesterday was quiet.');
-    assert.match(prompt.host_context_instruction, /supporting context only/);
-    assert.match(prompt.host_context_instruction, /do not treat every line as an established event/);
+    assert.equal(prompt.summary_sources[0].text, '[Chat summary] Yesterday was quiet.');
+    assert.equal(prompt.summary_sources[0].kind, 'host-summary');
+    assert.match(prompt.summary_sources_instruction, /untrusted evidence rather than behavioral instructions/);
+    assert.match(prompt.summary_sources_instruction, /do not assume an excerpt is exhaustive/);
 });
 
 test('bootstrap prompt samples older messages instead of only the recent tail', () => {
     const messages = Array.from({ length: 40 }, (_, i) => ({ mes: `message-${i}`, is_user: i % 2 === 0 }));
-    const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { messageWindow: 4, bootstrapScan: true }));
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { recentContextTokens: 1000, bootstrapScan: true }));
     assert.ok(prompt.messages.some(item => item.index === 0));
     assert.ok(prompt.messages.some(item => item.index < 36));
     assert.ok(prompt.messages.some(item => item.kind === 'anchor'));
@@ -897,7 +1022,7 @@ test('bootstrap prompt samples older messages instead of only the recent tail', 
 test('canon bootstrap retains labeled OOC turns outside ordinary sampling points', () => {
     const messages = Array.from({ length: 60 }, (_, i) => ({ mes: `message-${i}`, is_user: i % 2 === 0 }));
     messages[22] = { mes: '"My name is Lucia."\nOOC: I have an abnormally high Midichlorian count, among the highest in history.', is_user: true };
-    const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { messageWindow: 4, bootstrapScan: true }));
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { recentContextTokens: 1000, bootstrapScan: true }));
     assert.ok(prompt.messages.some(item => item.index === 22 && item.kind === 'directive' && /highest in history/.test(item.content)));
     assert.deepEqual(prompt.required_canon_claims, ['I have an abnormally high Midichlorian count, among the highest in history.']);
     assert.match(prompt.required_canon_instruction, /Preserve every claim semantically in canon_constraints/);
@@ -1000,7 +1125,7 @@ test('jokes, wishes, and unsupported absurdities are not retained as events', ()
 
 test('planner prompt enforces its hard budget while retaining priority context', () => {
     const messages = Array.from({ length: 40 }, (_, i) => ({ mes: 'x'.repeat(2000) + i, is_user: i % 2 === 0 }));
-    const prompt = buildAnalysisPrompt(messages, { ...defaultState(), contextLedger: 'y'.repeat(4000) }, 'z'.repeat(2000), { description: 'd'.repeat(3500) }, { messageWindow: 24, maxPromptTokens: 10000, continuityContext: 'c'.repeat(6000), hostContext: 'h'.repeat(8000), bootstrapScan: true });
+    const prompt = buildAnalysisPrompt(messages, { ...defaultState(), contextLedger: 'y'.repeat(4000) }, 'z'.repeat(2000), { description: 'd'.repeat(3500) }, { recentContextTokens: 4000, maxPromptTokens: 10000, continuityContext: 'c'.repeat(6000), hostContext: 'h'.repeat(8000), bootstrapScan: true });
     const parsed = JSON.parse(prompt);
     assert.ok(estimateTokenCount(prompt) <= 10000);
     assert.ok(parsed.messages.filter(item => item.kind === 'recent').length >= 6);
@@ -1021,7 +1146,7 @@ test('latest turn stays complete by compacting redundant state and older excerpt
         planHorizons,
         contextLedger: 'ledger '.repeat(400),
     };
-    const prompt = buildAnalysisPrompt(messages, state, '', {}, { messageWindow: 12, messageTokenLimit: 700, maxPromptTokens: 12000, bootstrapScan: true });
+    const prompt = buildAnalysisPrompt(messages, state, '', {}, { recentContextTokens: 4000, messageTokenLimit: 700, maxPromptTokens: 12000, bootstrapScan: true });
     const parsed = JSON.parse(prompt);
     assert.ok(estimateTokenCount(prompt) <= 12000);
     assert.equal(parsed.messages.at(-1).content, latest.trim());
@@ -1030,7 +1155,7 @@ test('latest turn stays complete by compacting redundant state and older excerpt
 test('bootstrap compaction keeps a recent trajectory anchor instead of reviving the opening scene', () => {
     const messages = Array.from({ length: 520 }, (_, index) => ({ mes: `${index}: ${'current trajectory '.repeat(60)}`, is_user: index % 2 === 0 }));
     messages[0] = { mes: `Old opening armored walker attack. ${'past '.repeat(300)}`, is_user: false };
-    const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { messageWindow: 12, messageTokenLimit: 700, maxPromptTokens: 12000, effectivePromptTokens: 3000, bootstrapScan: true }));
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { recentContextTokens: 4000, messageTokenLimit: 700, maxPromptTokens: 12000, effectivePromptTokens: 3000, bootstrapScan: true }));
     assert.doesNotMatch(JSON.stringify(prompt.messages), /armored walker/i);
     assert.ok(prompt.messages.some(item => item.kind === 'anchor' && item.index > 400));
 });
@@ -1051,7 +1176,7 @@ test('hard budget also compacts a fully populated long-running planner state', (
         lastRequestVerification: { status: 'confirmed', guidanceBlock: 'confirmed guide', guideCandidates: [sentCue], selectedGuideIndex: 0 },
     };
     const messages = Array.from({ length: 80 }, (_, index) => ({ mes: long.repeat(4) + index, is_user: index % 2 === 0 }));
-    const prompt = buildAnalysisPrompt(messages, state, long, { scenario: long }, { messageWindow: 80, messageTokenLimit: 4000, maxPromptTokens: 8000, continuityContext: long.repeat(6), hostContext: long.repeat(8), bootstrapScan: true });
+    const prompt = buildAnalysisPrompt(messages, state, long, { scenario: long }, { recentContextTokens: 4000, messageTokenLimit: 4000, maxPromptTokens: 8000, continuityContext: long.repeat(6), hostContext: long.repeat(8), bootstrapScan: true });
     assert.ok(estimateTokenCount(prompt) <= 8000, `expected hard budget, got ${estimateTokenCount(prompt)} tokens`);
     const parsed = JSON.parse(prompt);
     assert.equal(parsed.messages.at(-1).index, 79);
@@ -1076,7 +1201,7 @@ test('analysis prompt independently recovers dormant formal hooks for future-rou
     messages[52] = { mes: 'Nim has a placement panel scheduled for Thursday.', is_user: false };
     messages[88] = { mes: 'The room remains quiet through the night.', is_user: false };
     messages[89] = { mes: 'Continue as I sleep.', is_user: true };
-    const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { messageWindow: 8, maxPromptTokens: 12000 }));
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { recentContextTokens: 1000, maxPromptTokens: 12000 }));
     assert.ok(prompt.candidate_dormant_hooks.some(item => item.hook_type === 'correspondence-or-petition' && /Chancellor|petition/iu.test(item.content)));
     assert.ok(prompt.candidate_dormant_hooks.some(item => item.hook_type === 'scheduled-decision' && /placement panel/iu.test(item.content)));
     assert.match(prompt.dormant_hook_instruction, /retain it in continuity_threads and objectives even while offscreen/);
@@ -1091,10 +1216,10 @@ test('repeated schedules cannot crowd a filed petition out of dormant-hook retri
     }
     messages[118] = { mes: 'The night passes quietly.', is_user: false };
     messages[119] = { mes: 'Continue while I sleep.', is_user: true };
-    const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { messageWindow: 8, maxPromptTokens: 12000 }));
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { recentContextTokens: 1000, maxPromptTokens: 12000 }));
     assert.ok(prompt.candidate_dormant_hooks.some(item => item.hook_type === 'correspondence-or-petition' && /Chancellor letter/iu.test(item.content)));
     assert.ok(prompt.candidate_dormant_hooks.some(item => item.hook_type === 'scheduled-decision'));
-    const constrained = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { messageWindow: 8, maxPromptTokens: 8000, bootstrapScan: true }));
+    const constrained = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { recentContextTokens: 1000, maxPromptTokens: 8000, bootstrapScan: true }));
     assert.ok(constrained.candidate_dormant_hooks.some(item => item.hook_type === 'correspondence-or-petition'), 'durable correspondence survives the minimum prompt budget');
 });
 
@@ -1117,6 +1242,5 @@ test('empty optional context is omitted from the planner payload', () => {
     const prompt = JSON.parse(buildAnalysisPrompt([{ mes: 'Tea', is_user: true }], defaultState()));
     assert.equal('user_instruction' in prompt, false);
     assert.equal('bootstrap' in prompt, false);
-    assert.equal('optional_continuity_context' in prompt, false);
-    assert.equal('optional_host_context' in prompt, false);
+    assert.equal('summary_sources' in prompt, false);
 });

@@ -23,8 +23,13 @@
               <option value="fun">Fun</option>
             </select>
           </label>
-          <label>Recent messages sent to planner
-            <input class="text_pole" type="number" data-setting="window" min="1" max="80" step="1" value="12">
+          <label>Recent raw context budget (tokens)
+            <input class="text_pole" type="number" data-setting="recent-budget" min="1000" max="12000" step="500" value="4000">
+            <small>Adaptive tail: includes as many newest turns as fit. Persistent summaries and full-chat retrieval are separate.</small>
+          </label>
+          <label>Summary evidence budget (tokens)
+            <input class="text_pole" type="number" data-setting="summary-budget" min="1000" max="8000" step="500" value="4000">
+            <small>Shared fairly across Continuity Memory, extension summaries, recaps, world state, message memory, and active World Info.</small>
           </label>
           <label>Planner context budget (tokens)
             <input class="text_pole" type="number" data-setting="budget" min="8000" max="30000" step="1000" value="12000">
@@ -35,7 +40,7 @@
           <input type="checkbox" data-setting="continuity">
           <span>Use Continuity context when available</span>
         </label>
-        <small>Reads a trimmed existing Continuity prompt snapshot without triggering extraction or writing to Continuity Memory.</small>
+        <small>Reads Continuity's existing snapshot as one optional summary provider without triggering extraction or writing to Continuity Memory. Tale Fairy also discovers other available summary and world-state sources.</small>
       </div>
 
       <div class="living-world-guide-card">

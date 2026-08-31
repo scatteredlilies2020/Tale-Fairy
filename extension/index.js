@@ -4,23 +4,24 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_SCHEMA, buildAnalysisPrompt, buildFinalizationEvidence, extractJson, finalizeAnalysisResult, requireValidAnalysisResult, SYSTEM } from './analysis.js';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_SCHEMA, buildAnalysisPrompt, buildFinalizationEvidence, extractJson, finalizeAnalysisResult, requireCompleteProviderResult, requireValidAnalysisResult, SYSTEM } from './analysis.js';
 import { buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js';
 import { resolveInjectionPlacement } from './injection-placement.js';
 import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js';
 import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js';
 import { normalizeModelListResponse } from './models.js';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js';
-import { compactContinuityPrompt, readContinuityBridge, waitForContinuityBridge } from './continuity.js';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js';
 import { plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.58';
+const RUNTIME_VERSION = '0.11.63';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
 const INJECTION_POSITIONS = new Set(['before-main', 'after-main', 'before-character-definitions', 'after-character-definitions', 'before-example-messages', 'after-example-messages', 'before-an', 'after-an', 'before-chat-history', 'after-chat-history', 'before-jailbreak', 'after-jailbreak', 'at-depth']);
-const DEFAULT_SETTINGS = { enabled: true, mode: 'balanced', analysisProfileId: '', analysisSource: 'active', analysisProvider: 'custom', analysisModel: '', analysisUrl: '', analysisSecretId: '', analysisReasoningMode: 'auto', analysisTemperature: 1, directSettingsMigrated: false, directCustomModel: '', directCustomUrl: '', directCustomSecretId: '', directOpenRouterModel: '', directOpenRouterUrl: '', directOpenRouterSecretId: '', injectionPosition: 'at-depth', injectionDepth: 1, injectionRole: 'user', includeWorldInfo: false, showDirectorNotes: false, messageWindow: 12, messageTokenLimit: 700, maxPromptTokens: 12000, continuityIntegration: true, continuityContextTokens: 3500, contextSettingsVersion: 7 };
+const DEFAULT_SETTINGS = { enabled: true, mode: 'balanced', analysisProfileId: '', analysisSource: 'active', analysisProvider: 'custom', analysisModel: '', analysisUrl: '', analysisSecretId: '', analysisReasoningMode: 'auto', analysisTemperature: 1, directSettingsMigrated: false, directCustomModel: '', directCustomUrl: '', directCustomSecretId: '', directOpenRouterModel: '', directOpenRouterUrl: '', directOpenRouterSecretId: '', injectionPosition: 'at-depth', injectionDepth: 1, injectionRole: 'user', includeWorldInfo: false, showDirectorNotes: false, recentContextTokens: 4000, messageTokenLimit: 700, maxPromptTokens: 12000, continuityIntegration: true, summaryContextTokens: 4000, contextSettingsVersion: 9 };
 let settings = null;
 let analysisPromise = null;
 let analysisAbortController = null;
@@ -37,6 +38,7 @@ const swipeGuideCursors = new Map();
 let uiMountPromise = null;
 let uiMountObserver = null;
 let uiMountTimeout = null;
+let lastSummaryAudit = { count: 0, includedTokens: 0, originalTokens: 0, labels: [] };
 const legacyUpgradeAttempts = new Set();
 const directModelCache = new Map();
 // Reasoning providers may count hidden thinking against this ceiling. The
@@ -91,11 +93,32 @@ function getSettings() {
         // Move every existing install to the explicit 12k-token default.
         settings.messageTokenLimit = Number(settings.messageTokenLimit) || DEFAULT_SETTINGS.messageTokenLimit;
         settings.maxPromptTokens = Number(settings.maxPromptTokens) || DEFAULT_SETTINGS.maxPromptTokens;
-        settings.continuityContextTokens = Number(settings.continuityContextTokens) || DEFAULT_SETTINGS.continuityContextTokens;
+        settings.continuityContextTokens = Number(settings.continuityContextTokens) || 3500;
         delete settings.messageCharLimit;
         delete settings.maxPromptChars;
         delete settings.continuityContextLimit;
         settings.contextSettingsVersion = 7;
+    }
+    if (previousContextVersion < 8) {
+        // A message count gives wildly different context depending on turn
+        // length. Replace it with a bounded raw-recency token allocation;
+        // persistent summaries and relevance retrieval use the remaining
+        // planner budget independently.
+        settings.recentContextTokens = Number(settings.recentContextTokens) || DEFAULT_SETTINGS.recentContextTokens;
+        delete settings.messageWindow;
+        settings.contextSettingsVersion = 8;
+    }
+    if (previousContextVersion < 9) {
+        // Continuity Memory is now one provider in a generic summary-evidence
+        // layer. Preserve any larger old allocation while moving the setting
+        // to its provider-neutral token budget.
+        settings.summaryContextTokens = Math.max(
+            DEFAULT_SETTINGS.summaryContextTokens,
+            Number(settings.summaryContextTokens) || 0,
+            Number(settings.continuityContextTokens) || 0,
+        );
+        delete settings.continuityContextTokens;
+        settings.contextSettingsVersion = 9;
     }
     settings.contextSettingsVersion = DEFAULT_SETTINGS.contextSettingsVersion;
     if (!settings.directSettingsMigrated) {
@@ -355,14 +378,13 @@ function continuityContextState(context, allowStale = false) {
 }
 
 function optionalContinuityContext(context, allowStale = false) {
-    const s = getSettings();
-    return compactContinuityPrompt(continuityContextState(context, allowStale).text, s.continuityContextTokens);
+    return continuityContextState(context, allowStale).text;
 }
 
 async function optionalContinuityContextWhenReady(context, allowStale, signal) {
     const s = getSettings();
     const immediate = continuityContextState(context, allowStale);
-    if (!s.continuityIntegration || immediate.text) return compactContinuityPrompt(immediate.text, s.continuityContextTokens);
+    if (!s.continuityIntegration || immediate.text) return immediate.text;
     const ready = await waitForContinuityBridge(context, () => globalThis.continuityMemoryBridge, {
         allowStale,
         timeoutMs: 8000,
@@ -372,52 +394,7 @@ async function optionalContinuityContextWhenReady(context, allowStale, signal) {
     // Preserve compatibility with Continuity versions that expose only their
     // SillyTavern extension prompt rather than the bridge.
     const finalState = ready.text ? ready : continuityContextState(context, allowStale);
-    return compactContinuityPrompt(finalState.text, s.continuityContextTokens);
-}
-
-function auxiliaryTexts(value) {
-    if (typeof value === 'string') return [value];
-    if (Array.isArray(value)) return value.flatMap(auxiliaryTexts);
-    if (value && typeof value === 'object') {
-        return [value.summary, value.text, value.content, value.value].flatMap(auxiliaryTexts);
-    }
-    return [];
-}
-
-async function collectHostContext(context, messages = []) {
-    const sections = [];
-    const seen = new Set();
-    const append = (label, value, limit = 2400) => {
-        for (const candidate of auxiliaryTexts(value)) {
-            const text = String(candidate || '').replace(/\s+/g, ' ').trim().slice(0, limit);
-            const key = text.toLocaleLowerCase();
-            if (!text || seen.has(key)) continue;
-            seen.add(key);
-            sections.push(`[${label}] ${text}`);
-        }
-    };
-
-    const usefulKey = /summary|summaries|synopsis|recap|story.?so.?far|memory|context/iu;
-    for (const [key, value] of Object.entries(context.chatMetadata || {})) {
-        if (usefulKey.test(key)) append(`Chat ${key}`, value);
-    }
-    for (const message of [...(context.chat || [])].reverse()) {
-        for (const [key, value] of Object.entries(message?.extra || {})) {
-            if (usefulKey.test(key)) append(`Message ${key}`, value);
-        }
-    }
-
-    if (typeof context.getWorldInfoPrompt === 'function' && messages.length) {
-        try {
-            const chatForWorldInfo = messages.map(message => String(message?.mes || '')).filter(Boolean).reverse();
-            const result = await context.getWorldInfoPrompt(chatForWorldInfo, Number(context.maxContext) || 100000, true);
-            append('Active World Info', result?.worldInfoString || result, 3500);
-        } catch (error) {
-            console.warn(`[${EXTENSION_ID}] Could not read active World Info for planner context`, error);
-        }
-    }
-
-    return sections.join('\n').slice(0, 8000);
+    return finalState.text;
 }
 
 function bootstrapContext(context) {
@@ -756,7 +733,7 @@ function stopAnalysis() {
     interruptAnalysis('Tale Fairy analysis stopped by the user.', 'Stopped');
 }
 
-function parseAnalysisResponse(value, evidence = '') {
+function parseAnalysisResponse(value, evidence = '', { requireComplete = false } = {}) {
     try {
         let expectedOfferedIds = [];
         let priorPlannerState = null;
@@ -769,12 +746,11 @@ function parseAnalysisResponse(value, evidence = '') {
         } catch {
             // Non-JSON evidence simply has no authoritative offered-cue record.
         }
-        let result;
-        if (value && typeof value === 'object' && !Array.isArray(value) && value.scene) {
-            result = requireValidAnalysisResult(value, { expectedOfferedIds, priorPlannerState });
-        } else {
-            result = requireValidAnalysisResult(extractJson(completionText(value)), { expectedOfferedIds, priorPlannerState });
-        }
+        const rawResult = value && typeof value === 'object' && !Array.isArray(value) && value.scene
+            ? value
+            : extractJson(completionText(value));
+        if (requireComplete) requireCompleteProviderResult(rawResult);
+        const result = requireValidAnalysisResult(rawResult, { expectedOfferedIds, priorPlannerState });
         return finalizeAnalysisResult(result, evidence);
     } catch (error) {
         if (error instanceof AnalysisValidationError) throw error;
@@ -908,7 +884,7 @@ function rebuildState() {
     return defaultState();
 }
 
-async function requestAnalysisOnce(prompt, externalSignal, finalizationEvidence = prompt) {
+async function requestAnalysisOnce(prompt, externalSignal, finalizationEvidence = prompt, { requireComplete = false } = {}) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(new DOMException('Tale Fairy planner request timed out.', 'TimeoutError')), PLANNER_REQUEST_TIMEOUT_MS);
     const forwardAbort = () => controller.abort(externalSignal?.reason || new DOMException('Tale Fairy analysis stopped.', 'AbortError'));
@@ -950,7 +926,7 @@ async function requestAnalysisOnce(prompt, externalSignal, finalizationEvidence 
             try {
                 const response = await sendProfile(true);
                 controller.signal.throwIfAborted();
-                return parseAnalysisResponse(response, finalizationEvidence);
+                return parseAnalysisResponse(response, finalizationEvidence, { requireComplete });
             } catch (error) {
                 controller.signal.throwIfAborted();
                 // A completed planner response that fails our deterministic
@@ -971,7 +947,7 @@ async function requestAnalysisOnce(prompt, externalSignal, finalizationEvidence 
                     response = await sendProfile(false, fallbackSystem);
                 }
                 controller.signal.throwIfAborted();
-                return parseAnalysisResponse(response, finalizationEvidence);
+                return parseAnalysisResponse(response, finalizationEvidence, { requireComplete });
             }
         }
         if (model.active) {
@@ -1008,11 +984,11 @@ async function requestAnalysisOnce(prompt, externalSignal, finalizationEvidence 
                 if (activeSource === 'openrouter') {
                     const raw = await runActiveCompatible(false);
                     controller.signal.throwIfAborted();
-                    return parseAnalysisResponse(raw, finalizationEvidence);
+                    return parseAnalysisResponse(raw, finalizationEvidence, { requireComplete });
                 }
                 const raw = await runActiveCompatible(true);
                 controller.signal.throwIfAborted();
-                return parseAnalysisResponse(raw, finalizationEvidence);
+                return parseAnalysisResponse(raw, finalizationEvidence, { requireComplete });
             } catch (error) {
                 controller.signal.throwIfAborted();
                 if (error instanceof AnalysisValidationError) throw error;
@@ -1022,7 +998,7 @@ async function requestAnalysisOnce(prompt, externalSignal, finalizationEvidence 
                         const activeSource = String(currentContext().chatCompletionSettings?.chat_completion_source || '');
                         const raw = await runActiveCompatible(activeSource !== 'openrouter');
                         controller.signal.throwIfAborted();
-                        return parseAnalysisResponse(raw, finalizationEvidence);
+                        return parseAnalysisResponse(raw, finalizationEvidence, { requireComplete });
                     } catch (retryError) {
                         controller.signal.throwIfAborted();
                         error = retryError;
@@ -1031,7 +1007,7 @@ async function requestAnalysisOnce(prompt, externalSignal, finalizationEvidence 
                 console.warn(`[${EXTENSION_ID}] active model structured request failed; retrying with a JSON-only prompt`, error);
                 const raw = await runActiveCompatible(false);
                 controller.signal.throwIfAborted();
-                return parseAnalysisResponse(raw, finalizationEvidence);
+                return parseAnalysisResponse(raw, finalizationEvidence, { requireComplete });
             }
         }
         const reasoningMode = plannerReasoningMode();
@@ -1051,7 +1027,7 @@ async function requestAnalysisOnce(prompt, externalSignal, finalizationEvidence 
             const payload = await response.json();
             if (!response.ok || payload?.error) throw new Error(payload?.error?.message || payload?.error || `Analysis request failed (${response.status}).`);
             controller.signal.throwIfAborted();
-            return parseAnalysisResponse(payload, finalizationEvidence);
+            return parseAnalysisResponse(payload, finalizationEvidence, { requireComplete });
         };
         const send = structured => retryWithoutUnsupportedTemperature(
             () => sendRaw(structured),
@@ -1091,13 +1067,13 @@ async function requestAnalysisOnce(prompt, externalSignal, finalizationEvidence 
 
 async function requestAnalysis(prompt, externalSignal, finalizationEvidence = prompt) {
     try {
-        return await requestAnalysisOnce(prompt, externalSignal, finalizationEvidence);
+        return await requestAnalysisOnce(prompt, externalSignal, finalizationEvidence, { requireComplete: true });
     } catch (error) {
         externalSignal?.throwIfAborted?.();
         if (!(error instanceof AnalysisValidationError)) throw error;
         console.warn(`[${EXTENSION_ID}] planner JSON was incomplete after deterministic recovery; retrying once with explicit correction`, error);
-        const correction = `\n\n[REPAIR REQUIRED]\nThe prior planner response was rejected: ${analysisErrorMessage(error)}\nReturn one complete JSON object matching every required schema field. possibilities must contain 12–18 objects with description, horizon, conditions (an array), and force. Include 3 or 4 distinct, grounded next_guides; each must specify an immediate direction, use/drop conditions, a causal operation, and a distinct world_delta. Return continuity_threads as an array and self_challenge with weakness, counter_route, and decision. Do not omit required fields or replace field names with aliases.`;
-        return requestAnalysisOnce(`${prompt}${correction}`, externalSignal, finalizationEvidence);
+        const correction = `\n\n[REPAIR REQUIRED]\nThe prior planner response was rejected: ${analysisErrorMessage(error)}\nReturn one complete JSON object matching every required schema field. Do not rely on fallback text: every returned entity must contain its concrete current state, location, relevance, perspective, motivation, knowledge boundary, constraints, independent agenda, confidence, and causal window. possibilities must contain 12–18 objects with description, horizon, conditions (an array), and force. Include 3 or 4 distinct, grounded next_guides; each must specify an immediate direction, use/drop conditions, a causal operation, and a distinct world_delta. Return continuity_threads as an array, even when empty; audit established unresolved correspondence, commitments, processes, and relationships before leaving it empty. Return self_challenge with weakness, counter_route, and decision, plus a concrete reason for the selected plan. Do not omit required fields or replace field names with aliases.`;
+        return requestAnalysisOnce(`${prompt}${correction}`, externalSignal, finalizationEvidence, { requireComplete: false });
     }
 }
 
@@ -1135,14 +1111,21 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
             model: s.analysisModel,
             url: s.analysisUrl,
         };
-        const hostContext = await collectHostContext(context, chat);
-        controller.signal.throwIfAborted();
         const continuityContext = waitForContinuity
             ? await optionalContinuityContextWhenReady(context, allowStaleContinuity, controller.signal)
             : optionalContinuityContext(context, allowStaleContinuity);
         controller.signal.throwIfAborted();
-        const plannerPrompt = await buildTokenBudgetedAnalysisPrompt(chat, current, noteInstruction(userNote), bootstrapContext(context), { messageWindow: s.messageWindow, messageTokenLimit: s.messageTokenLimit, continuityContext, hostContext, bootstrapScan: rebuild || current.canonBootstrapPending || current.scene.status === 'uninitialized' || !current.contextLedger, maxPromptTokens: s.maxPromptTokens, variationNonce });
-        const finalizationEvidence = buildFinalizationEvidence(chat, plannerPrompt, s.messageWindow);
+        const summarySources = await collectSummarySources(context, chat, {
+            continuityContext,
+            includeContinuity: s.continuityIntegration,
+            ownPromptKey: PROMPT_KEY,
+            tokenBudget: s.summaryContextTokens,
+            onWarning: (message, error) => console.warn(`[${EXTENSION_ID}] ${message}`, error),
+        });
+        lastSummaryAudit = summarySourceAudit(summarySources);
+        controller.signal.throwIfAborted();
+        const plannerPrompt = await buildTokenBudgetedAnalysisPrompt(chat, current, noteInstruction(userNote), bootstrapContext(context), { recentContextTokens: s.recentContextTokens, messageTokenLimit: s.messageTokenLimit, summaryContextTokens: s.summaryContextTokens, summarySources, bootstrapScan: rebuild || current.canonBootstrapPending || current.scene.status === 'uninitialized' || !current.contextLedger, maxPromptTokens: s.maxPromptTokens, variationNonce });
+        const finalizationEvidence = buildFinalizationEvidence(chat, plannerPrompt);
         const result = await requestAnalysis(plannerPrompt, controller.signal, finalizationEvidence);
         controller.signal.throwIfAborted();
         const resolvedNote = resolveUserNote(result, userNote);
@@ -1237,7 +1220,10 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         : (analyzed ? `${state.mode} mode · updated ${analyzedAt || 'recently'}` : '');
     scratchpadText(board, 'scratchpad-meta', meta, 'No planner result yet. Run Guide now or Full rebuild.');
     const continuityStatus = analyzed ? continuityContextState(currentContext()).status : 'unavailable';
-    scratchpadText(board, 'scratchpad-continuity', `Continuity: ${continuityStatus}`, 'Continuity: unavailable');
+    const summaryStatus = lastSummaryAudit.count
+        ? ` · summaries: ${lastSummaryAudit.count} sources / ${lastSummaryAudit.includedTokens.toLocaleString()} tokens`
+        : ' · summary scan runs with each analysis';
+    scratchpadText(board, 'scratchpad-continuity', `Continuity: ${continuityStatus}${summaryStatus}`, 'Continuity: unavailable');
 
     const layers = state.narrativeLayers || {};
     const scene = [
@@ -1338,7 +1324,8 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const auditText = audit?.offeredIds?.length
         ? `Cue audit: ${audit.pacing} pacing · ${audit.manifestedIds.length} manifested · ${audit.unusedIds.length} unused · ${audit.contradictedIds.length} contradicted${audit.reason ? `\n${audit.reason}` : ''}`
         : '';
-    const recovered = /Recovered (?:usable narrative guidance from incomplete planner output|ranked guidance from grounded planner pathways)/iu.test(state.lastReason || '');
+    const recovered = state.nextGuides.some(guide => /^recovered-path-guide-/u.test(guide.id || ''))
+        && /Recovered (?:usable narrative guidance from incomplete planner output|ranked guidance from grounded planner pathways)/iu.test(state.lastReason || '');
     const decision = [
         readableScratchpadGuidance(state),
         state.lastReason && (recovered
@@ -1583,7 +1570,8 @@ async function mountUI() {
     root.querySelector('[data-setting="model"]').value = s.analysisModel;
     root.querySelector('[data-setting="url"]').value = s.analysisUrl;
     root.querySelector('[data-setting="continuity"]').checked = Boolean(s.continuityIntegration);
-    root.querySelector('[data-setting="window"]').value = s.messageWindow;
+    root.querySelector('[data-setting="recent-budget"]').value = s.recentContextTokens;
+    root.querySelector('[data-setting="summary-budget"]').value = s.summaryContextTokens;
     root.querySelector('[data-setting="budget"]').value = s.maxPromptTokens;
     root.querySelector('[data-setting="injection-position"]').value = s.injectionPosition;
     root.querySelector('[data-setting="injection-depth"]').value = s.injectionDepth;
@@ -1628,7 +1616,8 @@ async function mountUI() {
         save();
     });
     root.querySelector('[data-setting="continuity"]').addEventListener('change', e => { invalidatePlanner(); s.continuityIntegration = e.target.checked; save(); });
-    root.querySelector('[data-setting="window"]').addEventListener('change', e => { invalidatePlanner(); s.messageWindow = Math.max(1, Math.min(80, Number(e.target.value) || 12)); e.target.value = s.messageWindow; save(); });
+    root.querySelector('[data-setting="recent-budget"]').addEventListener('change', e => { invalidatePlanner(); s.recentContextTokens = Math.max(1000, Math.min(12000, Number(e.target.value) || 4000)); e.target.value = s.recentContextTokens; save(); });
+    root.querySelector('[data-setting="summary-budget"]').addEventListener('change', e => { invalidatePlanner(); s.summaryContextTokens = Math.max(1000, Math.min(8000, Number(e.target.value) || 4000)); e.target.value = s.summaryContextTokens; save(); });
     root.querySelector('[data-setting="budget"]').addEventListener('change', e => { invalidatePlanner(); s.maxPromptTokens = Math.max(8000, Math.min(30000, Number(e.target.value) || 12000)); e.target.value = s.maxPromptTokens; save(); });
     root.querySelector('[data-setting="injection-position"]').addEventListener('change', e => { s.injectionPosition = e.target.value; save(); });
     root.querySelector('[data-setting="injection-depth"]').addEventListener('change', e => { s.injectionDepth = Math.min(100, Math.max(0, Number(e.target.value) || 0)); e.target.value = s.injectionDepth; save(); });
@@ -1720,7 +1709,8 @@ function refreshControls(root = document.querySelector(`#${EXTENSION_ID}-setting
     root.querySelector('[data-setting="model"]').value = s.analysisModel;
     root.querySelector('[data-setting="url"]').value = s.analysisUrl;
     root.querySelector('[data-setting="continuity"]').checked = Boolean(s.continuityIntegration);
-    root.querySelector('[data-setting="window"]').value = s.messageWindow;
+    root.querySelector('[data-setting="recent-budget"]').value = s.recentContextTokens;
+    root.querySelector('[data-setting="summary-budget"]').value = s.summaryContextTokens;
     root.querySelector('[data-setting="budget"]').value = s.maxPromptTokens;
     root.querySelector('[data-setting="injection-position"]').value = s.injectionPosition;
     root.querySelector('[data-setting="injection-depth"]').value = s.injectionDepth;
