@@ -97,6 +97,21 @@ function durableArcFromLegacy(legacy = {}, fallback = {}) {
     });
 }
 
+function broadStoryFromLegacy(legacy = {}, fallback = '') {
+    const routes = [...(Array.isArray(legacy.pathways) ? legacy.pathways : []), ...(Array.isArray(legacy.planHorizons?.items) ? legacy.planHorizons.items : [])]
+        .filter(item => item?.direction && item.lane !== 'immediate' && !['scene', 'days'].includes(item.scale));
+    const selected = [];
+    for (const lane of ['character', 'relationship-institution', 'lore-world', 'long-range']) {
+        const route = routes.find(item => item.lane === lane && !selected.some(other => other.id === item.id));
+        if (route) selected.push(route);
+    }
+    const independent = selected.filter((item, index, items) => items.findIndex(other => string(other.engine, 100).toLowerCase() === string(item.engine, 100).toLowerCase()) === index);
+    const directions = independent.slice(0, 2).map(item => string(item.direction, 180)).filter(Boolean);
+    if (!directions.length) return string(fallback, 240);
+    const setting = string(legacy.loreModel?.worldIdentity ?? legacy.directorScore?.settingIdentity, 70);
+    return string(`${setting ? `${setting}: ` : ''}${directions.join(' — ')}`, 240);
+}
+
 export function normalizeAuthorBoard(value = {}, legacy = {}) {
     const source = value && typeof value === 'object' ? value : {};
     const director = legacy.directorScore || {};
@@ -132,23 +147,15 @@ export function refreshAuthorBoardFromLegacy(board, legacy = {}, turnCount = 0) 
     const rawStoryIdentity = string(board?.story?.identity ?? board?.storyIdentity, 240);
     const rawArc = normalizeArc(board?.activeArc ?? board?.active_arc);
     const durableTrajectory = string(legacy.narrativeLayers?.durableTrajectory, 240);
-    const currentDecisionIdentity = string(legacy.directorScore?.storyIdentity, 240);
-    const tempo = string(legacy.directorScore?.causalTempo, 30).toLowerCase();
-    const quietLocalDecision = ['hold', 'seed'].includes(tempo)
-        && ['incidental', 'routine'].includes(string(legacy.narrativeLayers?.activityRole, 30).toLowerCase());
-    // Older boards were generated directly from the latest director decision. Repair
-    // that migration when a durable trajectory exists, then keep durable scopes
-    // stable during scene-level HOLD/SEED decisions.
-    const storyWasCurrentDecision = rawStoryIdentity && rawStoryIdentity === currentDecisionIdentity;
-    const story = quietLocalDecision
-        ? rawStoryIdentity && !(storyWasCurrentDecision && durableTrajectory && durableTrajectory !== rawStoryIdentity)
-            ? prior.story
-            : { ...prior.story, identity: durableTrajectory || migrated.story.identity }
-        : migrated.story.identity ? migrated.story : prior.story;
-    const arcWasCurrentSetup = rawArc.id && rawArc.id === string(legacy.directorScore?.futureSetup?.id, 80);
-    const activeArc = quietLocalDecision
-        ? rawArc.purpose && !arcWasCurrentSetup ? prior.activeArc : durableArcFromLegacy(legacy, migrated.activeArc)
-        : migrated.activeArc.purpose ? migrated.activeArc : prior.activeArc;
+    // Story and arc state have a separate write path from the latest scene decision.
+    // A clean rebuild establishes them from multiple non-immediate route lanes; later
+    // planner passes update only the scene layer instead of redefining the whole RP.
+    const story = rawStoryIdentity
+        ? prior.story
+        : { ...prior.story, identity: broadStoryFromLegacy(legacy, durableTrajectory || migrated.story.identity) };
+    const activeArc = rawArc.purpose
+        ? prior.activeArc
+        : durableArcFromLegacy(legacy, migrated.activeArc);
     const guide = legacy.nextGuides?.[0];
     const instruction = string(guide?.worldDelta ?? guide?.direction ?? legacy.directorScore?.futureSetup?.currentStep, 280);
     const existing = prior.scene.requiredDevelopments.filter(item => !['delivered', 'retired'].includes(item.status));

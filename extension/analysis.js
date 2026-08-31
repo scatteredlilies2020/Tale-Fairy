@@ -678,14 +678,18 @@ function stripStructuredEvidence(value) {
     return cleaned.replace(/<[A-Za-z_][\w:.-]*(?:\s[^<>]*?)?\s*\/>/gu, ' ');
 }
 
-function compactMessageContent(value, tokenLimit, { latest = false } = {}) {
-    const cleaned = stripStructuredEvidence(stripLeadingGeneratedStatusSummary(value))
+function cleanMessageContent(value) {
+    return stripStructuredEvidence(stripLeadingGeneratedStatusSummary(value))
         .replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/giu, ' ')
         .replace(/<stat>[\s\S]*?<\/stat>/giu, ' ')
         .replace(/<background_updates>[\s\S]*?<\/background_updates>/giu, ' ')
         .replace(/<living-world-guide>[\s\S]*?<\/living-world-guide>/giu, ' ')
         .replace(/\s+/g, ' ')
         .trim();
+}
+
+function compactMessageContent(value, tokenLimit, { latest = false } = {}) {
+    const cleaned = cleanMessageContent(value);
     const cap = latest ? Math.max(tokenLimit, 1400) : tokenLimit;
     if (estimateTokenCount(cleaned) <= cap) return cleaned;
     const separator = ' … ';
@@ -704,6 +708,106 @@ const RETRIEVAL_STOP_WORDS = new Set([
     'than', 'that', 'the', 'their', 'them', 'then', 'there', 'they', 'this', 'those', 'through', 'too', 'very', 'was',
     'were', 'what', 'when', 'where', 'which', 'while', 'who', 'why', 'will', 'with', 'would', 'you', 'your',
 ]);
+
+function timelineSentences(value) {
+    const cleaned = cleanMessageContent(value);
+    if (!cleaned) return [];
+    const parts = cleaned.split(/(?<=[.!?。！？])\s+/u).map(item => item.trim()).filter(Boolean);
+    return parts.length ? parts : [cleaned];
+}
+
+function compactRebuildTimelineEvidence(epochs, requestedTokenLimit) {
+    const limit = Math.max(300, Math.floor(Number(requestedTokenLimit) || 0));
+    const result = (Array.isArray(epochs) ? epochs : []).map(epoch => ({
+        range: Array.isArray(epoch.range) ? epoch.range.slice(0, 2) : [],
+        excerpts: (Array.isArray(epoch.excerpts) ? epoch.excerpts : []).map(item => ({ ...item })),
+    })).filter(epoch => epoch.excerpts.length);
+    if (!result.length) return [];
+
+    // Preserve chronological coverage before density. Under pressure, remove a
+    // third excerpt from every epoch before allowing any epoch to disappear.
+    while (estimateTokenCount(JSON.stringify(result)) > limit && result.some(epoch => epoch.excerpts.length > 1)) {
+        const epoch = [...result].reverse().find(item => item.excerpts.length > 1);
+        epoch.excerpts.pop();
+    }
+    let guard = 0;
+    while (estimateTokenCount(JSON.stringify(result)) > limit && guard++ < 200) {
+        const entries = result.flatMap(epoch => epoch.excerpts);
+        const longest = entries.sort((a, b) => estimateTokenCount(b.content) - estimateTokenCount(a.content))[0];
+        if (!longest) break;
+        const tokens = estimateTokenCount(longest.content);
+        if (tokens <= 14) break;
+        longest.content = truncateToTokenBudget(longest.content, Math.max(14, tokens - 10));
+    }
+    return result;
+}
+
+/**
+ * Build a recency-independent story map for destructive Full Rebuilds.
+ *
+ * This is extractive rather than generative: it scans the raw chat once,
+ * divides it into chronological epochs, and retains distinctive evidence from
+ * every epoch. Rare names, places, institutions, and events naturally score
+ * above repeated routine prose, while equal epoch coverage prevents the latest
+ * scene from becoming the whole story merely because it occupies many turns.
+ */
+export function buildRebuildTimelineEvidence(messages, historicalEnd, requestedTokenLimit = 3200) {
+    const source = Array.isArray(messages) ? messages : [];
+    const requestedEnd = Number(historicalEnd);
+    const end = Math.max(0, Math.min(source.length, Number.isFinite(requestedEnd) ? requestedEnd : source.length));
+    if (!end) return [];
+    const tokenLimit = Math.max(600, Math.min(6000, Math.floor(Number(requestedTokenLimit) || 3200)));
+    const epochCount = Math.min(12, Math.max(3, Math.ceil(end / 28)));
+    const documentFrequency = new Map();
+    for (let index = 0; index < end; index++) {
+        for (const term of new Set(retrievalTerms(cleanMessageContent(source[index]?.mes)))) {
+            documentFrequency.set(term, (documentFrequency.get(term) || 0) + 1);
+        }
+    }
+    const epochs = [];
+    for (let epochIndex = 0; epochIndex < epochCount; epochIndex++) {
+        const from = Math.floor(end * epochIndex / epochCount);
+        const to = Math.max(from + 1, Math.floor(end * (epochIndex + 1) / epochCount));
+        const candidates = [];
+        for (let index = from; index < to; index++) {
+            const message = source[index];
+            const sentences = timelineSentences(message?.mes);
+            for (const [sentenceIndex, sentence] of sentences.entries()) {
+                const terms = [...new Set(retrievalTerms(sentence))];
+                if (!terms.length && sentence.length < 20) continue;
+                const rarity = terms.reduce((sum, term) => sum + Math.log((end + 1) / ((documentFrequency.get(term) || 0) + 1)) + 0.2, 0);
+                const directive = message?.is_user && META_DIRECTIVE_PATTERN.test(sentence) ? 8 : 0;
+                const edge = sentenceIndex === 0 || sentenceIndex === sentences.length - 1 ? 0.35 : 0;
+                const score = rarity / Math.sqrt(Math.max(1, terms.length)) + directive + edge;
+                candidates.push({ index, role: message?.is_user ? 'user' : 'assistant', content: sentence, terms: new Set(terms), score });
+            }
+        }
+        const chosen = [];
+        const addBest = pool => {
+            const ranked = pool.filter(item => !chosen.includes(item)).map(item => {
+                const overlap = chosen.reduce((sum, other) => sum + [...item.terms].filter(term => other.terms.has(term)).length / Math.max(1, item.terms.size), 0);
+                return { item, adjusted: item.score - overlap * 2.5 };
+            }).sort((a, b) => b.adjusted - a.adjusted || a.item.index - b.item.index);
+            if (ranked[0]) chosen.push(ranked[0].item);
+        };
+        addBest(candidates.filter(item => item.role === 'user'));
+        addBest(candidates.filter(item => item.role === 'assistant'));
+        addBest(candidates);
+        if (!chosen.length) continue;
+        epochs.push({
+            range: [from, to - 1],
+            excerpts: chosen.sort((a, b) => a.index - b.index).map(({ terms: _terms, score: _score, ...item }) => item),
+        });
+    }
+    const excerptCount = epochs.reduce((sum, epoch) => sum + epoch.excerpts.length, 0);
+    const overhead = estimateTokenCount(JSON.stringify(epochs.map(epoch => ({ range: epoch.range, excerpts: epoch.excerpts.map(({ index, role }) => ({ index, role, content: '' })) }))));
+    const perExcerpt = Math.max(24, Math.floor((tokenLimit - overhead) / Math.max(1, excerptCount)));
+    const compacted = epochs.map(epoch => ({
+        ...epoch,
+        excerpts: epoch.excerpts.map(item => ({ ...item, content: compactMessageContent(item.content, perExcerpt) })),
+    }));
+    return compactRebuildTimelineEvidence(compacted, tokenLimit);
+}
 
 function retrievalTerms(value) {
     return String(value || '')
@@ -1110,12 +1214,18 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     const messageTokenLimit = Math.max(200, Math.min(4000, Number(options.messageTokenLimit) || 700));
     const configuredBudget = Math.max(8000, Math.min(30000, Number(options.maxPromptTokens) || DEFAULT_PROMPT_TOKEN_BUDGET));
     const budget = Math.max(1000, Math.min(configuredBudget, Number(options.effectivePromptTokens) || configuredBudget));
+    const fullRebuild = options.fullRebuild === true;
     // Reserve at least 4k of the total planner budget for its persistent
     // world model, summaries, lore, and relevance-selected older evidence.
     // Recency then expands or contracts by tokens rather than message count.
-    const recentContextTokens = Math.max(1000, Math.min(12000, budget - 4000, Number(options.recentContextTokens) || 4000));
+    const configuredRecentTokens = Math.max(1000, Math.min(12000, budget - 4000, Number(options.recentContextTokens) || 4000));
+    // A destructive rebuild must see the current endpoint without allowing a
+    // long quiet scene to consume the evidence budget that reconstructs the RP.
+    const recentContextTokens = fullRebuild
+        ? Math.max(1000, Math.min(configuredRecentTokens, Math.floor(budget * 0.16)))
+        : configuredRecentTokens;
     const latestLimit = Math.max(1000, Math.min(6000, budget - 5000, recentContextTokens));
-    const selected = selectMessages(messages, recentContextTokens, messageTokenLimit, latestLimit, Boolean(options.bootstrapScan));
+    const selected = selectMessages(messages, recentContextTokens, messageTokenLimit, latestLimit, Boolean(options.bootstrapScan) && !fullRebuild);
     const playerName = playerCharacterName(messages);
     const compact = selected.map(({ index, kind, message: m, content }) => ({
         index,
@@ -1128,15 +1238,26 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     }));
     const recentStart = selected.find(item => item.kind === 'recent')?.index ?? messages.length;
     const selectedIndexes = new Set(selected.map(item => item.index));
+    const rebuildTimeline = fullRebuild
+        ? buildRebuildTimelineEvidence(messages, recentStart, Math.max(1600, Math.min(5000, Math.floor(budget * 0.29))))
+        : [];
     const retrievedHistoricalEvidence = retrieveOlderHistoricalEvidence(messages, state, recentStart, selectedIndexes);
     const candidateDormantHooks = retrieveDormantHookEvidence(messages, recentStart, selectedIndexes);
     const payload = {
         task: 'update_narrative_context',
-        evidence_order_instruction: 'Oldest to newest: the highest-index message is the completed current story state. Apply its depicted changes before deriving scene, activity, pathways, and guides. Generated statboxes and summaries are claims to audit, not proof; they cannot complete an activity or advance the last supported clock unless prose depicts it. The current object is prior planner state: keep supported durable trajectories, but never preserve an action, location, activity, event, or condition the newest message supersedes. Any future activity mentioned remains future unless visibly performed. Preserve explicit clocks and dates only when supported; infer only depicted elapsed time.',
+        evidence_order_instruction: fullRebuild
+            ? 'Reconstruct the RP chronologically. Use the newest raw messages to determine only the completed current state and immediate scene. Derive story_identity, durable_trajectory, arc_direction, character and relationship arcs, unresolved threads, offscreen processes, and long-range routes from the whole timeline plus available memory and summary evidence. The length, repetition, or freshness of a local activity gives it no extra story-level importance. Generated statboxes and summaries are claims to audit, not proof. Any future activity mentioned remains future unless visibly performed; preserve clocks and dates only when supported.'
+            : 'Oldest to newest: the highest-index message is the completed current story state. Apply its depicted changes before deriving scene, activity, pathways, and guides. Generated statboxes and summaries are claims to audit, not proof; they cannot complete an activity or advance the last supported clock unless prose depicts it. The current object is prior planner state: keep supported durable trajectories, but never preserve an action, location, activity, event, or condition the newest message supersedes. Any future activity mentioned remains future unless visibly performed. Preserve explicit clocks and dates only when supported; infer only depicted elapsed time.',
         messages: compact,
         current: useSpecificPlayerName(stateForPrompt(state), playerName),
         author_board_instruction: 'The authorBoard is durable story-level memory, not a description of the newest scene. Preserve its supported story identity, active arc, character and relationship arcs, setups, offscreen developments, and milestones across a local HOLD or SEED. A current activity belongs in current.activity and decision.scene_function; it must not replace story_identity, durable_trajectory, or arc_direction merely because it is recent or occupies many turns. Redirect durable scope only for a genuine user story pivot or when accumulated evidence changes the larger trajectory.',
     };
+    if (fullRebuild) {
+        if (rebuildTimeline.length) payload.rebuild_timeline = rebuildTimeline;
+        payload.full_rebuild_instruction = rebuildTimeline.length
+            ? 'The previous Tale Fairy state was intentionally deleted. This extractive timeline was built directly from the complete raw chat with equal chronological coverage and is the reconstruction spine. Each range matters even if its excerpts are short. First infer the enduring story, transformations, relationships, institutions, promises, causal processes, and unresolved possibilities across ranges; then predict several materially different supported future routes. Treat repeated recent routine as one local scene, never as evidence that earlier arcs ceased to exist. Do not merely summarize: produce an authorial model that can cause, prepare, and eventually pay off developments while pacing remains controlled by the current activity and user.'
+            : 'The previous Tale Fairy state was intentionally deleted and the available raw chat fits in the supplied messages. Reconstruct its enduring story and unresolved causal possibilities before predicting several materially different supported future routes. Do not merely summarize, and keep pacing controlled by the current activity and user.';
+    }
     const canonClaims = explicitCanonClaims(messages);
     if (canonClaims.length) {
         payload.required_canon_claims = canonClaims;
@@ -1183,6 +1304,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     }
     let serialized = JSON.stringify(payload);
     if (estimateTokenCount(serialized) > budget) {
+        if (payload.rebuild_timeline) payload.rebuild_timeline = compactRebuildTimelineEvidence(payload.rebuild_timeline, Math.max(1000, Math.floor(budget * 0.22)));
         if (payload.summary_sources) payload.summary_sources = compactSummarySources(payload.summary_sources, 2200, { maxSources: 16 }).map(source => ({ label: source.label, kind: source.kind, text: source.text }));
         if (payload.bootstrap) payload.bootstrap = compactOptionalObject(payload.bootstrap, 900);
         payload.current.contextLedger = String(payload.current.contextLedger || '').slice(0, 2600);
@@ -1196,6 +1318,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         serialized = JSON.stringify(payload);
     }
     if (estimateTokenCount(serialized) > budget) {
+        if (payload.rebuild_timeline) payload.rebuild_timeline = compactRebuildTimelineEvidence(payload.rebuild_timeline, Math.max(650, Math.floor(budget * 0.14)));
         if (payload.summary_sources) payload.summary_sources = compactSummarySources(payload.summary_sources, 900, { maxSources: 8 }).map(source => ({ label: source.label, kind: source.kind, text: source.text }));
         delete payload.bootstrap;
         delete payload.bootstrap_instruction;

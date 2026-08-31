@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, MODE_INSTRUCTIONS, applyAnalysis, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from '../extension/analysis.js';
+import { ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, MODE_INSTRUCTIONS, applyAnalysis, buildAnalysisPrompt, buildRebuildTimelineEvidence, extractJson, SYSTEM, validateAnalysisResult } from '../extension/analysis.js';
 import { defaultState } from '../extension/state.js';
 import { estimateTokenCount } from '../extension/token-budget.js';
 
@@ -526,6 +526,43 @@ test('canon bootstrap retains labeled OOC turns outside ordinary sampling points
     assert.ok(prompt.messages.some(item => item.index === 22 && item.kind === 'directive' && /highest in history/.test(item.content)));
     assert.deepEqual(prompt.required_canon_claims, ['I have an abnormally high Midichlorian count, among the highest in history.']);
     assert.match(prompt.required_canon_instruction, /add a canon_update only when the retained state does not already contain the claim/i);
+});
+
+test('full rebuild locally reconstructs multiple story eras instead of making the repeated recent scene the story', () => {
+    const routine = index => ({
+        mes: `Lucia quietly reads another page in the same garden while the afternoon remains calm. Routine beat ${index}. Nothing changes beyond the immediate reading activity.`,
+        is_user: index % 2 === 0,
+    });
+    const messages = Array.from({ length: 240 }, (_, index) => routine(index));
+    messages[12] = { mes: 'After wartime displacement, Lucia entered a Republic youth facility whose placement rules would shape her future.', is_user: false };
+    messages[55] = { mes: 'OOC: Lucia has an extreme Midichlorian count, among the highest ever recorded, and this remains a core fact.', is_user: true };
+    messages[105] = { mes: 'The formal petition concerning Lucia was filed with and accepted for review by the Jedi Council.', is_user: false };
+    messages[165] = { mes: 'Master Taren promised to contest the facility decision, placing his bond with Lucia against institutional duty.', is_user: false };
+
+    const serialized = buildAnalysisPrompt(messages, defaultState(), '', {}, {
+        recentContextTokens: 4000,
+        messageTokenLimit: 700,
+        maxPromptTokens: 12000,
+        bootstrapScan: true,
+        fullRebuild: true,
+    });
+    const prompt = JSON.parse(serialized);
+    const timeline = JSON.stringify(prompt.rebuild_timeline);
+
+    assert.ok(estimateTokenCount(serialized) <= 12000);
+    assert.match(prompt.full_rebuild_instruction, /previous Tale Fairy state was intentionally deleted/i);
+    assert.match(prompt.evidence_order_instruction, /newest raw messages.*only.*immediate scene/i);
+    assert.match(timeline, /Republic youth facility/i);
+    assert.match(timeline, /Midichlorian count/i);
+    assert.match(timeline, /Jedi Council/i);
+    assert.match(timeline, /Master Taren/i);
+    assert.equal(prompt.rebuild_timeline[0].range[0], 0);
+    assert.ok(prompt.rebuild_timeline.at(-1).range[1] < prompt.messages.find(item => item.kind === 'recent').index);
+    assert.ok(prompt.messages.every(item => item.kind !== 'anchor'));
+});
+
+test('full-rebuild timeline honors an explicit empty historical range', () => {
+    assert.deepEqual(buildRebuildTimelineEvidence([{ mes: 'Opening scene', is_user: true }], 0), []);
 });
 
 test('analysis application keeps layered guidance bounded and records its injection decision', () => {

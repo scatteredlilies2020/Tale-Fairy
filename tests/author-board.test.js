@@ -69,7 +69,22 @@ test('a clean rescan rebuilds broad scope without rewriting the existing board o
     assert.equal(loaded.story.identity, localIdentity);
     assert.equal(loaded.activeArc.id, 'g_garden');
     const refreshed = refreshAuthorBoardFromLegacy(normalizeAuthorBoard(), legacy, 361);
-    assert.equal(refreshed.story.identity, durable);
+    assert.match(refreshed.story.identity, /Council petition/);
     assert.equal(refreshed.activeArc.id, 'council-review');
     assert.match(refreshed.activeArc.purpose, /Council petition/);
+});
+
+test('an advancing recent scene cannot redefine an established story or active arc', () => {
+    const board = normalizeAuthorBoard({
+        story: { identity: 'A broad institutional coming-of-age story.' },
+        activeArc: { id: 'custody', title: 'Lucia\'s placement', purpose: 'Resolve who will shape Lucia\'s future.', pressure: 'Competing responsibilities remain open.' },
+    });
+    const refreshed = refreshAuthorBoardFromLegacy(board, {
+        narrativeLayers: { localActivity: 'Winning a garden chess game', durableTrajectory: 'The chess match becomes everything.', activityRole: 'central' },
+        directorScore: { storyIdentity: 'A decisive garden chess drama.', sceneFunction: 'End the match.', causalTempo: 'advance', arcDirection: 'Win at chess.', meaningfulAim: 'Checkmate.', futureSetup: { id: 'chess-win', currentStep: 'Move the queen.', conditions: [] } },
+        pathways: [{ id: 'chess-win', lane: 'character', scale: 'arc', status: 'foreground', direction: 'The chess victory defines Lucia\'s future.', engine: 'garden chess' }],
+    }, 362);
+    assert.equal(refreshed.story.identity, board.story.identity);
+    assert.equal(refreshed.activeArc.id, 'custody');
+    assert.equal(refreshed.scene.purpose, 'End the match.');
 });

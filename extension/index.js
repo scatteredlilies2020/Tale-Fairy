@@ -4,10 +4,10 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.110';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.110';
-import { markAuthorBeatDelivered, tickAuthorBoard } from './author-board.js?v=0.11.110';
-import { normalizeConductorState, runConductor } from './conductor.js?v=0.11.110';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.111';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.111';
+import { markAuthorBeatDelivered, tickAuthorBoard } from './author-board.js?v=0.11.111';
+import { normalizeConductorState, runConductor } from './conductor.js?v=0.11.111';
 import { consumeAdvanceOverride, isReleaseSignal, updatePacing } from './pacing.js?v=0.11.101';
 import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.11.101';
 import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.100';
@@ -24,7 +24,7 @@ import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOut
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.110';
+const RUNTIME_VERSION = '0.11.111';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -1424,7 +1424,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         lastSummaryAudit = summarySourceAudit(summarySources);
         controller.signal.throwIfAborted();
         showAnalysisPhase(`Building ${Number(s.maxPromptTokens).toLocaleString()}-token total planner input`, runId, startedAt);
-        const plannerPrompt = await buildTokenBudgetedAnalysisPrompt(chat, current, noteInstruction(userNote), bootstrapContext(context), { recentContextTokens: s.recentContextTokens, messageTokenLimit: s.messageTokenLimit, summaryContextTokens: s.summaryContextTokens, summarySources, bootstrapScan: rebuild || current.canonBootstrapPending || current.scene.status === 'uninitialized' || !current.contextLedger, maxPromptTokens: s.maxPromptTokens, variationNonce });
+        const plannerPrompt = await buildTokenBudgetedAnalysisPrompt(chat, current, noteInstruction(userNote), bootstrapContext(context), { recentContextTokens: s.recentContextTokens, messageTokenLimit: s.messageTokenLimit, summaryContextTokens: s.summaryContextTokens, summarySources, bootstrapScan: rebuild || current.canonBootstrapPending || current.scene.status === 'uninitialized' || !current.contextLedger, fullRebuild: rebuild, maxPromptTokens: s.maxPromptTokens, variationNonce });
         showAnalysisPhase('Waiting for planner model', runId, startedAt);
         const result = await requestAnalysis(plannerPrompt, controller.signal, {
             chatId,

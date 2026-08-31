@@ -12,13 +12,13 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.110');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.110');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.110');
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.110'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.110'/);
-    assert.match(source, /from '\.\/author-board\.js\?v=0\.11\.110'/);
-    assert.match(source, /from '\.\/conductor\.js\?v=0\.11\.110'/);
+    assert.equal(manifest.version, '0.11.111');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.111');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.111');
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.111'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.111'/);
+    assert.match(source, /from '\.\/author-board\.js\?v=0\.11\.111'/);
+    assert.match(source, /from '\.\/conductor\.js\?v=0\.11\.111'/);
     assert.match(source, /from '\.\/pacing\.js\?v=0\.11\.101'/);
     assert.match(source, /from '\.\/planner-scheduler\.js\?v=0\.11\.101'/);
     assert.match(source, /from '\.\/completion-response\.js\?v=0\.11\.100'/);
@@ -287,6 +287,7 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /function rebuildState\(\) \{\s*return defaultState\(\);\s*\}/);
     assert.doesNotMatch(source, /rebuilt\.userNotes = previous\.userNotes|rebuilt\.lastRequestVerification = previous\.lastRequestVerification/);
     assert.match(source, /async function rebuildGuideState\(\)[\s\S]{0,500}await resetState\(\{ rebuilding: true \}\)[\s\S]{0,500}analyzeNow\(\{ force: true, rebuild: true, waitForContinuity: true \}\)/);
+    assert.match(source, /buildTokenBudgetedAnalysisPrompt\([\s\S]{0,1000}fullRebuild:\s*rebuild/);
     assert.match(source, /async function resetState\(\{ rebuilding = false \} = \{\}\)[\s\S]{0,500}pendingRequestVerification = null[\s\S]{0,700}renderBoard\(defaultState\(\)\)/);
     assert.match(source, /Old guide cleared · saving…/);
     assert.match(source, /Old guide cleared · starting planner…/);
