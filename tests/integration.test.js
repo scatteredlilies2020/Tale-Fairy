@@ -11,12 +11,13 @@ const styles = await readFile(new URL('../extension/style.css', import.meta.url)
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 
 test('manifest identifies the adaptive planning release', () => {
-    assert.equal(manifest.version, '0.11.94');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.94');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.94');
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.94'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.94'/);
-    assert.match(source, /from '\.\/completion-response\.js\?v=0\.11\.94'/);
+    assert.equal(manifest.version, '0.11.95');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.95');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.95');
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.95'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.95'/);
+    assert.match(source, /from '\.\/completion-response\.js\?v=0\.11\.95'/);
+    assert.match(source, /from '\.\/output-negotiation\.js\?v=0\.11\.95'/);
 });
 
 test('injection sends layered authorial control while concrete realization and future outcomes stay private', () => {
@@ -93,17 +94,20 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /function parseAnalysisResponse/);
     assert.match(source, /function analysisErrorMessage/);
     assert.match(source, /messages\.join\('\s*→\s*'\)/);
-    assert.match(source, /active model does not support the structured-output control; retrying once with the compact JSON contract/);
-    assert.match(source, /direct model does not support the structured-output control; retrying once with the compact JSON contract/);
+    assert.match(source, /async function negotiatePlannerOutput/);
+    assert.match(source, /canFallback: error => error instanceof AnalysisValidationError \|\| isUnsupportedStructuredOutputError\(error\)/);
+    assert.match(source, /returned unusable \$\{mode\} output; retrying with \$\{nextMode\} compatibility/);
+    assert.match(source, /PLANNER_OUTPUT_MODE\.JSON_SCHEMA, PLANNER_OUTPUT_MODE\.JSON_OBJECT, PLANNER_OUTPUT_MODE\.PROMPT_ONLY/);
+    assert.match(source, /cache: plannerOutputModeCache/);
     assert.match(source, /function isUnsupportedStructuredOutputError/);
-    assert.match(source, /if \(!structured \|\| !isUnsupportedStructuredOutputError\(error\)\) throw error/);
     assert.doesNotMatch(source, /REPAIR REQUIRED|incomplete after deterministic recovery/);
     assert.match(source, /async function requestAnalysisOnce/);
     assert.match(source, /async function requestAnalysis\([^)]*\)\s*{\s*return requestAnalysisOnce\(prompt, externalSignal\);\s*}/s);
-    assert.match(source, /structured \? \{ json_schema: ANALYSIS_SCHEMA \} : \{\}/);
+    assert.match(source, /mode === PLANNER_OUTPUT_MODE\.JSON_SCHEMA \? \{ json_schema: ANALYSIS_SCHEMA \} : \{\}/);
     assert.match(source, /const PLANNER_SYSTEM_PROMPT = `\$\{SYSTEM\}[\s\S]*?\$\{ANALYSIS_OUTPUT_CONTRACT\}`/);
     assert.match(source, /const PLANNER_BUDGET_ENVELOPE = `\$\{PLANNER_SYSTEM_PROMPT\}\\n\$\{JSON\.stringify\(ANALYSIS_SCHEMA\)\}`/);
-    assert.doesNotMatch(source, /fallbackSystemPrompt/);
+    assert.match(source, /plannerMessages\(PLANNER_SYSTEM_PROMPT, prompt, ANALYSIS_SCHEMA, mode\)/);
+    assert.match(source, /plannerPrompt\(prompt, ANALYSIS_SCHEMA, mode\)/);
     assert.match(source, /text: submittedNote\.text/);
     assert.match(source, /Instruction saved/);
     assert.match(source, /function stopAnalysis\(\)/);
@@ -124,8 +128,6 @@ test('extension UI and interceptor use SillyTavern third-party-compatible regist
     assert.match(source, /Reading summaries and World Info/);
     assert.match(summarySource, /worldInfoActivationContext\(messages, options\.worldInfoActivationTokens \|\| 12000\)/);
     assert.match(source, /suppressErrorToasts: true/);
-    assert.match(source, /const structured = activeSource !== 'openrouter'/);
-    assert.match(source, /const structured = model\.provider !== 'openrouter'/);
     assert.match(source, /analysisReasoningMode: 'auto'/);
     assert.match(source, /function plannerReasoningMode/);
     assert.match(source, /openai_setting_names,[\s\S]*openai_settings,[\s\S]*oai_settings\?\.reasoning_effort/);

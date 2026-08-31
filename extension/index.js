@@ -4,21 +4,22 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.94';
-import { buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.94';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.94';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.94';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.94';
-import { normalizeModelListResponse } from './models.js?v=0.11.94';
-import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.94';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.94';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.94';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.94';
-import { estimateTokenCount } from './token-budget.js?v=0.11.94';
-import { completionText } from './completion-response.js?v=0.11.94';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.95';
+import { buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidesForDiscardedAssistant, horizonInfluence, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.95';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.95';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.95';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.95';
+import { normalizeModelListResponse } from './models.js?v=0.11.95';
+import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.95';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.95';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.95';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.95';
+import { estimateTokenCount } from './token-budget.js?v=0.11.95';
+import { completionText } from './completion-response.js?v=0.11.95';
+import { customOutputPayload, negotiateOutputModes, plannerMessages, plannerPrompt, PLANNER_OUTPUT_MODE } from './output-negotiation.js?v=0.11.95';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.94';
+const RUNTIME_VERSION = '0.11.95';
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -44,6 +45,7 @@ let uiMountTimeout = null;
 let lastSummaryAudit = { count: 0, includedTokens: 0, originalTokens: 0, labels: [] };
 const legacyUpgradeAttempts = new Set();
 const directModelCache = new Map();
+const plannerOutputModeCache = new Map();
 // Reasoning providers may count hidden thinking against this ceiling. The
 // planner prompt and schema separately target a concise visible JSON result.
 const PLANNER_RESPONSE_TOKENS = 6144;
@@ -56,9 +58,8 @@ const INTERNAL_PLANNER_MARKER = 'You are Tale Fairy, the private authorial plann
 // request still carries the machine schema. Never duplicate the full schema in
 // prompt tokens: that space belongs to lore, summaries, and conversation evidence.
 const PLANNER_SYSTEM_PROMPT = `${SYSTEM}\n\n${ANALYSIS_OUTPUT_CONTRACT}`;
-// Native structured-output metadata is transmitted beside the messages, but it
-// still occupies provider context. Count it once in the 12k budget without
-// duplicating the full schema in the actual system prompt.
+// The full schema occupies provider context either as native metadata or as a
+// compatibility prompt. Reserve its tokens once in both cases.
 const PLANNER_BUDGET_ENVELOPE = `${PLANNER_SYSTEM_PROMPT}\n${JSON.stringify(ANALYSIS_SCHEMA)}`;
 
 globalThis.taleFairyRuntime = Object.freeze({ version: RUNTIME_VERSION, loadedAt: Date.now() });
@@ -808,6 +809,20 @@ function parseAnalysisResponse(value) {
     }
 }
 
+async function negotiatePlannerOutput(run, modes, label, signal, cacheKey = '') {
+    return negotiateOutputModes({
+        run,
+        modes,
+        signal,
+        cache: plannerOutputModeCache,
+        cacheKey,
+        canFallback: error => error instanceof AnalysisValidationError || isUnsupportedStructuredOutputError(error),
+        onFallback: (error, mode, nextMode) => {
+            console.warn(`[${EXTENSION_ID}] ${label} returned unusable ${mode} output; retrying with ${nextMode} compatibility`, error);
+        },
+    });
+}
+
 function waitForAbortable(promise, signal) {
     if (signal.aborted) return Promise.reject(signal.reason);
     return Promise.race([
@@ -952,65 +967,51 @@ async function requestAnalysisOnce(prompt, externalSignal) {
             });
             let reasoningPayload = reasoning.payload;
             let samplingEnabled = !plannerModelRejectsTemperature(profile.model);
-            const sendProfileRaw = structured => ConnectionManagerRequestService.sendRequest(
+            const sendProfileRaw = mode => ConnectionManagerRequestService.sendRequest(
                 model.profileId,
-                [{ role: 'system', content: PLANNER_SYSTEM_PROMPT }, { role: 'user', content: prompt }],
+                plannerMessages(PLANNER_SYSTEM_PROMPT, prompt, ANALYSIS_SCHEMA, mode),
                 PLANNER_RESPONSE_TOKENS,
                 { stream: false, extractData: false, includePreset: false, includeInstruct: false, signal: controller.signal },
                 {
-                    ...(structured ? { json_schema: ANALYSIS_SCHEMA } : {}),
+                    ...(mode === PLANNER_OUTPUT_MODE.JSON_SCHEMA ? { json_schema: ANALYSIS_SCHEMA } : {}),
                     custom_prompt_post_processing: '',
                     ...plannerTemperaturePayload(temperature, samplingEnabled),
                     ...reasoningPayload,
                 },
             );
-            const sendProfile = structured => retryWithoutUnsupportedTemperature(
-                () => sendProfileRaw(structured),
+            const sendProfile = mode => retryWithoutUnsupportedTemperature(
+                () => sendProfileRaw(mode),
                 () => { samplingEnabled = false; },
             );
-            try {
-                const response = await sendProfile(true);
-                controller.signal.throwIfAborted();
-                return parseAnalysisResponse(response);
-            } catch (error) {
-                controller.signal.throwIfAborted();
-                // A completed planner response that fails our deterministic
-                // validator will not gain anything from another full model
-                // call. Surface the exact cause immediately instead of making
-                // the user wait for an equally invalid duplicate response.
-                if (error instanceof AnalysisValidationError) throw error;
-                if (isReasoningControlError(error) && (reasoning.controlled || isMandatoryReasoningError(error))) {
-                    reasoningPayload = reasoningFallbackPayload(error, reasoningPayload);
-                    try {
-                        const response = await sendProfile(true);
-                        controller.signal.throwIfAborted();
-                        return parseAnalysisResponse(response);
-                    } catch (retryError) {
-                        controller.signal.throwIfAborted();
-                        if (retryError instanceof AnalysisValidationError) throw retryError;
-                        error = retryError;
-                    }
-                }
-                if (!isUnsupportedStructuredOutputError(error)) throw error;
-                console.warn(`[${EXTENSION_ID}] profile does not support the structured-output control; retrying once with the compact JSON contract`, error);
-                let response;
+            const runProfileMode = async mode => {
                 try {
-                    response = await sendProfile(false);
-                } catch (fallbackError) {
-                    if (!isReasoningControlError(fallbackError) || (!reasoning.controlled && !isMandatoryReasoningError(fallbackError))) throw fallbackError;
-                    reasoningPayload = reasoningFallbackPayload(fallbackError, reasoningPayload);
-                    response = await sendProfile(false);
+                    const response = await sendProfile(mode);
+                    controller.signal.throwIfAborted();
+                    return parseAnalysisResponse(response);
+                } catch (error) {
+                    controller.signal.throwIfAborted();
+                    if (error instanceof AnalysisValidationError) throw error;
+                    if (!isReasoningControlError(error) || (!reasoning.controlled && !isMandatoryReasoningError(error))) throw error;
+                    reasoningPayload = reasoningFallbackPayload(error, reasoningPayload);
+                    const response = await sendProfile(mode);
+                    controller.signal.throwIfAborted();
+                    return parseAnalysisResponse(response);
                 }
-                controller.signal.throwIfAborted();
-                return parseAnalysisResponse(response);
-            }
+            };
+            return negotiatePlannerOutput(
+                runProfileMode,
+                [PLANNER_OUTPUT_MODE.JSON_SCHEMA, PLANNER_OUTPUT_MODE.PROMPT_ONLY],
+                'connection profile',
+                controller.signal,
+                `profile:${model.profileId}:${apiMap.source}:${profile.model || ''}:${profile['api-url'] || ''}`,
+            );
         }
         if (model.active) {
             let activeReasoningMode = plannerReasoningMode();
             let samplingEnabled = true;
-            const activeSource = String(currentContext().chatCompletionSettings?.chat_completion_source || '');
-            const structured = activeSource !== 'openrouter';
-            const runActive = structured => {
+            const activeContext = currentContext();
+            const activeSource = String(activeContext.chatCompletionSettings?.chat_completion_source || activeContext.mainApi || 'active');
+            const runActive = mode => {
                 const mainApi = currentContext().mainApi;
                 const seedEvent = mainApi === 'openai' ? event_types.CHAT_COMPLETION_SETTINGS_READY : event_types.GENERATE_AFTER_DATA;
                 const configurePlanner = generateData => {
@@ -1022,45 +1023,41 @@ async function requestAnalysisOnce(prompt, externalSignal) {
                 };
                 eventSource.on(seedEvent, configurePlanner);
                 return waitForAbortable(generateRaw({
-                    prompt,
+                    prompt: plannerPrompt(prompt, ANALYSIS_SCHEMA, mode),
                     // The planner must not inherit the user's text-completion
                     // instruct template or preset formatting.
                     instructOverride: true,
                     systemPrompt: PLANNER_SYSTEM_PROMPT,
                     suppressErrorToasts: true,
-                    ...(structured ? { jsonSchema: ANALYSIS_SCHEMA } : {}),
+                    ...(mode === PLANNER_OUTPUT_MODE.JSON_SCHEMA ? { jsonSchema: ANALYSIS_SCHEMA } : {}),
                     trimNames: false,
                 }), controller.signal).finally(() => eventSource.removeListener(seedEvent, configurePlanner));
             };
-            const runActiveCompatible = structured => retryWithoutUnsupportedTemperature(
-                () => runActive(structured),
+            const runActiveCompatible = mode => retryWithoutUnsupportedTemperature(
+                () => runActive(mode),
                 () => { samplingEnabled = false; },
             );
-            try {
-                const raw = await runActiveCompatible(structured);
-                controller.signal.throwIfAborted();
-                return parseAnalysisResponse(raw);
-            } catch (error) {
-                controller.signal.throwIfAborted();
-                if (error instanceof AnalysisValidationError) throw error;
-                if (isReasoningControlError(error)) {
+            const runActiveMode = async mode => {
+                try {
+                    const raw = await runActiveCompatible(mode);
+                    controller.signal.throwIfAborted();
+                    return parseAnalysisResponse(raw);
+                } catch (error) {
+                    controller.signal.throwIfAborted();
+                    if (error instanceof AnalysisValidationError || !isReasoningControlError(error)) throw error;
                     activeReasoningMode = isMandatoryReasoningError(error) ? 'minimum' : 'default';
-                    try {
-                        const raw = await runActiveCompatible(structured);
-                        controller.signal.throwIfAborted();
-                        return parseAnalysisResponse(raw);
-                    } catch (retryError) {
-                        controller.signal.throwIfAborted();
-                        if (retryError instanceof AnalysisValidationError) throw retryError;
-                        error = retryError;
-                    }
+                    const raw = await runActiveCompatible(mode);
+                    controller.signal.throwIfAborted();
+                    return parseAnalysisResponse(raw);
                 }
-                if (!structured || !isUnsupportedStructuredOutputError(error)) throw error;
-                console.warn(`[${EXTENSION_ID}] active model does not support the structured-output control; retrying once with the compact JSON contract`, error);
-                const raw = await runActiveCompatible(false);
-                controller.signal.throwIfAborted();
-                return parseAnalysisResponse(raw);
-            }
+            };
+            return negotiatePlannerOutput(
+                runActiveMode,
+                [PLANNER_OUTPUT_MODE.JSON_SCHEMA, PLANNER_OUTPUT_MODE.PROMPT_ONLY],
+                'active model',
+                controller.signal,
+                `active:${activeContext.mainApi || ''}:${activeSource}`,
+            );
         }
         const reasoningMode = plannerReasoningMode();
         const reasoning = buildReasoningRequest({
@@ -1071,8 +1068,9 @@ async function requestAnalysisOnce(prompt, externalSignal) {
         });
         let reasoningPayload = reasoning.payload;
         let samplingEnabled = !plannerModelRejectsTemperature(model.model);
-        const sendRaw = async structured => {
-            const body = { chat_completion_source: model.provider, model: model.model, messages: [{ role: 'system', content: PLANNER_SYSTEM_PROMPT }, { role: 'user', content: prompt }], max_tokens: PLANNER_RESPONSE_TOKENS, stream: false, ...plannerTemperaturePayload(temperature, samplingEnabled), ...reasoningPayload, ...(structured ? { json_schema: ANALYSIS_SCHEMA } : {}), ...(model.provider === 'openrouter' ? { api_url: model.url.replace(/\/$/, '') } : { custom_url: model.url.replace(/\/$/, '') }) };
+        const sendRaw = async mode => {
+            const modePayload = model.provider === 'custom' ? customOutputPayload(reasoningPayload, mode) : reasoningPayload;
+            const body = { chat_completion_source: model.provider, model: model.model, messages: plannerMessages(PLANNER_SYSTEM_PROMPT, prompt, ANALYSIS_SCHEMA, mode), max_tokens: PLANNER_RESPONSE_TOKENS, stream: false, ...plannerTemperaturePayload(temperature, samplingEnabled), ...modePayload, ...(mode === PLANNER_OUTPUT_MODE.JSON_SCHEMA ? { json_schema: ANALYSIS_SCHEMA } : {}), ...(model.provider === 'openrouter' ? { api_url: model.url.replace(/\/$/, '') } : { custom_url: model.url.replace(/\/$/, '') }) };
             if (model.secretId) body.secret_id = model.secretId;
             const response = await fetch('/api/backends/chat-completions/generate', { method: 'POST', headers: currentContext().getRequestHeaders?.() || getRequestHeaders?.() || { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
             const payload = await response.json();
@@ -1080,37 +1078,33 @@ async function requestAnalysisOnce(prompt, externalSignal) {
             controller.signal.throwIfAborted();
             return parseAnalysisResponse(payload);
         };
-        const send = structured => retryWithoutUnsupportedTemperature(
-            () => sendRaw(structured),
+        const send = mode => retryWithoutUnsupportedTemperature(
+            () => sendRaw(mode),
             () => { samplingEnabled = false; },
         );
-        const structured = model.provider !== 'openrouter';
-        try {
-            return await send(structured);
-        } catch (error) {
-            controller.signal.throwIfAborted();
-            if (error instanceof AnalysisValidationError) throw error;
-            if (isReasoningControlError(error) && (reasoning.controlled || isMandatoryReasoningError(error))) {
-                reasoningPayload = reasoningFallbackPayload(error, reasoningPayload);
-                try {
-                    return await send(structured);
-                } catch (retryError) {
-                    controller.signal.throwIfAborted();
-                    if (retryError instanceof AnalysisValidationError) throw retryError;
-                    error = retryError;
-                }
-            }
-            if (!structured) throw error;
-            if (!isUnsupportedStructuredOutputError(error)) throw error;
-            console.warn(`[${EXTENSION_ID}] direct model does not support the structured-output control; retrying once with the compact JSON contract`, error);
+        const runDirectMode = async mode => {
             try {
-                return await send(false);
-            } catch (fallbackError) {
-                if (!isReasoningControlError(fallbackError) || (!reasoning.controlled && !isMandatoryReasoningError(fallbackError))) throw fallbackError;
-                reasoningPayload = reasoningFallbackPayload(fallbackError, reasoningPayload);
-                return await send(false);
+                return await send(mode);
+            } catch (error) {
+                controller.signal.throwIfAborted();
+                if (error instanceof AnalysisValidationError) throw error;
+                if (!isReasoningControlError(error) || (!reasoning.controlled && !isMandatoryReasoningError(error))) throw error;
+                reasoningPayload = reasoningFallbackPayload(error, reasoningPayload);
+                return send(mode);
             }
-        }
+        };
+        const modes = model.provider === 'custom'
+            ? (/^(?:.*\/)?glm[-_.]/i.test(model.model)
+                ? [PLANNER_OUTPUT_MODE.JSON_OBJECT, PLANNER_OUTPUT_MODE.JSON_SCHEMA, PLANNER_OUTPUT_MODE.PROMPT_ONLY]
+                : [PLANNER_OUTPUT_MODE.JSON_SCHEMA, PLANNER_OUTPUT_MODE.JSON_OBJECT, PLANNER_OUTPUT_MODE.PROMPT_ONLY])
+            : [PLANNER_OUTPUT_MODE.JSON_SCHEMA, PLANNER_OUTPUT_MODE.PROMPT_ONLY];
+        return negotiatePlannerOutput(
+            runDirectMode,
+            modes,
+            'direct model',
+            controller.signal,
+            `direct:${model.provider}:${model.model}:${model.url}`,
+        );
     } finally {
         externalSignal?.removeEventListener('abort', forwardAbort);
     }
