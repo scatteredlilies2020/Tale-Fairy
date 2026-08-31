@@ -582,6 +582,7 @@ function compactPromptStateForPriority(current = {}) {
         loreModel: current.loreModel,
         narrativeLayers: current.narrativeLayers,
         scene: current.scene,
+        authorBoard: compactAuthorBoard(current.authorBoard),
         objectives: (current.objectives || []).slice(-5).map(item => ({ title: compactText(item.title, 80), detail: compactText(item.detail, 90), status: compactText(item.status, 30) })),
         continuityThreads: (current.continuityThreads || []).slice(0, 8).map(item => ({ id: compactText(item.id, 60), thread: compactText(item.thread, 110), state: compactText(item.state, 130), status: item.status, basis: compactText(item.basis, 90) })),
         selfChallenge: current.selfChallenge ? { weakness: compactText(current.selfChallenge.weakness, 150), counterRoute: compactText(current.selfChallenge.counterRoute, 150), mechanismCheck: compactText(current.selfChallenge.mechanismCheck, 150), decision: compactText(current.selfChallenge.decision, 180) } : undefined,
@@ -610,6 +611,19 @@ function sampleHorizonItems(items = [], limit = 6) {
     return [...indexes].sort((a, b) => a - b).slice(0, limit).map(index => items[index]);
 }
 
+function compactAuthorBoard(board = {}) {
+    return {
+        story: board.story ? { identity: compactText(board.story.identity, 240), themes: (board.story.themes || []).slice(0, 6).map(item => compactText(item, 100)) } : undefined,
+        activeArc: board.activeArc ? { id: compactText(board.activeArc.id, 60), title: compactText(board.activeArc.title, 120), phase: compactText(board.activeArc.phase, 40), purpose: compactText(board.activeArc.purpose, 220), pressure: compactText(board.activeArc.pressure, 160) } : undefined,
+        characterArcs: (board.characterArcs || []).slice(0, 4).map(item => ({ name: compactText(item.name, 80), transformation: compactText(item.transformation, 160), currentState: compactText(item.currentState, 120), nextMilestone: compactText(item.nextMilestone, 120) })),
+        relationshipArcs: (board.relationshipArcs || []).slice(0, 4).map(item => ({ id: compactText(item.id, 60), parties: (item.parties || []).slice(0, 4), arc: compactText(item.arc, 160), currentState: compactText(item.currentState, 120), nextMilestone: compactText(item.nextMilestone, 120) })),
+        setups: (board.setups || []).filter(item => item.status !== 'retired').slice(0, 6).map(item => ({ id: compactText(item.id, 60), description: compactText(item.description, 160), status: item.status, payoff: compactText(item.payoff, 120) })),
+        offscreenDevelopments: (board.offscreenDevelopments || []).filter(item => !['retired', 'resolved'].includes(item.status)).slice(0, 5).map(item => ({ id: compactText(item.id, 60), development: compactText(item.development, 160), status: item.status, progress: item.progress, disclosure: item.disclosure })),
+        milestones: (board.milestones || []).filter(item => !['retired', 'resolved'].includes(item.status)).slice(0, 5).map(item => ({ id: compactText(item.id, 60), development: compactText(item.development, 160), horizon: compactText(item.horizon, 60), status: item.status })),
+        revision: Number(board.revision) || 0,
+    };
+}
+
 function compactPromptStateForBudget(current = {}) {
     const beat = current.activeBeat || {};
     const horizons = current.planHorizons || {};
@@ -619,6 +633,7 @@ function compactPromptStateForBudget(current = {}) {
         loreModel: current.loreModel ? { worldIdentity: compactText(current.loreModel.worldIdentity, 90), baseline: compactText(current.loreModel.baseline, 140), variantRules: (current.loreModel.variantRules || []).slice(0, 4).map(item => compactText(item, 100)), continuitySignatures: (current.loreModel.continuitySignatures || []).slice(0, 5).map(item => compactText(item, 105)), baselineDepartures: (current.loreModel.baselineDepartures || []).slice(0, 5).map(item => compactText(item, 110)), trajectorySignals: (current.loreModel.trajectorySignals || []).slice(0, 3).map(item => compactText(item, 100)), activeForces: (current.loreModel.activeForces || []).slice(0, 3).map(item => compactText(item, 90)), confidence: current.loreModel.confidence } : undefined,
         narrativeLayers: current.narrativeLayers ? { immediateAction: compactText(current.narrativeLayers.immediateAction, 80), localActivity: compactText(current.narrativeLayers.localActivity, 90), situation: compactText(current.narrativeLayers.situation, 100), widerWorld: compactText(current.narrativeLayers.widerWorld, 110), durableTrajectory: compactText(current.narrativeLayers.durableTrajectory, 120), activityRole: current.narrativeLayers.activityRole, temporalScope: current.narrativeLayers.temporalScope } : undefined,
         scene: current.scene,
+        authorBoard: compactAuthorBoard(current.authorBoard),
         objectives: (current.objectives || []).slice(-2).map(item => ({ title: compactText(item.title, 70), detail: compactText(item.detail, 70), status: compactText(item.status, 24) })),
         continuityThreads: (current.continuityThreads || []).slice(0, 5).map(item => ({ id: compactText(item.id, 40), thread: compactText(item.thread, 70), state: compactText(item.state, 80), status: item.status })),
         selfChallenge: current.selfChallenge ? { weakness: compactText(current.selfChallenge.weakness, 90), counterRoute: compactText(current.selfChallenge.counterRoute, 90), mechanismCheck: compactText(current.selfChallenge.mechanismCheck, 90), decision: compactText(current.selfChallenge.decision, 110) } : undefined,
@@ -1120,6 +1135,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         evidence_order_instruction: 'Oldest to newest: the highest-index message is the completed current story state. Apply its depicted changes before deriving scene, activity, pathways, and guides. Generated statboxes and summaries are claims to audit, not proof; they cannot complete an activity or advance the last supported clock unless prose depicts it. The current object is prior planner state: keep supported durable trajectories, but never preserve an action, location, activity, event, or condition the newest message supersedes. Any future activity mentioned remains future unless visibly performed. Preserve explicit clocks and dates only when supported; infer only depicted elapsed time.',
         messages: compact,
         current: useSpecificPlayerName(stateForPrompt(state), playerName),
+        author_board_instruction: 'The authorBoard is durable story-level memory, not a description of the newest scene. Preserve its supported story identity, active arc, character and relationship arcs, setups, offscreen developments, and milestones across a local HOLD or SEED. A current activity belongs in current.activity and decision.scene_function; it must not replace story_identity, durable_trajectory, or arc_direction merely because it is recent or occupies many turns. Redirect durable scope only for a genuine user story pivot or when accumulated evidence changes the larger trajectory.',
     };
     const canonClaims = explicitCanonClaims(messages);
     if (canonClaims.length) {
@@ -1666,7 +1682,7 @@ export function applyAnalysis(state, result, messages) {
     return next;
 }
 
-const PLANNER_SYSTEM = `You are Tale Fairy, the private authorial planning layer for SillyTavern roleplay. The roleplay model writes the fiction; you maintain the causal world model and choose narrative direction. Return one JSON object matching the schema with every required field. Never output Markdown, prose outside the object, chain-of-thought, or hidden reasoning.
+const PLANNER_SYSTEM = `You are Tale Fairy, SillyTavern's planner. Maintain causal state and direction; another model writes. Return JSON matching the schema. Never output Markdown, prose outside the object, chain-of-thought, or hidden reasoning.
 
 EVIDENCE AND AUTHORITY
 Use every evidence surface: raw turns, character/scenario material, World Info/lore, recaps, summaries, Continuity Memory, host context, and retained Tale Fairy state. Summaries are compressed evidence, not exhaustive. Apply evidence chronologically. Explicit user/OOC establishments and corrections outrank inference; newer specific evidence supersedes conflicting state. Assistant narration proves only its depicted selected outcome. Prior planner state is a revisable hypothesis, never proof. Established facts bind; unspecified details remain open creative space. Preserve provenance; never turn an inference, simulation, possibility, joke, wish, or discarded response into established history.
@@ -1682,7 +1698,7 @@ Maintain a factual inventory of established unresolved processes: correspondence
 PLAYER AGENCY AND TIME
 The newest user turn controls the immediate direction and maximum temporal scope: moment, action, activity, scene, or extended span. It is a ceiling, not a quota. Never invent the player's dialogue, feelings, consequential choices, commitments, or movement beyond the authorized endpoint. An NPC request is an event, not player consent. Broadly authorized training, work, play, travel, or another bounded activity permits ordinary low-stakes procedure through the requested endpoint, but never a new activity or major decision. Mode changes narrative pressure and breadth, not user-controlled pacing.
 
-Treat immediate_action, activity, situation, wider_world, and durable_trajectory as nested layers. A long routine activity does not become the whole story merely because it occupies many turns. Quiet scenes may remain quiet while independent world processes continue privately. Do not manufacture interruptions, danger, trivial notifications, or equal opposition merely to create movement. Apply extraordinary established capabilities and limitations proportionately; do not normalize them toward setting averages or negate them to manufacture tension.
+Treat immediate_action, activity, situation, wider_world, and durable_trajectory as nested layers. Keep story_identity and arc_direction durable; only scene_function describes the present scene. Never promote the newest activity into durable fields. A long routine activity does not become the whole story merely because it occupies many turns. Quiet scenes may remain quiet while independent world processes continue privately. Do not manufacture interruptions, danger, trivial notifications, or equal opposition merely to create movement. Apply extraordinary established capabilities and limitations proportionately; do not normalize them toward setting averages or negate them to manufacture tension.
 
 CAUSAL PLANNING
 Return one current pool of six to eight materially different routes spanning local, near, middle, far, and wildcard horizons. Routes are conditional options, not facts. Include every required lane: immediate; character; relationship-institution; lore-world; original; long-range. Extra routes may reuse a lane; portfolio identifies the core six. Record the causal center in agent, process in engine, relation, and scale. Routes driven by the same pending matter use the same engine despite different people, departments, wording, timing, or consequences. A route must not absorb, preview, or realize another route's signature development. A shared signature event means one route: merge it and replace the duplicate with another engine. Use at least five distinct engines and at least three genuinely independent centers of agency. The immediate may serve the newest hook; three other required lanes must survive without it. A wildcard must change the kind or source of possibility, not intensify that hook. The long-range lane must use an engine independent of the immediate lane and concern a months-to-years or open-ended life, relationship, social, institutional, national, or world trajectory—not that matter's delayed payoff or coming days labeled far. Preserve far futures rather than paraphrasing one subject at several timeframes. Draw variety from separate hooks, relationships, places, institutions, ambitions, conflicts, discoveries, identities, world systems, and compatible unexplored space.

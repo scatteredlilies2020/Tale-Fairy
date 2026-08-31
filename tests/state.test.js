@@ -552,7 +552,7 @@ test('v42 planning migrates into the author board without forcing another planne
     const migrated = normalizeState({ version: 42, ...currentPlan, canonBootstrapPending: false });
     assert.equal(migrated.version, 43);
     assert.equal(migrated.canonBootstrapPending, false);
-    assert.equal(migrated.authorBoard.story.identity, currentPlan.directorScore.storyIdentity);
+    assert.equal(migrated.authorBoard.story.identity, currentPlan.narrativeLayers.durableTrajectory);
     assert.equal(migrated.authorBoard.scene.purpose, currentPlan.directorScore.sceneFunction);
     assert.ok(migrated.authorBoard.scene.requiredDevelopments.length > 0);
 });

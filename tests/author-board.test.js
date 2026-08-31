@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { markAuthorBeatDelivered, markAuthorBeatIssued, markDevelopmentDelivered, markDevelopmentIssued, normalizeAuthorBoard, tickAuthorBoard } from '../extension/author-board.js';
+import { markAuthorBeatDelivered, markAuthorBeatIssued, markDevelopmentDelivered, markDevelopmentIssued, normalizeAuthorBoard, refreshAuthorBoardFromLegacy, tickAuthorBoard } from '../extension/author-board.js';
 
 test('required developments have durable ids and lifecycle state', () => {
     let board = normalizeAuthorBoard({ scene: { requiredDevelopments: ['Explain one concrete Jedi principle.'] } });
@@ -36,4 +36,40 @@ test('offscreen clocks tick once per accepted turn and honor their clock type', 
     assert.deepEqual(duplicate.offscreenDevelopments.map(item => item.progress), [20, 10, 0]);
     const second = tickAuthorBoard(first, { turnCount: 6, storyTimeAdvanced: true, triggeredIds: ['trigger'] });
     assert.deepEqual(second.offscreenDevelopments.map(item => item.progress), [30, 30, 50]);
+});
+
+test('a routine scene hold cannot replace the durable story and arc with the current activity', () => {
+    const board = normalizeAuthorBoard({
+        story: { identity: 'Lucia grows from institutional childhood into a life shaped by extraordinary Force potential.' },
+        activeArc: { id: 'placement', title: 'Who will shape Lucia\'s future?', phase: 'setup', purpose: 'Let institutional custody and Jedi attention converge over multiple scenes.', pressure: 'The Council petition remains unresolved.' },
+    });
+    const refreshed = refreshAuthorBoardFromLegacy(board, {
+        narrativeLayers: { localActivity: 'Quiet garden reading', durableTrajectory: board.story.identity, activityRole: 'routine' },
+        directorScore: { storyIdentity: 'A quiet morning interlude before an uncertain future.', sceneFunction: 'Let Lucia read without interruption.', causalTempo: 'hold', arcDirection: 'Read page 42.', meaningfulAim: 'Enjoy the garden.', futureSetup: { id: 'g_garden', currentStep: 'Lucia reads in the garden.', conditions: [] } },
+    }, 361);
+    assert.equal(refreshed.story.identity, board.story.identity);
+    assert.equal(refreshed.activeArc.id, 'placement');
+    assert.equal(refreshed.scene.identity, 'Quiet garden reading');
+    assert.equal(refreshed.scene.purpose, 'Let Lucia read without interruption.');
+});
+
+test('legacy scene-derived board repairs its story identity from durable trajectory', () => {
+    const localIdentity = 'A quiet morning interlude in a structured facility before an uncertain future.';
+    const durable = 'Lucia survives institutional childhood while extraordinary Force potential may draw Jedi and Republic attention.';
+    const weakBoard = {
+        story: { identity: localIdentity },
+        activeArc: { id: 'g_garden', title: localIdentity, phase: 'hold', purpose: 'Read in the garden.', pressure: 'Reach page 42.' },
+    };
+    const legacy = {
+        narrativeLayers: { localActivity: 'Quiet garden reading', durableTrajectory: durable, activityRole: 'routine' },
+        directorScore: { storyIdentity: localIdentity, sceneFunction: 'Linger on reading.', causalTempo: 'hold', arcDirection: 'Read in the garden.', meaningfulAim: 'Reach page 42.', futureSetup: { id: 'g_garden', currentStep: 'Continue reading.', conditions: [] } },
+        pathways: [{ id: 'council-review', lane: 'relationship-institution', scale: 'arc', status: 'active', direction: 'The unresolved Council petition changes who may take responsibility for Lucia.', conditions: ['The filed petition reaches a decision.'], engine: 'Jedi Council review' }],
+    };
+    const loaded = normalizeAuthorBoard(weakBoard, legacy);
+    assert.equal(loaded.story.identity, durable);
+    assert.equal(loaded.activeArc.id, 'council-review');
+    const refreshed = refreshAuthorBoardFromLegacy(weakBoard, legacy, 361);
+    assert.equal(refreshed.story.identity, durable);
+    assert.equal(refreshed.activeArc.id, 'council-review');
+    assert.match(refreshed.activeArc.purpose, /Council petition/);
 });

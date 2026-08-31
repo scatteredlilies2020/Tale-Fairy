@@ -80,6 +80,23 @@ function normalizeMilestone(value = {}) {
     return { id: string(value.id, 80) || slug(development, 'milestone'), development, horizon: string(value.horizon ?? value.timeframe, 80) || 'upcoming', conditions: list(value.conditions, 4, item => string(item, 140)), status: ['queued', 'available', 'active', 'resolved', 'retired'].includes(status) ? status : 'queued' };
 }
 
+function durableArcFromLegacy(legacy = {}, fallback = {}) {
+    const candidates = [...(Array.isArray(legacy.pathways) ? legacy.pathways : []), ...(Array.isArray(legacy.planHorizons?.items) ? legacy.planHorizons.items : [])]
+        .filter(item => item && item.lane !== 'immediate' && item.direction && !['scene', 'days'].includes(item.scale));
+    const route = candidates.find(item => ['foreground', 'active'].includes(item.status))
+        || candidates.find(item => item.lane === 'relationship-institution')
+        || candidates.find(item => item.lane === 'character')
+        || candidates[0];
+    if (!route) return normalizeArc(fallback);
+    return normalizeArc({
+        id: route.id,
+        title: route.direction,
+        phase: route.status || route.horizon || 'setup',
+        purpose: route.direction,
+        pressure: route.conditions?.[0] || route.engine || fallback.pressure,
+    });
+}
+
 export function normalizeAuthorBoard(value = {}, legacy = {}) {
     const source = value && typeof value === 'object' ? value : {};
     const director = legacy.directorScore || {};
@@ -89,9 +106,25 @@ export function normalizeAuthorBoard(value = {}, legacy = {}) {
         .filter(event => event?.scope === 'offscreen' && !['resolved', 'retired'].includes(event?.status))
         .map(event => ({ id: event.id, development: event.summary || event.title, status: ['due', 'overdue'].includes(event.dueState) ? 'ready' : 'active', progress: ['due', 'overdue'].includes(event.dueState) ? 100 : 25, releaseConditions: event.requirements, disclosure: event.disclosure, clockType: 'institutional' }));
     const required = scene.requiredDevelopments ?? scene.required_developments ?? source.requiredDevelopments;
+    const rawStoryIdentity = string(source.story?.identity ?? source.storyIdentity, 240);
+    const durableTrajectory = string(layers.durableTrajectory, 240);
+    const currentDecisionIdentity = string(director.storyIdentity, 240);
+    const quietLocalDecision = ['hold', 'seed'].includes(string(director.causalTempo, 30).toLowerCase())
+        && ['incidental', 'routine'].includes(string(layers.activityRole, 30).toLowerCase());
+    const storyIdentity = quietLocalDecision && rawStoryIdentity === currentDecisionIdentity
+        && durableTrajectory && durableTrajectory !== rawStoryIdentity
+        ? durableTrajectory
+        : rawStoryIdentity || durableTrajectory || currentDecisionIdentity;
+    const rawActiveArc = source.activeArc ?? source.active_arc;
+    const rawActiveArcId = string(rawActiveArc?.id, 80);
+    const activeArcFallback = { id: director.futureSetup?.id, title: durableTrajectory || currentDecisionIdentity, phase: director.causalTempo, purpose: director.arcDirection, pressure: director.meaningfulAim };
+    const activeArc = quietLocalDecision && rawActiveArcId
+        && rawActiveArcId === string(director.futureSetup?.id, 80)
+        ? durableArcFromLegacy(legacy, activeArcFallback)
+        : normalizeArc(rawActiveArc ?? activeArcFallback);
     return {
-        story: { identity: string(source.story?.identity ?? source.storyIdentity ?? director.storyIdentity, 240), themes: list(source.story?.themes ?? source.themes, 6, item => string(item, 120)) },
-        activeArc: normalizeArc(source.activeArc ?? source.active_arc ?? { id: director.futureSetup?.id, title: director.storyIdentity, phase: director.causalTempo, purpose: director.arcDirection, pressure: director.meaningfulAim }),
+        story: { identity: storyIdentity, themes: list(source.story?.themes ?? source.themes, 6, item => string(item, 120)) },
+        activeArc,
         characterArcs: list(source.characterArcs ?? source.character_arcs, MAX_ARCS, normalizeCharacterArc),
         relationshipArcs: list(source.relationshipArcs ?? source.relationship_arcs, MAX_ARCS, normalizeRelationshipArc),
         setups: list(source.setups ?? source.promises, MAX_SETUPS, normalizeSetup),
@@ -112,12 +145,32 @@ export function normalizeAuthorBoard(value = {}, legacy = {}) {
 export function refreshAuthorBoardFromLegacy(board, legacy = {}, turnCount = 0) {
     const prior = normalizeAuthorBoard(board, legacy);
     const migrated = normalizeAuthorBoard({}, legacy);
+    const rawStoryIdentity = string(board?.story?.identity ?? board?.storyIdentity, 240);
+    const rawArc = normalizeArc(board?.activeArc ?? board?.active_arc);
+    const durableTrajectory = string(legacy.narrativeLayers?.durableTrajectory, 240);
+    const currentDecisionIdentity = string(legacy.directorScore?.storyIdentity, 240);
+    const tempo = string(legacy.directorScore?.causalTempo, 30).toLowerCase();
+    const quietLocalDecision = ['hold', 'seed'].includes(tempo)
+        && ['incidental', 'routine'].includes(string(legacy.narrativeLayers?.activityRole, 30).toLowerCase());
+    // Older boards were generated directly from the latest director decision. Repair
+    // that migration when a durable trajectory exists, then keep durable scopes
+    // stable during scene-level HOLD/SEED decisions.
+    const storyWasCurrentDecision = rawStoryIdentity && rawStoryIdentity === currentDecisionIdentity;
+    const story = quietLocalDecision
+        ? rawStoryIdentity && !(storyWasCurrentDecision && durableTrajectory && durableTrajectory !== rawStoryIdentity)
+            ? prior.story
+            : { ...prior.story, identity: durableTrajectory || migrated.story.identity }
+        : migrated.story.identity ? migrated.story : prior.story;
+    const arcWasCurrentSetup = rawArc.id && rawArc.id === string(legacy.directorScore?.futureSetup?.id, 80);
+    const activeArc = quietLocalDecision
+        ? rawArc.purpose && !arcWasCurrentSetup ? prior.activeArc : durableArcFromLegacy(legacy, migrated.activeArc)
+        : migrated.activeArc.purpose ? migrated.activeArc : prior.activeArc;
     const guide = legacy.nextGuides?.[0];
     const instruction = string(guide?.worldDelta ?? guide?.direction ?? legacy.directorScore?.futureSetup?.currentStep, 280);
     const existing = prior.scene.requiredDevelopments.filter(item => !['delivered', 'retired'].includes(item.status));
     const requiredDevelopments = instruction ? [normalizeDevelopment({ instruction }, 0), ...existing.filter(item => item.instruction !== instruction)].slice(0, MAX_DEVELOPMENTS) : existing;
     return normalizeAuthorBoard({
-        ...prior, story: migrated.story.identity ? migrated.story : prior.story, activeArc: migrated.activeArc.purpose ? migrated.activeArc : prior.activeArc,
+        ...prior, story, activeArc,
         offscreenDevelopments: migrated.offscreenDevelopments.length ? migrated.offscreenDevelopments : prior.offscreenDevelopments,
         scene: { ...prior.scene, identity: migrated.scene.identity || prior.scene.identity, purpose: migrated.scene.purpose || prior.scene.purpose, requiredDevelopments, exitGates: migrated.scene.exitGates.length ? migrated.scene.exitGates : prior.scene.exitGates },
         revision: prior.revision + 1, updatedAtTurn: turnCount,
