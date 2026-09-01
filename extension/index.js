@@ -4,24 +4,25 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.120';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.120';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.121';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.121';
 import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.11.101';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.120';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.120';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.120';
-import { normalizeModelListResponse } from './models.js?v=0.11.120';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.121';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.121';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.121';
+import { normalizeModelListResponse } from './models.js?v=0.11.121';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.108';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.120';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.120';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.120';
-import { estimateTokenCount } from './token-budget.js?v=0.11.120';
-import { completionText } from './completion-response.js?v=0.11.120';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.121';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.121';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.121';
+import { estimateTokenCount } from './token-budget.js?v=0.11.121';
+import { completionText } from './completion-response.js?v=0.11.121';
+import { sampleDirectorSignals } from './director-sampling.js?v=0.11.121';
 import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.11.105';
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.120';
+const RUNTIME_VERSION = '0.11.121';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -529,6 +530,7 @@ function guideSelectionOptions(state, context = currentContext()) {
             guideIndex: generationGuideSelection.index,
             regeneration: generationGuideSelection.regeneration,
             variationCue: generationGuideSelection.variationCue,
+            directorSample: generationGuideSelection.directorSample,
             canonConstraints: generationGuideSelection.canonConstraints,
             sceneProfile: generationGuideSelection.sceneProfile,
             beatDirective: generationGuideSelection.beatDirective,
@@ -541,6 +543,7 @@ function guideSelectionOptions(state, context = currentContext()) {
         guideIndex: 0,
         regeneration: false,
         variationCue: 0,
+        directorSample: sampleDirectorSignals(state.mode, state.plannerSeed),
         latestUserAction,
     };
 }
@@ -552,13 +555,19 @@ function prepareGenerationGuide(state, type) {
     const replacement = type === 'swipe' || type === 'regenerate';
     const archived = replacement ? state.lastRequestVerification : null;
     const archivedUsable = Boolean(archived?.beatDirective);
+    const hasArchivedSeed = replacement && Number.isInteger(archived?.directorSeed) && archived.directorSeed >= 0;
+    const directorSeed = hasArchivedSeed ? archived.directorSeed : randomVariationNonce();
+    const directorSample = replacement && archived?.directorSample
+        ? archived.directorSample
+        : sampleDirectorSignals(state.mode, directorSeed);
     generationGuideSelection = {
         chatId,
         candidates: [], index: 0,
         usable: archivedUsable || (!replacement && isGuidanceUsable(state, messages, chatId)),
         regeneration: replacement,
         replacement,
-        variationCue: replacement ? randomVariationNonce() : 0,
+        variationCue: directorSeed,
+        directorSample,
         // A replacement must not receive canon inferred from the assistant
         // reply being discarded. Reuse the exact pre-response canon snapshot.
         canonConstraints: replacement ? (archived?.canonConstraints || []) : null,
@@ -640,6 +649,8 @@ function rememberVerifiedRequest(payload, { provider = '', model = '' } = {}) {
         replacementGeneration: generationGuideSelection?.replacement === true,
         sceneProfile: generationGuideSelection?.sceneProfile || state.sceneProfile,
         beatDirective: generationGuideSelection?.beatDirective || state.beatDirective,
+        directorSample: generationGuideSelection?.directorSample || sampleDirectorSignals(state.mode, state.plannerSeed),
+        directorSeed: generationGuideSelection?.variationCue ?? state.plannerSeed,
         conductorDevelopmentId: '', conductorContract: null,
     };
     renderBoard();
@@ -1429,7 +1440,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         lastAnalysisError = '';
         finalStatus = userNote && !resolvedNote
             ? 'Note not applied · try again'
-            : `Current beat ready · ${elapsedLabel(Date.now() - startedAt)}`;
+            : `Adaptive direction ready · ${elapsedLabel(Date.now() - startedAt)}`;
         renderBoard(next);
         return next;
     };
@@ -1488,8 +1499,8 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const analyzedAt = state.lastAnalyzedAt ? new Date(state.lastAnalyzedAt).toLocaleString() : '';
     const meta = state.canonBootstrapPending
         ? 'Full rebuild pending · retained guidance is not injected'
-        : analyzed ? `${state.mode} mode · current beat updated ${analyzedAt || 'recently'}` : '';
-    scratchpadText(board, 'scratchpad-meta', meta, 'No beat analysis yet. Run Guide now or Full rebuild.');
+        : analyzed ? `${state.mode} mode · adaptive direction updated ${analyzedAt || 'recently'}` : '';
+    scratchpadText(board, 'scratchpad-meta', meta, 'No direction analysis yet. Run Guide now or Full rebuild.');
     const continuityStatus = analyzed ? continuityContextState(currentContext()).status : 'unavailable';
     const summaryAudit = state.summaryEvidence?.scannedAt ? state.summaryEvidence : lastSummaryAudit;
     const summaryStatus = summaryAudit.scannedAt || summaryAudit.count
@@ -1513,13 +1524,13 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const envelope = [beat.contentClass, beat.scope && `${beat.scope} scope`, beat.intensity && beat.intensity !== 'none' && `${beat.intensity} intensity`, beat.quantity && beat.quantity !== 'none' && beat.quantity, beat.relativePower && beat.relativePower !== 'none' && `${beat.relativePower} power`, beat.plotWeight && beat.plotWeight !== 'none' && `${beat.plotWeight} weight`, beat.duration && `${beat.duration} duration`, beat.resolutionCeiling && `${beat.resolutionCeiling} resolution`].filter(Boolean).join(' · ');
     const beatText = [
         `${String(beat.operation || 'retain').toUpperCase()} — ${beat.target || 'current activity'}`,
-        beat.requiredEffect || 'Keep the current activity and emotional promise coherent; no added incident is required.',
+        beat.requiredEffect || 'Interpret the current activity and choose one fitting narrative contribution.',
         envelope && `Envelope: ${envelope}`,
         beat.preserve?.length && `Preserve: ${beat.preserve.join('; ')}`,
         beat.forbid?.length && `Do not: ${beat.forbid.join('; ')}`,
         beat.basis && `Basis: ${beat.basis}`,
     ].filter(Boolean).join('\n');
-    scratchpadText(board, 'scratchpad-next-guides', analyzed ? beatText : '', 'No generated current beat yet.');
+    scratchpadText(board, 'scratchpad-next-guides', analyzed ? beatText : '', 'No generated adaptive direction yet.');
 
     const frame = state.storyFrame.frame && state.storyFrame.frame !== 'unknown'
         ? `${state.storyFrame.frame}${state.storyFrame.confidence ? ` · ${state.storyFrame.confidence} confidence` : ''}${state.storyFrame.basis ? `\nBasis: ${state.storyFrame.basis}` : ''}`
@@ -1537,8 +1548,8 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     ].filter(Boolean).join('\n');
     scratchpadText(board, 'scratchpad-lore', analyzed ? loreText : '', 'No generated lore model yet.');
 
-    const auditText = [state.lastReason, state.selfChallenge?.weakness && `Stronger move rejected: ${state.selfChallenge.weakness}`].filter(Boolean).join('\n');
-    scratchpadText(board, 'scratchpad-self-challenge', analyzed ? auditText : '', 'No beat audit yet.');
+    const auditText = [state.lastReason, state.selfChallenge?.weakness && `Alternative considered: ${state.selfChallenge.weakness}`].filter(Boolean).join('\n');
+    scratchpadText(board, 'scratchpad-self-challenge', analyzed ? auditText : '', 'No direction audit yet.');
 
     const chatId = String(currentContext().getCurrentChatId?.() || '');
     const verification = pendingRequestVerification?.chatId === chatId ? pendingRequestVerification : state.lastRequestVerification;
@@ -1551,7 +1562,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     ].filter(Boolean).join('\n') : '';
     scratchpadText(board, 'scratchpad-request-verification', verificationText, 'No roleplay-generation guide injection has been verified yet.');
 
-    scratchpadText(board, 'scratchpad-continuity-processes', analyzed ? scratchpadList(state.continuityThreads, item => item?.thread ? `${item.thread} [${item.status || 'dormant'}] — ${item.state}` : '', '') : '', 'No relevant unresolved processes.');
+    scratchpadText(board, 'scratchpad-continuity-processes', analyzed ? scratchpadList(state.continuityThreads, item => item?.thread ? `${item.thread} — ${item.state}` : '', '') : '', 'No relevant continuity evidence.');
     scratchpadText(board, 'scratchpad-entities', analyzed ? scratchpadList(state.entities, item => item?.name ? `${item.name}${item.state ? ` — ${item.state}` : ''}${item.agenda ? ` · Agenda: ${item.agenda}` : ''}` : '', '') : '', 'No relevant actors or systems.');
     scratchpadText(board, 'scratchpad-ledger', analyzed ? state.contextLedger : '', 'No current continuity ledger yet.');
     scratchpadText(board, 'scratchpad-notes', scratchpadList(state.userNotes, item => item?.text ? `[${String(item.kind || 'note').toUpperCase()}] ${item.text}` : '', ''), 'No user notes.');

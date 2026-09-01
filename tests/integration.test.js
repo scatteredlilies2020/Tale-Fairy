@@ -12,36 +12,39 @@ const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.me
 const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json', import.meta.url), 'utf8'));
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
-test('manifest and detached plugin identify the current-beat release', () => {
-    assert.equal(manifest.version, '0.11.120');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.120');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.120');
-    assert.match(manifest.description, /lightweight current-beat director/i);
+test('manifest and detached plugin identify the adaptive-director release', () => {
+    assert.equal(manifest.version, '0.11.121');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.121');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.121');
+    assert.match(manifest.description, /always-on adaptive story director/i);
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.11\.120'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.11\.120'/);
+    assert.match(pluginSource, /const VERSION = '0\.11\.121'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.11\.121'/);
 });
 
-test('extension loads v120 analysis, state, and request-injection modules', () => {
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.120'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.120'/);
-    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.120'/);
-    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.120'/);
+test('extension loads v121 adaptive-director modules', () => {
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.121'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.121'/);
+    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.121'/);
+    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.121'/);
+    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.121'/);
 });
 
-test('obsolete pacing selector is absent while active guidance preserves user-controlled pacing', () => {
+test('obsolete pacing selector and pacing ceiling are absent while player agency is protected', () => {
     assert.doesNotMatch(template, /data-setting="pacing"|Scene pacing/);
     assert.doesNotMatch(source, /updatePacing|data-setting="pacing"/);
-    assert.match(directorSource, /USER-CONTROLLED PACING/);
-    assert.match(directorSource, /latest user\/OOC turn sets the maximum time, activity, and player progress/i);
+    assert.doesNotMatch(directorSource, /USER-CONTROLLED PACING|maximum time, activity, and player progress/i);
+    assert.match(directorSource, /Scene progression and transitions are allowed/i);
+    assert.match(directorSource, /Never invent the player character/i);
 });
 
-test('current-beat analysis replaces future agenda planning at the wire boundary', () => {
+test('adaptive analysis uses freeform direction rather than an event taxonomy', () => {
     assert.match(analysisSource, /contract_version=3/);
-    assert.match(analysisSource, /current-beat director/);
-    assert.match(analysisSource, /Never plan a future route/);
-    assert.match(analysisSource, /Categories are narrative functions, not a creativity menu/);
-    assert.match(analysisSource, /countries, societies, and worlds/);
+    assert.match(analysisSource, /adaptive narrative director/i);
+    assert.match(analysisSource, /not an event taxonomy/i);
+    assert.match(analysisSource, /other context-compatible movement/i);
+    assert.match(analysisSource, /countries, societies, and worlds/i);
+    assert.match(analysisSource, /operation.*other/);
     assert.match(stateSource, /export const STATE_VERSION = 46/);
     assert.match(stateSource, /beatContractUpgrade/);
 });
@@ -58,17 +61,19 @@ test('provider injection uses the analyzed beat or a non-blocking live policy', 
     assert.match(source, /GENERATE_AFTER_COMBINE_PROMPTS/);
 });
 
-test('replacement generation archives the semantic beat rather than rotating concrete routes', () => {
+test('replacement generation archives semantic direction and the exact weighted sample', () => {
     assert.match(source, /const archived = replacement \? state\.lastRequestVerification : null/);
     assert.match(source, /archived\?\.beatDirective/);
     assert.match(source, /sceneProfile: archivedUsable \? archived\.sceneProfile/);
     assert.match(source, /beatDirective: archivedUsable \? archived\.beatDirective/);
-    assert.match(directorSource, /keep the semantic beat if still valid but realize it differently/i);
+    assert.match(source, /archived\?\.directorSample/);
+    assert.match(source, /archived\?\.directorSeed/);
+    assert.match(directorSource, /reuse this weighted sample and directorial purpose/i);
     assert.doesNotMatch(source, /\(previousIndex \+ 1\) % candidates\.length/);
 });
 
 test('rapid-fire turns do not wait for a new planner call', () => {
-    assert.match(directorSource, /TALE FAIRY — LIVE BEAT POLICY/);
+    assert.match(directorSource, /TALE FAIRY — LIVE ADAPTIVE DIRECTOR/);
     assert.match(schedulerSource, /replacement response reuses the archived semantic beat and never spends a planner call/i);
     assert.match(source, /void analyzeNow\(/);
     assert.doesNotMatch(directorSource, /delivery debt|release condition|event queue/i);
@@ -81,11 +86,12 @@ test('planner output is lightweight while retaining structured-output negotiatio
     assert.match(source, /PLANNER_MAX_AUTO_RETRIES = 2/);
 });
 
-test('scratchpad exposes only scene, current beat, factual continuity, and verification', () => {
-    assert.match(template, />Current beat</);
-    assert.match(template, /semantic operation and impact envelope/i);
-    assert.match(template, /Relevant unresolved processes/);
-    assert.match(template, /never delivery promises or scheduled future events/i);
+test('scratchpad exposes adaptive direction without misleading dormant triggers', () => {
+    assert.match(template, />Adaptive direction</);
+    assert.match(template, /weighted creative appetite/i);
+    assert.match(template, />Continuity evidence</);
+    assert.match(template, /never dormant triggers, delivery promises, or a scheduled event queue/i);
+    assert.doesNotMatch(source, /\[\$\{item\.status \|\| 'dormant'\}\]/);
     assert.doesNotMatch(template, /Conditional pathways|Plan horizons|Private idea bank|Private causal events|Durable directions/);
     assert.match(source, /function renderBoard/);
     assert.match(source, /state\.sceneProfile/);

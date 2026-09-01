@@ -1,8 +1,9 @@
-import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.11.120';
+import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.11.121';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
 import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js';
-import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, formatFreshBeatFallback, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile } from './beat-director.js?v=0.11.120';
+import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, formatFreshBeatFallback, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile } from './beat-director.js?v=0.11.121';
+import { normalizeDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.11.121';
 
 export const STATE_KEY = 'livingWorldGuide';
 export const STATE_VERSION = 46;
@@ -366,6 +367,12 @@ function normalizeRequestVerification(value) {
         replacementGeneration: value.replacementGeneration === true,
         sceneProfile: normalizeSceneProfile(value.sceneProfile),
         beatDirective: normalizeBeatDirective(value.beatDirective),
+        directorSample: value.directorSample && typeof value.directorSample === 'object'
+            ? normalizeDirectorSample(value.directorSample)
+            : null,
+        directorSeed: Number.isInteger(Number(value.directorSeed)) && Number(value.directorSeed) >= 0
+            ? Number(value.directorSeed)
+            : null,
         conductorDevelopmentId: text(value.conductorDevelopmentId).slice(0, 100),
         conductorContract: normalizeConductorState(value.conductorContract),
     };
@@ -555,7 +562,11 @@ export function isStateAligned(state, messages = [], chatId = '') {
 // without waiting for another planner request.
 export function isGuidanceUsable(state, messages = [], chatId = '') {
     const s = normalizeState(state);
-    return s.lastInject && hasUsableBeatDirective(s.beatDirective) && isStateAligned(s, messages, chatId);
+    if (!s.lastInject || !hasUsableBeatDirective(s.beatDirective)) return false;
+    if (isStateAligned(s, messages, chatId)) return true;
+    if (s.sourceChatId && chatId && s.sourceChatId !== String(chatId)) return false;
+    if (!messages.at(-1)?.is_user || s.sourceMessageCount !== messages.length - 1) return false;
+    return s.lastAnalysisFingerprint === fingerprintMessages(messages.slice(0, -1));
 }
 
 // If a generation has no archived routes yet, a plan made from the discarded
@@ -649,7 +660,7 @@ function boundedPromptLines(items, prefix, perItem, total) {
     return items.map(item => `${prefix}${compact(item)}`).join('\n').slice(0, total);
 }
 
-export function buildPromptPayload(state, { enabled = true, guidanceUsable = false, guideCandidates = null, guideIndex = 0, regeneration = false, variationCue = 0, canonConstraints = null, latestUserAction = '', sceneProfile = null, beatDirective = null } = {}) {
+export function buildPromptPayload(state, { enabled = true, guidanceUsable = false, guideCandidates = null, guideIndex = 0, regeneration = false, variationCue = 0, directorSample = null, canonConstraints = null, latestUserAction = '', sceneProfile = null, beatDirective = null } = {}) {
     if (!enabled) return '';
     const s = normalizeState(state);
     const noteLabels = { suggest: 'OPTIONAL SUGGESTION', correct: 'USER CORRECTION', establish: 'USER-ESTABLISHED CANON', forbid: 'HARD EXCLUSION' };
@@ -662,9 +673,12 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
     const notePrompt = notes
         ? `\n<tale-fairy-user-notes>\nUser directives: exclusions, corrections, and canon are binding; suggestions are optional.\n${notes}\n</tale-fairy-user-notes>`
         : '';
+    const sample = directorSample
+        ? normalizeDirectorSample(directorSample)
+        : sampleDirectorSignals(s.mode, variationCue || s.plannerSeed);
     const routePrompt = guidanceUsable
-        ? formatBeatContract(sceneProfile || s.sceneProfile, beatDirective || s.beatDirective, { regeneration })
-        : formatFreshBeatFallback({ regeneration });
+        ? formatBeatContract(sceneProfile || s.sceneProfile, beatDirective || s.beatDirective, { regeneration, directorSample: sample })
+        : formatFreshBeatFallback({ regeneration, directorSample: sample });
     const guidancePrompt = `\n<living-world-guide>\n${routePrompt}\n</living-world-guide>`;
     return `<tale-fairy-context>${notePrompt}${canonPrompt}${guidancePrompt}\n</tale-fairy-context>`;
 }

@@ -72,7 +72,7 @@ test('validation rejects missing semantic effect and invalid scale values', () =
 });
 
 test('every supported operation and simulation scope validates', () => {
-    for (const operation of ['retain', 'deepen', 'introduce', 'complicate', 'escalate', 'deescalate', 'resolve', 'transition', 'withdraw', 'stalemate', 'disrupt']) {
+    for (const operation of ['retain', 'deepen', 'introduce', 'complicate', 'escalate', 'deescalate', 'resolve', 'transition', 'withdraw', 'stalemate', 'disrupt', 'other']) {
         assert.equal(validateAnalysisResult(result({ beat: { ...result().beat, operation } })).valid, true, operation);
     }
     for (const scope of ['personal', 'social', 'institutional', 'societal', 'world']) {
@@ -80,31 +80,29 @@ test('every supported operation and simulation scope validates', () => {
     }
 });
 
-test('planner system protects quiet scenes while requiring observable current-beat effect', () => {
-    assert.match(SYSTEM, /least forceful satisfying operation/i);
-    assert.match(SYSTEM, /Quiet, hopeful, domestic, reflective, solitary, and slice-of-life/i);
-    assert.match(SYSTEM, /operation must have an observable effect/i);
-    assert.match(SYSTEM, /Genre alone never licenses conflict/i);
-    assert.match(SYSTEM, /WITHDRAW lets opposition or pressure retreat/i);
-    assert.match(SYSTEM, /STALEMATE preserves a partial or unresolved balance/i);
-    assert.match(SYSTEM, /USER-CONTROLLED PACING/);
-    assert.match(SYSTEM, /latest user\/OOC turn sets the maximum time, activity, and player progress/i);
+test('planner system calibrates bold direction to context while protecting player agency', () => {
+    assert.match(SYSTEM, /Do not confuse context awareness with timidity/i);
+    assert.match(SYSTEM, /quiet academic, domestic, professional, or social scene/i);
+    assert.match(SYSTEM, /dangerous or fantastical scene can support severe or fatal stakes/i);
+    assert.match(SYSTEM, /Scene changes, pressure shifts, reversals, discoveries/i);
+    assert.match(SYSTEM, /OTHER when none fits/i);
+    assert.match(SYSTEM, /Never invent player dialogue, thoughts, feelings, consent, decisions/i);
 });
 
-test('planner permits custom AI invention and scale-native simulation', () => {
-    assert.match(SYSTEM, /not a creativity menu/i);
-    assert.match(SYSTEM, /other idea/i);
+test('planner permits freeform AI invention and scale-native simulation', () => {
+    assert.match(SYSTEM, /not an event taxonomy/i);
+    assert.match(SYSTEM, /entirely new causal element/i);
     assert.match(SYSTEM, /life simulation/i);
     assert.match(SYSTEM, /countries, societies, and worlds/i);
     assert.match(SYSTEM, /policy effect, public response, trend, or system pressure/i);
     assert.doesNotMatch(SYSTEM, /generate six to eight.*routes|schedule future milestones|maintain event queues/i);
-    assert.ok(estimateTokenCount(`${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}`) < 1400);
+    assert.ok(estimateTokenCount(`${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}`) < 1800);
 });
 
-test('all modes alter intervention strength without weakening authority', () => {
-    assert.match(MODE_INSTRUCTIONS.light, /RETAIN or DEEPEN/);
-    assert.match(MODE_INSTRUCTIONS.balanced, /moderate observable movement/);
-    assert.match(MODE_INSTRUCTIONS.fun, /Invent boldly/);
+test('all modes alter sampled appetite without weakening authority', () => {
+    assert.match(MODE_INSTRUCTIONS.light, /subtle or grounded movement/i);
+    assert.match(MODE_INSTRUCTIONS.balanced, /meaningful movement dominate/i);
+    assert.match(MODE_INSTRUCTIONS.fun, /story-altering developments are welcome/i);
     for (const mode of Object.values(MODE_INSTRUCTIONS)) assert.doesNotMatch(mode, /control the player|force the player/i);
 });
 
@@ -117,10 +115,13 @@ test('analysis prompt carries current context, identity, variation, bootstrap, a
     assert.equal(prompt.variation_nonce, 731);
     assert.equal(prompt.bootstrap.scenario, 'A grounded school life simulation.');
     assert.equal(prompt.summary_sources[0].label, 'Continuity Memory');
-    assert.match(prompt.invention, /custom realization/i);
+    assert.match(prompt.invention, /Any context-compatible narrative development/i);
     assert.match(prompt.simulation, /country simulation/i);
-    assert.match(prompt.pacing, /ceiling, not a quota/i);
-    assert.match(prompt.pacing, /travel may reach the stated destination but does not authorize performing the next activity/i);
+    assert.match(prompt.direction_policy, /choose one coherent authorial direction/i);
+    assert.match(prompt.direction_policy, /transition the scene/i);
+    assert.match(prompt.director_sample, /WEIGHTED DIRECTOR SAMPLE/);
+    assert.match(prompt.director_sample, /creative appetite, not a menu/i);
+    assert.equal(Object.hasOwn(prompt, 'pacing'), false);
 });
 
 test('analysis prompt treats OOC and scenario authority as binding, not future suggestions', () => {

@@ -3,12 +3,12 @@
   "loading_order": 65,
   "requires": [],
   "optional": [],
-  "js": "extension/index.js?v=0.11.120",
-  "css": "extension/style.css?v=0.11.120",
+  "js": "extension/index.js?v=0.11.121",
+  "css": "extension/style.css?v=0.11.121",
   "generate_interceptor": "livingWorldGuideGenerateInterceptor",
   "author": "ScatteredLilies2020",
-  "version": "0.11.120",
+  "version": "0.11.121",
   "homePage": "https://github.com/scatteredlilies2020/Tale-Fairy",
   "auto_update": true,
-  "description": "A lightweight current-beat director that preserves user authority while adding context-native narrative movement when it fits."
+  "description": "An always-on adaptive story director with context-aware weighted movement and protected player agency."
 }

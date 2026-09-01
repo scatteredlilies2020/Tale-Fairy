@@ -1,10 +1,12 @@
-const OPERATIONS = new Set(['retain', 'deepen', 'introduce', 'complicate', 'escalate', 'deescalate', 'resolve', 'transition', 'withdraw', 'stalemate', 'disrupt']);
+import { formatDirectorSample } from './director-sampling.js?v=0.11.121';
+
+const OPERATIONS = new Set(['retain', 'deepen', 'introduce', 'complicate', 'escalate', 'deescalate', 'resolve', 'transition', 'withdraw', 'stalemate', 'disrupt', 'other']);
 const PHASES = new Set(['establishing', 'developing', 'turning', 'landing', 'aftermath', 'transition']);
 const DIRECTIONS = new Set(['preserve', 'brighten', 'darken', 'release', 'intensify']);
 const PRESSURES = new Set(['none', 'latent', 'active', 'high', 'saturated']);
 const INTRUSIONS = new Set(['closed', 'incidental', 'socially-open', 'dramatically-open', 'primed']);
 const NOVELTY = new Set(['none', 'incidental', 'context-native', 'meaningful', 'major']);
-const CONTENT = new Set(['none', 'texture', 'reaction', 'obstacle', 'conflict', 'character', 'opposition', 'event', 'opportunity', 'revelation', 'consequence']);
+const CONTENT = new Set(['none', 'texture', 'reaction', 'obstacle', 'conflict', 'character', 'opposition', 'event', 'opportunity', 'revelation', 'consequence', 'other']);
 const INTENSITY = new Set(['none', 'low', 'moderate', 'high', 'severe']);
 const QUANTITY = new Set(['none', 'singular', 'pair', 'group', 'numerous', 'swarm']);
 const POWER = new Set(['none', 'fodder', 'inferior', 'peer', 'elite', 'overwhelming', 'established']);
@@ -13,7 +15,7 @@ const DURATION = new Set(['moment', 'beat', 'scene', 'extended']);
 const CEILINGS = new Set(['none', 'local', 'partial', 'decisive', 'open']);
 const SCOPES = new Set(['personal', 'social', 'institutional', 'societal', 'world']);
 
-export const USER_PACING_BOUNDARY = 'USER-CONTROLLED PACING: The latest user/OOC turn sets the maximum time, activity, and player progress this response may cover—a ceiling, not a quota. Do not repeat or extend the user action, advance the clock or scene beyond it, begin another activity, or invent another player action. User-authorized travel may reach its stated destination but does not perform the next activity there. NPC and world developments may unfold only within this boundary.';
+export const DIRECTOR_AUTHORITY_BOUNDARY = 'DIRECTOR AUTHORITY: Explicit user/OOC instructions remain binding. Otherwise, freely deepen, advance, intensify, relieve, interrupt, resolve, redirect, or transition the scene and its world when context supports it; these are examples, not a closed taxonomy. You may invent a new compatible cause rather than waiting for an existing thread. Choose the exact event, actor, challenge, opportunity, consequence, or other realization from the complete context. Never invent the player character\'s dialogue, thoughts, feelings, decisions, consent, compliance, or reaction.';
 
 function text(value, limit = 240) { return String(value ?? '').trim().slice(0, limit); }
 function choice(value, allowed, fallback) {
@@ -73,34 +75,35 @@ function envelope(beat) {
     return parts.filter(Boolean).join('; ');
 }
 
-export function formatBeatContract(sceneValue, beatValue, { regeneration = false } = {}) {
+export function formatBeatContract(sceneValue, beatValue, { regeneration = false, directorSample = null } = {}) {
     const scene = normalizeSceneProfile(sceneValue);
     const beat = normalizeBeatDirective(beatValue);
     const lines = [
-        'TALE FAIRY — CURRENT BEAT',
+        'TALE FAIRY — ADAPTIVE DIRECTOR',
+        formatDirectorSample(directorSample),
         scene.promise ? `SCENE PROMISE: ${scene.promise}` : '',
         `SCENE READ: ${scene.phase}; ${scene.emotionalDirection}; pressure ${scene.pressure}; intrusion ${scene.intrusion}; novelty ceiling ${scene.noveltyCeiling}.`,
-        `BEAT MOVE: ${beat.operation.toUpperCase()} — ${beat.target}.`,
-        beat.requiredEffect ? `REQUIRED EFFECT: ${beat.requiredEffect}` : 'REQUIRED EFFECT: Keep the present activity and emotional promise coherent; no added incident is required.',
+        `PLANNER LEAN: ${beat.operation.toUpperCase()} — ${beat.target}.`,
+        beat.requiredEffect ? `PLANNER DIRECTION: ${beat.requiredEffect}` : 'PLANNER DIRECTION: Read the current activity and choose a fitting development.',
         `CONTENT ENVELOPE: ${envelope(beat)}.`,
         beat.preserve.length ? `PRESERVE: ${beat.preserve.join('; ')}.` : '',
         beat.forbid.length ? `DO NOT: ${beat.forbid.join('; ')}.` : '',
-        USER_PACING_BOUNDARY,
-        'Make that function observable only if it still fits the latest user/OOC/scenario authority. Freely invent a compatible context-native realization; the category is not a menu. Do not announce it, prescribe a future route, or add drama merely to show movement.',
-        'Quiet and slice-of-life beats may remain quiet; genre alone never licenses intrusion. Match any opposition to the envelope without predetermining identity or outcome. At life, institutional, country, or world scale, use natural causal units such as relationships, decisions, resources, policy effects, public reactions, or trends—not an obligatory encounter.',
-        'Latest user/OOC authority wins. Never invent player dialogue, thoughts, consent, decisions, compliance, retreat, or extra actions. Preserve canon and broad trajectory without forecasting canon events.',
-        regeneration ? 'For this regeneration, keep the semantic beat if still valid but realize it differently from the discarded response.' : '',
+        DIRECTOR_AUTHORITY_BOUNDARY,
+        'Interpret the weighted sample, planner lean, and latest scene together. Do not mechanically obey a label or default to the smallest possible change. Make one coherent narrative contribution in this response. Its form may be beneficial, adverse, mixed, ordinary, strange, intimate, institutional, political, dangerous, or transformative according to context.',
+        'Calibrate scale to the actual setting. A quiet or everyday scene can carry meaningful social, practical, emotional, academic, professional, or intriguing movement; an already dangerous scene can support severe or fatal stakes. Do not import danger merely because another genre would permit it.',
+        'Preserve established canon and information boundaries. Scene progression and transitions are allowed; player decisions remain the player\'s alone.',
+        regeneration ? 'For this regeneration, reuse this weighted sample and directorial purpose, but realize it differently from the discarded response.' : '',
     ];
     return lines.filter(Boolean).join('\n');
 }
 
-export function formatFreshBeatFallback({ regeneration = false } = {}) {
+export function formatFreshBeatFallback({ regeneration = false, directorSample = null } = {}) {
     return [
-        'TALE FAIRY — LIVE BEAT POLICY',
-        'From the latest user/OOC turn and current scene, choose the least forceful fitting move: retain, deepen, introduce, complicate, escalate, deescalate, resolve, transition, withdraw, stalemate, or disrupt. Make it observable when valid.',
-        USER_PACING_BOUNDARY,
-        'Do not manufacture conflict, newcomers, urgency, or ominous setup in a closed quiet beat. When intervention fits, freely invent a compatible context-native realization or custom idea without fixing a future route. For life, organization, country, or world simulation, use the causal unit natural to that scale.',
-        'Latest user/OOC/scenario authority wins. Never invent player dialogue, thoughts, consent, choices, compliance, retreat, or extra actions; preserve canon and broad trajectory without forecasting events.',
-        regeneration ? 'Realize a different concrete response from the discarded generation; do not escalate merely for novelty.' : '',
+        'TALE FAIRY — LIVE ADAPTIVE DIRECTOR',
+        formatDirectorSample(directorSample),
+        DIRECTOR_AUTHORITY_BOUNDARY,
+        'Read the current scene and make one context-aware narrative contribution. It may deepen what is present, create opportunity or adversity, interrupt, reveal, complicate, intensify, relieve, resolve, redirect, transform, or transition the scene—or take another fitting approach. These are examples only. Do not stagnate merely because no retained thread demands movement.',
+        'Calibrate the contribution to the setting and current stakes. Use the natural causal unit of personal life, relationships, school, work, institutions, politics, investigation, battle, fantasy, society, or the wider world. Preserve canon and information boundaries.',
+        regeneration ? 'Reuse this weighted sample and directorial purpose while producing a genuinely different realization from the discarded response.' : '',
     ].filter(Boolean).join('\n');
 }

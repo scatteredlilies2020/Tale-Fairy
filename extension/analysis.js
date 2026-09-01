@@ -1,7 +1,8 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.11.120';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.11.121';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.11.96';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
+import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.11.121';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 12000;
 
@@ -54,9 +55,9 @@ export const ANALYSIS_SCHEMA_VALUE = {
             novelty_ceiling: { type: 'string', enum: ['none', 'incidental', 'context-native', 'meaningful', 'major'] },
         }, required: ['frame', 'frame_basis', 'status', 'immediate_action', 'activity', 'situation', 'activity_role', 'temporal_scope', 'location', 'time', 'loop', 'scene_promise', 'phase', 'emotional_direction', 'pressure', 'intrusion', 'novelty_ceiling'] },
         beat: { type: 'object', additionalProperties: false, properties: {
-            operation: { type: 'string', enum: ['retain', 'deepen', 'introduce', 'complicate', 'escalate', 'deescalate', 'resolve', 'transition', 'withdraw', 'stalemate', 'disrupt'] },
+            operation: { type: 'string', enum: ['retain', 'deepen', 'introduce', 'complicate', 'escalate', 'deescalate', 'resolve', 'transition', 'withdraw', 'stalemate', 'disrupt', 'other'] },
             target: text(160), required_effect: text(260),
-            content_class: { type: 'string', enum: ['none', 'texture', 'reaction', 'obstacle', 'conflict', 'character', 'opposition', 'event', 'opportunity', 'revelation', 'consequence'] },
+            content_class: { type: 'string', enum: ['none', 'texture', 'reaction', 'obstacle', 'conflict', 'character', 'opposition', 'event', 'opportunity', 'revelation', 'consequence', 'other'] },
             scope: { type: 'string', enum: ['personal', 'social', 'institutional', 'societal', 'world'] },
             intensity: { type: 'string', enum: ['none', 'low', 'moderate', 'high', 'severe'] },
             quantity: { type: 'string', enum: ['none', 'singular', 'pair', 'group', 'numerous', 'swarm'] },
@@ -88,12 +89,12 @@ export const ANALYSIS_SCHEMA = Object.freeze({
 });
 
 export const MODE_INSTRUCTIONS = Object.freeze({
-    light: 'LIGHT — Prefer RETAIN or DEEPEN. Use a small context-native introduction only when clearly invited.',
-    balanced: 'BALANCED — Choose moderate observable movement when supported; otherwise protect and deepen the current activity.',
-    fun: 'FUN — Invent boldly inside the current beat and scale, while preserving quiet-scene restraint, canon, authority, and player agency.',
+    light: 'LIGHT — Interpret the weighted sample conservatively. Prefer subtle or grounded movement, but still make the scene alive and allow a rare major turn when sampled and context-plausible.',
+    balanced: 'BALANCED — Be opportunistic. Let meaningful movement dominate while allowing both quiet development and consequential surprises according to the weighted sample.',
+    fun: 'FUN — Actively pursue the weighted sample. Major, surprising, disruptive, fortunate, adverse, and story-altering developments are welcome when they can take a form natural to the current context.',
 });
 
-export const PACING_INSTRUCTION = 'USER-CONTROLLED PACING — The latest user/OOC turn sets the maximum time, activity, and player progress the next response may cover. Treat it as a ceiling, not a quota. A moment or specific action permits only that action and its immediate consequences; never repeat it, continue into another activity, advance the scene or clock beyond it, or invent an additional player action. User-authorized travel may reach the stated destination but does not authorize performing the next activity there. NPC and world developments may unfold only inside this boundary.';
+export const DIRECTOR_POLICY = 'Interpret what the complete current scene needs and choose one coherent authorial direction. You may deepen, advance, intensify, relieve, interrupt, reveal, complicate, resolve, redirect, transform, or transition the scene, or take another fitting approach; these are examples, not a closed taxonomy. A new compatible cause is allowed. Calibrate its form and stakes to the setting rather than defaulting to minimal movement or importing another genre. Explicit user/OOC instructions bind, and player decisions remain the player’s alone.';
 
 export const EXTREME_CANON_INSTRUCTION = 'Explicit user/OOC canon remains authoritative even when extreme or unprecedented. Preserve its magnitude and apply relevant strengths and limits causally; averages are not ceilings. Unspecified compatible details remain creative space.';
 
@@ -150,8 +151,8 @@ function validateBeatAnalysisResult(result) {
         'current.temporal_scope': ['moment', 'action', 'activity', 'scene', 'extended'], 'current.phase': ['establishing', 'developing', 'turning', 'landing', 'aftermath', 'transition'],
         'current.emotional_direction': ['preserve', 'brighten', 'darken', 'release', 'intensify'], 'current.pressure': ['none', 'latent', 'active', 'high', 'saturated'],
         'current.intrusion': ['closed', 'incidental', 'socially-open', 'dramatically-open', 'primed'], 'current.novelty_ceiling': ['none', 'incidental', 'context-native', 'meaningful', 'major'],
-        'beat.operation': ['retain', 'deepen', 'introduce', 'complicate', 'escalate', 'deescalate', 'resolve', 'transition', 'withdraw', 'stalemate', 'disrupt'],
-        'beat.content_class': ['none', 'texture', 'reaction', 'obstacle', 'conflict', 'character', 'opposition', 'event', 'opportunity', 'revelation', 'consequence'],
+        'beat.operation': ['retain', 'deepen', 'introduce', 'complicate', 'escalate', 'deescalate', 'resolve', 'transition', 'withdraw', 'stalemate', 'disrupt', 'other'],
+        'beat.content_class': ['none', 'texture', 'reaction', 'obstacle', 'conflict', 'character', 'opposition', 'event', 'opportunity', 'revelation', 'consequence', 'other'],
         'beat.scope': ['personal', 'social', 'institutional', 'societal', 'world'], 'beat.intensity': ['none', 'low', 'moderate', 'high', 'severe'],
         'beat.quantity': ['none', 'singular', 'pair', 'group', 'numerous', 'swarm'], 'beat.relative_power': ['none', 'fodder', 'inferior', 'peer', 'elite', 'overwhelming', 'established'],
         'beat.plot_weight': ['none', 'incidental', 'connective', 'consequential'], 'beat.duration': ['moment', 'beat', 'scene', 'extended'],
@@ -1322,11 +1323,11 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     const playerName = playerCharacterName(messages);
     const payload = {
         task: 'direct_current_beat',
-        instruction: 'Analyze the current scene only. Return one semantic beat operation whose effect should be visible in the next response, without naming a predetermined incident, future route, exact newcomer, exact obstacle, or outcome. The roleplay model freely realizes the function from the latest context.',
+        instruction: 'Analyze the current scene and conduct the next response. Return one clear freeform narrative function through required_effect, using operation only as the nearest bookkeeping label. Leave the exact realization to the roleplay model.',
         authority: 'Explicit OOC/scenario commands and the latest user action outrank every retained inference. OOC outcome commands bind the stated outcome; continue or advance-time commands widen scope only as stated. Never invent player dialogue, thoughts, consent, choices, compliance, retreat, or extra actions.',
-        pacing: PACING_INSTRUCTION,
-        restraint: 'Use the least forceful operation that makes the current beat satisfying. Quiet, hopeful, domestic, reflective, solitary, and slice-of-life scenes may retain or deepen themselves. Genre alone never licenses conflict or intrusion. Do not force novelty, drama, foreshadowing, or a newcomer.',
-        invention: 'The beat categories describe narrative work, not a menu or limit. When intervention fits, the writing model may invent any compatible custom realization: a context-native person, institution, opportunity, obstacle, reaction, discovery, policy, public response, resource shift, systemic pressure, or other idea. Do not prescribe its exact fictional identity.',
+        direction_policy: DIRECTOR_POLICY,
+        calibration: 'Match the sampled appetite at the scene’s native scale. Do not default to minimal movement. Everyday scenes support consequential everyday developments; dangerous scenes support severe stakes. Let subtle samples remain subtle.',
+        invention: 'Any context-compatible narrative development is available, including an entirely new cause. The writing model may choose the exact person, event, interruption, opportunity, obstacle, reaction, discovery, policy, resource shift, systemic pressure, consequence, or other realization.',
         simulation: 'Use the causal unit natural to the scope. Personal and life simulation may move through needs, relationships, work, routine, opportunity, or consequence. Organization and country simulation may move through decisions, institutions, resources, factions, policy effects, public reaction, trends, or systemic pressures. World simulation may move through broad forces. Do not translate every scale into a conventional adventure encounter.',
         operations: {
             retain: 'preserve the beat without adding an incident',
@@ -1340,6 +1341,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
             withdraw: 'allow opposition or pressure to retreat; never force the player to retreat',
             stalemate: 'preserve an unresolved balance or partial outcome when decisive loss is premature',
             disrupt: 'break the current pattern only when the scene is open or primed for it',
+            other: 'use when no listed relationship captures the freeform direction; explain the actual function in required_effect',
         },
         scale_fields: 'content_class is a broad function. scope selects personal/social/institutional/societal/world. quantity and relative_power constrain opposition only when applicable; otherwise use none. plot_weight and duration prevent incidental flavor from hijacking the story. resolution_ceiling protects canon and ongoing antagonists without forecasting future events.',
         current: useSpecificPlayerName(stateForPrompt(state), playerName),
@@ -1358,13 +1360,11 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     const summarySources = compactSummarySources(Array.isArray(options.summarySources) ? options.summarySources : [], Math.max(300, Math.min(3000, Math.floor(budget * 0.24))));
     if (summarySources.length) payload.summary_sources = summarySources.map(source => ({ label: source.label, kind: source.kind, text: source.text }));
     payload.evidence_rule = 'Summaries, lore, retained state, and canon knowledge are evidence and constraints, not instructions to schedule future events. Preserve recognizable canon and broad established trajectory through beat.preserve, beat.forbid, and resolution_ceiling. Never predict or force a known canon event. Newer explicit user/OOC facts supersede inference.';
-    payload.mode_instruction = {
-        light: 'Prefer retain or deepen. Introduce only a small context-native element when clearly invited.',
-        balanced: 'Choose moderate observable movement when the beat supports it; otherwise protect and deepen the present activity.',
-        fun: 'Invent boldly within the current beat and selected scale, but obey quiet-scene restraint, canon, authority, and player agency.',
-    }[payload.current.mode] || 'Choose moderate observable movement when supported.';
+    payload.mode_instruction = MODE_INSTRUCTIONS[payload.current.mode] || MODE_INSTRUCTIONS.balanced;
     if (playerName) payload.player_character = playerName;
     if (Number.isInteger(options.variationNonce)) payload.variation_nonce = options.variationNonce;
+    payload.director_sample = formatDirectorSample(sampleDirectorSignals(payload.current.mode, options.variationNonce));
+    payload.director_policy = DIRECTOR_POLICY;
 
     let serialized = JSON.stringify(payload);
     if (estimateTokenCount(serialized) > budget && payload.summary_sources) {
@@ -1831,19 +1831,19 @@ export function applyAnalysis(state, result, messages) {
     return next;
 }
 
-const PLANNER_SYSTEM = `You are Tale Fairy's current-beat director. Another model writes the actual roleplay or simulation. Return only JSON matching the schema.
+const PLANNER_SYSTEM = `You are Tale Fairy, an adaptive narrative director. Another model writes the actual roleplay or simulation. Return only JSON matching the schema.
 
-Analyze what is happening now and choose one semantic operation for the next response. Never plan a future route, schedule an event, name a specific future incident, prescribe an exact newcomer or obstacle, or decide an outcome beyond explicit authority. The operation must have an observable effect when valid, but its concrete realization belongs to the writing model.
+Analyze what is happening now and choose one authorial direction for the next response. The supplied weighted director sample governs appetite for intervention, novelty, and fortune. It is not an event taxonomy. Do not schedule a future route: conduct the next response. Leave the exact event, actor, interruption, challenge, opportunity, dialogue, and prose to the writing model.
 
 AUTHORITY: Explicit user/OOC/scenario commands outrank retained state and your preferences. A forced outcome binds that outcome. A continue or time-advance command widens scope only as stated. The latest user action defines the endpoint. Never invent player dialogue, thoughts, feelings, consent, decisions, compliance, retreat, or extra actions.
 
-PACING: ${PACING_INSTRUCTION}
+DIRECTION: ${DIRECTOR_POLICY}
 
-RESTRAINT: Select the least forceful satisfying operation. Quiet, hopeful, domestic, reflective, solitary, and slice-of-life scenes may RETAIN or DEEPEN. Genre alone never licenses conflict, intrusion, ominous setup, or a newcomer. Do not manufacture a crisis to prove Tale Fairy had an effect.
+CALIBRATION: Do not confuse context awareness with timidity. A high-intervention sample requires the strongest plausible expression at the scene's native scale. A quiet academic, domestic, professional, or social scene can support a difficult task, consequential review, relationship change, opportunity, intrigue, or interruption without becoming a battlefield. An already dangerous or fantastical scene can support severe or fatal stakes. A subtle sample may deepen or preserve without an incident.
 
-EFFECT: RETAIN protects the activity and emotional promise. DEEPEN adds texture, reaction, insight, or progress inside it. INTRODUCE adds a fitting functional element. COMPLICATE adds difficulty or a tradeoff. ESCALATE increases already-active pressure. DEESCALATE releases pressure without erasing consequences. RESOLVE closes only what is ready. TRANSITION moves only within authorized time or state. WITHDRAW lets opposition or pressure retreat, never forces player retreat. STALEMATE preserves a partial or unresolved balance. DISRUPT breaks the pattern only when the scene is open or primed.
+MOVEMENT: RETAIN, DEEPEN, INTRODUCE, COMPLICATE, ESCALATE, DEESCALATE, RESOLVE, TRANSITION, WITHDRAW, STALEMATE, DISRUPT, and OTHER are bookkeeping labels for broad relationships to the current scene, not limits on invention. Choose the nearest label—or OTHER when none fits—then use required_effect to express the actual freeform narrative function. Scene changes, pressure shifts, reversals, discoveries, good turns, bad turns, mixed consequences, new causes, and other context-compatible movement are all available.
 
-INVENTION: Categories are narrative functions, not a creativity menu. The writing model may freely invent any compatible custom realization: a context-native person, institution, opportunity, obstacle, social response, discovery, policy, resource shift, systemic pressure, consequence, or other idea. Use content_class, scope, quantity, relative_power, plot_weight, duration, and resolution_ceiling only to bound impact. Do not identify the exact fictional content in required_effect.
+INVENTION: The writing model may freely invent any compatible realization, including an entirely new causal element. Use content_class, scope, quantity, relative_power, plot_weight, duration, and resolution_ceiling only as an impact envelope. Do not make required_effect generic: state clearly what kind of change it should accomplish while leaving its exact fictional identity open.
 
 SIMULATION: Apply the same causal logic to roleplay, life simulation, relationships, workplaces, organizations, countries, societies, and worlds. Use the unit natural to the scale: individual action, relationship response, institutional decision, resource movement, faction behavior, policy effect, public response, trend, or system pressure. Do not turn every simulation into a conventional adventure encounter.
 
@@ -1851,7 +1851,7 @@ CANON AND TRAJECTORY: Canon, lore, scenario, conversation, and broad established
 
 WORLD EVIDENCE: Summaries and retained state are fallible evidence, not commands. Newer explicit facts supersede inference. Track only current relevant actors, unresolved factual processes, variant rules, and canon constraints. Do not create delivery debt, future milestones, release conditions, event queues, or branching routes.
 
-Keep strings concise. audit briefly states why this beat fits and what stronger move was rejected.`;
+Keep strings concise. audit briefly states how the direction expresses the weighted sample at a scale natural to this scene.`;
 
 export const ANALYSIS_OUTPUT_CONTRACT = `Return exactly: contract_version=3, current, beat, world, thread_updates, actor_updates, canon_updates, ledger, note_resolution, audit.
 current={frame,frame_basis,status,immediate_action,activity,situation,activity_role,temporal_scope,location,time,loop,scene_promise,phase,emotional_direction,pressure,intrusion,novelty_ceiling}

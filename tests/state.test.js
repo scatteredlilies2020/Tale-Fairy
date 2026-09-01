@@ -78,11 +78,11 @@ test('planner prompt state excludes obsolete future machinery', () => {
     for (const key of ['objectives', 'possibilities', 'pathways', 'nextGuides', 'planHorizons', 'narrativeEvents', 'authorBoard', 'conductor']) assert.equal(Object.hasOwn(compact, key), false, key);
 });
 
-test('alignment and analyzed guidance require an exact current snapshot', () => {
+test('analyzed guidance remains usable for the immediately appended user action', () => {
     const state = analyzedState();
     assert.equal(isStateAligned(state, messages, 'chat-a'), true);
     assert.equal(isGuidanceUsable(state, messages, 'chat-a'), true);
-    assert.equal(isGuidanceUsable(state, [...messages, { is_user: true, mes: 'Actually, I leave.' }], 'chat-a'), false);
+    assert.equal(isGuidanceUsable(state, [...messages, { is_user: true, mes: 'Actually, I leave.' }], 'chat-a'), true);
     assert.equal(isGuidanceUsable(state, messages, 'chat-b'), false);
     assert.equal(isGuidanceUsable({ ...state, lastInject: false }, messages, 'chat-a'), false);
 });
@@ -97,49 +97,51 @@ test('stale analysis fails closed while one explicitly allowed append remains de
 
 test('analyzed beat injection is semantic, effective, and leaves concrete realization free', () => {
     const payload = buildPromptPayload(analyzedState(), { guidanceUsable: true });
-    assert.match(payload, /BEAT MOVE: INTRODUCE — the service interaction/);
-    assert.match(payload, /REQUIRED EFFECT: Let one context-native person respond/);
+    assert.match(payload, /TALE FAIRY — ADAPTIVE DIRECTOR/);
+    assert.match(payload, /WEIGHTED DIRECTOR SAMPLE/);
+    assert.match(payload, /PLANNER LEAN: INTRODUCE — the service interaction/);
+    assert.match(payload, /PLANNER DIRECTION: Let one context-native person respond/);
     assert.match(payload, /CONTENT ENVELOPE: character; social scope; low intensity; singular/);
-    assert.match(payload, /Freely invent a compatible context-native realization/i);
+    assert.match(payload, /exact event, actor, challenge, opportunity, consequence, or other realization/i);
     assert.doesNotMatch(payload, /cashier|server|waitress|named/iu);
     assert.doesNotMatch(payload, /SUGGESTED ROUTE|future horizon|delivery debt/i);
 });
 
-test('quiet scenes are explicitly allowed to remain quiet even in action genres', () => {
-    const payload = formatFreshBeatFallback();
-    assert.match(payload, /Do not manufacture conflict, newcomers, urgency, or ominous setup in a closed quiet beat/);
-    assert.match(payload, /least forceful fitting move/);
-    assert.match(payload, /retain, deepen/);
+test('quiet scenes receive scale-native movement instead of mandatory conflict or stagnation', () => {
+    const payload = formatFreshBeatFallback({ directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' } });
+    assert.match(payload, /story-altering development/i);
+    assert.match(payload, /Calibrate the contribution to the setting and current stakes/i);
+    assert.match(payload, /Do not stagnate merely because no retained thread demands movement/i);
 });
 
-test('fallback keeps AI invention open and supports life and country simulations', () => {
+test('fallback keeps AI invention open across context-native scene scales', () => {
     const payload = formatFreshBeatFallback();
-    assert.match(payload, /custom idea/);
-    assert.match(payload, /life, organization, country, or world simulation/);
-    assert.match(payload, /causal unit natural to that scale/);
+    assert.match(payload, /take another fitting approach/i);
+    assert.match(payload, /personal life, relationships, school, work, institutions, politics/i);
+    assert.match(payload, /new compatible cause/i);
 });
 
-test('OOC outcome, continue, and advance-time authority override any beat', () => {
+test('director may move the scene while OOC authority and player decisions remain protected', () => {
     const payload = formatBeatContract(analyzedState().sceneProfile, analyzedState().beatDirective);
-    assert.match(payload, /Latest user\/OOC authority wins/);
-    assert.match(payload, /Never invent player dialogue, thoughts, consent, decisions, compliance, retreat, or extra actions/);
-    assert.match(payload, /preserve canon and broad trajectory without forecasting canon events/i);
-    assert.match(payload, /USER-CONTROLLED PACING/);
-    assert.match(payload, /ceiling, not a quota/i);
-    assert.match(payload, /User-authorized travel may reach its stated destination/);
+    assert.match(payload, /Explicit user\/OOC instructions remain binding/);
+    assert.match(payload, /Never invent the player character's dialogue, thoughts, feelings, decisions, consent, compliance, or reaction/);
+    assert.match(payload, /Scene progression and transitions are allowed/i);
+    assert.match(payload, /player decisions remain the player's alone/i);
+    assert.doesNotMatch(payload, /USER-CONTROLLED PACING|ceiling, not a quota/i);
 });
 
 test('regeneration reuses semantic function but demands a different realization', () => {
     const payload = buildPromptPayload(analyzedState(), { guidanceUsable: true, regeneration: true });
-    assert.match(payload, /keep the semantic beat if still valid/i);
+    assert.match(payload, /reuse this weighted sample and directorial purpose/i);
     assert.match(payload, /realize it differently from the discarded response/i);
     assert.doesNotMatch(payload, /Alternative 2|rotate|next route/i);
 });
 
 test('missing or stale planner state injects a lightweight live policy instead of blocking generation', () => {
     const payload = buildPromptPayload(defaultState(), { guidanceUsable: false });
-    assert.match(payload, /TALE FAIRY — LIVE BEAT POLICY/);
-    assert.ok(payload.length < 1400, payload.length);
+    assert.match(payload, /TALE FAIRY — LIVE ADAPTIVE DIRECTOR/);
+    assert.match(payload, /WEIGHTED DIRECTOR SAMPLE/);
+    assert.ok(payload.length < 3500, payload.length);
 });
 
 test('disabled injection is empty', () => {
@@ -186,6 +188,18 @@ test('request verification confirms only the matching chat and returned assistan
     assert.equal(returnedReplyMatchesVerification(pending, [...messages, { is_user: false, mes: 'Reply' }], 'chat-a'), true);
     assert.equal(returnedReplyMatchesVerification(pending, [...messages, { is_user: true, mes: 'More' }], 'chat-a'), false);
     assert.equal(returnedReplyMatchesVerification(pending, [...messages, { is_user: false, mes: 'Reply' }], 'chat-b'), false);
+});
+
+test('request verification preserves a weighted director sample without fabricating one for legacy records', () => {
+    const legacy = normalizeState({ lastRequestVerification: { status: 'confirmed', guidanceBlock: '<living-world-guide>old</living-world-guide>' } });
+    assert.equal(legacy.lastRequestVerification.directorSample, null);
+    assert.equal(legacy.lastRequestVerification.directorSeed, null);
+    const current = normalizeState({ lastRequestVerification: {
+        status: 'confirmed', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
+        directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' },
+    } });
+    assert.deepEqual(current.lastRequestVerification.directorSample, { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' });
+    assert.equal(current.lastRequestVerification.directorSeed, 0);
 });
 
 test('planner completion resets only the lightweight refresh schedule', () => {
