@@ -123,6 +123,46 @@ test('streaming planner keeps the request alive and returns only final content, 
     assert.match(downstream.headers['Content-Type'], /^application\/json/);
 });
 
+test('streaming planner recovers final content from a Responses API completion wrapper', async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+        start(controller) {
+            controller.enqueue(encoder.encode('data: {"type":"response.completed","response":{"status":"completed","output":[{"type":"reasoning","summary":[{"text":"hidden thought"}]},{"type":"message","content":[{"type":"output_text","text":"{\\"contract_version\\":2}"}]}]}}\n\n'));
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+            controller.close();
+        },
+    });
+    const router = routerMock();
+    await init(router, { fetchImpl: async () => new Response(stream, { status: 200 }) });
+    const downstream = responseMock();
+    await router.routes.get('POST /planner-jobs/generate')(request(plannerBody('responses-wrapper')), downstream);
+
+    assert.equal(downstream.statusCode, 200);
+    const payload = JSON.parse(Buffer.from(downstream.value).toString('utf8'));
+    assert.equal(payload.choices[0].message.content, '{"contract_version":2}');
+    assert.equal(Buffer.from(downstream.value).includes(Buffer.from('hidden thought')), false);
+});
+
+test('reasoning-only planner stream fails once without leaking hidden reasoning', async () => {
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream({
+        start(controller) {
+            controller.enqueue(encoder.encode('data: {"choices":[{"delta":{"reasoning_content":"private chain"}}]}\n\n'));
+            controller.enqueue(encoder.encode('data: {"choices":[{"finish_reason":"length"}]}\n\n'));
+            controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+            controller.close();
+        },
+    });
+    const router = routerMock();
+    await init(router, { fetchImpl: async () => new Response(stream, { status: 200 }) });
+    const downstream = responseMock();
+    await router.routes.get('POST /planner-jobs/generate')(request(plannerBody('reasoning-only')), downstream);
+
+    assert.equal(downstream.statusCode, 500);
+    assert.equal(downstream.payload.error, 'Planner exhausted its output budget before producing final content.');
+    assert.equal(JSON.stringify(downstream.payload).includes('private chain'), false);
+});
+
 test('jobs are private to the current SillyTavern user', async () => {
     const router = routerMock();
     await init(router, { fetchImpl: async () => new Response('{"choices":[{"message":{"content":"ok"}}]}') });

@@ -1,5 +1,6 @@
 const PERMANENT_ERROR = /(?:not configured|not selected|invalid api key|unauthori[sz]ed|forbidden|authentication|permission denied|\b(?:400|401|403|404|422)\b)/iu;
 const TIMEOUT_ERROR = /(?:timed?\s*out|timeout)/iu;
+const EMPTY_COMPLETION_ERROR = /(?:completed without (?:a recoverable response|final content)|stream produced reasoning but completed without final content|exhausted its output budget before producing final content)/iu;
 
 export function isPlannerTimeoutError(error) {
     let current = error;
@@ -13,7 +14,7 @@ export function isPlannerTimeoutError(error) {
 export function shouldRetryPlannerError(error, locallyAborted = false) {
     if (locallyAborted || error?.name === 'AnalysisValidationError' || error?.name === 'PlannerBusyInAnotherTabError' || isPlannerTimeoutError(error)) return false;
     const message = String(error?.message || error || '');
-    return !PERMANENT_ERROR.test(message);
+    return !PERMANENT_ERROR.test(message) && !EMPTY_COMPLETION_ERROR.test(message);
 }
 
 export function plannerRetryDelay(attempt, { baseMs = 2000, maxMs = 60000 } = {}) {

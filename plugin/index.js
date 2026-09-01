@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 
 const PLUGIN = 'tale-fairy';
-const VERSION = '0.11.138';
+const VERSION = '0.11.139';
 const jobs = new Map();
 const MAX_FINISHED_JOBS = 40;
 const MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
@@ -54,32 +54,82 @@ function internalBackend(req, requestedPath) {
     return { url: `http://127.0.0.1:${port}${backendPath}`, headers };
 }
 
-function contentText(value) {
+function isRecord(value) {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isReasoningBlock(value) {
+    const type = String(value?.type || '').toLowerCase();
+    return type.includes('reasoning') || type.includes('thinking');
+}
+
+function finalBlockText(value) {
     if (typeof value === 'string') return value;
-    if (!Array.isArray(value)) return '';
-    return value.map(item => typeof item === 'string' ? item : item?.text || item?.content || '').join('');
+    if (Array.isArray(value)) return value.map(finalBlockText).filter(Boolean).join('');
+    if (!isRecord(value) || isReasoningBlock(value)) return '';
+    if (typeof value.text === 'string') return value.text;
+    if (typeof value.text?.value === 'string') return value.text.value;
+    if (typeof value.output_text === 'string') return value.output_text;
+    if (value.contract_version === 2 || value.scene) return JSON.stringify(value);
+    if (value.content !== undefined) return finalBlockText(value.content);
+    return '';
+}
+
+function addCandidate(candidates, value) {
+    const text = finalBlockText(value);
+    if (text.trim()) candidates.push(text);
 }
 
 function completionText(payload) {
-    const choice = payload?.choices?.[0];
-    const direct = contentText(choice?.message?.content) || contentText(choice?.text);
-    if (direct) return direct.trim();
-    const parts = payload?.candidates?.[0]?.content?.parts;
-    if (Array.isArray(parts)) {
-        const text = parts.filter(part => !part?.thought).map(part => part?.text || '').join('');
-        if (text.trim()) return text.trim();
+    if (typeof payload === 'string') return payload;
+    const roots = [];
+    const seen = new Set();
+    const queue = [payload];
+    while (queue.length && roots.length < 8) {
+        const root = queue.shift();
+        if (!isRecord(root) || seen.has(root)) continue;
+        seen.add(root);
+        roots.push(root);
+        for (const key of ['data', 'response', 'result']) {
+            if (isRecord(root[key])) queue.push(root[key]);
+        }
     }
-    const resultText = payload?.results?.[0]?.text ?? payload?.data?.[0]?.text;
-    if (typeof resultText === 'string' && resultText.trim()) return resultText.trim();
-    if (typeof payload?.text === 'string' && payload.text.trim()) return payload.text.trim();
-    return '';
+
+    const candidates = [];
+    for (const root of roots) {
+        for (const choice of Array.isArray(root.choices) ? root.choices : []) {
+            const message = choice?.message;
+            addCandidate(candidates, message?.content);
+            for (const call of Array.isArray(message?.tool_calls) ? message.tool_calls : []) {
+                addCandidate(candidates, call?.function?.arguments);
+            }
+            addCandidate(candidates, message?.function_call?.arguments);
+            addCandidate(candidates, choice?.text);
+        }
+        for (const candidate of Array.isArray(root.candidates) ? root.candidates : []) {
+            const parts = candidate?.content?.parts;
+            if (Array.isArray(parts)) addCandidate(candidates, parts.filter(part => !part?.thought));
+        }
+        addCandidate(candidates, root.output_text);
+        for (const item of Array.isArray(root.output) ? root.output : []) {
+            if (isReasoningBlock(item)) continue;
+            addCandidate(candidates, item?.content);
+            addCandidate(candidates, item?.text);
+        }
+        addCandidate(candidates, root.message?.content);
+        addCandidate(candidates, root.content);
+        addCandidate(candidates, root.text);
+        for (const result of Array.isArray(root.results) ? root.results : []) addCandidate(candidates, result?.text);
+        if (root.contract_version === 2 || root.scene) addCandidate(candidates, root);
+    }
+    return candidates[0]?.trim() || '';
 }
 
 function streamCompletionText(payload) {
     const choice = payload?.choices?.[0];
-    const choiceText = contentText(choice?.delta?.content)
-        || contentText(choice?.message?.content)
-        || contentText(choice?.text);
+    const choiceText = finalBlockText(choice?.delta?.content)
+        || finalBlockText(choice?.message?.content)
+        || finalBlockText(choice?.text);
     if (choiceText) return choiceText;
     if (payload?.type === 'response.output_text.delta' && typeof payload.delta === 'string') return payload.delta;
     const parts = payload?.candidates?.[0]?.content?.parts;
@@ -99,6 +149,8 @@ async function readEventStream(upstream, job, touchTimeout) {
     let output = '';
     let fallbackRaw = '';
     let sawEventData = false;
+    let sawReasoning = false;
+    let exhaustedOutputBudget = false;
     let totalBytes = 0;
 
     const consume = (event) => {
@@ -114,7 +166,17 @@ async function readEventStream(upstream, job, touchTimeout) {
         try { payload = JSON.parse(data); }
         catch { return; }
         if (payload?.error) throw new Error(payload.error?.message || String(payload.error));
-        output += streamCompletionText(payload);
+        const choice = payload?.choices?.[0];
+        const finishReason = String(choice?.finish_reason || payload?.finish_reason || '').toLowerCase();
+        const incompleteReason = String(payload?.incomplete_details?.reason || payload?.response?.incomplete_details?.reason || '').toLowerCase();
+        sawReasoning ||= Boolean(choice?.delta?.reasoning_content || choice?.delta?.reasoning)
+            || isReasoningBlock(payload)
+            || (Array.isArray(payload?.response?.output) && payload.response.output.some(isReasoningBlock));
+        exhaustedOutputBudget ||= ['length', 'max_tokens', 'max_output_tokens'].includes(finishReason)
+            || /(?:max.*(?:token|output)|token.*limit)/u.test(incompleteReason);
+        const fragment = streamCompletionText(payload);
+        if (fragment) output += fragment;
+        else if (!output && /(?:completed|done)$/iu.test(String(payload?.type || ''))) output = completionText(payload);
     };
 
     for await (const chunk of upstream.body) {
@@ -136,7 +198,7 @@ async function readEventStream(upstream, job, touchTimeout) {
     if (!sawEventData) fallbackRaw += finalDecoded;
     pending += finalDecoded;
     if (pending.trim()) consume(pending);
-    return { text: output.trim(), fallbackRaw: sawEventData ? '' : fallbackRaw };
+    return { text: output.trim(), fallbackRaw: sawEventData ? '' : fallbackRaw, sawReasoning, exhaustedOutputBudget };
 }
 
 function trimJobs() {
@@ -180,7 +242,9 @@ async function run(job, res) {
                 job.text = completionText(payload);
                 responseBytes = Buffer.from(streamed.fallbackRaw);
             }
-            if (!job.text) throw new Error('Planner stream completed without a recoverable response.');
+            if (!job.text && streamed.exhaustedOutputBudget) throw new Error('Planner exhausted its output budget before producing final content.');
+            if (!job.text && streamed.sawReasoning) throw new Error('Planner stream produced reasoning but completed without final content.');
+            if (!job.text) throw new Error('Planner stream completed without final content.');
             job.status = 'complete';
             const bytes = responseBytes || jsonCompletionResponse(job.text);
             if (!res.destroyed && !res.headersSent) {
@@ -202,7 +266,7 @@ async function run(job, res) {
         catch { throw new Error('Planner backend returned a non-JSON response.'); }
         if (payload?.error) throw new Error(payload.error?.message || payload.error);
         job.text = completionText(payload);
-        if (!job.text) throw new Error('Planner completed without a recoverable response.');
+        if (!job.text) throw new Error('Planner completed without final content.');
         job.status = 'complete';
         if (!res.destroyed && !res.headersSent) {
             res.status(upstream.status);

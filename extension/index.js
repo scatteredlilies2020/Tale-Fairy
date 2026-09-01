@@ -4,25 +4,25 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.138';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.138';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.139';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.139';
 import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.11.101';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.138';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.138';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.138';
-import { normalizeModelListResponse } from './models.js?v=0.11.138';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.139';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.139';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.139';
+import { normalizeModelListResponse } from './models.js?v=0.11.139';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.108';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.138';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.138';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.138';
-import { estimateTokenCount } from './token-budget.js?v=0.11.138';
-import { completionText } from './completion-response.js?v=0.11.138';
-import { sampleDirectorSignals } from './director-sampling.js?v=0.11.138';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.139';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.139';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.139';
+import { estimateTokenCount } from './token-budget.js?v=0.11.139';
+import { completionText } from './completion-response.js?v=0.11.139';
+import { sampleDirectorSignals } from './director-sampling.js?v=0.11.139';
 import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.11.105';
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.138';
+const RUNTIME_VERSION = '0.11.139';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -62,7 +62,7 @@ let detachedPlannerEnabled = false;
 let detachedPlannerRecovering = false;
 // Reasoning providers may count hidden thinking against this ceiling. The
 // planner prompt and schema separately target a concise visible JSON result.
-const PLANNER_RESPONSE_TOKENS = 4096;
+const PLANNER_RESPONSE_TOKENS = 16384;
 const PLANNER_MAX_AUTO_RETRIES = 2;
 const UI_MOUNT_TIMEOUT_MS = 30000;
 const LEGACY_UPGRADE_MAX_ATTEMPTS = 1;

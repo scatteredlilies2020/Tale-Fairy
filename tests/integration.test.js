@@ -13,21 +13,21 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest and detached plugin identify the adaptive-director release', () => {
-    assert.equal(manifest.version, '0.11.138');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.138');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.138');
+    assert.equal(manifest.version, '0.11.139');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.139');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.139');
     assert.match(manifest.description, /always-on adaptive story director/i);
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.11\.138'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.11\.138'/);
+    assert.match(pluginSource, /const VERSION = '0\.11\.139'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.11\.139'/);
 });
 
-test('extension loads v138 adaptive-director modules', () => {
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.138'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.138'/);
-    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.138'/);
-    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.138'/);
-    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.138'/);
+test('extension loads v139 adaptive-director modules', () => {
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.139'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.139'/);
+    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.139'/);
+    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.139'/);
+    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.139'/);
 });
 
 test('long-form defaults reserve room for current turns, summaries, and thinking', () => {
@@ -149,7 +149,7 @@ test('roleplay injection exposes analyzed semantic direction, never private plan
 });
 
 test('planner output is lightweight while retaining structured-output negotiation', () => {
-    assert.match(source, /const PLANNER_RESPONSE_TOKENS = 4096/);
+    assert.match(source, /const PLANNER_RESPONSE_TOKENS = 16384/);
     assert.match(source, /mode === PLANNER_OUTPUT_MODE\.JSON_SCHEMA \? \{ json_schema: ANALYSIS_SCHEMA \} : \{\}/);
     assert.match(source, /plannerMessages\(PLANNER_SYSTEM_PROMPT, prompt, ANALYSIS_SCHEMA, mode\)/);
     assert.match(source, /PLANNER_MAX_AUTO_RETRIES = 2/);

@@ -28,4 +28,7 @@ test('permanent setup, authentication, and validation errors do not loop', () =>
     assert.equal(shouldRetryPlannerError(new Error('Analysis request failed (401).')), false);
     assert.equal(shouldRetryPlannerError(Object.assign(new Error('Invalid planner JSON'), { name: 'AnalysisValidationError' })), false);
     assert.equal(shouldRetryPlannerError(Object.assign(new Error('Planner already active'), { name: 'PlannerBusyInAnotherTabError' })), false);
+    assert.equal(shouldRetryPlannerError(new Error('Planner stream completed without final content.')), false);
+    assert.equal(shouldRetryPlannerError(new Error('Planner stream produced reasoning but completed without final content.')), false);
+    assert.equal(shouldRetryPlannerError(new Error('Planner exhausted its output budget before producing final content.')), false);
 });

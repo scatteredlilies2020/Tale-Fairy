@@ -240,11 +240,11 @@ test('request verification preserves a weighted director sample without fabricat
     assert.equal(legacy.lastRequestVerification.directorSample, null);
     assert.equal(legacy.lastRequestVerification.directorSeed, null);
     const current = normalizeState({ lastRequestVerification: {
-        status: 'confirmed', runtimeVersion: '0.11.138', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
+        status: 'confirmed', runtimeVersion: '0.11.139', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
         directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' },
     } });
     assert.deepEqual(current.lastRequestVerification.directorSample, { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' });
-    assert.equal(current.lastRequestVerification.runtimeVersion, '0.11.138');
+    assert.equal(current.lastRequestVerification.runtimeVersion, '0.11.139');
     assert.equal(current.lastRequestVerification.directorSeed, 0);
 });
 
