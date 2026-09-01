@@ -13,21 +13,21 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest and detached plugin identify the adaptive-director release', () => {
-    assert.equal(manifest.version, '0.11.142');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.142');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.142');
+    assert.equal(manifest.version, '0.11.143');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.143');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.143');
     assert.match(manifest.description, /always-on adaptive story director/i);
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.11\.142'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.11\.142'/);
+    assert.match(pluginSource, /const VERSION = '0\.11\.143'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.11\.143'/);
 });
 
-test('extension loads v142 adaptive-director modules', () => {
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.142'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.142'/);
-    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.142'/);
-    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.142'/);
-    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.142'/);
+test('extension loads v143 adaptive-director modules', () => {
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.143'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.143'/);
+    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.143'/);
+    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.143'/);
+    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.143'/);
 });
 
 test('long-form defaults reserve room for current turns, summaries, and thinking', () => {
@@ -80,12 +80,12 @@ test('depth one is the default and injection proof cannot block roleplay generat
     assert.match(source, /INCLUDED — exact context verified in the outbound request/);
 });
 
-test('obsolete pacing selector and pacing ceiling are absent while player agency is protected', () => {
+test('obsolete pacing selector and static provider boilerplate are absent', () => {
     assert.doesNotMatch(template, /data-setting="pacing"|Scene pacing/);
     assert.doesNotMatch(source, /updatePacing|data-setting="pacing"/);
     assert.doesNotMatch(directorSource, /USER-CONTROLLED PACING|maximum time, activity, and player progress/i);
-    assert.match(directorSource, /Use the analyzed beat only to control narrative movement, scale, and impact/i);
-    assert.match(directorSource, /Never invent the player character/i);
+    assert.doesNotMatch(directorSource, /Use the analyzed beat only|Never invent the player character/i);
+    assert.match(analysisSource, /Never invent player dialogue, thoughts, feelings, consent, decisions/i);
 });
 
 test('adaptive analysis uses freeform direction rather than an event taxonomy', () => {
@@ -130,12 +130,12 @@ test('replacement generation archives semantic direction and the exact weighted 
     assert.match(source, /generationRetrySource\(currentMessages, true\)/);
     assert.match(source, /Preparing exact regeneration direction/);
     assert.match(source, /allowOneAssistantAppend: currentMessages\.length === sourceMessages\.length \+ 1/);
-    assert.match(directorSource, /retain only these broad flow and safety bounds while choosing a genuinely different context-compatible development/i);
+    assert.doesNotMatch(directorSource, /For this regeneration|different realization|context-compatible development/i);
     assert.doesNotMatch(source, /\(previousIndex \+ 1\) % candidates\.length/);
 });
 
 test('rapid-fire turns consume guidance once and coalesce planner catch-up', () => {
-    assert.match(directorSource, /NARRATIVE FLOW ONLY/);
+    assert.doesNotMatch(directorSource, /NARRATIVE FLOW ONLY/);
     assert.match(schedulerSource, /replacement response reuses the archived semantic beat and never spends a planner call/i);
     assert.match(source, /function queueLatestAnalysis/);
     assert.match(source, /Planner active · latest turn queued/);
@@ -154,6 +154,7 @@ test('roleplay injection exposes broad beat bounds, never private planner intent
     assert.match(directorSource, /beat\.preserve/);
     assert.match(directorSource, /beat\.forbid/);
     assert.doesNotMatch(directorSource, /beat\.basis|scene\.basis/);
+    assert.doesNotMatch(directorSource, /Treat explicit user\/OOC|Infer every concrete action|Do not expose/i);
     assert.match(source, /runtimeVersion: RUNTIME_VERSION/);
     assert.match(source, /item\?\.runtimeVersion === RUNTIME_VERSION/);
 });

@@ -116,12 +116,11 @@ test('analyzed injection exposes only broad flow and safety bounds', () => {
         guidanceUsable: true,
         directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'favorable' },
     });
-    assert.match(payload, /NARRATIVE FLOW ONLY/);
     assert.match(payload, /ANALYZED BEAT: movement=introduce; content=character; scope=social; intensity=low/);
     assert.match(payload, /PRESERVE: ordinary canteen tone/);
     assert.match(payload, /DO NOT: unrelated danger/);
     assert.doesNotMatch(payload, /Let the routine interaction|the service interaction|A grounded canteen interaction/);
-    assert.match(payload, /Infer every concrete action, event, and detail from the provider context/i);
+    assert.doesNotMatch(payload, /Infer every concrete action|Treat explicit user\/OOC|Do not expose/i);
     assert.doesNotMatch(payload, /boldly or consequentially|unexpected but compatible|lean toward opportunity/i);
     assert.doesNotMatch(payload, /SUGGESTED ROUTE|future horizon|delivery debt/i);
 });
@@ -162,20 +161,17 @@ test('analyzed beat keeps AI invention open across context-native scene scales',
     const payload = formatBeatContract({}, { operation: 'introduce', requiredEffect: 'Introduce a compatible development grounded in the present setting.' });
     assert.match(payload, /ANALYZED BEAT: movement=introduce/);
     assert.doesNotMatch(payload, /Introduce a compatible development grounded in the present setting/);
-    assert.match(payload, /Infer every concrete action, event, and detail/i);
+    assert.equal(payload.split('\n').length, 1);
 });
 
-test('director may move the scene while OOC authority and player decisions remain protected', () => {
+test('provider contract contains no static authority boilerplate', () => {
     const payload = formatBeatContract(analyzedState().sceneProfile, analyzedState().beatDirective);
-    assert.match(payload, /explicit user\/OOC instructions and established canon.*binding/i);
-    assert.match(payload, /Never invent the player character's dialogue, thoughts, feelings, decisions, consent, compliance, or reaction/);
-    assert.match(payload, /Use the analyzed beat only to control narrative movement, scale, and impact/i);
-    assert.doesNotMatch(payload, /USER-CONTROLLED PACING|ceiling, not a quota/i);
+    assert.doesNotMatch(payload, /explicit user\/OOC|Never invent the player character|Use the analyzed beat|Do not expose/i);
 });
 
-test('regeneration reuses broad flow without preserving a specific planned event', () => {
+test('regeneration reuses the same compact beat without generic regeneration instructions', () => {
     const payload = buildPromptPayload(analyzedState(), { guidanceUsable: true, regeneration: true });
-    assert.match(payload, /retain only these broad flow and safety bounds while choosing a genuinely different context-compatible development/i);
+    assert.doesNotMatch(payload, /For this regeneration|different realization|context-compatible development/i);
     assert.doesNotMatch(payload, /Let the routine interaction produce/);
     assert.doesNotMatch(payload, /Alternative 2|rotate|next route/i);
 });
@@ -254,11 +250,11 @@ test('request verification preserves a weighted director sample without fabricat
     assert.equal(legacy.lastRequestVerification.directorSample, null);
     assert.equal(legacy.lastRequestVerification.directorSeed, null);
     const current = normalizeState({ lastRequestVerification: {
-        status: 'confirmed', runtimeVersion: '0.11.142', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
+        status: 'confirmed', runtimeVersion: '0.11.143', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
         directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' },
     } });
     assert.deepEqual(current.lastRequestVerification.directorSample, { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' });
-    assert.equal(current.lastRequestVerification.runtimeVersion, '0.11.142');
+    assert.equal(current.lastRequestVerification.runtimeVersion, '0.11.143');
     assert.equal(current.lastRequestVerification.directorSeed, 0);
 });
 
