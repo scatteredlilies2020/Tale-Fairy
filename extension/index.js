@@ -4,25 +4,25 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.128';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.128';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.129';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.129';
 import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.11.101';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.128';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.128';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.128';
-import { normalizeModelListResponse } from './models.js?v=0.11.128';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.129';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.129';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.129';
+import { normalizeModelListResponse } from './models.js?v=0.11.129';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.108';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.128';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.128';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.128';
-import { estimateTokenCount } from './token-budget.js?v=0.11.128';
-import { completionText } from './completion-response.js?v=0.11.128';
-import { sampleDirectorSignals } from './director-sampling.js?v=0.11.128';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.129';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.129';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.129';
+import { estimateTokenCount } from './token-budget.js?v=0.11.129';
+import { completionText } from './completion-response.js?v=0.11.129';
+import { sampleDirectorSignals } from './director-sampling.js?v=0.11.129';
 import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.11.105';
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.128';
+const RUNTIME_VERSION = '0.11.129';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -30,6 +30,7 @@ const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/kobold/generate',
     '/api/backends/koboldhorde/generate',
 ]);
+const ROLEPLAY_GENERATION_TYPES = new Set(['normal', 'regenerate', 'swipe', 'continue', 'impersonate']);
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -245,9 +246,32 @@ function installDetachedPlannerTransport() {
         catch { return plannerNativeFetch(input, init); }
         const meta = request?._taleFairyPlanner;
         if (!meta || typeof meta !== 'object') {
-            // Dispatch first. Verification is a passive observation and can
-            // never delay, rewrite, reject, or otherwise control roleplay.
-            const response = plannerNativeFetch(input, init);
+            let outboundInit = init;
+            try {
+                const context = currentContext();
+                const chatId = String(context.getCurrentChatId?.() || '');
+                const roleplayRequest = request?.type !== 'quiet' && (
+                    ROLEPLAY_GENERATION_TYPES.has(request?.type)
+                    || generationGuideSelection?.chatId === chatId
+                );
+                if (roleplayRequest && getSettings().enabled && !containsPlannerMarker(request)) {
+                    const payload = currentGuidancePayload();
+                    if (Array.isArray(request.messages)) {
+                        ensureGuidanceInChat(request.messages, payload, requestInjectionOptions());
+                    } else if (typeof request.prompt === 'string') {
+                        request.prompt = ensureGuidanceInText(request.prompt, payload);
+                    }
+                    if (extractTaleFairyContext(request)) {
+                        outboundInit = { ...init, body: JSON.stringify(request) };
+                    }
+                }
+            } catch (error) {
+                reportNonBlockingInjectionFailure('Tale Fairy could not repair the final outbound payload', error);
+            }
+
+            // No Tale Fairy work is awaited and no verification failure can
+            // reject the provider request.
+            const response = plannerNativeFetch(input, outboundInit);
             recordRuntimeStage('network-dispatched', { generationType: String(request?.type || '') });
             queueMicrotask(() => {
                 try {

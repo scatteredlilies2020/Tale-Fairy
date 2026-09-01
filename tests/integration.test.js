@@ -13,21 +13,21 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest and detached plugin identify the adaptive-director release', () => {
-    assert.equal(manifest.version, '0.11.128');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.128');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.128');
+    assert.equal(manifest.version, '0.11.129');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.129');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.129');
     assert.match(manifest.description, /always-on adaptive story director/i);
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.11\.128'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.11\.128'/);
+    assert.match(pluginSource, /const VERSION = '0\.11\.129'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.11\.129'/);
 });
 
-test('extension loads v128 adaptive-director modules', () => {
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.128'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.128'/);
-    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.128'/);
-    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.128'/);
-    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.128'/);
+test('extension loads v129 adaptive-director modules', () => {
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.129'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.129'/);
+    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.129'/);
+    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.129'/);
+    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.129'/);
 });
 
 test('long-form defaults reserve room for current turns, summaries, and thinking', () => {
@@ -53,7 +53,11 @@ test('depth one is the default and injection proof cannot block roleplay generat
     assert.match(source, /scheduleVerificationPersistence\(context\)/);
     assert.match(source, /Proof fingerprint:/);
     assert.match(source, /savedState\.lastRequestVerification\?\.status === 'included'/);
-    assert.match(source, /const response = plannerNativeFetch\(input, init\);[\s\S]*queueMicrotask/);
+    assert.match(source, /ensureGuidanceInChat\(request\.messages, payload/);
+    assert.match(source, /request\.prompt = ensureGuidanceInText\(request\.prompt, payload\)/);
+    assert.match(source, /outboundInit = \{ \.\.\.init, body: JSON\.stringify\(request\) \}/);
+    assert.match(source, /const response = plannerNativeFetch\(input, outboundInit\);[\s\S]*queueMicrotask/);
+    assert.match(source, /No Tale Fairy work is awaited and no verification failure can[\s\S]*reject the provider request/);
     assert.match(source, /Passive injection verification failed without affecting generation/);
     assert.match(source, /Injection observed after network dispatch/);
     assert.doesNotMatch(source, /blocked this roleplay request because its context was missing/);
