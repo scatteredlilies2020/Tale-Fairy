@@ -111,18 +111,18 @@ test('stale analysis fails closed while one explicitly allowed append remains de
     assert.equal(isAnalysisSourceCurrent(fingerprint, messages.length, assistantAppended, { allowOneAssistantAppend: true }), true);
 });
 
-test('analyzed injection exposes only broad flow and safety bounds', () => {
+test('analyzed injection exposes only abstract flow and scale', () => {
     const payload = buildPromptPayload(analyzedState(), {
         guidanceUsable: true,
         directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'favorable' },
     });
     assert.match(payload, /ANALYZED BEAT: movement=introduce; content=character; scope=social; intensity=low/);
-    assert.match(payload, /PRESERVE: ordinary canteen tone/);
-    assert.match(payload, /DO NOT: unrelated danger/);
+    assert.doesNotMatch(payload, /PRESERVE:|DO NOT:/);
     assert.doesNotMatch(payload, /Let the routine interaction|the service interaction|A grounded canteen interaction/);
     assert.doesNotMatch(payload, /Infer every concrete action|Treat explicit user\/OOC|Do not expose/i);
     assert.doesNotMatch(payload, /boldly or consequentially|unexpected but compatible|lean toward opportunity/i);
     assert.doesNotMatch(payload, /SUGGESTED ROUTE|future horizon|delivery debt/i);
+    assert.equal(payload.match(/ANALYZED BEAT:/g)?.length, 1);
 });
 
 test('provider compiler keeps the planner-specific intended event private', () => {
@@ -250,11 +250,11 @@ test('request verification preserves a weighted director sample without fabricat
     assert.equal(legacy.lastRequestVerification.directorSample, null);
     assert.equal(legacy.lastRequestVerification.directorSeed, null);
     const current = normalizeState({ lastRequestVerification: {
-        status: 'confirmed', runtimeVersion: '0.11.143', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
+        status: 'confirmed', runtimeVersion: '0.11.144', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
         directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' },
     } });
     assert.deepEqual(current.lastRequestVerification.directorSample, { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' });
-    assert.equal(current.lastRequestVerification.runtimeVersion, '0.11.143');
+    assert.equal(current.lastRequestVerification.runtimeVersion, '0.11.144');
     assert.equal(current.lastRequestVerification.directorSeed, 0);
 });
 

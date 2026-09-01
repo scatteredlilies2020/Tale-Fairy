@@ -68,10 +68,5 @@ export function hasUsableBeatDirective(value) {
 
 export function formatBeatContract(_sceneValue, beatValue, _options = {}) {
     const beat = normalizeBeatDirective(beatValue);
-    const lines = [
-        `ANALYZED BEAT: movement=${beat.operation}; content=${beat.contentClass}; scope=${beat.scope}; intensity=${beat.intensity}; quantity=${beat.quantity}; relative power=${beat.relativePower}; plot weight=${beat.plotWeight}; duration=${beat.duration}; resolution ceiling=${beat.resolutionCeiling}.`,
-        beat.preserve.length ? `PRESERVE: ${beat.preserve.join('; ')}` : '',
-        beat.forbid.length ? `DO NOT: ${beat.forbid.join('; ')}` : '',
-    ];
-    return lines.filter(Boolean).join('\n');
+    return `ANALYZED BEAT: movement=${beat.operation}; content=${beat.contentClass}; scope=${beat.scope}; intensity=${beat.intensity}; quantity=${beat.quantity}; relative power=${beat.relativePower}; plot weight=${beat.plotWeight}; duration=${beat.duration}; resolution ceiling=${beat.resolutionCeiling}.`;
 }
