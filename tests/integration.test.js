@@ -13,21 +13,21 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest and detached plugin identify the adaptive-director release', () => {
-    assert.equal(manifest.version, '0.11.136');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.136');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.136');
+    assert.equal(manifest.version, '0.11.137');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.137');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.137');
     assert.match(manifest.description, /always-on adaptive story director/i);
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.11\.136'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.11\.136'/);
+    assert.match(pluginSource, /const VERSION = '0\.11\.137'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.11\.137'/);
 });
 
-test('extension loads v136 adaptive-director modules', () => {
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.136'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.136'/);
-    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.136'/);
-    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.136'/);
-    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.136'/);
+test('extension loads v137 adaptive-director modules', () => {
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.137'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.137'/);
+    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.137'/);
+    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.137'/);
+    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.137'/);
 });
 
 test('long-form defaults reserve room for current turns, summaries, and thinking', () => {
@@ -101,9 +101,10 @@ test('adaptive analysis uses freeform direction rather than an event taxonomy', 
     assert.match(stateSource, /beatContractUpgrade/);
 });
 
-test('provider injection uses the analyzed beat or a non-blocking live policy', () => {
+test('provider injection uses only an analyzed beat and otherwise removes stale guidance', () => {
     assert.match(stateSource, /formatBeatContract/);
-    assert.match(stateSource, /formatFreshBeatFallback/);
+    assert.doesNotMatch(stateSource, /formatFreshBeatFallback/);
+    assert.match(stateSource, /if \(!enabled \|\| !guidanceUsable\) return ''/);
     assert.match(source, /buildPromptPayload\(state/);
     assert.match(source, /sceneProfile: generationGuideSelection\.sceneProfile/);
     assert.match(source, /beatDirective: generationGuideSelection\.beatDirective/);

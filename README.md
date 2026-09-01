@@ -10,7 +10,7 @@ Tale Fairy is a standalone SillyTavern extension that acts as an **adaptive auth
 - Calibrates stakes to the setting instead of equating movement with combat: a school scene might produce a difficult exam or severe reviewer, while an established battlefield or fantasy crisis can produce lethal danger.
 - Does not control pacing. Explicit user/OOC instructions bind, and Tale Fairy never supplies the player character's dialogue, thoughts, feelings, consent, decisions, compliance, or reaction. It may move the surrounding world and scene without making those choices for the player.
 - Separates creative appetite from concrete realization. A sampled direction can be favorable, adverse, mixed, ordinary, strange, intimate, institutional, political, dangerous, or transformative, but the main roleplay model interprets what that means here.
-- Uses fresh analyzed scene direction when available and an always-on live adaptive policy otherwise, so a missing or stale planner result never removes Tale Fairy from a roleplay request.
+- Injects only fresh analyzed scene direction. If the planner result is missing or stale, Tale Fairy injects nothing and the roleplay request continues normally.
 - Reuses the exact archived sample and directorial purpose for regenerations/swipes while asking for a genuinely different realization. Discarded prose never becomes canon.
 - Runs its AI planner for initialization, explicit scene/time pivots, corrections, manual reevaluation, and periodic maintenance after six accepted assistant responses. Roleplay generation does not wait for background maintenance.
 - Keeps continuity threads, actors, lore, summaries, and causal state as evidence. They are not dormant triggers, delivery promises, or a scheduled event queue, and a new context-compatible cause is always available.
@@ -37,7 +37,7 @@ Alternatively, copy this folder into SillyTavern's `public/scripts/extensions/th
 - **Connection profile**: uses a saved Connection Manager profile without rewriting its prompt.
 - **Custom / proxy** and **OpenRouter**: enter the model and URL, then optionally save the key with SillyTavern's secret storage. The key is not written to chat metadata.
 
-The planner returns structured JSON. If a provider rejects native JSON schema, the extension retries with an exact-shape JSON prompt. Planner failure never strands or delays the roleplay reply; a generic direction is used only when no analyzed beat is available. **Stop analysis** cancels background planning.
+The planner returns structured JSON. If a provider rejects native JSON schema, the extension retries with an exact-shape JSON prompt. Planner failure never strands or delays the roleplay reply; without a usable analyzed beat, Tale Fairy stays out of the request while planning refreshes in the background. **Stop analysis** cancels background planning.
 
 Browser-independent planning requires the bundled `plugin` directory to be installed as a SillyTavern server plugin and SillyTavern to be restarted. For a source checkout installed at `public/scripts/extensions/third-party/Tale-Fairy`, link `plugins/tale-fairy` to Tale Fairy's `plugin` directory. The extension checks `/api/plugins/tale-fairy/health` at startup and falls back to ordinary in-page requests when the server plugin is unavailable.
 

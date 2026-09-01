@@ -1,9 +1,9 @@
-import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.11.136';
+import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.11.137';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
 import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js';
-import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, formatFreshBeatFallback, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile } from './beat-director.js?v=0.11.136';
-import { normalizeDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.11.136';
+import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile } from './beat-director.js?v=0.11.137';
+import { normalizeDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.11.137';
 
 export const STATE_KEY = 'livingWorldGuide';
 export const STATE_VERSION = 48;
@@ -654,14 +654,14 @@ function normalizeLoreModel(value = {}) {
 }
 
 export function buildPromptPayload(state, { enabled = true, guidanceUsable = false, guideCandidates = null, guideIndex = 0, regeneration = false, variationCue = 0, directorSample = null, canonConstraints = null, latestUserAction = '', sceneProfile = null, beatDirective = null } = {}) {
-    if (!enabled) return '';
+    if (!enabled || !guidanceUsable) return '';
     const s = normalizeState(state);
+    const selectedBeat = normalizeBeatDirective(beatDirective || s.beatDirective);
+    if (!hasUsableBeatDirective(selectedBeat)) return '';
     const sample = directorSample
         ? normalizeDirectorSample(directorSample)
         : sampleDirectorSignals(s.mode, variationCue || s.plannerSeed);
-    const routePrompt = guidanceUsable
-        ? formatBeatContract(sceneProfile || s.sceneProfile, beatDirective || s.beatDirective, { regeneration, directorSample: sample })
-        : formatFreshBeatFallback({ regeneration, directorSample: sample });
+    const routePrompt = formatBeatContract(sceneProfile || s.sceneProfile, selectedBeat, { regeneration, directorSample: sample });
     const guidancePrompt = `\n<living-world-guide>\n${routePrompt}\n</living-world-guide>`;
     return `<tale-fairy-context>${guidancePrompt}\n</tale-fairy-context>`;
 }

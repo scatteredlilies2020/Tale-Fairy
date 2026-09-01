@@ -115,6 +115,27 @@ test('repairs text-completion prompts and recognizes the current guide', () => {
     assert.equal(ensureGuidanceInText(repaired, payload), repaired);
 });
 
+test('removes stale Tale Fairy guidance when no analyzed beat is available', () => {
+    const chat = [
+        { role: 'system', content: payload },
+        { role: 'user', content: `${oldGuide}\nContinue.` },
+    ];
+    assert.equal(ensureGuidanceInChat(chat, '', { role: 'system', depth: 1 }), true);
+    assert.deepEqual(chat, [{ role: 'user', content: 'Continue.' }]);
+    assert.equal(ensureGuidanceInChat(chat, '', { role: 'system', depth: 1 }), false);
+
+    const cleaned = ensureGuidanceInText(`Story setup\n${payload}\nContinue.`, '');
+    assert.equal(cleaned, 'Story setup\nContinue.');
+    assert.doesNotMatch(cleaned, /tale-fairy|living-world-guide/i);
+});
+
+test('stale cleanup preserves non-text multimodal blocks', () => {
+    const image = { type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } };
+    const chat = [{ role: 'user', content: [{ type: 'text', text: payload }, image] }];
+    assert.equal(ensureGuidanceInChat(chat, ''), true);
+    assert.deepEqual(chat, [{ role: 'user', content: [{ type: 'text', text: '' }, image] }]);
+});
+
 test('provider-bound request receives one complete semantic beat on regeneration', () => {
     const state = {
         ...defaultState(),

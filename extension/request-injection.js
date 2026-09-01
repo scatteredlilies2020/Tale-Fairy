@@ -90,6 +90,17 @@ function contentHasTaleFairyGuidance(value) {
     return TALE_FAIRY_TAG_PATTERN.test(contentStrings(value).join('\n'));
 }
 
+function contentIsEmpty(value) {
+    if (typeof value === 'string') return !value.trim();
+    if (Array.isArray(value)) return value.every(contentIsEmpty);
+    if (value && typeof value === 'object') {
+        if (Object.hasOwn(value, 'text')) return contentIsEmpty(value.text);
+        if (Object.hasOwn(value, 'content')) return contentIsEmpty(value.content);
+        return false;
+    }
+    return value == null;
+}
+
 function prependContext(value, context) {
     if (typeof value === 'string') return `${context}\n${value}`;
     if (Array.isArray(value)) return [{ type: 'text', text: context }, ...value];
@@ -108,23 +119,27 @@ export function textHasCurrentGuidance(prompt, payload) {
 
 export function ensureGuidanceInChat(chat, payload, { role = 'user', depth = 1, inlineLatestUser = false } = {}) {
     const context = contextSegment(payload);
-    if (!Array.isArray(chat) || !context) return false;
-    if (!inlineLatestUser && hasExactlyCurrentContext(chatText(chat), context)) return false;
-    if (inlineLatestUser && hasExactlyCurrentContext(chatText(chat), context)) {
+    if (!Array.isArray(chat)) return false;
+    if (context && !inlineLatestUser && hasExactlyCurrentContext(chatText(chat), context)) return false;
+    if (context && inlineLatestUser && hasExactlyCurrentContext(chatText(chat), context)) {
         const alreadyEmbedded = chat.some(message => message?.role === 'user'
             && contentStrings(message.content).join('\n').includes(context)
             && contentStrings(removeStaleGuidance(message.content)).join('').trim());
         if (alreadyEmbedded) return false;
     }
 
+    let changed = false;
     for (let index = chat.length - 1; index >= 0; index--) {
         const message = chat[index];
         if (!message || !Object.hasOwn(message, 'content')) continue;
         const hadGuidance = contentHasTaleFairyGuidance(message.content);
         if (!hadGuidance) continue;
         message.content = removeStaleGuidance(message.content);
-        if (hadGuidance && !contentStrings(message.content).join('').trim()) chat.splice(index, 1);
+        if (contentIsEmpty(message.content)) chat.splice(index, 1);
+        changed = true;
     }
+
+    if (!context) return changed;
 
     if (inlineLatestUser) {
         let latestUser = null;
@@ -153,7 +168,7 @@ export function ensureGuidanceInChat(chat, payload, { role = 'user', depth = 1, 
 export function ensureGuidanceInText(prompt, payload) {
     const context = contextSegment(payload);
     const source = String(prompt || '');
-    if (!context) return source;
+    if (!context) return contentHasTaleFairyGuidance(source) ? removeStaleGuidance(source) : source;
     if (hasExactlyCurrentContext(source, context) && source.trimStart().startsWith(context)) return source;
 
     const withoutStale = removeStaleGuidance(source).trimStart();

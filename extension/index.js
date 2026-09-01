@@ -4,25 +4,25 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.136';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.136';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.137';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.137';
 import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.11.101';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.136';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.136';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.136';
-import { normalizeModelListResponse } from './models.js?v=0.11.136';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.137';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.137';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.137';
+import { normalizeModelListResponse } from './models.js?v=0.11.137';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.108';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.136';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.136';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.136';
-import { estimateTokenCount } from './token-budget.js?v=0.11.136';
-import { completionText } from './completion-response.js?v=0.11.136';
-import { sampleDirectorSignals } from './director-sampling.js?v=0.11.136';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.137';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.137';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.137';
+import { estimateTokenCount } from './token-budget.js?v=0.11.137';
+import { completionText } from './completion-response.js?v=0.11.137';
+import { sampleDirectorSignals } from './director-sampling.js?v=0.11.137';
 import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.11.105';
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.136';
+const RUNTIME_VERSION = '0.11.137';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -802,10 +802,11 @@ function reportNonBlockingInjectionFailure(message, error) {
 
 function ensureChatCompletionRequestGuidance(eventData) {
     try {
-        if (eventData?.dryRun || containsPlannerMarker(eventData?.chat) || !getSettings().enabled || !Array.isArray(eventData?.chat)) return;
+        if (eventData?.dryRun || containsPlannerMarker(eventData?.chat) || !Array.isArray(eventData?.chat)) return;
         const payload = currentGuidancePayload();
-        if (!payload.includes('<living-world-guide>')) return;
+        const hasGuidance = payload.includes('<living-world-guide>');
         const inserted = ensureGuidanceInChat(eventData.chat, payload, requestInjectionOptions());
+        if (!hasGuidance) return;
         if (inserted) renderAnalysisActivity('Guidance inserted into request', false);
         if (!chatHasCurrentGuidance(eventData.chat, payload)) throw new Error('Current guidance was absent after chat insertion.');
     } catch (error) {
@@ -815,10 +816,11 @@ function ensureChatCompletionRequestGuidance(eventData) {
 
 function ensureTextCompletionRequestGuidance(eventData) {
     try {
-        if (eventData?.dryRun || containsPlannerMarker(eventData?.prompt) || !getSettings().enabled || typeof eventData?.prompt !== 'string') return;
+        if (eventData?.dryRun || containsPlannerMarker(eventData?.prompt) || typeof eventData?.prompt !== 'string') return;
         const payload = currentGuidancePayload();
-        if (!payload.includes('<living-world-guide>')) return;
+        const hasGuidance = payload.includes('<living-world-guide>');
         eventData.prompt = ensureGuidanceInText(eventData.prompt, payload);
+        if (!hasGuidance) return;
         if (!textHasCurrentGuidance(eventData.prompt, payload)) throw new Error('Current guidance was absent after text insertion.');
         rememberVerifiedRequest(extractTaleFairyContext(eventData.prompt), { provider: currentContext().mainApi });
         recordRuntimeStage('final-text-payload');
@@ -830,10 +832,11 @@ function ensureTextCompletionRequestGuidance(eventData) {
 
 function ensureProviderChatRequestGuidance(generateData) {
     try {
-        if (containsPlannerMarker(generateData) || generateData?.type === 'quiet' || !getSettings().enabled || !Array.isArray(generateData?.messages)) return;
+        if (containsPlannerMarker(generateData) || generateData?.type === 'quiet' || !Array.isArray(generateData?.messages)) return;
         const payload = currentGuidancePayload();
-        if (!payload.includes('<living-world-guide>')) return;
+        const hasGuidance = payload.includes('<living-world-guide>');
         ensureGuidanceInChat(generateData.messages, payload, requestInjectionOptions());
+        if (!hasGuidance) return;
         if (!chatHasCurrentGuidance(generateData.messages, payload)) throw new Error('Current guidance was absent after provider insertion.');
         rememberVerifiedRequest(extractTaleFairyContext(generateData), {
             provider: generateData.chat_completion_source,

@@ -5,7 +5,7 @@ import {
     generationRetrySource, isAnalysisSourceCurrent, isGuidanceUsable, isStateAligned,
     loadState, normalizeState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION, stateForPrompt,
 } from '../extension/state.js';
-import { formatBeatContract, formatFreshBeatFallback, normalizeBeatDirective, normalizeSceneProfile } from '../extension/beat-director.js';
+import { formatBeatContract, normalizeBeatDirective, normalizeSceneProfile } from '../extension/beat-director.js';
 
 const messages = [
     { is_user: false, mes: 'The canteen is busy but orderly.' },
@@ -138,11 +138,11 @@ test('provider compiler cannot leak concrete prose even when private planner dir
     assert.doesNotMatch(payload, /Lucia|garden|outing|institutional|unresolved future/i);
 });
 
-test('quiet scenes receive scale-native movement instead of mandatory conflict or stagnation', () => {
-    const payload = formatFreshBeatFallback({ directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' } });
+test('analyzed quiet beats receive scale-native movement instead of mandatory conflict or stagnation', () => {
+    const payload = formatBeatContract({}, { operation: 'deepen', requiredEffect: 'Privately deepen this quiet interaction.' }, { directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' } });
     assert.match(payload, /Express that movement boldly or consequentially/i);
     assert.match(payload, /unexpected but compatible realization/i);
-    assert.match(payload, /changes the immediate possibilities rather than merely repeating/i);
+    assert.match(payload, /Deepen what is already happening/i);
 });
 
 test('major adverse sampling cannot replace a scene-selected breather with complication', () => {
@@ -155,8 +155,8 @@ test('major adverse sampling cannot replace a scene-selected breather with compl
     assert.doesNotMatch(payload, /Introduce a fitting complication|Increase the active pressure/i);
 });
 
-test('fallback keeps AI invention open across context-native scene scales', () => {
-    const payload = formatFreshBeatFallback();
+test('analyzed beat keeps AI invention open across context-native scene scales', () => {
+    const payload = formatBeatContract({}, { operation: 'introduce', requiredEffect: 'Privately introduce a compatible development.' });
     assert.match(payload, /established cause or a new compatible cause/i);
     assert.match(payload, /choose every concrete actor, event, object, action, and outcome yourself/i);
 });
@@ -175,10 +175,13 @@ test('regeneration reuses semantic function but demands a different realization'
     assert.doesNotMatch(payload, /Alternative 2|rotate|next route/i);
 });
 
-test('missing or stale planner state injects a lightweight live policy instead of blocking generation', () => {
+test('missing or stale planner state injects nothing and does not block generation', () => {
     const payload = buildPromptPayload(defaultState(), { guidanceUsable: false });
-    assert.match(payload, /changes the immediate possibilities rather than merely repeating/i);
-    assert.ok(payload.length < 3500, payload.length);
+    assert.equal(payload, '');
+});
+
+test('an allegedly usable default beat still injects nothing without analyzed intent', () => {
+    assert.equal(buildPromptPayload(defaultState(), { guidanceUsable: true }), '');
 });
 
 test('disabled injection is empty', () => {
@@ -236,11 +239,11 @@ test('request verification preserves a weighted director sample without fabricat
     assert.equal(legacy.lastRequestVerification.directorSample, null);
     assert.equal(legacy.lastRequestVerification.directorSeed, null);
     const current = normalizeState({ lastRequestVerification: {
-        status: 'confirmed', runtimeVersion: '0.11.136', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
+        status: 'confirmed', runtimeVersion: '0.11.137', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
         directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' },
     } });
     assert.deepEqual(current.lastRequestVerification.directorSample, { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' });
-    assert.equal(current.lastRequestVerification.runtimeVersion, '0.11.136');
+    assert.equal(current.lastRequestVerification.runtimeVersion, '0.11.137');
     assert.equal(current.lastRequestVerification.directorSeed, 0);
 });
 
