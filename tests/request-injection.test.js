@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, requestContainsMarker, textHasCurrentGuidance } from '../extension/request-injection.js';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from '../extension/request-injection.js';
 import { buildPromptPayload, defaultState } from '../extension/state.js';
 
 const policy = '<tale-fairy-narrative-policy>Keep the scene grounded.</tale-fairy-narrative-policy>';
@@ -16,6 +16,17 @@ test('identifies only request-local internal planner prompts', () => {
     assert.equal(requestContainsMarker({ prompt: [{ role: 'user', content: [{ type: 'text', text: marker }] }] }, marker), true);
     assert.equal(requestContainsMarker({ messages: [{ role: 'system', content: 'normal roleplay' }] }, marker), false);
     assert.equal(requestContainsMarker({ messages: [{ role: 'user', content: 'normal roleplay' }] }, ''), false);
+});
+
+test('extracts the exact Tale Fairy context from serialized provider request shapes', () => {
+    assert.equal(extractTaleFairyContext({ messages: [{ role: 'user', content: `Before\n${payload}\nAfter` }] }), payload);
+    assert.equal(extractTaleFairyContext({ prompt: `Prompt\n${payload}` }), payload);
+    assert.equal(extractTaleFairyContext({ messages: [{ content: [{ type: 'text', text: payload }] }] }), payload);
+    assert.equal(extractTaleFairyContext({ messages: [{ content: 'ordinary roleplay' }] }), '');
+});
+
+test('prefers the complete context envelope over a nested guide', () => {
+    assert.equal(extractTaleFairyContext({ prompt: `${payload}\n${guide}` }), payload);
 });
 
 test('adds current guidance to an assembled chat request at the configured depth', () => {

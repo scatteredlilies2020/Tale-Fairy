@@ -13,21 +13,21 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest and detached plugin identify the adaptive-director release', () => {
-    assert.equal(manifest.version, '0.11.124');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.124');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.124');
+    assert.equal(manifest.version, '0.11.125');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.125');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.125');
     assert.match(manifest.description, /always-on adaptive story director/i);
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.11\.124'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.11\.124'/);
+    assert.match(pluginSource, /const VERSION = '0\.11\.125'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.11\.125'/);
 });
 
-test('extension loads v124 adaptive-director modules', () => {
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.124'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.124'/);
-    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.124'/);
-    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.124'/);
-    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.124'/);
+test('extension loads v125 adaptive-director modules', () => {
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.125'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.125'/);
+    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.125'/);
+    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.125'/);
+    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.125'/);
 });
 
 test('long-form defaults reserve room for current turns, summaries, and thinking', () => {
@@ -43,7 +43,7 @@ test('long-form defaults reserve room for current turns, summaries, and thinking
     assert.match(template, /separately reserves up to 4,096 output\/thinking tokens/i);
 });
 
-test('depth one is the default and provider-bound inclusion proof is durable', () => {
+test('depth one is the default and outbound inclusion proof is durable and fail-closed', () => {
     assert.match(source, /injectionDepth: 1/);
     assert.match(source, /injectionDepth\) === 2[\s\S]*settings\.injectionDepth = 1/);
     assert.match(template, /0 = newest edge; default 1/);
@@ -52,6 +52,11 @@ test('depth one is the default and provider-bound inclusion proof is durable', (
     assert.match(source, /await context\.saveMetadata\(\)/);
     assert.match(source, /Proof fingerprint:/);
     assert.match(source, /savedState\.lastRequestVerification\?\.status === 'included'/);
+    assert.match(source, /const guidanceBlock = extractTaleFairyContext\(request\)/);
+    assert.match(source, /blocked this roleplay request because its context was missing from the final outbound payload/);
+    assert.match(source, /Injection verified at the outbound network boundary/);
+    assert.equal(source.match(/rememberVerifiedRequest\(/g)?.length, 2);
+    assert.match(source, /INCLUDED — exact context verified in the outbound request/);
 });
 
 test('obsolete pacing selector and pacing ceiling are absent while player agency is protected', () => {
@@ -83,7 +88,7 @@ test('provider injection uses the analyzed beat or a non-blocking live policy', 
     assert.match(source, /ensureGuidanceInText/);
     assert.match(source, /CHAT_COMPLETION_PROMPT_READY/);
     assert.match(source, /GENERATE_AFTER_COMBINE_PROMPTS/);
-    assert.match(source, /match\(\/<tale-fairy-context>/);
+    assert.match(source, /extractTaleFairyContext\(request\)/);
 });
 
 test('replacement generation archives semantic direction and the exact weighted sample', () => {

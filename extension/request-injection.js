@@ -12,6 +12,28 @@ function contextSegment(payload) {
         || '';
 }
 
+export function extractTaleFairyContext(value) {
+    const seen = new Set();
+    const visit = item => {
+        if (typeof item === 'string') return contextSegment(item);
+        if (!item || typeof item !== 'object' || seen.has(item)) return '';
+        seen.add(item);
+        if (Array.isArray(item)) {
+            for (const entry of item) {
+                const context = visit(entry);
+                if (context) return context;
+            }
+            return '';
+        }
+        for (const key of ['prompt', 'messages', 'chat', 'content', 'text']) {
+            const context = visit(item[key]);
+            if (context) return context;
+        }
+        return '';
+    };
+    return visit(value);
+}
+
 function contentStrings(value) {
     if (typeof value === 'string') return [value];
     if (Array.isArray(value)) return value.flatMap(contentStrings);
