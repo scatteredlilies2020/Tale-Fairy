@@ -150,6 +150,20 @@ test('analysis prompt remains inside its configured budget with long rapid-fire 
     assert.match(JSON.parse(prompt).messages.at(-1).content, /^179:/);
 });
 
+test('advertised high-budget settings can use more than the former internal clamps', () => {
+    const history = Array.from({ length: 20 }, (_, index) => ({
+        is_user: index % 2 === 0, name: index % 2 ? 'Narrator' : 'Ari', mes: `${index}: ${'scene detail '.repeat(900)}`,
+    }));
+    const parsed = JSON.parse(buildAnalysisPrompt(history, defaultState(), '', {}, {
+        maxPromptTokens: 30000, effectivePromptTokens: 25000, recentContextTokens: 10000, messageTokenLimit: 1800,
+        summarySources: [{ label: 'Long memory', kind: 'summary', text: 'continuity detail '.repeat(3000) }],
+    }));
+    const messageTokens = parsed.messages.reduce((total, message) => total + estimateTokenCount(message.content), 0);
+    const summaryTokens = parsed.summary_sources.reduce((total, summary) => total + estimateTokenCount(summary.text), 0);
+    assert.ok(messageTokens > 7000, messageTokens);
+    assert.ok(summaryTokens > 3000, summaryTokens);
+});
+
 test('applying analysis saves the beat and clears retired future machinery', () => {
     const prior = { ...defaultState(), objectives: [{ title: 'Future' }], possibilities: [{ description: 'Future' }], pathways: [{ id: 'route' }], nextGuides: [{ id: 'guide' }], narrativeEvents: [{ id: 'event' }] };
     const next = applyAnalysis(prior, result(), messages);

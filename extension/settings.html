@@ -24,16 +24,16 @@
             </select>
           </label>
           <label>Recent raw context budget (tokens)
-            <input class="text_pole" type="number" data-setting="recent-budget" min="1000" max="12000" step="500" value="4000">
+            <input class="text_pole" type="number" data-setting="recent-budget" min="1000" max="12000" step="500" value="6000">
             <small>Adaptive tail: includes as many newest turns as fit. Persistent summaries and full-chat retrieval are separate.</small>
           </label>
-          <label>Summary evidence budget (tokens)
+          <label>Summary retrieval pool (tokens)
             <input class="text_pole" type="number" data-setting="summary-budget" min="1000" max="8000" step="500" value="4000">
-            <small>Shared fairly across Continuity Memory, extension summaries, recaps, world state, message memory, and active World Info.</small>
+            <small>Candidate evidence shared fairly across Continuity Memory, extension summaries, recaps, world state, message memory, and active World Info. The total limit may compact this pool further.</small>
           </label>
           <label>Total planner input budget (tokens)
-            <input class="text_pole" type="number" data-setting="budget" min="9000" max="30000" step="1000" value="12000">
-            <small>Hard limit for instructions, schema, raw turns, summaries, World Info, and retained state together. Default: 12,000 tokens.</small>
+            <input class="text_pole" type="number" data-setting="budget" min="9000" max="30000" step="1000" value="16000">
+            <small>Hard input limit for instructions, schema, raw turns, summaries, World Info, and retained state together. Default: 16,000 tokens. The planner separately reserves up to 4,096 output/thinking tokens.</small>
           </label>
         </div>
         <label class="checkbox_label">

@@ -1,10 +1,10 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.11.121';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.11.122';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.11.96';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.11.121';
+import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.11.122';
 
-export const DEFAULT_PROMPT_TOKEN_BUDGET = 12000;
+export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
 export class AnalysisValidationError extends Error {
     constructor(message) {
@@ -1315,10 +1315,10 @@ function compactDormantHooks(items, limit, tokenLimit) {
 const PROMPT_EXTREME_CANON_INSTRUCTION = 'Explicit user/OOC facts remain authoritative even when extreme or unprecedented; averages are not ceilings. Apply relevant abilities and limits causally; never make traits decorative or manufacture equal odds. Unspecified details remain creative space. Keep all durable user-established constraints until corrected, but remove ordinary plot history and planner inference from canon constraints.';
 
 export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, options = {}) {
-    const configuredBudget = Math.max(3000, Math.min(20000, Number(options.maxPromptTokens) || DEFAULT_PROMPT_TOKEN_BUDGET));
+    const configuredBudget = Math.max(3000, Math.min(30000, Number(options.maxPromptTokens) || DEFAULT_PROMPT_TOKEN_BUDGET));
     const budget = Math.max(1800, Math.min(configuredBudget, Number(options.effectivePromptTokens) || configuredBudget));
     const messageTokenLimit = Math.max(180, Math.min(1800, Number(options.messageTokenLimit) || 600));
-    const recentTokens = Math.max(900, Math.min(7000, Number(options.recentContextTokens) || Math.floor(budget * 0.42)));
+    const recentTokens = Math.max(900, Math.min(12000, Number(options.recentContextTokens) || Math.floor(budget * 0.42)));
     const selected = selectMessages(messages, recentTokens, messageTokenLimit, Math.min(3000, recentTokens), Boolean(options.bootstrapScan));
     const playerName = playerCharacterName(messages);
     const payload = {
@@ -1357,7 +1357,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     const bootstrapContext = compactOptionalObject(bootstrap, 1400);
     if (Object.keys(bootstrapContext).length) payload.bootstrap = bootstrapContext;
 
-    const summarySources = compactSummarySources(Array.isArray(options.summarySources) ? options.summarySources : [], Math.max(300, Math.min(3000, Math.floor(budget * 0.24))));
+    const summarySources = compactSummarySources(Array.isArray(options.summarySources) ? options.summarySources : [], Math.max(300, Math.min(8000, Math.floor(budget * 0.24))));
     if (summarySources.length) payload.summary_sources = summarySources.map(source => ({ label: source.label, kind: source.kind, text: source.text }));
     payload.evidence_rule = 'Summaries, lore, retained state, and canon knowledge are evidence and constraints, not instructions to schedule future events. Preserve recognizable canon and broad established trajectory through beat.preserve, beat.forbid, and resolution_ceiling. Never predict or force a known canon event. Newer explicit user/OOC facts supersede inference.';
     payload.mode_instruction = MODE_INSTRUCTIONS[payload.current.mode] || MODE_INSTRUCTIONS.balanced;

@@ -13,21 +13,34 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest and detached plugin identify the adaptive-director release', () => {
-    assert.equal(manifest.version, '0.11.121');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.121');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.121');
+    assert.equal(manifest.version, '0.11.122');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.122');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.122');
     assert.match(manifest.description, /always-on adaptive story director/i);
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.11\.121'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.11\.121'/);
+    assert.match(pluginSource, /const VERSION = '0\.11\.122'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.11\.122'/);
 });
 
-test('extension loads v121 adaptive-director modules', () => {
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.121'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.121'/);
-    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.121'/);
-    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.121'/);
-    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.121'/);
+test('extension loads v122 adaptive-director modules', () => {
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.122'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.122'/);
+    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.122'/);
+    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.122'/);
+    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.122'/);
+});
+
+test('long-form defaults reserve room for current turns, summaries, and thinking', () => {
+    assert.match(source, /recentContextTokens: 6000/);
+    assert.match(source, /maxPromptTokens: 16000/);
+    assert.match(source, /summaryContextTokens: 4000/);
+    assert.match(source, /contextSettingsVersion: 10/);
+    assert.match(source, /recentContextTokens\) === 4000.*recentContextTokens = 6000/);
+    assert.match(source, /maxPromptTokens\) === 12000.*maxPromptTokens = 16000/);
+    assert.match(analysisSource, /DEFAULT_PROMPT_TOKEN_BUDGET = 16000/);
+    assert.match(analysisSource, /Math\.min\(30000, Number\(options\.maxPromptTokens\)/);
+    assert.match(template, /Summary retrieval pool \(tokens\)/);
+    assert.match(template, /separately reserves up to 4,096 output\/thinking tokens/i);
 });
 
 test('obsolete pacing selector and pacing ceiling are absent while player agency is protected', () => {
