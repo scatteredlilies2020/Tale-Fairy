@@ -1,4 +1,4 @@
-import { markAuthorBeatIssued, normalizeAuthorBoard } from './author-board.js?v=0.11.131';
+import { markAuthorBeatIssued, normalizeAuthorBoard } from './author-board.js?v=0.11.132';
 import { normalizePacingState } from './pacing.js';
 
 const clean = (value, fallback) => String(value || fallback || '').trim().slice(0, 320);
@@ -8,6 +8,7 @@ export function defaultConductorState() {
 }
 
 export function normalizeConductorState(value = {}) {
+    value = value && typeof value === 'object' ? value : {};
     const pacing = ['linger', 'natural', 'advance'].includes(String(value.pacing || '').toLowerCase()) ? String(value.pacing).toLowerCase() : 'natural';
     const developmentType = String(value.developmentType ?? value.development_type ?? '').toLowerCase();
     return {

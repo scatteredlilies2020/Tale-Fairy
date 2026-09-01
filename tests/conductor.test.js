@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { conductorContractInvalidated, formatConductorContract, runConductor } from '../extension/conductor.js';
+import { conductorContractInvalidated, formatConductorContract, normalizeConductorState, runConductor } from '../extension/conductor.js';
+
+test('null legacy conductor contracts normalize without crashing request proof', () => {
+    assert.deepEqual(normalizeConductorState(null), normalizeConductorState());
+});
 
 const board = {
     story: { identity: 'A Star Wars apprenticeship story.' }, revision: 2,

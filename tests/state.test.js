@@ -211,7 +211,7 @@ test('request verification preserves the complete exact injected context beyond 
 test('provider-bound inclusion proof survives normalization before a reply returns', () => {
     const state = normalizeState({ lastRequestVerification: {
         status: 'included', verificationId: 'tf-1234-deadbeef', guidanceBlock: '<tale-fairy-context>exact</tale-fairy-context>',
-        requestedAt: 100, chatId: 'chat-a', provider: 'deepseek', model: 'kimi-k3', depth: 1,
+        requestedAt: 100, chatId: 'chat-a', provider: 'deepseek', model: 'kimi-k3', depth: 1, conductorContract: null,
     } });
     assert.equal(state.lastRequestVerification.status, 'included');
     assert.equal(state.lastRequestVerification.verificationId, 'tf-1234-deadbeef');
