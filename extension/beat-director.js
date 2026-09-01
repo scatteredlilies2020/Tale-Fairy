@@ -12,6 +12,29 @@ const DURATION = new Set(['moment', 'beat', 'scene', 'extended']);
 const CEILINGS = new Set(['none', 'local', 'partial', 'decisive', 'open']);
 const SCOPES = new Set(['personal', 'social', 'institutional', 'societal', 'world']);
 
+const CONTENT_WORDING = Object.freeze({
+    texture: 'texture-led',
+    reaction: 'reaction-led',
+    obstacle: 'obstacle-centered',
+    conflict: 'conflict-centered',
+    character: 'character-focused',
+    opposition: 'opposition-driven',
+    event: 'event-led',
+    opportunity: 'opportunity-led',
+    revelation: 'revelation-led',
+    consequence: 'consequence-driven',
+    other: 'open to whatever form best fits the scene',
+});
+const QUANTITY_WORDING = Object.freeze({
+    singular: 'focused on one element', pair: 'focused on a pair', group: 'group-scaled', numerous: 'numerous in scale', swarm: 'swarm-scaled',
+});
+const POWER_WORDING = Object.freeze({
+    fodder: 'matched to minor opposition', inferior: 'matched to weaker opposition', peer: 'matched to peer-level opposition', elite: 'matched to elite opposition', overwhelming: 'matched to overwhelming opposition', established: 'matched to the established power level',
+});
+const DURATION_WORDING = Object.freeze({ moment: 'momentary', scene: 'sustained through the scene', extended: 'extended in duration' });
+const RESOLUTION_WORDING = Object.freeze({ none: 'left unresolved', local: 'locally resolvable', partial: 'only partially resolvable', decisive: 'open to decisive resolution' });
+const PLOT_WORDING = Object.freeze({ incidental: 'incidental to the ongoing story', connective: 'connective to the ongoing story', consequential: 'consequential for the ongoing story' });
+
 function text(value, limit = 240) { return String(value ?? '').trim().slice(0, limit); }
 function movement(value) { return text(value, 80).replace(/\s+/gu, ' '); }
 function choice(value, allowed, fallback) {
@@ -70,17 +93,29 @@ export function hasUsableBeatDirective(value) {
     return Boolean(beat.inject && beat.operation && beat.requiredEffect);
 }
 
+function sentence(value) {
+    const source = movement(value).replace(/[.!?]+$/u, '');
+    return source ? `${source.charAt(0).toUpperCase()}${source.slice(1)}` : '';
+}
+
+function naturalList(items) {
+    if (items.length < 2) return items[0] || '';
+    if (items.length === 2) return `${items[0]} and ${items[1]}`;
+    return `${items.slice(0, -1).join(', ')}, and ${items.at(-1)}`;
+}
+
 export function formatBeatContract(_sceneValue, beatValue, _options = {}) {
     const beat = normalizeBeatDirective(beatValue);
     if (!beat.inject || !beat.operation) return '';
-    const fields = [`movement=${beat.operation}`];
-    if (beat.contentClass !== 'none') fields.push(`content=${beat.contentClass}`);
-    if (beat.scope !== 'personal') fields.push(`scope=${beat.scope}`);
-    if (beat.intensity !== 'none') fields.push(`intensity=${beat.intensity}`);
-    if (beat.quantity !== 'none') fields.push(`quantity=${beat.quantity}`);
-    if (beat.relativePower !== 'none') fields.push(`relative power=${beat.relativePower}`);
-    if (beat.plotWeight !== 'none') fields.push(`plot weight=${beat.plotWeight}`);
-    if (beat.duration !== 'beat') fields.push(`duration=${beat.duration}`);
-    if (beat.resolutionCeiling !== 'open') fields.push(`resolution ceiling=${beat.resolutionCeiling}`);
-    return `ANALYZED BEAT: ${fields.join('; ')}.`;
+    const qualities = [];
+    if (beat.contentClass !== 'none') qualities.push(CONTENT_WORDING[beat.contentClass]);
+    if (beat.scope !== 'personal') qualities.push(`${beat.scope} in scope`);
+    if (beat.intensity !== 'none') qualities.push(`${beat.intensity} in intensity`);
+    if (beat.quantity !== 'none') qualities.push(QUANTITY_WORDING[beat.quantity]);
+    if (beat.relativePower !== 'none') qualities.push(POWER_WORDING[beat.relativePower]);
+    if (beat.plotWeight !== 'none') qualities.push(PLOT_WORDING[beat.plotWeight]);
+    if (beat.duration !== 'beat') qualities.push(DURATION_WORDING[beat.duration]);
+    if (beat.resolutionCeiling !== 'open') qualities.push(RESOLUTION_WORDING[beat.resolutionCeiling]);
+    const treatment = qualities.length ? `, keeping the development ${naturalList(qualities)}` : '';
+    return `NARRATIVE DIRECTION: ${sentence(beat.operation)}${treatment}.`;
 }
