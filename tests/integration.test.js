@@ -13,21 +13,21 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest and detached plugin identify the adaptive-director release', () => {
-    assert.equal(manifest.version, '0.11.147');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.147');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.147');
+    assert.equal(manifest.version, '0.11.148');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.148');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.148');
     assert.match(manifest.description, /always-on adaptive story director/i);
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.11\.147'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.11\.147'/);
+    assert.match(pluginSource, /const VERSION = '0\.11\.148'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.11\.148'/);
 });
 
-test('extension loads v147 natural-direction modules', () => {
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.147'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.147'/);
-    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.147'/);
-    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.147'/);
-    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.147'/);
+test('extension loads v148 guidance-preview modules', () => {
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.148'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.148'/);
+    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.148'/);
+    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.148'/);
+    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.148'/);
 });
 
 test('long-form defaults reserve room for current turns, summaries, and thinking', () => {
@@ -51,7 +51,7 @@ test('depth one is the default and injection proof cannot block roleplay generat
     assert.match(source, /state\.lastRequestVerification = verification/);
     assert.doesNotMatch(source, /await rememberVerifiedRequest/);
     assert.match(source, /scheduleVerificationPersistence\(context\)/);
-    assert.match(source, /Proof fingerprint:/);
+    assert.match(source, /Tale Fairy plans to inject this exact context/);
     assert.match(source, /savedState\.lastRequestVerification\?\.status === 'included'/);
     assert.match(source, /ensureGuidanceInChat\(request\.messages, payload/);
     assert.match(source, /request\.prompt = ensureGuidanceInText\(request\.prompt, payload\)/);
@@ -77,7 +77,7 @@ test('depth one is the default and injection proof cannot block roleplay generat
     assert.match(source, /recordRuntimeStage\('network-dispatched'/);
     assert.match(source, /s\.runtimeDiagnostics = \[\.\.\.\(Array\.isArray\(s\.runtimeDiagnostics\)/);
     assert.match(source, /recordRuntimeStage\('generation-ended'\)/);
-    assert.match(source, /INCLUDED — exact context verified in the outbound request/);
+    assert.match(source, /CURRENT GENERATION REQUEST/);
 });
 
 test('obsolete pacing selector and static provider boilerplate are absent', () => {
@@ -170,9 +170,13 @@ test('planner output is lightweight while retaining structured-output negotiatio
     assert.match(source, /PLANNER_MAX_AUTO_RETRIES = 2/);
 });
 
-test('scratchpad exposes adaptive direction without misleading dormant triggers', () => {
-    assert.match(template, /Last provider-bound decision \(exact\)/);
-    assert.ok(template.indexOf('Last provider-bound decision (exact)') < template.indexOf('<h5>Current scene</h5>'));
+test('scratchpad previews the next provider guidance without misleading dormant triggers', () => {
+    assert.match(template, /Next provider guidance \(exact preview\)/);
+    assert.ok(template.indexOf('Next provider guidance (exact preview)') < template.indexOf('<h5>Current scene</h5>'));
+    assert.match(template, /exact Tale Fairy context currently eligible for the next roleplay request/i);
+    assert.match(source, /const previewPayload = buildPromptPayload\(state, \{ enabled: getSettings\(\)\.enabled, \.\.\.previewOptions \}\)/);
+    assert.match(source, /NEXT NORMAL GENERATION/);
+    assert.match(source, /CURRENT REGENERATION REQUEST/);
     assert.match(template, />Adaptive direction</);
     assert.match(template, /Observed response effect \(private\)/);
     assert.match(template, /never injected and never triggers automatic regeneration/i);
