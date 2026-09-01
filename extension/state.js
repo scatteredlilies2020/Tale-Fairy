@@ -1,9 +1,9 @@
-import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.11.139';
+import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.11.140';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
 import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js';
-import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile } from './beat-director.js?v=0.11.139';
-import { normalizeDirectorSample } from './director-sampling.js?v=0.11.139';
+import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile } from './beat-director.js?v=0.11.140';
+import { normalizeDirectorSample } from './director-sampling.js?v=0.11.140';
 
 export const STATE_KEY = 'livingWorldGuide';
 export const STATE_VERSION = 48;
@@ -384,6 +384,17 @@ export function returnedReplyMatchesVerification(pending, messages = [], chatId 
     if (!pending || pending.chatId !== String(chatId || '') || !messages.length || messages.at(-1)?.is_user) return false;
     const requiredCount = Math.max(0, Number(pending.sourceMessageCount) || 0) + (pending.replacementGeneration ? 0 : 1);
     return messages.length >= requiredCount;
+}
+
+export function isReplacementVerificationCurrent(verification, messages = [], chatId = '') {
+    if (!verification
+        || verification.status !== 'confirmed'
+        || verification.chatId !== String(chatId || '')
+        || !messages.length) return false;
+    const responseCount = Math.max(0, Number(verification.responseMessageCount) || 0);
+    if (!responseCount) return false;
+    if (messages.length === responseCount) return true;
+    return Boolean(messages.at(-1)?.is_user && messages.length + 1 === responseCount);
 }
 
 export function normalizeState(input = {}) {

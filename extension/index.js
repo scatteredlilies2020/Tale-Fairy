@@ -4,25 +4,26 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.139';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.139';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.140';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, isAnalysisSourceCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.140';
 import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.11.101';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.139';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.139';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.139';
-import { normalizeModelListResponse } from './models.js?v=0.11.139';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.140';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.140';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.140';
+import { normalizeModelListResponse } from './models.js?v=0.11.140';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.108';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.139';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.139';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.139';
-import { estimateTokenCount } from './token-budget.js?v=0.11.139';
-import { completionText } from './completion-response.js?v=0.11.139';
-import { sampleDirectorSignals } from './director-sampling.js?v=0.11.139';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.140';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.140';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.140';
+import { estimateTokenCount } from './token-budget.js?v=0.11.140';
+import { completionText } from './completion-response.js?v=0.11.140';
+import { sampleDirectorSignals } from './director-sampling.js?v=0.11.140';
 import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.11.105';
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
+import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.11.140';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.139';
+const RUNTIME_VERSION = '0.11.140';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -46,6 +47,9 @@ let analysisRetryAttempt = 0;
 let analysisPhaseTimer = null;
 let generationRevision = 0;
 let analysisStopSequence = 0;
+let activeAnalysisIntent = null;
+let activeAnalysisMessageCount = 0;
+let queuedAnalysisIntent = null;
 let lastAnalysisError = '';
 let pendingRequestVerification = null;
 let generationGuideSelection = null;
@@ -639,8 +643,9 @@ function prepareGenerationGuide(state, type) {
     const messages = messagesFromChat(context.chat || []);
     const replacement = type === 'swipe' || type === 'regenerate';
     const archived = replacement ? state.lastRequestVerification : null;
-    const archivedUsable = Boolean(String(archived?.beatDirective?.requiredEffect || '').trim());
-    const currentBeatUsable = Boolean(state.lastInject && String(state.beatDirective?.requiredEffect || '').trim());
+    const archivedUsable = isReplacementVerificationCurrent(archived, messages, chatId)
+        && Boolean(String(archived?.beatDirective?.requiredEffect || '').trim());
+    const currentGuidanceUsable = !replacement && isGuidanceUsable(state, messages, chatId);
     const hasArchivedSeed = replacement && Number.isInteger(archived?.directorSeed) && archived.directorSeed >= 0;
     const directorSeed = hasArchivedSeed ? archived.directorSeed : state.plannerSeed;
     const directorSample = replacement && archived?.directorSample
@@ -649,10 +654,10 @@ function prepareGenerationGuide(state, type) {
     generationGuideSelection = {
         chatId,
         candidates: [], index: 0,
-        // A replacement archive is preferred because it records the exact
-        // pre-response direction. Missing archival proof must not make a
-        // long-lived analyzed beat disappear into a generic fallback.
-        usable: archivedUsable || currentBeatUsable || (!replacement && isGuidanceUsable(state, messages, chatId)),
+        // Normal guidance is valid for one response only. Replacements reuse
+        // the exact provider-bound archive for the discarded response; if no
+        // such proof exists, fail closed instead of reviving a stale beat.
+        usable: archivedUsable || currentGuidanceUsable,
         regeneration: replacement,
         replacement,
         variationCue: directorSeed,
@@ -989,6 +994,7 @@ async function withPlannerTabLock(chatId, task) {
 }
 
 function cancelRunningAnalysis(reason, status) {
+    clearQueuedAnalysis();
     if (!analysisAbortController) return false;
     analysisRunId++;
     analysisAbortController.abort(new DOMException(reason, 'AbortError'));
@@ -1000,6 +1006,45 @@ function cancelRunningAnalysis(reason, status) {
     analysisRequestFingerprint = '';
     if (status) renderAnalysisActivity(status, false);
     return true;
+}
+
+function clearQueuedAnalysis() {
+    queuedAnalysisIntent = null;
+}
+
+function drainQueuedAnalysis() {
+    if (analysisPromise || !queuedAnalysisIntent) return;
+    const intent = queuedAnalysisIntent;
+    queuedAnalysisIntent = null;
+    const context = currentContext();
+    const chatId = String(context.getCurrentChatId?.() || '');
+    const messages = messagesFromChat(context.chat || []);
+    if (!getSettings().enabled || !chatId || chatId !== intent.chatId || !messages.length) return;
+    renderAnalysisActivity('Refreshing planner from latest turn…', true);
+    void analyzeNow({
+        ...intent,
+        force: true,
+        messages,
+        allowOneUserAppend: true,
+    });
+}
+
+function queueLatestAnalysis(value = {}) {
+    const context = currentContext();
+    const intent = mergePlannerIntents(activeAnalysisIntent, {
+        ...value,
+        chatId: value.chatId || String(context.getCurrentChatId?.() || ''),
+    });
+    if (analysisPromise) {
+        queuedAnalysisIntent = queuedAnalysisIntent
+            ? mergePlannerIntents(queuedAnalysisIntent, intent)
+            : intent;
+        renderAnalysisActivity('Planner active · latest turn queued', true);
+        return analysisPromise;
+    }
+    queuedAnalysisIntent = intent;
+    drainQueuedAnalysis();
+    return analysisPromise;
 }
 
 function cancelAnalysisRetry({ resetAttempt = true } = {}) {
@@ -1042,6 +1087,7 @@ function interruptAnalysis(reason, status) {
     generationGuideSelection = null;
     analysisStopSequence++;
     generationRevision++;
+    clearQueuedAnalysis();
     cancelAnalysisRetry();
     if (!cancelRunningAnalysis(reason, status)) {
         renderAnalysisActivity(status, false);
@@ -1535,6 +1581,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
     if (analysisPromise) {
         if (!force && !userNote && !rebuild && analysisRequestFingerprint === fingerprint) return analysisPromise;
         previousAnalysisPromise = analysisPromise;
+        clearQueuedAnalysis();
         cancelRunningAnalysis('A newer Tale Fairy analysis replaced this request.', 'Restarting…');
     }
     const revision = ++generationRevision;
@@ -1545,6 +1592,14 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
     const controller = new AbortController();
     analysisAbortController = controller;
     analysisRequestFingerprint = fingerprint;
+    activeAnalysisIntent = normalizePlannerIntent({
+        chatId,
+        note,
+        rebuild,
+        waitForContinuity,
+        allowStaleContinuity,
+    });
+    activeAnalysisMessageCount = chat.length;
     markPlannerPending(plannerStorage(), chatId, fingerprint);
     showAnalysisPhase('Waiting for planner slot', runId, startedAt);
     let finalStatus = 'Updated';
@@ -1594,6 +1649,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         showAnalysisPhase('Validating and saving planner result', runId, startedAt);
         const resolvedNote = resolveUserNote(result, userNote);
         if (revision !== generationRevision) {
+            await acknowledgeDetachedPlannerRun(detachedRunKey, chatId);
             finalStatus = 'Skipped · chat changed';
             return current;
         }
@@ -1637,7 +1693,12 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
             renderBoard(loadState(context.chatMetadata));
             return loadState(context.chatMetadata);
         }).finally(() => {
-            if (analysisPromise === promise) analysisPromise = null;
+            if (analysisPromise === promise) {
+                analysisPromise = null;
+                activeAnalysisIntent = null;
+                activeAnalysisMessageCount = 0;
+                queueMicrotask(drainQueuedAnalysis);
+            }
             if (runId !== analysisRunId) return;
             analysisAbortController = null;
             analysisRequestFingerprint = '';
@@ -2110,11 +2171,13 @@ if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPE
     generationGuideSelection = null;
 });
 eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
+    const receivedChatId = String(currentContext().getCurrentChatId?.() || '');
+    const supersededIntent = analysisPromise ? activeAnalysisIntent : null;
     generationRevision++;
-    cancelRunningAnalysis('The chat advanced while Tale Fairy was analyzing.', 'Refreshing…');
-    await confirmReturnedReplyUsedGuidance();
+    const consumedCurrentGuide = await confirmReturnedReplyUsedGuidance();
     generationGuideSelection = null;
     const context = currentContext();
+    if (String(context.getCurrentChatId?.() || '') !== receivedChatId) return;
     const messages = messagesFromChat(context.chat || []);
     const state = loadState(context.chatMetadata);
     const turn = assistantTurnNumber(messages);
@@ -2125,10 +2188,14 @@ eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
     state.plannerSchedule = withRefreshReason(state.plannerSchedule, decision);
     context.updateChatMetadata(saveState(context.chatMetadata, state));
     updatePrompt(state);
-    // Ordinary turns are directed locally. The AI planner wakes only for
-    // initialization, meaningful pivots/corrections/payoffs, or maintenance.
-    if (getSettings().enabled && decision.shouldRun) {
-        void analyzeNow({ messages, force: true, allowOneUserAppend: true, allowStaleContinuity: true });
+    // Consuming an exact guide schedules its successor. If chat advances while
+    // planning, retain only one catch-up request for the newest transcript.
+    if (getSettings().enabled && (decision.shouldRun || supersededIntent || (consumedCurrentGuide && !replacement))) {
+        void queueLatestAnalysis({
+            ...supersededIntent,
+            chatId: String(context.getCurrentChatId?.() || ''),
+            allowStaleContinuity: true,
+        });
     }
 });
 if (event_types.MESSAGE_SENT) eventSource.on(event_types.MESSAGE_SENT, () => {
@@ -2137,6 +2204,11 @@ if (event_types.MESSAGE_SENT) eventSource.on(event_types.MESSAGE_SENT, () => {
     // the only planner call before it can ever persist in a fast conversation.
     generationGuideSelection = null;
     const context = currentContext();
+    const messages = messagesFromChat(context.chat || []);
+    if (analysisPromise && activeAnalysisMessageCount && exceedsAppendAllowance(activeAnalysisMessageCount, messages.length)) {
+        generationRevision++;
+        void queueLatestAnalysis({ chatId: String(context.getCurrentChatId?.() || '') });
+    }
     const state = prepareAuthorContract(loadState(context.chatMetadata));
     updatePrompt(state);
 });

@@ -13,21 +13,21 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest and detached plugin identify the adaptive-director release', () => {
-    assert.equal(manifest.version, '0.11.139');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.139');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.139');
+    assert.equal(manifest.version, '0.11.140');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.140');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.140');
     assert.match(manifest.description, /always-on adaptive story director/i);
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.11\.139'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.11\.139'/);
+    assert.match(pluginSource, /const VERSION = '0\.11\.140'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.11\.140'/);
 });
 
-test('extension loads v139 adaptive-director modules', () => {
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.139'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.139'/);
-    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.139'/);
-    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.139'/);
-    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.139'/);
+test('extension loads v140 adaptive-director modules', () => {
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.140'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.140'/);
+    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.140'/);
+    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.140'/);
+    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.140'/);
 });
 
 test('long-form defaults reserve room for current turns, summaries, and thinking', () => {
@@ -122,17 +122,24 @@ test('replacement generation archives semantic direction and the exact weighted 
     assert.match(source, /beatDirective: archivedUsable \? archived\.beatDirective/);
     assert.match(source, /archived\?\.directorSample/);
     assert.match(source, /archived\?\.directorSeed/);
-    assert.match(source, /const currentBeatUsable = Boolean\(state\.lastInject/);
-    assert.match(source, /usable: archivedUsable \|\| currentBeatUsable/);
+    assert.match(source, /const currentGuidanceUsable = !replacement && isGuidanceUsable/);
+    assert.match(source, /usable: archivedUsable \|\| currentGuidanceUsable/);
+    assert.match(source, /isReplacementVerificationCurrent\(archived, messages, chatId\)/);
+    assert.doesNotMatch(source, /currentBeatUsable|Boolean\(state\.lastInject/);
     assert.match(source, /archivedUsable \? archived\.canonConstraints : state\.canonConstraints/);
     assert.match(directorSource, /preserve the same required effect and constraints while producing a genuinely different realization/i);
     assert.doesNotMatch(source, /\(previousIndex \+ 1\) % candidates\.length/);
 });
 
-test('rapid-fire turns do not wait for a new planner call', () => {
+test('rapid-fire turns consume guidance once and coalesce planner catch-up', () => {
     assert.match(directorSource, /REQUIRED NARRATIVE EFFECT/);
     assert.match(schedulerSource, /replacement response reuses the archived semantic beat and never spends a planner call/i);
-    assert.match(source, /void analyzeNow\(/);
+    assert.match(source, /function queueLatestAnalysis/);
+    assert.match(source, /Planner active · latest turn queued/);
+    assert.match(source, /decision\.shouldRun \|\| supersededIntent/);
+    assert.match(source, /consumedCurrentGuide && !replacement/);
+    assert.match(source, /revision !== generationRevision[\s\S]{0,160}acknowledgeDetachedPlannerRun/);
+    assert.doesNotMatch(source, /MESSAGE_RECEIVED[\s\S]{0,180}cancelRunningAnalysis/);
     assert.doesNotMatch(directorSource, /delivery debt|release condition|event queue/i);
 });
 

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages,
-    generationRetrySource, isAnalysisSourceCurrent, isGuidanceUsable, isStateAligned,
+    generationRetrySource, isAnalysisSourceCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned,
     loadState, normalizeState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION, stateForPrompt,
 } from '../extension/state.js';
 import { formatBeatContract, normalizeBeatDirective, normalizeSceneProfile } from '../extension/beat-director.js';
@@ -234,17 +234,27 @@ test('request verification confirms only the matching chat and returned assistan
     assert.equal(returnedReplyMatchesVerification(pending, [...messages, { is_user: false, mes: 'Reply' }], 'chat-b'), false);
 });
 
+test('replacement verification is usable only for the exact discarded response', () => {
+    const messages = [{ is_user: true, mes: 'Prompt' }, { is_user: false, mes: 'Reply' }];
+    const verification = { status: 'confirmed', chatId: 'chat-a', responseMessageCount: 2 };
+    assert.equal(isReplacementVerificationCurrent(verification, messages, 'chat-a'), true);
+    assert.equal(isReplacementVerificationCurrent(verification, messages.slice(0, -1), 'chat-a'), true);
+    assert.equal(isReplacementVerificationCurrent(verification, [...messages, { is_user: true, mes: 'Later' }], 'chat-a'), false);
+    assert.equal(isReplacementVerificationCurrent({ ...verification, status: 'included' }, messages, 'chat-a'), false);
+    assert.equal(isReplacementVerificationCurrent(verification, messages, 'chat-b'), false);
+});
+
 test('request verification preserves a weighted director sample without fabricating one for legacy records', () => {
     const legacy = normalizeState({ lastRequestVerification: { status: 'confirmed', guidanceBlock: '<living-world-guide>old</living-world-guide>' } });
     assert.equal(legacy.lastRequestVerification.runtimeVersion, '');
     assert.equal(legacy.lastRequestVerification.directorSample, null);
     assert.equal(legacy.lastRequestVerification.directorSeed, null);
     const current = normalizeState({ lastRequestVerification: {
-        status: 'confirmed', runtimeVersion: '0.11.139', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
+        status: 'confirmed', runtimeVersion: '0.11.140', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
         directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' },
     } });
     assert.deepEqual(current.lastRequestVerification.directorSample, { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' });
-    assert.equal(current.lastRequestVerification.runtimeVersion, '0.11.139');
+    assert.equal(current.lastRequestVerification.runtimeVersion, '0.11.140');
     assert.equal(current.lastRequestVerification.directorSeed, 0);
 });
 
