@@ -17,6 +17,11 @@ test('reads structured tool arguments and Responses API output', () => {
     assert.equal(completionText({ output: [{ type: 'message', content: [{ type: 'output_text', text: 'response' }] }] }), 'response');
 });
 
+test('reads a direct current-beat v3 structured result', () => {
+    const result = { contract_version: 3, current: {}, beat: {}, response_audit: {} };
+    assert.equal(completionText(result), JSON.stringify(result));
+});
+
 test('unwraps common proxy containers', () => {
     assert.equal(completionText({ data: { response: { choices: [{ message: { content: 'nested' } }] } } }), 'nested');
 });

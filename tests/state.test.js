@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages,
-    generationRetrySource, isAnalysisSourceCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned,
+    generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned,
     loadState, normalizeState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION, stateForPrompt,
 } from '../extension/state.js';
 import { formatBeatContract, normalizeBeatDirective, normalizeSceneProfile } from '../extension/beat-director.js';
@@ -24,10 +24,10 @@ function analyzedState(extra = {}) {
     return normalizeState({ ...beat, ...extra });
 }
 
-test('default and normalized state use the v48 scene-first planner contract', () => {
+test('default and normalized state use the v49 sparse feedback planner contract', () => {
     const state = normalizeState({ mode: 'invalid' });
-    assert.equal(STATE_VERSION, 48);
-    assert.equal(state.version, 48);
+    assert.equal(STATE_VERSION, 49);
+    assert.equal(state.version, 49);
     assert.equal(state.mode, 'balanced');
     assert.equal(state.sceneProfile.phase, 'developing');
     assert.equal(state.beatDirective.operation, '');
@@ -112,6 +112,16 @@ test('stale analysis fails closed while one explicitly allowed append remains de
     assert.equal(isAnalysisSourceCurrent(fingerprint, messages.length, assistantAppended, { allowOneAssistantAppend: true }), true);
 });
 
+test('necessity gate keeps a current private direction while injecting nothing', () => {
+    const state = analyzedState({
+        lastInject: false,
+        beatDirective: { ...analyzedState().beatDirective, inject: false, injectReason: 'The user action already determines the immediate response.' },
+    });
+    assert.equal(isDirectionCurrent(state, messages, 'chat-a'), true);
+    assert.equal(isGuidanceUsable(state, messages, 'chat-a'), false);
+    assert.equal(buildPromptPayload(state, { guidanceUsable: true }), '');
+});
+
 test('analyzed injection exposes only abstract flow and scale', () => {
     const payload = buildPromptPayload(analyzedState(), {
         guidanceUsable: true,
@@ -124,6 +134,14 @@ test('analyzed injection exposes only abstract flow and scale', () => {
     assert.doesNotMatch(payload, /boldly or consequentially|unexpected but compatible|lean toward opportunity/i);
     assert.doesNotMatch(payload, /SUGGESTED ROUTE|future horizon|delivery debt/i);
     assert.equal(payload.match(/ANALYZED BEAT:/g)?.length, 1);
+});
+
+test('sparse compiler omits default scale fields without limiting freeform movement', () => {
+    const payload = formatBeatContract({}, {
+        inject: true, operation: 'let the ordinary answer open an unforeseen possibility', requiredEffect: 'Privately validate a compatible change.',
+        contentClass: 'none', scope: 'personal', intensity: 'none', quantity: 'none', relativePower: 'none', plotWeight: 'none', duration: 'beat', resolutionCeiling: 'open',
+    });
+    assert.equal(payload, 'ANALYZED BEAT: movement=let the ordinary answer open an unforeseen possibility.');
 });
 
 test('provider compiler keeps the planner-specific intended event private', () => {
@@ -251,11 +269,11 @@ test('request verification preserves a weighted director sample without fabricat
     assert.equal(legacy.lastRequestVerification.directorSample, null);
     assert.equal(legacy.lastRequestVerification.directorSeed, null);
     const current = normalizeState({ lastRequestVerification: {
-        status: 'confirmed', runtimeVersion: '0.11.145', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
+        status: 'confirmed', runtimeVersion: '0.11.146', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
         directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' },
     } });
     assert.deepEqual(current.lastRequestVerification.directorSample, { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' });
-    assert.equal(current.lastRequestVerification.runtimeVersion, '0.11.145');
+    assert.equal(current.lastRequestVerification.runtimeVersion, '0.11.146');
     assert.equal(current.lastRequestVerification.directorSeed, 0);
 });
 
@@ -273,6 +291,14 @@ test('provider-bound inclusion proof survives normalization before a reply retur
     assert.equal(state.lastRequestVerification.status, 'included');
     assert.equal(state.lastRequestVerification.verificationId, 'tf-1234-deadbeef');
     assert.equal(state.lastRequestVerification.depth, 1);
+});
+
+test('provider-bound no-injection decision survives normalization without a fabricated block', () => {
+    const state = normalizeState({ lastRequestVerification: {
+        status: 'included', injectionDecision: 'skip', verificationId: 'tf-skip', guidanceBlock: '', chatId: 'chat-a',
+    } });
+    assert.equal(state.lastRequestVerification.injectionDecision, 'skip');
+    assert.equal(state.lastRequestVerification.guidanceBlock, '');
 });
 
 test('planner completion resets only the lightweight refresh schedule', () => {

@@ -5,7 +5,7 @@ import {
     ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, MODE_INSTRUCTIONS,
     applyAnalysis, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult,
 } from '../extension/analysis.js';
-import { defaultState } from '../extension/state.js';
+import { buildPromptPayload, defaultState } from '../extension/state.js';
 import { estimateTokenCount } from '../extension/token-budget.js';
 
 function result(overrides = {}) {
@@ -20,12 +20,18 @@ function result(overrides = {}) {
             pressure: 'latent', intrusion: 'closed', novelty_ceiling: 'context-native',
         },
         beat: {
+            inject: true, inject_reason: 'The scene benefits from a light directional nudge without prescribing its realization.',
             operation: 'complicate', target: 'the current assignment attempt',
             required_effect: 'Expose one manageable, task-native difficulty that makes progress require a concrete adjustment.',
             content_class: 'obstacle', scope: 'personal', intensity: 'low', quantity: 'singular', relative_power: 'inferior',
             plot_weight: 'incidental', duration: 'beat', resolution_ceiling: 'local',
             preserve: ['the solitary work scene', 'the user controls how to respond'],
             forbid: ['unrelated attackers', 'a forced player decision'], basis: 'The assignment supports a small practical obstacle, not a new plot.',
+        },
+        response_audit: {
+            applicable: true, movement_fit: 'clear', repetition: 'none', unjustified_escalation: false,
+            player_control: false, continuity_drift: false, patterns: ['task-native obstacle after quiet setup'],
+            summary: 'The prior response moved the current activity without taking control from the player.',
         },
         world: {
             identity: 'A contemporary life simulation', baseline: 'Ordinary school and home constraints apply.',
@@ -51,7 +57,7 @@ test('extractJson accepts fenced, wrapped, and locally repairable JSON', () => {
 
 test('structured output contract is the compact current-beat v3 shape', () => {
     assert.equal(ANALYSIS_SCHEMA_VALUE.properties.contract_version.const, 3);
-    assert.deepEqual(ANALYSIS_SCHEMA_VALUE.required, ['contract_version', 'current', 'beat', 'world', 'thread_updates', 'actor_updates', 'canon_updates', 'ledger', 'note_resolution', 'audit']);
+    assert.deepEqual(ANALYSIS_SCHEMA_VALUE.required, ['contract_version', 'current', 'beat', 'response_audit', 'world', 'thread_updates', 'actor_updates', 'canon_updates', 'ledger', 'note_resolution', 'audit']);
     assert.equal(ANALYSIS_SCHEMA.strict, true);
     assert.match(ANALYSIS_OUTPUT_CONTRACT, /No other keys/);
     assert.doesNotMatch(JSON.stringify(ANALYSIS_SCHEMA_VALUE), /routes|guides|horizons|milestones|future_setup/i);
@@ -97,8 +103,8 @@ test('planner permits freeform AI invention and scale-native simulation', () => 
     assert.match(SYSTEM, /life simulation/i);
     assert.match(SYSTEM, /countries, societies, and worlds/i);
     assert.match(SYSTEM, /policy effect, public response, trend, or system pressure/i);
-    assert.match(SYSTEM, /sends only the freely chosen movement description and abstract scale classifications downstream/i);
-    assert.match(SYSTEM, /required_effect, target, preserve, forbid, scene promise, basis, audit, retained evidence, canon records, and user-note records remain private/i);
+    assert.match(SYSTEM, /sends only the freely chosen movement description and non-default abstract scale classifications downstream/i);
+    assert.match(SYSTEM, /required_effect, target, inject_reason, preserve, forbid, scene promise, basis, audit, response_audit, response pattern memory, retained evidence, canon records, and user-note records remain private/i);
     assert.doesNotMatch(SYSTEM, /generate six to eight.*routes|schedule future milestones|maintain event queues/i);
     assert.ok(estimateTokenCount(`${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}`) < 1800);
 });
@@ -121,7 +127,9 @@ test('analysis prompt carries current context, identity, variation, bootstrap, a
     assert.equal(prompt.summary_sources[0].label, 'Continuity Memory');
     assert.match(prompt.invention, /Any context-compatible narrative development/i);
     assert.match(prompt.invention, /required_effect must precisely state the intended narrative result/i);
-    assert.match(prompt.invention, /roleplay model receives the freely chosen movement description and abstract scale classifications.*chooses the actual development, prose, and concrete realization/i);
+    assert.match(prompt.invention, /roleplay model receives the freely chosen movement description and only useful, non-default scale classifications.*chooses the actual development, prose, and concrete realization/i);
+    assert.match(prompt.necessity_gate, /inject=false/i);
+    assert.match(prompt.response_audit_rule, /never injected/i);
     assert.match(prompt.simulation, /country simulation/i);
     assert.match(prompt.direction_policy, /choose one coherent authorial direction before applying random creative appetite/i);
     assert.match(prompt.direction_policy, /breathing room.*as legitimate as complication/i);
@@ -177,11 +185,23 @@ test('applying analysis saves the beat and clears retired future machinery', () 
     assert.equal(next.beatDirective.operation, 'complicate');
     assert.equal(next.beatDirective.contentClass, 'obstacle');
     assert.equal(next.lastInject, true);
+    assert.equal(next.responseAudit.movementFit, 'clear');
+    assert.deepEqual(next.responsePatternMemory, ['task-native obstacle after quiet setup']);
     assert.deepEqual(next.objectives, []);
     assert.deepEqual(next.possibilities, []);
     assert.deepEqual(next.pathways, []);
     assert.deepEqual(next.nextGuides, []);
     assert.deepEqual(next.narrativeEvents, []);
+});
+
+test('private response audit informs later planning but never enters roleplay injection', () => {
+    const next = applyAnalysis(defaultState(), result(), messages);
+    const plannerState = JSON.stringify(next.responseAudit) + JSON.stringify(next.responsePatternMemory);
+    const providerPayload = buildAnalysisPrompt(messages, next);
+    const roleplayPayload = buildPromptPayload(next, { guidanceUsable: true });
+    assert.match(providerPayload, /task-native obstacle after quiet setup/);
+    assert.doesNotMatch(roleplayPayload, /movementFit|task-native obstacle|prior response/i);
+    assert.ok(plannerState.includes('task-native obstacle'));
 });
 
 test('applying factual deltas updates and retires actors and unresolved processes', () => {

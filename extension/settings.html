@@ -160,8 +160,8 @@
             <span><span data-role="scratchpad-continuity">Continuity: unavailable</span> · <span data-role="scratchpad-meta">No planner result yet.</span></span>
           </div>
           <section>
-            <h5>Last provider-bound injection (exact)</h5>
-            <small>The complete Tale Fairy context found in the assembled provider request, shown verbatim.</small>
+            <h5>Last provider-bound decision (exact)</h5>
+            <small>The exact Tale Fairy context found in the assembled provider request, or a verified decision to inject nothing.</small>
             <div data-role="scratchpad-request-verification">No provider request has been verified yet.</div>
           </section>
           <section>
@@ -181,6 +181,11 @@
             <h5>Adaptive direction</h5>
             <small>A freeform narrative function plus a weighted creative appetite, not a scripted event. The writing AI chooses the concrete, context-native realization.</small>
             <div data-role="scratchpad-next-guides">No generated adaptive direction yet.</div>
+          </section>
+          <section data-role="scratchpad-response-audit-section" hidden>
+            <h5>Observed response effect (private)</h5>
+            <small>Checks the previous reply for movement, repetition, escalation, player control, and continuity drift. This evidence informs later planning; it is never injected and never triggers automatic regeneration.</small>
+            <div data-role="scratchpad-response-audit"></div>
           </section>
           <section data-role="scratchpad-continuity-section" hidden>
             <h5>Continuity evidence</h5>

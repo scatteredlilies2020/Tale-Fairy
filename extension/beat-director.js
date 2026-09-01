@@ -27,7 +27,7 @@ export function defaultSceneProfile() {
 }
 
 export function defaultBeatDirective() {
-    return { operation: '', target: 'current activity', requiredEffect: '', contentClass: 'none', scope: 'personal', intensity: 'none', quantity: 'none', relativePower: 'none', plotWeight: 'none', duration: 'beat', resolutionCeiling: 'open', preserve: [], forbid: [], basis: '' };
+    return { operation: '', target: 'current activity', requiredEffect: '', inject: false, injectReason: '', contentClass: 'none', scope: 'personal', intensity: 'none', quantity: 'none', relativePower: 'none', plotWeight: 'none', duration: 'beat', resolutionCeiling: 'open', preserve: [], forbid: [], basis: '' };
 }
 
 export function normalizeSceneProfile(value = {}) {
@@ -43,10 +43,14 @@ export function normalizeSceneProfile(value = {}) {
 }
 
 export function normalizeBeatDirective(value = {}) {
+    const operation = movement(value.operation);
+    const requiredEffect = text(value.requiredEffect ?? value.required_effect, 260);
     return {
-        operation: movement(value.operation),
+        operation,
         target: text(value.target, 160) || 'current activity',
-        requiredEffect: text(value.requiredEffect ?? value.required_effect, 260),
+        requiredEffect,
+        inject: Object.hasOwn(value, 'inject') ? value.inject === true : Boolean(operation && requiredEffect),
+        injectReason: text(value.injectReason ?? value.inject_reason, 220),
         contentClass: choice(value.contentClass ?? value.content_class, CONTENT, 'none'),
         scope: choice(value.scope, SCOPES, 'personal'),
         intensity: choice(value.intensity, INTENSITY, 'none'),
@@ -63,10 +67,20 @@ export function normalizeBeatDirective(value = {}) {
 
 export function hasUsableBeatDirective(value) {
     const beat = normalizeBeatDirective(value);
-    return Boolean(beat.operation && beat.requiredEffect);
+    return Boolean(beat.inject && beat.operation && beat.requiredEffect);
 }
 
 export function formatBeatContract(_sceneValue, beatValue, _options = {}) {
     const beat = normalizeBeatDirective(beatValue);
-    return `ANALYZED BEAT: movement=${beat.operation}; content=${beat.contentClass}; scope=${beat.scope}; intensity=${beat.intensity}; quantity=${beat.quantity}; relative power=${beat.relativePower}; plot weight=${beat.plotWeight}; duration=${beat.duration}; resolution ceiling=${beat.resolutionCeiling}.`;
+    if (!beat.inject || !beat.operation) return '';
+    const fields = [`movement=${beat.operation}`];
+    if (beat.contentClass !== 'none') fields.push(`content=${beat.contentClass}`);
+    if (beat.scope !== 'personal') fields.push(`scope=${beat.scope}`);
+    if (beat.intensity !== 'none') fields.push(`intensity=${beat.intensity}`);
+    if (beat.quantity !== 'none') fields.push(`quantity=${beat.quantity}`);
+    if (beat.relativePower !== 'none') fields.push(`relative power=${beat.relativePower}`);
+    if (beat.plotWeight !== 'none') fields.push(`plot weight=${beat.plotWeight}`);
+    if (beat.duration !== 'beat') fields.push(`duration=${beat.duration}`);
+    if (beat.resolutionCeiling !== 'open') fields.push(`resolution ceiling=${beat.resolutionCeiling}`);
+    return `ANALYZED BEAT: ${fields.join('; ')}.`;
 }

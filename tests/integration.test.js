@@ -13,21 +13,21 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest and detached plugin identify the adaptive-director release', () => {
-    assert.equal(manifest.version, '0.11.145');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.145');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.145');
+    assert.equal(manifest.version, '0.11.146');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.146');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.146');
     assert.match(manifest.description, /always-on adaptive story director/i);
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.11\.145'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.11\.145'/);
+    assert.match(pluginSource, /const VERSION = '0\.11\.146'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.11\.146'/);
 });
 
-test('extension loads v145 adaptive-director modules', () => {
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.145'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.145'/);
-    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.145'/);
-    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.145'/);
-    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.145'/);
+test('extension loads v146 adaptive-director modules', () => {
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.146'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.146'/);
+    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.146'/);
+    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.146'/);
+    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.146'/);
 });
 
 test('long-form defaults reserve room for current turns, summaries, and thinking', () => {
@@ -96,9 +96,9 @@ test('adaptive analysis uses freeform direction rather than an event taxonomy', 
     assert.match(analysisSource, /countries, societies, and worlds/i);
     assert.match(analysisSource, /operation: text\(80\)/);
     assert.doesNotMatch(analysisSource, /beat\.operation': \[/);
-    assert.match(analysisSource, /sends only the freely chosen movement description and abstract scale classifications downstream/i);
-    assert.match(analysisSource, /required_effect, target, preserve, forbid, scene promise, basis, audit, retained evidence, canon records, and user-note records remain private/i);
-    assert.match(stateSource, /export const STATE_VERSION = 48/);
+    assert.match(analysisSource, /sends only the freely chosen movement description and non-default abstract scale classifications downstream/i);
+    assert.match(analysisSource, /required_effect, target, inject_reason, preserve, forbid, scene promise, basis, audit, response_audit, response pattern memory, retained evidence, canon records, and user-note records remain private/i);
+    assert.match(stateSource, /export const STATE_VERSION = 49/);
     assert.match(stateSource, /beatContractUpgrade/);
 });
 
@@ -113,14 +113,17 @@ test('provider injection uses only an analyzed beat and otherwise removes stale 
     assert.match(source, /ensureGuidanceInText/);
     assert.match(source, /CHAT_COMPLETION_PROMPT_READY/);
     assert.match(source, /GENERATE_AFTER_COMBINE_PROMPTS/);
-    assert.match(source, /extractTaleFairyContext\(request\)/);
+    assert.match(source, /guidanceBlock = extractTaleFairyContext\(JSON\.parse\(outboundInit\.body\)\)/);
+    assert.match(source, /rememberSkippedRequest/);
+    assert.match(source, /provider-bound-skip-saved/);
+    assert.match(pluginSource, /\[2, 3\]\.includes\(value\.contract_version\)/);
 });
 
 test('replacement generation archives semantic direction and the exact weighted sample', () => {
     assert.match(source, /const archived = replacement \? state\.lastRequestVerification : null/);
     assert.match(source, /archived\?\.beatDirective/);
-    assert.match(source, /sceneProfile: archivedUsable \? archived\.sceneProfile/);
-    assert.match(source, /beatDirective: archivedUsable \? archived\.beatDirective/);
+    assert.match(source, /sceneProfile: \(archivedUsable \|\| archivedSkipped\) \? archived\.sceneProfile/);
+    assert.match(source, /beatDirective: \(archivedUsable \|\| archivedSkipped\) \? archived\.beatDirective/);
     assert.match(source, /archived\?\.directorSample/);
     assert.match(source, /archived\?\.directorSeed/);
     assert.match(source, /const replacementMessages = generationRetrySource\(messages, replacement\)/);
@@ -167,9 +170,11 @@ test('planner output is lightweight while retaining structured-output negotiatio
 });
 
 test('scratchpad exposes adaptive direction without misleading dormant triggers', () => {
-    assert.match(template, /Last provider-bound injection \(exact\)/);
-    assert.ok(template.indexOf('Last provider-bound injection (exact)') < template.indexOf('<h5>Current scene</h5>'));
+    assert.match(template, /Last provider-bound decision \(exact\)/);
+    assert.ok(template.indexOf('Last provider-bound decision (exact)') < template.indexOf('<h5>Current scene</h5>'));
     assert.match(template, />Adaptive direction</);
+    assert.match(template, /Observed response effect \(private\)/);
+    assert.match(template, /never injected and never triggers automatic regeneration/i);
     assert.match(template, /weighted creative appetite/i);
     assert.match(template, />Continuity evidence</);
     assert.match(template, /never dormant triggers, delivery promises, or a scheduled event queue/i);
@@ -182,6 +187,7 @@ test('scratchpad exposes adaptive direction without misleading dormant triggers'
     assert.match(source, /function renderBoard/);
     assert.match(source, /state\.sceneProfile/);
     assert.match(source, /state\.beatDirective/);
+    assert.match(source, /state\.responseAudit/);
 });
 
 test('SillyTavern-compatible registration and detached planner transport remain intact', () => {

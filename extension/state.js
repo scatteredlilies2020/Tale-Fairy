@@ -1,12 +1,12 @@
-import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.11.145';
+import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.11.146';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
 import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js';
-import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile } from './beat-director.js?v=0.11.145';
-import { normalizeDirectorSample } from './director-sampling.js?v=0.11.145';
+import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile } from './beat-director.js?v=0.11.146';
+import { normalizeDirectorSample } from './director-sampling.js?v=0.11.146';
 
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 48;
+export const STATE_VERSION = 49;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -31,6 +31,8 @@ export function defaultState() {
         scene: { status: 'uninitialized', activity: '', pace: '', intent: '', location: '', time: '', loop: false },
         sceneProfile: defaultSceneProfile(),
         beatDirective: defaultBeatDirective(),
+        responseAudit: { applicable: false, movementFit: 'not-applicable', repetition: 'none', unjustifiedEscalation: false, playerControl: false, continuityDrift: false, patterns: [], summary: '' },
+        responsePatternMemory: [],
         narrativeLayers: { immediateAction: '', localActivity: '', situation: '', widerWorld: '', durableTrajectory: '', activityRole: 'routine', temporalScope: 'action' },
         storyFrame: { frame: 'unknown', confidence: 'low', basis: '' },
         directorScore: { storyIdentity: '', sceneFunction: '', settingIdentity: '', settingForces: [], causalTempo: 'hold', arcDirection: '', futureSetup: { id: '', development: '', currentStep: '', conditions: [], earliestWindow: '', disclosure: 'hidden' }, meaningfulAim: '', change: 'replace', basis: '' },
@@ -348,11 +350,14 @@ function normalizePlanHorizons(value = {}) {
 
 function normalizeRequestVerification(value) {
     if (!value || typeof value !== 'object' || !['included', 'confirmed'].includes(value.status)) return null;
+    const injectionDecision = value.injectionDecision === 'skip' ? 'skip' : 'inject';
+    if (injectionDecision === 'inject' && !text(value.guidanceBlock)) return null;
     return {
         status: value.status,
+        injectionDecision,
         runtimeVersion: text(value.runtimeVersion).slice(0, 40),
         verificationId: text(value.verificationId).slice(0, 100),
-        guidanceBlock: text(value.guidanceBlock).slice(0, 12000),
+        guidanceBlock: injectionDecision === 'inject' ? text(value.guidanceBlock).slice(0, 12000) : '',
         requestedAt: Math.max(0, Number(value.requestedAt) || 0),
         confirmedAt: Math.max(0, Number(value.confirmedAt) || 0),
         sourceMessageCount: Math.max(0, Number(value.sourceMessageCount) || 0),
@@ -384,6 +389,20 @@ export function returnedReplyMatchesVerification(pending, messages = [], chatId 
     if (!pending || pending.chatId !== String(chatId || '') || !messages.length || messages.at(-1)?.is_user) return false;
     const requiredCount = Math.max(0, Number(pending.sourceMessageCount) || 0) + (pending.replacementGeneration ? 0 : 1);
     return messages.length >= requiredCount;
+}
+function normalizeResponseAudit(value = {}) {
+    const movementFit = text(value.movementFit ?? value.movement_fit, 'not-applicable').toLowerCase();
+    const repetition = text(value.repetition, 'none').toLowerCase();
+    return {
+        applicable: value.applicable === true,
+        movementFit: ['not-applicable', 'missed', 'partial', 'clear'].includes(movementFit) ? movementFit : 'not-applicable',
+        repetition: ['none', 'possible', 'clear'].includes(repetition) ? repetition : 'none',
+        unjustifiedEscalation: value.unjustifiedEscalation === true || value.unjustified_escalation === true,
+        playerControl: value.playerControl === true || value.player_control === true,
+        continuityDrift: value.continuityDrift === true || value.continuity_drift === true,
+        patterns: cap(value.patterns, 5).map(item => clippedText(item, 140)).filter(Boolean),
+        summary: clippedText(value.summary, 400),
+    };
 }
 
 export function isReplacementVerificationCurrent(verification, messages = [], chatId = '') {
@@ -440,7 +459,8 @@ export function normalizeState(input = {}) {
     // rebuilds the beat so no direction created under the old provider-visible
     // evidence contract can survive into the privacy-safe injection format.
     // v48 rebuilds sample-first decisions so scene need selects movement before
-    // random creative appetite colors its expression.
+    // random creative appetite colors its expression. v49 adds a private reply
+    // audit and an explicit necessity gate without invalidating a v48 beat.
     const unsafePlannerUpgrade = inputVersion > 0 && inputVersion < 18;
     const movementUpgrade = inputVersion > 0 && inputVersion < 42;
     const recoveryUpgrade = inputVersion > 0 && inputVersion < 26;
@@ -468,6 +488,8 @@ export function normalizeState(input = {}) {
         scene: chronologyAuditUpgrade ? base.scene : { ...base.scene, ...(value.scene || {}) },
         sceneProfile: beatContractUpgrade ? base.sceneProfile : normalizeSceneProfile(value.sceneProfile ?? value.scene_profile),
         beatDirective: beatContractUpgrade ? base.beatDirective : normalizeBeatDirective(value.beatDirective ?? value.beat_directive),
+        responseAudit: normalizeResponseAudit(value.responseAudit ?? value.response_audit),
+        responsePatternMemory: cap(value.responsePatternMemory ?? value.response_pattern_memory, 12).map(item => clippedText(item, 140)).filter(Boolean),
         narrativeLayers: chronologyAuditUpgrade
             ? { ...base.narrativeLayers, widerWorld: normalizedLayers.widerWorld }
             : authorMapUpgrade ? { ...normalizedLayers, durableTrajectory: '' } : normalizedLayers,
@@ -550,6 +572,8 @@ export function stateForPrompt(state) {
         scene: Object.fromEntries(Object.entries(s.scene).map(([key, value]) => [key, typeof value === 'string' ? value.slice(0, 100) : value])),
         sceneProfile: s.sceneProfile,
         beatDirective: s.beatDirective,
+        responseAudit: s.responseAudit,
+        responsePatternMemory: s.responsePatternMemory.slice(-10),
         narrativeLayers: { immediateAction: s.narrativeLayers.immediateAction, localActivity: s.narrativeLayers.localActivity, situation: s.narrativeLayers.situation, widerWorld: s.narrativeLayers.widerWorld, durableTrajectory: s.narrativeLayers.durableTrajectory, activityRole: s.narrativeLayers.activityRole, temporalScope: s.narrativeLayers.temporalScope },
         loreModel: { ...s.loreModel },
         continuityThreads: s.continuityThreads.map(item => ({ id: item.id, thread: item.thread, state: item.state, status: item.status, basis: item.basis })),
@@ -580,6 +604,12 @@ export function isStateAligned(state, messages = [], chatId = '') {
 export function isGuidanceUsable(state, messages = [], chatId = '') {
     const s = normalizeState(state);
     if (!s.lastInject || !hasUsableBeatDirective(s.beatDirective)) return false;
+    return isDirectionCurrent(s, messages, chatId);
+}
+
+export function isDirectionCurrent(state, messages = [], chatId = '') {
+    const s = normalizeState(state);
+    if (!s.beatDirective.operation || !s.beatDirective.requiredEffect) return false;
     if (isStateAligned(s, messages, chatId)) return true;
     if (s.sourceChatId && chatId && s.sourceChatId !== String(chatId)) return false;
     if (!messages.at(-1)?.is_user || s.sourceMessageCount !== messages.length - 1) return false;

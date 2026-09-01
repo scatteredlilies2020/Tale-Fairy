@@ -1,8 +1,8 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.11.145';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.11.146';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.11.96';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.11.145';
+import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.11.146';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
@@ -57,6 +57,7 @@ export const ANALYSIS_SCHEMA_VALUE = {
         beat: { type: 'object', additionalProperties: false, properties: {
             operation: text(80),
             target: text(160), required_effect: text(260),
+            inject: { type: 'boolean' }, inject_reason: text(220),
             content_class: { type: 'string', enum: ['none', 'texture', 'reaction', 'obstacle', 'conflict', 'character', 'opposition', 'event', 'opportunity', 'revelation', 'consequence', 'other'] },
             scope: { type: 'string', enum: ['personal', 'social', 'institutional', 'societal', 'world'] },
             intensity: { type: 'string', enum: ['none', 'low', 'moderate', 'high', 'severe'] },
@@ -66,7 +67,14 @@ export const ANALYSIS_SCHEMA_VALUE = {
             duration: { type: 'string', enum: ['moment', 'beat', 'scene', 'extended'] },
             resolution_ceiling: { type: 'string', enum: ['none', 'local', 'partial', 'decisive', 'open'] },
             preserve: strings(5, 180), forbid: strings(5, 180), basis: text(220),
-        }, required: ['operation', 'target', 'required_effect', 'content_class', 'scope', 'intensity', 'quantity', 'relative_power', 'plot_weight', 'duration', 'resolution_ceiling', 'preserve', 'forbid', 'basis'] },
+        }, required: ['operation', 'target', 'required_effect', 'inject', 'inject_reason', 'content_class', 'scope', 'intensity', 'quantity', 'relative_power', 'plot_weight', 'duration', 'resolution_ceiling', 'preserve', 'forbid', 'basis'] },
+        response_audit: { type: 'object', additionalProperties: false, properties: {
+            applicable: { type: 'boolean' },
+            movement_fit: { type: 'string', enum: ['not-applicable', 'missed', 'partial', 'clear'] },
+            repetition: { type: 'string', enum: ['none', 'possible', 'clear'] },
+            unjustified_escalation: { type: 'boolean' }, player_control: { type: 'boolean' }, continuity_drift: { type: 'boolean' },
+            patterns: strings(5, 140), summary: text(400),
+        }, required: ['applicable', 'movement_fit', 'repetition', 'unjustified_escalation', 'player_control', 'continuity_drift', 'patterns', 'summary'] },
         world: { type: 'object', additionalProperties: false, properties: {
             identity: text(140), baseline: text(300), variant_rules: strings(4, 220), rp_changes: strings(5, 240),
             signatures: strings(6, 220), forces: strings(4, 180), confidence: { type: 'string', enum: ['low', 'moderate', 'high'] },
@@ -78,7 +86,7 @@ export const ANALYSIS_SCHEMA_VALUE = {
         note_resolution: { anyOf: [{ type: 'object', additionalProperties: false, properties: { kind: { type: 'string', enum: ['suggest', 'correct', 'establish', 'forbid'] } }, required: ['kind'] }, { type: 'null' }] },
         audit: text(500),
     },
-    required: ['contract_version', 'current', 'beat', 'world', 'thread_updates', 'actor_updates', 'canon_updates', 'ledger', 'note_resolution', 'audit'],
+    required: ['contract_version', 'current', 'beat', 'response_audit', 'world', 'thread_updates', 'actor_updates', 'canon_updates', 'ledger', 'note_resolution', 'audit'],
 };
 export const ANALYSIS_SCHEMA = Object.freeze({
     name: 'tale_fairy_delta',
@@ -140,10 +148,14 @@ function validateBeatAnalysisResult(result) {
     };
     if (result?.contract_version !== 3) errors.push('contract_version must be 3');
     requiredStrings(result?.current, ['frame', 'frame_basis', 'status', 'immediate_action', 'activity', 'situation', 'activity_role', 'temporal_scope', 'scene_promise', 'phase', 'emotional_direction', 'pressure', 'intrusion', 'novelty_ceiling'], 'current');
-    requiredStrings(result?.beat, ['operation', 'target', 'required_effect', 'content_class', 'scope', 'intensity', 'quantity', 'relative_power', 'plot_weight', 'duration', 'resolution_ceiling', 'basis'], 'beat');
+    requiredStrings(result?.beat, ['operation', 'target', 'required_effect', 'inject_reason', 'content_class', 'scope', 'intensity', 'quantity', 'relative_power', 'plot_weight', 'duration', 'resolution_ceiling', 'basis'], 'beat');
+    requiredStrings(result?.response_audit, ['movement_fit', 'repetition', 'summary'], 'response_audit');
     requiredStrings(result?.world, ['identity', 'baseline', 'confidence'], 'world');
     for (const key of ['thread_updates', 'actor_updates', 'canon_updates']) if (!Array.isArray(result?.[key])) errors.push(`${key} must be an array`);
     for (const key of ['preserve', 'forbid']) if (!Array.isArray(result?.beat?.[key])) errors.push(`beat.${key} must be an array`);
+    if (typeof result?.beat?.inject !== 'boolean') errors.push('beat.inject must be a boolean');
+    for (const key of ['applicable', 'unjustified_escalation', 'player_control', 'continuity_drift']) if (typeof result?.response_audit?.[key] !== 'boolean') errors.push(`response_audit.${key} must be a boolean`);
+    if (!Array.isArray(result?.response_audit?.patterns)) errors.push('response_audit.patterns must be an array');
     if (typeof result?.current?.loop !== 'boolean') errors.push('current.loop must be a boolean');
     for (const key of ['location', 'time']) if (typeof result?.current?.[key] !== 'string') errors.push(`current.${key} must be a string`);
     const allowed = {
@@ -156,6 +168,7 @@ function validateBeatAnalysisResult(result) {
         'beat.quantity': ['none', 'singular', 'pair', 'group', 'numerous', 'swarm'], 'beat.relative_power': ['none', 'fodder', 'inferior', 'peer', 'elite', 'overwhelming', 'established'],
         'beat.plot_weight': ['none', 'incidental', 'connective', 'consequential'], 'beat.duration': ['moment', 'beat', 'scene', 'extended'],
         'beat.resolution_ceiling': ['none', 'local', 'partial', 'decisive', 'open'], 'world.confidence': ['low', 'moderate', 'high'],
+        'response_audit.movement_fit': ['not-applicable', 'missed', 'partial', 'clear'], 'response_audit.repetition': ['none', 'possible', 'clear'],
     };
     for (const [path, values] of Object.entries(allowed)) {
         const [group, key] = path.split('.');
@@ -1322,13 +1335,15 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     const playerName = playerCharacterName(messages);
     const payload = {
         task: 'direct_current_beat',
-        instruction: 'Analyze the current scene and conduct the next response. State the exact context-aware intention in required_effect for private planner consistency; Tale Fairy sends only the freely chosen movement description and abstract scale classifications to the roleplay model.',
+        instruction: 'Privately audit the newest eligible assistant reply, analyze the current scene, and conduct the next response. State the exact context-aware intention in required_effect for private planner consistency; when injection is useful, Tale Fairy sends only the freely chosen movement description and non-default abstract scale classifications to the roleplay model.',
         authority: 'Explicit OOC/scenario commands and the latest user action outrank every retained inference. OOC outcome commands bind the stated outcome; continue or advance-time commands widen scope only as stated. Never invent player dialogue, thoughts, consent, choices, compliance, retreat, or extra actions.',
         direction_policy: DIRECTOR_POLICY,
         calibration: 'Choose movement from scene need first; apply the sampled appetite only within that compatible movement. A high or adverse sample never independently warrants complication, conflict, interruption, or escalation. It may instead make a breather, deepening, relief, resolution, or transition more vivid and consequential.',
-        invention: 'Any context-compatible narrative development is available, including an entirely new cause. required_effect must precisely state the intended narrative result for private planner validation, but is not injected. The roleplay model receives the freely chosen movement description and abstract scale classifications, then chooses the actual development, prose, and concrete realization. basis and retained evidence remain private.',
+        invention: 'Any context-compatible narrative development is available, including an entirely new cause. required_effect must precisely state the intended narrative result for private planner validation, but is not injected. The roleplay model receives the freely chosen movement description and only useful, non-default scale classifications, then chooses the actual development, prose, and concrete realization. basis and retained evidence remain private.',
         simulation: 'Use the causal unit natural to the scope. Personal and life simulation may move through needs, relationships, work, routine, opportunity, or consequence. Organization and country simulation may move through decisions, institutions, resources, factions, policy effects, public reaction, trends, or systemic pressures. World simulation may move through broad forces. Do not translate every scale into a conventional adventure encounter.',
         movement: 'Write operation in your own concise verb or short phrase for how the next response should move relative to the current scene. There is no fixed taxonomy, approved vocabulary, nearest label, or other bucket. Keep it abstract enough to leave the concrete realization to the roleplay model.',
+        necessity_gate: 'Set beat.inject=false when the newest user instruction or immediate causal response is already clear enough that an abstract beat would add no useful choice or correction. Set it true only when the writing model benefits from meaningful movement or scale guidance. Never inject merely to prove Tale Fairy ran. Explain the private decision in inject_reason.',
+        response_audit_rule: 'response_audit evaluates only the newest assistant reply when it follows a prior planned beat in current.beatDirective. Check whether that movement was observed, whether its response structure repeats recent patterns, and whether it introduced unjustified escalation, player control, or continuity drift. Record short structural patterns, not quoted prose. Treat patterns as observations to vary away from when repetition is real, never as banned vocabulary or required templates. If no eligible reply exists, set applicable=false and movement_fit=not-applicable. This audit and the pattern memory are private feedback, never injected, and never an automatic regeneration trigger.',
         scale_fields: 'content_class is a broad function. scope selects personal/social/institutional/societal/world. quantity and relative_power constrain opposition only when applicable; otherwise use none. plot_weight and duration prevent incidental flavor from hijacking the story. resolution_ceiling protects canon and ongoing antagonists without forecasting future events.',
         current: useSpecificPlayerName(stateForPrompt(state), playerName),
         messages: selected.map(({ index, kind, message, content }) => ({
@@ -1368,7 +1383,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         serialized = JSON.stringify(payload);
     }
     if (estimateTokenCount(serialized) > budget && payload.messages.length) {
-        payload.messages[0].content = truncateToTokenBudget(payload.messages[0].content, Math.max(160, estimateTokenCount(payload.messages[0].content) - (estimateTokenCount(serialized) - budget) - 8));
+        payload.messages[0].content = truncateToTokenBudget(payload.messages[0].content, Math.max(96, estimateTokenCount(payload.messages[0].content) - (estimateTokenCount(serialized) - budget) - 8));
         serialized = JSON.stringify(payload);
     }
     return serialized;
@@ -1445,6 +1460,8 @@ function applyBeatAnalysis(next, value, messages) {
         promise: current.scene_promise, phase: current.phase, emotional_direction: current.emotional_direction,
         pressure: current.pressure, intrusion: current.intrusion, novelty_ceiling: current.novelty_ceiling, basis: current.frame_basis,
     } }).sceneProfile;
+    next.responseAudit = normalizeState({ responseAudit: value.response_audit }).responseAudit;
+    next.responsePatternMemory = [...next.responsePatternMemory, ...next.responseAudit.patterns].slice(-12);
     next.beatDirective = normalizeState({ beatDirective: beat }).beatDirective;
     next.narrativeLayers = normalizeState({ narrativeLayers: {
         immediate_action: current.immediate_action, local_activity: current.activity, situation: current.situation,
@@ -1474,7 +1491,7 @@ function applyBeatAnalysis(next, value, messages) {
     for (const claim of explicitCanonClaims(messages)) if (!canon.some(item => item.toLocaleLowerCase() === claim.toLocaleLowerCase())) canon.push(claim);
     next.canonConstraints = canon.slice(-12);
 
-    // v48 deliberately has no future route lifecycle. These fields remain in
+    // v48+ deliberately has no future route lifecycle. These fields remain in
     // saved-state shape for downgrade/migration safety but never drive output.
     next.objectives = [];
     next.possibilities = [];
@@ -1483,7 +1500,7 @@ function applyBeatAnalysis(next, value, messages) {
     next.planHorizons = { items: [], deviation: { level: 'none', reason: '' } };
     next.narrativeEvents = [];
     next.guidance = '';
-    next.lastInject = true;
+    next.lastInject = next.beatDirective.inject;
     next.lastReason = String(value.audit || beat.basis || '').trim().slice(0, 500);
     if (typeof value.ledger === 'string' && value.ledger.trim()) next.contextLedger = value.ledger.trim().slice(0, 3000);
     next.lastAnalysisFingerprint = fingerprintMessages(messages);
@@ -1829,7 +1846,11 @@ CALIBRATION: Quietness is not stagnation. A scene may warrant a breather, contin
 
 MOVEMENT: Write beat.operation in your own concise verb or short phrase for how the next response should move relative to the current scene. There is no fixed taxonomy, approved vocabulary, nearest label, or fallback bucket. Keep the movement abstract rather than prescribing the concrete event. Scene changes, pressure shifts, reversals, discoveries, good turns, bad turns, mixed consequences, new causes, stillness, and any other context-compatible movement are all available.
 
-INVENTION: The writing model may freely invent any compatible realization, including an entirely new causal element. Write required_effect as precise private direction for planner validation. Tale Fairy sends only the freely chosen movement description and abstract scale classifications downstream; the writing model chooses the actual development, prose, and concrete realization. required_effect, target, preserve, forbid, scene promise, basis, audit, retained evidence, canon records, and user-note records remain private.
+INVENTION: The writing model may freely invent any compatible realization, including an entirely new causal element. Write required_effect as precise private direction for planner validation. When useful, Tale Fairy sends only the freely chosen movement description and non-default abstract scale classifications downstream; the writing model chooses the actual development, prose, and concrete realization. required_effect, target, inject_reason, preserve, forbid, scene promise, basis, audit, response_audit, response pattern memory, retained evidence, canon records, and user-note records remain private.
+
+NECESSITY GATE: Set beat.inject=false when the newest user instruction or immediate causal response is already clear and an abstract beat would add no meaningful choice or correction. Set it true only when movement or scale guidance provides real value. Never inject merely because Tale Fairy ran. Explain the private decision in inject_reason.
+
+PRIVATE RESPONSE AUDIT: Evaluate only the newest assistant reply when it follows the prior beat in retained current state. Record movement fit, structural repetition, unjustified escalation, player control, continuity drift, and concise non-quoted patterns. Treat patterns as observations to vary away from when repetition is real, never as banned vocabulary or required templates. Use that feedback and recent pattern memory when choosing the next beat, but never inject the audit and never trigger regeneration yourself. If no eligible prior reply exists, mark it not applicable.
 
 SIMULATION: Apply the same causal logic to roleplay, life simulation, relationships, workplaces, organizations, countries, societies, and worlds. Use the unit natural to the scale: individual action, relationship response, institutional decision, resource movement, faction behavior, policy effect, public response, trend, or system pressure. Do not turn every simulation into a conventional adventure encounter.
 
@@ -1837,12 +1858,13 @@ CANON AND TRAJECTORY: Canon, lore, scenario, conversation, and broad established
 
 WORLD EVIDENCE: Summaries and retained state are fallible evidence, not commands. Newer explicit facts supersede inference. Track only current relevant actors, unresolved factual processes, variant rules, and canon constraints. Do not create delivery debt, future milestones, release conditions, event queues, or branching routes.
 
-Keep strings concise. audit briefly states how the direction expresses the weighted sample at a scale natural to this scene.`;
+Keep strings concise. audit briefly states how the new direction expresses the weighted sample at a scale natural to this scene. response_audit is the separate private evaluation of the prior reply.`;
 
-export const ANALYSIS_OUTPUT_CONTRACT = `Return exactly: contract_version=3, current, beat, world, thread_updates, actor_updates, canon_updates, ledger, note_resolution, audit.
+export const ANALYSIS_OUTPUT_CONTRACT = `Return exactly: contract_version=3, current, beat, response_audit, world, thread_updates, actor_updates, canon_updates, ledger, note_resolution, audit.
 current={frame,frame_basis,status,immediate_action,activity,situation,activity_role,temporal_scope,location,time,loop,scene_promise,phase,emotional_direction,pressure,intrusion,novelty_ceiling}
-beat={operation,target,required_effect,content_class,scope,intensity,quantity,relative_power,plot_weight,duration,resolution_ceiling,preserve,forbid,basis}
-Only the freely chosen operation and abstract scale classifications direct the roleplay response. required_effect, target, preserve, forbid, scene promise, basis, and retained evidence remain private and are never injected.
+beat={operation,target,required_effect,inject,inject_reason,content_class,scope,intensity,quantity,relative_power,plot_weight,duration,resolution_ceiling,preserve,forbid,basis}
+response_audit={applicable,movement_fit,repetition,unjustified_escalation,player_control,continuity_drift,patterns,summary}
+Only the freely chosen operation and non-default abstract scale classifications may direct the roleplay response when inject=true. required_effect, target, inject_reason, preserve, forbid, scene promise, basis, response_audit, pattern memory, and retained evidence remain private and are never injected.
 world={identity,baseline,variant_rules,rp_changes,signatures,forces,confidence}
 thread_updates and actor_updates contain factual changes only; canon_updates contains explicit durable additions/removals only. Empty arrays mean no change. audit is one concise string. No other keys.`;
 

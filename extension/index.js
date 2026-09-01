@@ -4,26 +4,26 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.145';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.145';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.146';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.146';
 import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.11.101';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.145';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.145';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.145';
-import { normalizeModelListResponse } from './models.js?v=0.11.145';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.146';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.146';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.146';
+import { normalizeModelListResponse } from './models.js?v=0.11.146';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.108';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.145';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.145';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.145';
-import { estimateTokenCount } from './token-budget.js?v=0.11.145';
-import { completionText } from './completion-response.js?v=0.11.145';
-import { sampleDirectorSignals } from './director-sampling.js?v=0.11.145';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.146';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.146';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.146';
+import { estimateTokenCount } from './token-budget.js?v=0.11.146';
+import { completionText } from './completion-response.js?v=0.11.146';
+import { sampleDirectorSignals } from './director-sampling.js?v=0.11.146';
 import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.11.105';
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
-import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.11.145';
+import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.11.146';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.145';
+const RUNTIME_VERSION = '0.11.146';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -268,9 +268,9 @@ function installDetachedPlannerTransport() {
                     } else if (typeof request.prompt === 'string') {
                         request.prompt = ensureGuidanceInText(request.prompt, payload);
                     }
-                    if (extractTaleFairyContext(request)) {
-                        outboundInit = { ...init, body: JSON.stringify(request) };
-                    }
+                    // Serialize even when the necessity gate chose no guidance:
+                    // ensureGuidance* may have removed stale Tale Fairy context.
+                    outboundInit = { ...init, body: JSON.stringify(request) };
                 }
                 guidanceBlock = extractTaleFairyContext(JSON.parse(outboundInit.body));
                 if (guidanceBlock && request?.type !== 'quiet' && getSettings().enabled) {
@@ -280,6 +280,13 @@ function installDetachedPlannerTransport() {
                     });
                     recordRuntimeStage('provider-bound-proof-saved', { generationType: String(request?.type || '') });
                     renderAnalysisActivity('Exact provider-bound injection recorded', false);
+                } else if (roleplayRequest && getSettings().enabled && generationGuideSelection?.skipped) {
+                    rememberSkippedRequest({
+                        provider: request.chat_completion_source || currentContext().mainApi,
+                        model: request.model,
+                    });
+                    recordRuntimeStage('provider-bound-skip-saved', { generationType: String(request?.type || '') });
+                    renderAnalysisActivity('Planner necessity gate recorded · no injection', false);
                 }
             } catch (error) {
                 recordRuntimeStage('provider-bound-proof-error', {
@@ -645,7 +652,11 @@ function prepareGenerationGuide(state, type) {
     const replacementMessages = generationRetrySource(messages, replacement);
     const archived = replacement ? state.lastRequestVerification : null;
     const archivedUsable = isReplacementVerificationCurrent(archived, messages, chatId)
+        && archived?.injectionDecision !== 'skip'
         && Boolean(String(archived?.beatDirective?.requiredEffect || '').trim());
+    const archivedSkipped = isReplacementVerificationCurrent(archived, messages, chatId)
+        && archived?.injectionDecision === 'skip';
+    const currentDirectionReady = isDirectionCurrent(state, replacementMessages, chatId);
     const currentGuidanceUsable = isGuidanceUsable(state, replacementMessages, chatId);
     const hasArchivedSeed = replacement && Number.isInteger(archived?.directorSeed) && archived.directorSeed >= 0;
     const directorSeed = hasArchivedSeed ? archived.directorSeed : state.plannerSeed;
@@ -659,15 +670,16 @@ function prepareGenerationGuide(state, type) {
         // the exact provider-bound archive for the discarded response; if no
         // such proof exists, fail closed instead of reviving a stale beat.
         usable: archivedUsable || currentGuidanceUsable,
+        skipped: archivedSkipped || (!replacement && currentDirectionReady && !state.lastInject),
         regeneration: replacement,
         replacement,
         variationCue: directorSeed,
         directorSample,
         // A replacement must not receive canon inferred from the assistant
         // reply being discarded. Reuse the exact pre-response canon snapshot.
-        canonConstraints: replacement ? (archivedUsable ? archived.canonConstraints : currentGuidanceUsable ? state.canonConstraints : []) : null,
-        sceneProfile: archivedUsable ? archived.sceneProfile : state.sceneProfile,
-        beatDirective: archivedUsable ? archived.beatDirective : state.beatDirective,
+        canonConstraints: replacement ? ((archivedUsable || archivedSkipped) ? archived.canonConstraints : currentGuidanceUsable ? state.canonConstraints : []) : null,
+        sceneProfile: (archivedUsable || archivedSkipped) ? archived.sceneProfile : state.sceneProfile,
+        beatDirective: (archivedUsable || archivedSkipped) ? archived.beatDirective : state.beatDirective,
     };
 }
 
@@ -738,7 +750,7 @@ function scheduleVerificationPersistence(context) {
 }
 
 function cacheProviderBoundVerification(verification) {
-    if (!verification?.chatId || !verification?.guidanceBlock) return;
+    if (!verification?.chatId || (verification?.injectionDecision !== 'skip' && !verification?.guidanceBlock)) return;
     const s = getSettings();
     s.lastProviderBoundVerification = verification;
     saveSettingsDebounced();
@@ -748,12 +760,12 @@ function cachedProviderBoundVerification(chatId) {
     const verification = getSettings().lastProviderBoundVerification;
     return verification?.runtimeVersion === RUNTIME_VERSION
         && verification?.chatId === String(chatId || '')
-        && verification?.guidanceBlock ? verification : null;
+        && (verification?.injectionDecision === 'skip' || verification?.guidanceBlock) ? verification : null;
 }
 
 function newestProviderBoundVerification(chatId, ...candidates) {
     return candidates
-        .filter(item => item?.runtimeVersion === RUNTIME_VERSION && item?.chatId === String(chatId || '') && item?.guidanceBlock)
+        .filter(item => item?.runtimeVersion === RUNTIME_VERSION && item?.chatId === String(chatId || '') && (item?.injectionDecision === 'skip' || item?.guidanceBlock))
         .sort((left, right) => Number(right.requestedAt || 0) - Number(left.requestedAt || 0))[0] || null;
 }
 
@@ -766,6 +778,7 @@ function rememberVerifiedRequest(payload, { provider = '', model = '' } = {}) {
     const state = loadState(context.chatMetadata);
     const verification = {
         status: 'included',
+        injectionDecision: 'inject',
         runtimeVersion: RUNTIME_VERSION,
         verificationId: verificationFingerprint(guidanceBlock),
         guidanceBlock,
@@ -797,6 +810,31 @@ function rememberVerifiedRequest(payload, { provider = '', model = '' } = {}) {
     // Do not make the provider request wait on SillyTavern's chat-save lock.
     // The in-memory metadata is already authoritative and will also be written
     // by the normal response save; this timer makes the proof durable sooner.
+    scheduleVerificationPersistence(context);
+}
+
+function rememberSkippedRequest({ provider = '', model = '' } = {}) {
+    const context = currentContext();
+    const messages = messagesFromChat(context.chat || []);
+    const state = loadState(context.chatMetadata);
+    const verification = {
+        status: 'included', injectionDecision: 'skip', runtimeVersion: RUNTIME_VERSION,
+        verificationId: verificationFingerprint(`skip:${fingerprintMessages(messages)}`), guidanceBlock: '', requestedAt: Date.now(), confirmedAt: 0,
+        sourceMessageCount: messages.length, responseMessageCount: 0, chatId: String(context.getCurrentChatId?.() || ''),
+        provider: String(provider || ''), model: String(model || ''), position: '', role: 'user', depth: 0,
+        guideCandidates: [], canonConstraints: state.canonConstraints, selectedGuideIndex: 0,
+        replacementGeneration: generationGuideSelection?.replacement === true,
+        sceneProfile: generationGuideSelection?.sceneProfile || state.sceneProfile,
+        beatDirective: generationGuideSelection?.beatDirective || state.beatDirective,
+        directorSample: generationGuideSelection?.directorSample || sampleDirectorSignals(state.mode, state.plannerSeed),
+        directorSeed: generationGuideSelection?.variationCue ?? state.plannerSeed,
+        conductorDevelopmentId: '', conductorContract: null,
+    };
+    pendingRequestVerification = verification;
+    state.lastRequestVerification = verification;
+    context.updateChatMetadata(saveState(context.chatMetadata, state));
+    cacheProviderBoundVerification(verification);
+    renderBoard(state);
     scheduleVerificationPersistence(context);
 }
 
@@ -887,7 +925,7 @@ async function confirmReturnedReplyUsedGuidance() {
         }
     }
     renderBoard(state);
-    renderAnalysisActivity('Guidance confirmed in returned reply', false);
+    renderAnalysisActivity(pending.injectionDecision === 'skip' ? 'No-injection decision confirmed in returned reply' : 'Guidance confirmed in returned reply', false);
     return true;
 }
 
@@ -1775,6 +1813,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const beat = state.beatDirective || {};
     const envelope = [beat.contentClass, beat.scope && `${beat.scope} scope`, beat.intensity && beat.intensity !== 'none' && `${beat.intensity} intensity`, beat.quantity && beat.quantity !== 'none' && beat.quantity, beat.relativePower && beat.relativePower !== 'none' && `${beat.relativePower} power`, beat.plotWeight && beat.plotWeight !== 'none' && `${beat.plotWeight} weight`, beat.duration && `${beat.duration} duration`, beat.resolutionCeiling && `${beat.resolutionCeiling} resolution`].filter(Boolean).join(' · ');
     const beatText = [
+        beat.inject ? `Provider guidance: inject this sparse beat${beat.injectReason ? ` — ${beat.injectReason}` : ''}` : `Provider guidance: inject nothing${beat.injectReason ? ` — ${beat.injectReason}` : ''}`,
         `${String(beat.operation).toUpperCase()} — ${beat.target}`,
         beat.requiredEffect,
         envelope && `Envelope: ${envelope}`,
@@ -1783,6 +1822,20 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         beat.basis && `Basis: ${beat.basis}`,
     ].filter(Boolean).join('\n');
     scratchpadText(board, 'scratchpad-next-guides', analyzed ? beatText : '', 'No generated adaptive direction yet.');
+
+    const audit = state.responseAudit || {};
+    const auditFlags = [
+        audit.unjustifiedEscalation && 'unjustified escalation',
+        audit.playerControl && 'player control',
+        audit.continuityDrift && 'continuity drift',
+    ].filter(Boolean);
+    const auditText = audit.applicable ? [
+        `Movement fit: ${audit.movementFit || 'not-applicable'} · repetition: ${audit.repetition || 'none'}`,
+        auditFlags.length ? `Flags: ${auditFlags.join(' · ')}` : 'Flags: none',
+        audit.patterns?.length ? `Observed patterns: ${audit.patterns.join('; ')}` : '',
+        audit.summary,
+    ].filter(Boolean).join('\n') : '';
+    scratchpadOptionalText(board, 'scratchpad-response-audit-section', 'scratchpad-response-audit', auditText);
 
     const frame = state.storyFrame.frame && state.storyFrame.frame !== 'unknown'
         ? `${state.storyFrame.frame}${state.storyFrame.confidence ? ` · ${state.storyFrame.confidence} confidence` : ''}${state.storyFrame.basis ? `\nBasis: ${state.storyFrame.basis}` : ''}`
@@ -1807,13 +1860,16 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         state.lastRequestVerification,
         cachedProviderBoundVerification(chatId),
     );
+    const skipped = verification?.injectionDecision === 'skip';
     const verificationText = verification ? [
-        verification.status === 'confirmed' ? 'CONFIRMED — provider reply used this exact Tale Fairy block.' : 'INCLUDED — exact context verified in the outbound request.',
+        skipped
+            ? (verification.status === 'confirmed' ? 'CONFIRMED — Tale Fairy intentionally injected nothing for this provider reply.' : 'VERIFIED — Tale Fairy intentionally added no context to this outbound request.')
+            : (verification.status === 'confirmed' ? 'CONFIRMED — provider reply used this exact Tale Fairy block.' : 'INCLUDED — exact context verified in the outbound request.'),
         verification.requestedAt ? `Request: ${new Date(verification.requestedAt).toLocaleString()}` : '',
         [verification.provider, verification.model].filter(Boolean).length ? `Provider: ${[verification.provider, verification.model].filter(Boolean).join(' · ')}` : '',
         verification.verificationId ? `Proof fingerprint: ${verification.verificationId}` : '',
-        `Placement: ${verification.position || 'at-depth'} · ${verification.role || 'system'}`,
-        `\nExact injected Tale Fairy context:\n${verification.guidanceBlock}`,
+        !skipped && `Placement: ${verification.position || 'at-depth'} · ${verification.role || 'system'}`,
+        skipped ? '\nExact injected Tale Fairy context: (none)' : `\nExact injected Tale Fairy context:\n${verification.guidanceBlock}`,
     ].filter(Boolean).join('\n') : '';
     scratchpadText(board, 'scratchpad-request-verification', verificationText, 'No roleplay-generation guide injection has been verified yet.');
 
@@ -2165,7 +2221,7 @@ export async function livingWorldGuideGenerateInterceptor(_chat, _contextSize, _
     // already in metadata; the latest user action may use, reshape, or discard it.
     prepareGenerationGuide(state, type);
     const replacement = type === 'swipe' || type === 'regenerate';
-    if (replacement && !generationGuideSelection?.usable) {
+    if (replacement && !generationGuideSelection?.usable && !generationGuideSelection?.skipped) {
         const currentMessages = messagesFromChat(context.chat || []);
         const sourceMessages = generationRetrySource(currentMessages, true);
         if (sourceMessages.length) {
