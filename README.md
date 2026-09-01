@@ -5,7 +5,7 @@ Tale Fairy is a standalone SillyTavern extension that acts as an **adaptive auth
 ## What it does
 
 - Injects an adaptive director block into every normal roleplay request. Tale Fairy conducts what the next response should accomplish; the roleplay model decides the exact event, actor, dialogue, outcome, and prose from the complete context.
-- Uses real local weighted sampling for intervention size, novelty, and fortune. **Light** favors subtle grounded movement, **Balanced** favors meaningful open movement, and **Fun** strongly favors bold, surprising, potentially story-altering movement.
+- Uses real local weighted sampling for intervention size, novelty, and fortune after the AI chooses what movement the scene warrants. **Light** favors subtle grounded expression, **Balanced** favors meaningful open expression, and **Fun** favors bold, surprising expression without manufacturing conflict or escalation.
 - Treats deepen, interrupt, challenge, opportunity, escalation, relief, resolution, redirection, and scene transition as examples rather than a closed event menu. A planner can return an entirely different fitting function through freeform direction.
 - Calibrates stakes to the setting instead of equating movement with combat: a school scene might produce a difficult exam or severe reviewer, while an established battlefield or fantasy crisis can produce lethal danger.
 - Does not control pacing. Explicit user/OOC instructions bind, and Tale Fairy never supplies the player character's dialogue, thoughts, feelings, consent, decisions, compliance, or reaction. It may move the surrounding world and scene without making those choices for the player.

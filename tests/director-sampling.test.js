@@ -28,10 +28,11 @@ test('mode weights materially increase major and surprising results in Fun', () 
 
 test('formatted samples invite broad contextual movement without prescribing an event taxonomy', () => {
     const prompt = formatDirectorSample({ mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'adverse' });
-    assert.match(prompt, /story-altering development/i);
-    assert.match(prompt, /unexpected but context-compatible/i);
-    assert.match(prompt, /academic, domestic, institutional, political, investigative, battlefield, fantastical/i);
-    assert.match(prompt, /creative appetite, not a menu/i);
+    assert.match(prompt, /scene-selected movement/i);
+    assert.match(prompt, /Do not switch to disruption, conflict, or escalation/i);
+    assert.match(prompt, /without changing the kind of movement selected/i);
+    assert.match(prompt, /Do not manufacture adversity solely/i);
+    assert.match(prompt, /Choose movement from scene need before applying these signals/i);
 });
 
 test('invalid persisted samples normalize safely', () => {

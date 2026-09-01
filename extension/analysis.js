@@ -1,8 +1,8 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.11.135';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.11.136';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.11.96';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.11.135';
+import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.11.136';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
@@ -89,12 +89,12 @@ export const ANALYSIS_SCHEMA = Object.freeze({
 });
 
 export const MODE_INSTRUCTIONS = Object.freeze({
-    light: 'LIGHT — Interpret the weighted sample conservatively. Prefer subtle or grounded movement, but still make the scene alive and allow a rare major turn when sampled and context-plausible.',
-    balanced: 'BALANCED — Be opportunistic. Let meaningful movement dominate while allowing both quiet development and consequential surprises according to the weighted sample.',
-    fun: 'FUN — Actively pursue the weighted sample. Major, surprising, disruptive, fortunate, adverse, and story-altering developments are welcome when they can take a form natural to the current context.',
+    light: 'LIGHT — Let scene need choose the movement first, then apply the sample conservatively. Prefer subtle or grounded expression; a sampled major turn remains optional and must be independently warranted.',
+    balanced: 'BALANCED — Let scene need choose the movement first. Apply the sample opportunistically within that movement, giving quiet development, breathers, and consequential turns equal legitimacy when they fit.',
+    fun: 'FUN — Let scene need choose the movement first. Then express compatible samples more boldly and surprisingly. Major or story-altering treatment is welcome, but randomness never manufactures conflict, interruption, escalation, or adversity that the scene does not warrant.',
 });
 
-export const DIRECTOR_POLICY = 'Interpret what the complete current scene needs and choose one coherent authorial direction. You may deepen, advance, intensify, relieve, interrupt, reveal, complicate, resolve, redirect, transform, or transition the scene, or take another fitting approach; these are examples, not a closed taxonomy. A new compatible cause is allowed. Calibrate its form and stakes to the setting rather than defaulting to minimal movement or importing another genre. Explicit user/OOC instructions bind, and player decisions remain the player’s alone.';
+export const DIRECTOR_POLICY = 'Interpret what the complete current scene needs and choose one coherent authorial direction before applying random creative appetite. Deepening, breathing room, relief, continuation, resolution, and transition are as legitimate as complication, interruption, escalation, or transformation. A new compatible cause is allowed only when it improves the scene. Do not create movement merely to avoid quietness. Explicit user/OOC instructions bind, and player decisions remain the player’s alone.';
 
 export const EXTREME_CANON_INSTRUCTION = 'Explicit user/OOC canon remains authoritative even when extreme or unprecedented. Preserve its magnitude and apply relevant strengths and limits causally; averages are not ceilings. Unspecified compatible details remain creative space.';
 
@@ -1326,7 +1326,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         instruction: 'Analyze the current scene and conduct the next response. Choose operation carefully because Tale Fairy compiles that broad movement into the roleplay direction. Use required_effect to record the fuller context-aware intention for private planning and inspection.',
         authority: 'Explicit OOC/scenario commands and the latest user action outrank every retained inference. OOC outcome commands bind the stated outcome; continue or advance-time commands widen scope only as stated. Never invent player dialogue, thoughts, consent, choices, compliance, retreat, or extra actions.',
         direction_policy: DIRECTOR_POLICY,
-        calibration: 'Match the sampled appetite at the scene’s native scale. Do not default to minimal movement. Everyday scenes support consequential everyday developments; dangerous scenes support severe stakes. Let subtle samples remain subtle.',
+        calibration: 'Choose movement from scene need first; apply the sampled appetite only within that compatible movement. A high or adverse sample never independently warrants complication, conflict, interruption, or escalation. It may instead make a breather, deepening, relief, resolution, or transition more vivid and consequential.',
         invention: 'Any context-compatible narrative development is available, including an entirely new cause. required_effect and the remaining beat fields are private planner reasoning and may describe the context-aware intention precisely. The roleplay model receives only a broad movement compiled from operation plus creative appetite, and chooses all concrete realization details.',
         simulation: 'Use the causal unit natural to the scope. Personal and life simulation may move through needs, relationships, work, routine, opportunity, or consequence. Organization and country simulation may move through decisions, institutions, resources, factions, policy effects, public reaction, trends, or systemic pressures. World simulation may move through broad forces. Do not translate every scale into a conventional adventure encounter.',
         operations: {
@@ -1488,7 +1488,7 @@ function applyBeatAnalysis(next, value, messages) {
     for (const claim of explicitCanonClaims(messages)) if (!canon.some(item => item.toLocaleLowerCase() === claim.toLocaleLowerCase())) canon.push(claim);
     next.canonConstraints = canon.slice(-12);
 
-    // v47 deliberately has no future route lifecycle. These fields remain in
+    // v48 deliberately has no future route lifecycle. These fields remain in
     // saved-state shape for downgrade/migration safety but never drive output.
     next.objectives = [];
     next.possibilities = [];
@@ -1833,13 +1833,13 @@ export function applyAnalysis(state, result, messages) {
 
 const PLANNER_SYSTEM = `You are Tale Fairy, an adaptive narrative director. Another model writes the actual roleplay or simulation. Return only JSON matching the schema.
 
-Analyze what is happening now and choose one authorial direction for the next response. The supplied weighted director sample governs appetite for intervention, novelty, and fortune. It is not an event taxonomy. Do not schedule a future route: conduct the next response. Leave the exact event, actor, interruption, challenge, opportunity, dialogue, and prose to the writing model.
+Analyze what is happening now and choose one authorial direction for the next response. First determine what movement the scene actually warrants. Only then use the weighted director sample to color the strength, novelty, and fortune of that movement. The sample is not an event taxonomy: it never selects the movement and never creates a need for an incident. Do not schedule a future route: conduct the next response. Leave the exact event, actor, interruption, challenge, opportunity, dialogue, and prose to the writing model.
 
 AUTHORITY: Explicit user/OOC/scenario commands outrank retained state and your preferences. A forced outcome binds that outcome. A continue or time-advance command widens scope only as stated. The latest user action defines the endpoint. Never invent player dialogue, thoughts, feelings, consent, decisions, compliance, retreat, or extra actions.
 
 DIRECTION: ${DIRECTOR_POLICY}
 
-CALIBRATION: Do not confuse context awareness with timidity. A high-intervention sample requires the strongest plausible expression at the scene's native scale. A quiet academic, domestic, professional, or social scene can support a difficult task, consequential review, relationship change, opportunity, intrigue, or interruption without becoming a battlefield. An already dangerous or fantastical scene can support severe or fatal stakes. A subtle sample may deepen or preserve without an incident.
+CALIBRATION: Quietness is not stagnation. A scene may warrant a breather, continuation, deepening, relief, resolution, or transition with no new incident. A high-intervention sample means a fuller expression of the already-chosen movement, not compulsory disruption. An adverse sample may shade an appropriate movement but cannot justify manufacturing difficulty. Escalate or complicate only when current pressure, causality, unresolved action, or explicit user direction independently supports it.
 
 MOVEMENT: RETAIN, DEEPEN, INTRODUCE, COMPLICATE, ESCALATE, DEESCALATE, RESOLVE, TRANSITION, WITHDRAW, STALEMATE, DISRUPT, and OTHER are bookkeeping labels for broad relationships to the current scene, not limits on invention. Choose the nearest label—or OTHER when none fits—then use required_effect to express the actual freeform narrative function. Scene changes, pressure shifts, reversals, discoveries, good turns, bad turns, mixed consequences, new causes, and other context-compatible movement are all available.
 

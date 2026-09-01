@@ -1,4 +1,4 @@
-import { normalizeDirectorSample } from './director-sampling.js?v=0.11.135';
+import { normalizeDirectorSample } from './director-sampling.js?v=0.11.136';
 
 const OPERATIONS = new Set(['retain', 'deepen', 'introduce', 'complicate', 'escalate', 'deescalate', 'resolve', 'transition', 'withdraw', 'stalemate', 'disrupt', 'other']);
 const PHASES = new Set(['establishing', 'developing', 'turning', 'landing', 'aftermath', 'transition']);
@@ -33,21 +33,21 @@ const MOVEMENT_GUIDANCE = Object.freeze({
 });
 
 const INTERVENTION_GUIDANCE = Object.freeze({
-    subtle: 'Favor a subtle but observable change.',
-    meaningful: 'Make the development noticeably affect the immediate situation or its possibilities.',
-    major: 'Allow a bold or story-altering change at the strongest scale the context can naturally support.',
+    subtle: 'Express that movement subtly but observably.',
+    meaningful: 'Give that movement enough substance to noticeably affect the immediate situation or its possibilities.',
+    major: 'Express that movement boldly or consequentially where the context supports it; do not change its kind merely to increase impact.',
 });
 
 const NOVELTY_GUIDANCE = Object.freeze({
-    grounded: 'Prefer causes already established or naturally implied by the context.',
-    open: 'Use either an established cause or a new compatible cause, whichever makes the narrative more alive and coherent.',
-    surprising: 'Seek an unexpected but context-compatible cause, connection, reversal, opportunity, or consequence.',
+    grounded: 'Within that movement, prefer causes already established or naturally implied by the context.',
+    open: 'Within that movement, use either an established cause or a new compatible cause, whichever is more coherent.',
+    surprising: 'Within that movement, seek an unexpected but compatible realization without changing the kind of movement selected.',
 });
 
 const FORTUNE_GUIDANCE = Object.freeze({
-    favorable: 'Let the development lean toward opportunity, relief, advantage, connection, or discovery.',
-    mixed: 'Let its consequences be beneficial, adverse, ambiguous, or mixed according to the situation.',
-    adverse: 'Let the development lean toward difficulty, cost, danger, opposition, loss, or exposure.',
+    favorable: 'Within that movement, lean toward opportunity, relief, advantage, connection, or discovery.',
+    mixed: 'Within that movement, let the effect be beneficial, adverse, ambiguous, or mixed according to the situation.',
+    adverse: 'Within that movement, lean toward difficulty, cost, danger, opposition, loss, or exposure; do not manufacture adversity solely to satisfy this bias.',
 });
 
 function text(value, limit = 240) { return String(value ?? '').trim().slice(0, limit); }

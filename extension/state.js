@@ -1,12 +1,12 @@
-import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.11.135';
+import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.11.136';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
 import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js';
-import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, formatFreshBeatFallback, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile } from './beat-director.js?v=0.11.135';
-import { normalizeDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.11.135';
+import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, formatFreshBeatFallback, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile } from './beat-director.js?v=0.11.136';
+import { normalizeDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.11.136';
 
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 47;
+export const STATE_VERSION = 48;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -428,12 +428,14 @@ export function normalizeState(input = {}) {
     // planning now describes only the current scene and one semantic beat. v47
     // rebuilds the beat so no direction created under the old provider-visible
     // evidence contract can survive into the privacy-safe injection format.
+    // v48 rebuilds sample-first decisions so scene need selects movement before
+    // random creative appetite colors its expression.
     const unsafePlannerUpgrade = inputVersion > 0 && inputVersion < 18;
     const movementUpgrade = inputVersion > 0 && inputVersion < 42;
     const recoveryUpgrade = inputVersion > 0 && inputVersion < 26;
     const chronologyAuditUpgrade = inputVersion > 0 && inputVersion < 31;
     const authorMapUpgrade = inputVersion > 0 && inputVersion < 45;
-    const beatContractUpgrade = inputVersion > 0 && inputVersion < 47;
+    const beatContractUpgrade = inputVersion > 0 && inputVersion < 48;
     const normalizedLayers = normalizeNarrativeLayers(value.narrativeLayers);
     const normalizedDirector = normalizeDirectorScore(value.directorScore);
     const state = {

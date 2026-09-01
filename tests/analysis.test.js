@@ -80,10 +80,12 @@ test('every supported operation and simulation scope validates', () => {
     }
 });
 
-test('planner system calibrates bold direction to context while protecting player agency', () => {
-    assert.match(SYSTEM, /Do not confuse context awareness with timidity/i);
-    assert.match(SYSTEM, /quiet academic, domestic, professional, or social scene/i);
-    assert.match(SYSTEM, /dangerous or fantastical scene can support severe or fatal stakes/i);
+test('planner chooses scene-warranted movement before applying randomness', () => {
+    assert.match(SYSTEM, /First determine what movement the scene actually warrants/i);
+    assert.match(SYSTEM, /never selects the movement and never creates a need for an incident/i);
+    assert.match(SYSTEM, /Quietness is not stagnation/i);
+    assert.match(SYSTEM, /not compulsory disruption/i);
+    assert.match(SYSTEM, /cannot justify manufacturing difficulty/i);
     assert.match(SYSTEM, /Scene changes, pressure shifts, reversals, discoveries/i);
     assert.match(SYSTEM, /OTHER when none fits/i);
     assert.match(SYSTEM, /Never invent player dialogue, thoughts, feelings, consent, decisions/i);
@@ -102,9 +104,9 @@ test('planner permits freeform AI invention and scale-native simulation', () => 
 });
 
 test('all modes alter sampled appetite without weakening authority', () => {
-    assert.match(MODE_INSTRUCTIONS.light, /subtle or grounded movement/i);
-    assert.match(MODE_INSTRUCTIONS.balanced, /meaningful movement dominate/i);
-    assert.match(MODE_INSTRUCTIONS.fun, /story-altering developments are welcome/i);
+    assert.match(MODE_INSTRUCTIONS.light, /scene need choose the movement first/i);
+    assert.match(MODE_INSTRUCTIONS.balanced, /breathers.*equal legitimacy/i);
+    assert.match(MODE_INSTRUCTIONS.fun, /randomness never manufactures conflict/i);
     for (const mode of Object.values(MODE_INSTRUCTIONS)) assert.doesNotMatch(mode, /control the player|force the player/i);
 });
 
@@ -121,10 +123,10 @@ test('analysis prompt carries current context, identity, variation, bootstrap, a
     assert.match(prompt.invention, /private planner reasoning/i);
     assert.match(prompt.invention, /roleplay model.*chooses all concrete realization details/i);
     assert.match(prompt.simulation, /country simulation/i);
-    assert.match(prompt.direction_policy, /choose one coherent authorial direction/i);
-    assert.match(prompt.direction_policy, /transition the scene/i);
+    assert.match(prompt.direction_policy, /choose one coherent authorial direction before applying random creative appetite/i);
+    assert.match(prompt.direction_policy, /breathing room.*as legitimate as complication/i);
     assert.match(prompt.director_sample, /WEIGHTED DIRECTOR SAMPLE/);
-    assert.match(prompt.director_sample, /creative appetite, not a menu/i);
+    assert.match(prompt.director_sample, /Choose movement from scene need before applying these signals/i);
     assert.equal(Object.hasOwn(prompt, 'pacing'), false);
 });
 

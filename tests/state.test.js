@@ -24,10 +24,10 @@ function analyzedState(extra = {}) {
     return normalizeState({ ...beat, ...extra });
 }
 
-test('default and normalized state use the v47 private-planner contract', () => {
+test('default and normalized state use the v48 scene-first planner contract', () => {
     const state = normalizeState({ mode: 'invalid' });
-    assert.equal(STATE_VERSION, 47);
-    assert.equal(state.version, 47);
+    assert.equal(STATE_VERSION, 48);
+    assert.equal(state.version, 48);
     assert.equal(state.mode, 'balanced');
     assert.equal(state.sceneProfile.phase, 'developing');
     assert.equal(state.beatDirective.operation, 'retain');
@@ -71,9 +71,9 @@ test('current state preserves a normalized analyzed beat', () => {
     assert.equal(state.beatDirective.contentClass, 'character');
 });
 
-test('v46 migration discards the old injectable beat but preserves private continuity evidence', () => {
+test('pre-v48 migration discards the old planner decision but preserves private continuity evidence', () => {
     const state = normalizeState({
-        ...analyzedState(), version: 46, lastInject: true,
+        ...analyzedState(), version: 47, lastInject: true,
         canonConstraints: ['A private established fact remains available to the planner.'],
         beatDirective: { ...analyzedState().beatDirective, requiredEffect: 'Old provider-visible direction.' },
         lastRequestVerification: { status: 'confirmed', guidanceBlock: '<tale-fairy-context>old leak</tale-fairy-context>' },
@@ -114,9 +114,9 @@ test('analyzed beat injection is semantic, effective, and leaves concrete realiz
         directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'favorable' },
     });
     assert.match(payload, /Allow a fitting new element to enter and open fresh possibilities/);
-    assert.match(payload, /bold or story-altering change/i);
-    assert.match(payload, /unexpected but context-compatible/i);
-    assert.match(payload, /lean toward opportunity, relief, advantage/i);
+    assert.match(payload, /Express that movement boldly or consequentially/i);
+    assert.match(payload, /unexpected but compatible realization without changing the kind of movement/i);
+    assert.match(payload, /Within that movement, lean toward opportunity, relief, advantage/i);
     assert.match(payload, /choose every concrete actor, event, object, action, and outcome yourself/i);
     assert.doesNotMatch(payload, /routine interaction|fresh possibility|cashier|server|waitress|PLANNER|INTRODUCE|CONTENT ENVELOPE|the service interaction/iu);
     assert.doesNotMatch(payload, /SUGGESTED ROUTE|future horizon|delivery debt/i);
@@ -140,9 +140,19 @@ test('provider compiler cannot leak concrete prose even when private planner dir
 
 test('quiet scenes receive scale-native movement instead of mandatory conflict or stagnation', () => {
     const payload = formatFreshBeatFallback({ directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' } });
-    assert.match(payload, /bold or story-altering change/i);
-    assert.match(payload, /unexpected but context-compatible/i);
+    assert.match(payload, /Express that movement boldly or consequentially/i);
+    assert.match(payload, /unexpected but compatible realization/i);
     assert.match(payload, /changes the immediate possibilities rather than merely repeating/i);
+});
+
+test('major adverse sampling cannot replace a scene-selected breather with complication', () => {
+    const payload = formatBeatContract({}, { operation: 'deepen', requiredEffect: 'Private concrete planner prose.' }, {
+        directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'adverse' },
+    });
+    assert.match(payload, /Deepen what is already happening/);
+    assert.match(payload, /do not change its kind merely to increase impact/i);
+    assert.match(payload, /do not manufacture adversity solely/i);
+    assert.doesNotMatch(payload, /Introduce a fitting complication|Increase the active pressure/i);
 });
 
 test('fallback keeps AI invention open across context-native scene scales', () => {
@@ -226,11 +236,11 @@ test('request verification preserves a weighted director sample without fabricat
     assert.equal(legacy.lastRequestVerification.directorSample, null);
     assert.equal(legacy.lastRequestVerification.directorSeed, null);
     const current = normalizeState({ lastRequestVerification: {
-        status: 'confirmed', runtimeVersion: '0.11.135', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
+        status: 'confirmed', runtimeVersion: '0.11.136', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
         directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' },
     } });
     assert.deepEqual(current.lastRequestVerification.directorSample, { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' });
-    assert.equal(current.lastRequestVerification.runtimeVersion, '0.11.135');
+    assert.equal(current.lastRequestVerification.runtimeVersion, '0.11.136');
     assert.equal(current.lastRequestVerification.directorSeed, 0);
 });
 

@@ -13,21 +13,21 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest and detached plugin identify the adaptive-director release', () => {
-    assert.equal(manifest.version, '0.11.135');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.135');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.135');
+    assert.equal(manifest.version, '0.11.136');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.136');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.136');
     assert.match(manifest.description, /always-on adaptive story director/i);
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.11\.135'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.11\.135'/);
+    assert.match(pluginSource, /const VERSION = '0\.11\.136'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.11\.136'/);
 });
 
-test('extension loads v135 adaptive-director modules', () => {
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.135'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.135'/);
-    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.135'/);
-    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.135'/);
-    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.135'/);
+test('extension loads v136 adaptive-director modules', () => {
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.136'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.136'/);
+    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.136'/);
+    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.136'/);
+    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.136'/);
 });
 
 test('long-form defaults reserve room for current turns, summaries, and thinking', () => {
@@ -97,7 +97,7 @@ test('adaptive analysis uses freeform direction rather than an event taxonomy', 
     assert.match(analysisSource, /operation.*other/);
     assert.match(analysisSource, /All beat fields, including required_effect, are private planner reasoning/i);
     assert.match(analysisSource, /receives no planner prose, names, evidence, targets, or prescribed realization/i);
-    assert.match(stateSource, /export const STATE_VERSION = 47/);
+    assert.match(stateSource, /export const STATE_VERSION = 48/);
     assert.match(stateSource, /beatContractUpgrade/);
 });
 

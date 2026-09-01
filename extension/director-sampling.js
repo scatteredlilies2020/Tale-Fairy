@@ -69,26 +69,26 @@ export function sampleDirectorSignals(mode = 'balanced', seed = 0) {
 export function formatDirectorSample(value = {}) {
     const sample = normalizeDirectorSample(value);
     const intervention = {
-        subtle: 'Prefer a subtle but observable change; deepen the present situation when that is more alive than adding an incident.',
-        meaningful: 'Make a meaningful development that noticeably changes the immediate situation or its possibilities.',
-        major: 'Actively seek a bold, disruptive, or story-altering development. Use the strongest context-plausible form rather than retreating to a token detail.',
+        subtle: 'Express the scene-selected movement subtly but observably.',
+        meaningful: 'Give the scene-selected movement enough substance to noticeably affect the immediate situation or its possibilities.',
+        major: 'If the scene-selected movement supports it, express that movement boldly or consequentially. Do not switch to disruption, conflict, or escalation merely to satisfy this signal.',
     }[sample.intervention];
     const novelty = {
-        grounded: 'Prefer an established cause, person, pressure, or opportunity, while allowing ordinary new details needed to realize it.',
-        open: 'Existing or entirely new compatible causes are equally available; choose whichever makes the scene more alive and coherent.',
-        surprising: 'Actively seek an unexpected but context-compatible cause, connection, interruption, opportunity, reversal, or consequence.',
+        grounded: 'Within the scene-selected movement, prefer established or naturally implied causes.',
+        open: 'Within the scene-selected movement, established and new compatible causes are equally available.',
+        surprising: 'Within the scene-selected movement, seek an unexpected but compatible realization without changing the kind of movement selected.',
     }[sample.novelty];
     const fortune = {
-        favorable: 'Bias the development toward opportunity, relief, advantage, connection, discovery, or another favorable turn.',
-        mixed: 'Let the development be beneficial, adverse, ambiguous, or mixed according to the scene; avoid a predictable moral direction.',
-        adverse: 'Bias the development toward difficulty, cost, danger, opposition, loss, exposure, or another adverse turn.',
+        favorable: 'Within the warranted movement, lean toward opportunity, relief, advantage, connection, discovery, or another favorable effect.',
+        mixed: 'Within the warranted movement, let the effect be beneficial, adverse, ambiguous, or mixed according to the scene.',
+        adverse: 'Within the warranted movement, lean toward difficulty, cost, danger, opposition, loss, or exposure. Do not manufacture adversity solely to satisfy this signal.',
     }[sample.fortune];
     return [
         `WEIGHTED DIRECTOR SAMPLE: ${sample.intervention.toUpperCase()} intervention · ${sample.novelty.toUpperCase()} novelty · ${sample.fortune.toUpperCase()} fortune.`,
         intervention,
         novelty,
         fortune,
-        'These signals govern creative appetite, not a menu of event types. Interpret them through the complete current context and at its natural scale: an academic, domestic, institutional, political, investigative, battlefield, fantastical, or other scene should express pressure and consequence in its own terms.',
+        'Choose movement from scene need before applying these signals. They shape expression only; they never require an incident, complication, escalation, or interruption.',
     ].join('\n');
 }
 
