@@ -208,6 +208,16 @@ test('request verification preserves the complete exact injected context beyond 
     assert.equal(state.lastRequestVerification.guidanceBlock, exact);
 });
 
+test('provider-bound inclusion proof survives normalization before a reply returns', () => {
+    const state = normalizeState({ lastRequestVerification: {
+        status: 'included', verificationId: 'tf-1234-deadbeef', guidanceBlock: '<tale-fairy-context>exact</tale-fairy-context>',
+        requestedAt: 100, chatId: 'chat-a', provider: 'deepseek', model: 'kimi-k3', depth: 1,
+    } });
+    assert.equal(state.lastRequestVerification.status, 'included');
+    assert.equal(state.lastRequestVerification.verificationId, 'tf-1234-deadbeef');
+    assert.equal(state.lastRequestVerification.depth, 1);
+});
+
 test('planner completion resets only the lightweight refresh schedule', () => {
     const state = applyPlannerAuthorLayer(analyzedState({ plannerSchedule: { turnsSincePlanner: 6 } }), { turnCount: 10, fingerprint: 'abc' });
     assert.equal(state.plannerSchedule.turnsSincePlanner, 0);
