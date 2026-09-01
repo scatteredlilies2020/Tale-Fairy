@@ -97,8 +97,8 @@ test('planner permits freeform AI invention and scale-native simulation', () => 
     assert.match(SYSTEM, /life simulation/i);
     assert.match(SYSTEM, /countries, societies, and worlds/i);
     assert.match(SYSTEM, /policy effect, public response, trend, or system pressure/i);
-    assert.match(SYSTEM, /All beat fields, including required_effect, are private planner reasoning/i);
-    assert.match(SYSTEM, /receives no planner prose, names, evidence, targets, or prescribed realization/i);
+    assert.match(SYSTEM, /sends required_effect, target, scene promise, preserve\/forbid constraints, and analyzed bounds downstream/i);
+    assert.match(SYSTEM, /basis, audit, retained evidence, canon records, and user-note records remain private/i);
     assert.doesNotMatch(SYSTEM, /generate six to eight.*routes|schedule future milestones|maintain event queues/i);
     assert.ok(estimateTokenCount(`${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}`) < 1800);
 });
@@ -120,8 +120,8 @@ test('analysis prompt carries current context, identity, variation, bootstrap, a
     assert.equal(prompt.bootstrap.scenario, 'A grounded school life simulation.');
     assert.equal(prompt.summary_sources[0].label, 'Continuity Memory');
     assert.match(prompt.invention, /Any context-compatible narrative development/i);
-    assert.match(prompt.invention, /private planner reasoning/i);
-    assert.match(prompt.invention, /roleplay model.*chooses all concrete realization details/i);
+    assert.match(prompt.invention, /required_effect must precisely state the intended narrative result/i);
+    assert.match(prompt.invention, /roleplay model receives that semantic effect.*chooses the exact prose and concrete realization/i);
     assert.match(prompt.simulation, /country simulation/i);
     assert.match(prompt.direction_policy, /choose one coherent authorial direction before applying random creative appetite/i);
     assert.match(prompt.direction_policy, /breathing room.*as legitimate as complication/i);

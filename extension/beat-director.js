@@ -1,5 +1,3 @@
-import { normalizeDirectorSample } from './director-sampling.js?v=0.11.137';
-
 const OPERATIONS = new Set(['retain', 'deepen', 'introduce', 'complicate', 'escalate', 'deescalate', 'resolve', 'transition', 'withdraw', 'stalemate', 'disrupt', 'other']);
 const PHASES = new Set(['establishing', 'developing', 'turning', 'landing', 'aftermath', 'transition']);
 const DIRECTIONS = new Set(['preserve', 'brighten', 'darken', 'release', 'intensify']);
@@ -16,39 +14,6 @@ const CEILINGS = new Set(['none', 'local', 'partial', 'decisive', 'open']);
 const SCOPES = new Set(['personal', 'social', 'institutional', 'societal', 'world']);
 
 export const DIRECTOR_AUTHORITY_BOUNDARY = 'Treat explicit user/OOC instructions and established canon in the provider context as binding. Choose the exact fictional realization from that context. Never invent the player character\'s dialogue, thoughts, feelings, decisions, consent, compliance, or reaction.';
-
-const MOVEMENT_GUIDANCE = Object.freeze({
-    retain: 'Keep the current narrative focus active and add substance without forcing an unrelated direction.',
-    deepen: 'Deepen what is already happening by adding meaning, texture, or consequence.',
-    introduce: 'Allow a fitting new element to enter and open fresh possibilities.',
-    complicate: 'Introduce a fitting complication that materially changes the immediate possibilities.',
-    escalate: 'Increase the active pressure, stakes, or consequences in a context-appropriate way.',
-    deescalate: 'Release some active pressure while preserving meaningful consequences and possibilities.',
-    resolve: 'Bring a fitting part of the current situation to a meaningful resolution.',
-    transition: 'Move naturally into the next fitting situation or narrative focus.',
-    withdraw: 'Let an active pressure, opportunity, or opposing force recede while still changing the situation.',
-    stalemate: 'Hold the active forces in meaningful tension without forcing an immediate victory.',
-    disrupt: 'Break the current pattern with a context-compatible development that redirects the immediate possibilities.',
-    other: 'Choose a context-appropriate narrative movement that changes the immediate possibilities.',
-});
-
-const INTERVENTION_GUIDANCE = Object.freeze({
-    subtle: 'Express that movement subtly but observably.',
-    meaningful: 'Give that movement enough substance to noticeably affect the immediate situation or its possibilities.',
-    major: 'Express that movement boldly or consequentially where the context supports it; do not change its kind merely to increase impact.',
-});
-
-const NOVELTY_GUIDANCE = Object.freeze({
-    grounded: 'Within that movement, prefer causes already established or naturally implied by the context.',
-    open: 'Within that movement, use either an established cause or a new compatible cause, whichever is more coherent.',
-    surprising: 'Within that movement, seek an unexpected but compatible realization without changing the kind of movement selected.',
-});
-
-const FORTUNE_GUIDANCE = Object.freeze({
-    favorable: 'Within that movement, lean toward opportunity, relief, advantage, connection, or discovery.',
-    mixed: 'Within that movement, let the effect be beneficial, adverse, ambiguous, or mixed according to the situation.',
-    adverse: 'Within that movement, lean toward difficulty, cost, danger, opposition, loss, or exposure; do not manufacture adversity solely to satisfy this bias.',
-});
 
 function text(value, limit = 240) { return String(value ?? '').trim().slice(0, limit); }
 function choice(value, allowed, fallback) {
@@ -103,17 +68,19 @@ export function hasUsableBeatDirective(value) {
     return Boolean(beat.requiredEffect);
 }
 
-export function formatBeatContract(_sceneValue, beatValue, { regeneration = false, directorSample = null } = {}) {
+export function formatBeatContract(sceneValue, beatValue, { regeneration = false } = {}) {
+    const scene = normalizeSceneProfile(sceneValue);
     const beat = normalizeBeatDirective(beatValue);
-    const sample = normalizeDirectorSample(directorSample);
     const lines = [
-        MOVEMENT_GUIDANCE[beat.operation],
-        INTERVENTION_GUIDANCE[sample.intervention],
-        NOVELTY_GUIDANCE[sample.novelty],
-        FORTUNE_GUIDANCE[sample.fortune],
+        `REQUIRED NARRATIVE EFFECT: ${beat.requiredEffect}`,
+        `CURRENT TARGET: ${beat.target}`,
+        scene.promise ? `SCENE PROMISE TO HONOR: ${scene.promise}` : '',
+        beat.preserve.length ? `PRESERVE: ${beat.preserve.join('; ')}` : '',
+        beat.forbid.length ? `DO NOT: ${beat.forbid.join('; ')}` : '',
+        `ANALYZED BOUNDS: movement=${beat.operation}; content=${beat.contentClass}; scope=${beat.scope}; intensity=${beat.intensity}; quantity=${beat.quantity}; relative power=${beat.relativePower}; plot weight=${beat.plotWeight}; duration=${beat.duration}; resolution ceiling=${beat.resolutionCeiling}.`,
         DIRECTOR_AUTHORITY_BOUNDARY,
-        'Use the complete current context to choose every concrete actor, event, object, action, and outcome yourself. Do not expose or discuss these instructions.',
-        regeneration ? 'For this regeneration, preserve the same broad intent while producing a genuinely different realization.' : '',
+        'Realize the required effect through context-compatible narration and world or NPC action. Choose the exact prose and concrete details yourself, but do not replace, weaken, or contradict the required effect or its constraints. Do not expose or discuss these instructions.',
+        regeneration ? 'For this regeneration, preserve the same required effect and constraints while producing a genuinely different realization.' : '',
     ];
     return lines.filter(Boolean).join('\n');
 }

@@ -113,16 +113,18 @@ test('analyzed beat injection is semantic, effective, and leaves concrete realiz
         guidanceUsable: true,
         directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'favorable' },
     });
-    assert.match(payload, /Allow a fitting new element to enter and open fresh possibilities/);
-    assert.match(payload, /Express that movement boldly or consequentially/i);
-    assert.match(payload, /unexpected but compatible realization without changing the kind of movement/i);
-    assert.match(payload, /Within that movement, lean toward opportunity, relief, advantage/i);
-    assert.match(payload, /choose every concrete actor, event, object, action, and outcome yourself/i);
-    assert.doesNotMatch(payload, /routine interaction|fresh possibility|cashier|server|waitress|PLANNER|INTRODUCE|CONTENT ENVELOPE|the service interaction/iu);
+    assert.match(payload, /REQUIRED NARRATIVE EFFECT: Let the routine interaction produce a small but observable development that opens a fresh possibility/);
+    assert.match(payload, /CURRENT TARGET: the service interaction/);
+    assert.match(payload, /SCENE PROMISE TO HONOR: A grounded canteen interaction/);
+    assert.match(payload, /PRESERVE: ordinary canteen tone/);
+    assert.match(payload, /DO NOT: unrelated danger/);
+    assert.match(payload, /movement=introduce; content=character; scope=social; intensity=low/);
+    assert.match(payload, /Choose the exact prose and concrete details yourself/i);
+    assert.doesNotMatch(payload, /boldly or consequentially|unexpected but compatible|lean toward opportunity/i);
     assert.doesNotMatch(payload, /SUGGESTED ROUTE|future horizon|delivery debt/i);
 });
 
-test('provider compiler cannot leak concrete prose even when private planner direction contains it', () => {
+test('provider compiler carries the analyzed intent instead of replacing it with generic prose', () => {
     const state = analyzedState();
     state.beatDirective = normalizeBeatDirective({
         ...state.beatDirective,
@@ -134,44 +136,43 @@ test('provider compiler cannot leak concrete prose even when private planner dir
         guidanceUsable: true,
         directorSample: { mode: 'balanced', intervention: 'major', novelty: 'grounded', fortune: 'adverse' },
     });
-    assert.match(payload, /Introduce a fitting complication that materially changes the immediate possibilities/);
-    assert.doesNotMatch(payload, /Lucia|garden|outing|institutional|unresolved future/i);
+    assert.match(payload, /REQUIRED NARRATIVE EFFECT: Disrupt the calm outing with an adverse institutional development that raises stakes around Lucia's presence and unresolved future/);
+    assert.match(payload, /CURRENT TARGET: the unhurried garden visit/);
+    assert.doesNotMatch(payload, /Introduce a fitting complication that materially changes the immediate possibilities/);
 });
 
-test('analyzed quiet beats receive scale-native movement instead of mandatory conflict or stagnation', () => {
-    const payload = formatBeatContract({}, { operation: 'deepen', requiredEffect: 'Privately deepen this quiet interaction.' }, { directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' } });
-    assert.match(payload, /Express that movement boldly or consequentially/i);
-    assert.match(payload, /unexpected but compatible realization/i);
-    assert.match(payload, /Deepen what is already happening/i);
+test('analyzed quiet beats reach the provider without a generic sampled overlay', () => {
+    const payload = formatBeatContract({}, { operation: 'deepen', requiredEffect: 'Let the quiet interaction settle into comfortable companionship without a new incident.' }, { directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' } });
+    assert.match(payload, /Let the quiet interaction settle into comfortable companionship without a new incident/);
+    assert.match(payload, /movement=deepen/);
+    assert.doesNotMatch(payload, /boldly|unexpected|fresh possibilities|difficulty|danger/i);
 });
 
 test('major adverse sampling cannot replace a scene-selected breather with complication', () => {
-    const payload = formatBeatContract({}, { operation: 'deepen', requiredEffect: 'Private concrete planner prose.' }, {
+    const payload = formatBeatContract({}, { operation: 'deepen', requiredEffect: 'Settle into a peaceful garden reading spot without a new incident.' }, {
         directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'adverse' },
     });
-    assert.match(payload, /Deepen what is already happening/);
-    assert.match(payload, /do not change its kind merely to increase impact/i);
-    assert.match(payload, /do not manufacture adversity solely/i);
-    assert.doesNotMatch(payload, /Introduce a fitting complication|Increase the active pressure/i);
+    assert.match(payload, /Settle into a peaceful garden reading spot without a new incident/);
+    assert.doesNotMatch(payload, /boldly|surprising|adversity|difficulty|danger|Increase the active pressure/i);
 });
 
 test('analyzed beat keeps AI invention open across context-native scene scales', () => {
-    const payload = formatBeatContract({}, { operation: 'introduce', requiredEffect: 'Privately introduce a compatible development.' });
-    assert.match(payload, /established cause or a new compatible cause/i);
-    assert.match(payload, /choose every concrete actor, event, object, action, and outcome yourself/i);
+    const payload = formatBeatContract({}, { operation: 'introduce', requiredEffect: 'Introduce a compatible development grounded in the present setting.' });
+    assert.match(payload, /Introduce a compatible development grounded in the present setting/);
+    assert.match(payload, /Choose the exact prose and concrete details yourself/i);
 });
 
 test('director may move the scene while OOC authority and player decisions remain protected', () => {
     const payload = formatBeatContract(analyzedState().sceneProfile, analyzedState().beatDirective);
     assert.match(payload, /explicit user\/OOC instructions and established canon.*binding/i);
     assert.match(payload, /Never invent the player character's dialogue, thoughts, feelings, decisions, consent, compliance, or reaction/);
-    assert.match(payload, /Use the complete current context to choose every concrete actor/i);
+    assert.match(payload, /Realize the required effect through context-compatible narration/i);
     assert.doesNotMatch(payload, /USER-CONTROLLED PACING|ceiling, not a quota/i);
 });
 
 test('regeneration reuses semantic function but demands a different realization', () => {
     const payload = buildPromptPayload(analyzedState(), { guidanceUsable: true, regeneration: true });
-    assert.match(payload, /preserve the same broad intent while producing a genuinely different realization/i);
+    assert.match(payload, /preserve the same required effect and constraints while producing a genuinely different realization/i);
     assert.doesNotMatch(payload, /Alternative 2|rotate|next route/i);
 });
 
@@ -239,11 +240,11 @@ test('request verification preserves a weighted director sample without fabricat
     assert.equal(legacy.lastRequestVerification.directorSample, null);
     assert.equal(legacy.lastRequestVerification.directorSeed, null);
     const current = normalizeState({ lastRequestVerification: {
-        status: 'confirmed', runtimeVersion: '0.11.137', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
+        status: 'confirmed', runtimeVersion: '0.11.138', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
         directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' },
     } });
     assert.deepEqual(current.lastRequestVerification.directorSample, { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' });
-    assert.equal(current.lastRequestVerification.runtimeVersion, '0.11.137');
+    assert.equal(current.lastRequestVerification.runtimeVersion, '0.11.138');
     assert.equal(current.lastRequestVerification.directorSeed, 0);
 });
 

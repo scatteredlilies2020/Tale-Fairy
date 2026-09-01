@@ -1,8 +1,8 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.11.137';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.11.138';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.11.96';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.11.137';
+import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.11.138';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
@@ -1323,11 +1323,11 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     const playerName = playerCharacterName(messages);
     const payload = {
         task: 'direct_current_beat',
-        instruction: 'Analyze the current scene and conduct the next response. Choose operation carefully because Tale Fairy compiles that broad movement into the roleplay direction. Use required_effect to record the fuller context-aware intention for private planning and inspection.',
+        instruction: 'Analyze the current scene and conduct the next response. State the exact context-aware intention in required_effect; Tale Fairy sends that effect, target, scene promise, preserve/forbid constraints, and analyzed bounds to the roleplay model.',
         authority: 'Explicit OOC/scenario commands and the latest user action outrank every retained inference. OOC outcome commands bind the stated outcome; continue or advance-time commands widen scope only as stated. Never invent player dialogue, thoughts, consent, choices, compliance, retreat, or extra actions.',
         direction_policy: DIRECTOR_POLICY,
         calibration: 'Choose movement from scene need first; apply the sampled appetite only within that compatible movement. A high or adverse sample never independently warrants complication, conflict, interruption, or escalation. It may instead make a breather, deepening, relief, resolution, or transition more vivid and consequential.',
-        invention: 'Any context-compatible narrative development is available, including an entirely new cause. required_effect and the remaining beat fields are private planner reasoning and may describe the context-aware intention precisely. The roleplay model receives only a broad movement compiled from operation plus creative appetite, and chooses all concrete realization details.',
+        invention: 'Any context-compatible narrative development is available, including an entirely new cause. required_effect must precisely state the intended narrative result. The roleplay model receives that semantic effect and its selected constraints, then chooses the exact prose and concrete realization. basis and retained evidence remain private.',
         simulation: 'Use the causal unit natural to the scope. Personal and life simulation may move through needs, relationships, work, routine, opportunity, or consequence. Organization and country simulation may move through decisions, institutions, resources, factions, policy effects, public reaction, trends, or systemic pressures. World simulation may move through broad forces. Do not translate every scale into a conventional adventure encounter.',
         operations: {
             retain: 'preserve the beat without adding an incident',
@@ -1843,7 +1843,7 @@ CALIBRATION: Quietness is not stagnation. A scene may warrant a breather, contin
 
 MOVEMENT: RETAIN, DEEPEN, INTRODUCE, COMPLICATE, ESCALATE, DEESCALATE, RESOLVE, TRANSITION, WITHDRAW, STALEMATE, DISRUPT, and OTHER are bookkeeping labels for broad relationships to the current scene, not limits on invention. Choose the nearest label—or OTHER when none fits—then use required_effect to express the actual freeform narrative function. Scene changes, pressure shifts, reversals, discoveries, good turns, bad turns, mixed consequences, new causes, and other context-compatible movement are all available.
 
-INVENTION: The writing model may freely invent any compatible realization, including an entirely new causal element. All beat fields, including required_effect, are private planner reasoning. Choose operation carefully because it alone is compiled into a broad downstream movement; intervention, novelty, and fortune come from the sampled creative appetite. The writing model receives no planner prose, names, evidence, targets, or prescribed realization and chooses every concrete detail itself.
+INVENTION: The writing model may freely invent any compatible realization, including an entirely new causal element. Write required_effect as precise semantic direction for the next response. Tale Fairy sends required_effect, target, scene promise, preserve/forbid constraints, and analyzed bounds downstream; the writing model chooses the exact prose and concrete realization. basis, audit, retained evidence, canon records, and user-note records remain private.
 
 SIMULATION: Apply the same causal logic to roleplay, life simulation, relationships, workplaces, organizations, countries, societies, and worlds. Use the unit natural to the scale: individual action, relationship response, institutional decision, resource movement, faction behavior, policy effect, public response, trend, or system pressure. Do not turn every simulation into a conventional adventure encounter.
 
@@ -1856,7 +1856,7 @@ Keep strings concise. audit briefly states how the direction expresses the weigh
 export const ANALYSIS_OUTPUT_CONTRACT = `Return exactly: contract_version=3, current, beat, world, thread_updates, actor_updates, canon_updates, ledger, note_resolution, audit.
 current={frame,frame_basis,status,immediate_action,activity,situation,activity_role,temporal_scope,location,time,loop,scene_promise,phase,emotional_direction,pressure,intrusion,novelty_ceiling}
 beat={operation,target,required_effect,content_class,scope,intensity,quantity,relative_power,plot_weight,duration,resolution_ceiling,preserve,forbid,basis}
-All beat fields are private planner reasoning. operation is compiled into broad downstream movement; required_effect records the fuller context-aware intention for inspection but is never injected into roleplay.
+required_effect, target, scene promise, preserve/forbid constraints, and analyzed bounds direct the roleplay response. basis and retained evidence remain private and are never injected.
 world={identity,baseline,variant_rules,rp_changes,signatures,forces,confidence}
 thread_updates and actor_updates contain factual changes only; canon_updates contains explicit durable additions/removals only. Empty arrays mean no change. audit is one concise string. No other keys.`;
 

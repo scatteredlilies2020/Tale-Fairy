@@ -149,10 +149,13 @@ test('provider-bound request receives one complete semantic beat on regeneration
     assert.equal(chatHasCurrentGuidance(chat, prompt), true);
     assert.equal(chat.length, 1);
     assert.equal(chat.at(-1).role, 'user');
-    assert.match(chat.at(-1).content, /Introduce a fitting complication that materially changes the immediate possibilities/);
-    assert.match(chat.at(-1).content, /choose every concrete actor, event, object, action, and outcome yourself/i);
-    assert.match(chat.at(-1).content, /preserve the same broad intent while producing a genuinely different realization/i);
-    assert.doesNotMatch(chat.at(-1).content, /credible difficulty|current information|PLANNER|COMPLICATE|the report discussion|WEIGHTED DIRECTOR SAMPLE|Vekk|war update|urgent contradiction/i);
+    assert.match(chat.at(-1).content, /REQUIRED NARRATIVE EFFECT: Add a credible difficulty that changes how the current information is understood/);
+    assert.match(chat.at(-1).content, /CURRENT TARGET: the report discussion/);
+    assert.match(chat.at(-1).content, /PRESERVE: user authority/);
+    assert.match(chat.at(-1).content, /DO NOT: a predetermined incident/);
+    assert.match(chat.at(-1).content, /Choose the exact prose and concrete details yourself/i);
+    assert.match(chat.at(-1).content, /preserve the same required effect and constraints while producing a genuinely different realization/i);
+    assert.doesNotMatch(chat.at(-1).content, /The information is already unstable|WEIGHTED DIRECTOR SAMPLE|Vekk|war update|urgent contradiction/i);
     assert.match(chat.at(-1).content, /Tell me what happened\.$/);
     assert.doesNotMatch(chat.at(-1).content, /GROUNDING:|EXECUTION:/);
     assert.equal(chat.map(message => String(message.content)).join('\n').match(/<tale-fairy-context>/g)?.length, 1);
