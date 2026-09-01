@@ -1,9 +1,9 @@
-import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.11.122';
+import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.11.123';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
 import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js';
-import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, formatFreshBeatFallback, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile } from './beat-director.js?v=0.11.122';
-import { normalizeDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.11.122';
+import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, formatFreshBeatFallback, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile } from './beat-director.js?v=0.11.123';
+import { normalizeDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.11.123';
 
 export const STATE_KEY = 'livingWorldGuide';
 export const STATE_VERSION = 46;
@@ -350,7 +350,7 @@ function normalizeRequestVerification(value) {
     if (!value || typeof value !== 'object' || value.status !== 'confirmed') return null;
     return {
         status: 'confirmed',
-        guidanceBlock: text(value.guidanceBlock).slice(0, 6000),
+        guidanceBlock: text(value.guidanceBlock).slice(0, 12000),
         requestedAt: Math.max(0, Number(value.requestedAt) || 0),
         confirmedAt: Math.max(0, Number(value.confirmedAt) || 0),
         sourceMessageCount: Math.max(0, Number(value.sourceMessageCount) || 0),

@@ -202,6 +202,12 @@ test('request verification preserves a weighted director sample without fabricat
     assert.equal(current.lastRequestVerification.directorSeed, 0);
 });
 
+test('request verification preserves the complete exact injected context beyond the old inner-guide limit', () => {
+    const exact = `<tale-fairy-context>${'x'.repeat(7000)}</tale-fairy-context>`;
+    const state = normalizeState({ lastRequestVerification: { status: 'confirmed', guidanceBlock: exact } });
+    assert.equal(state.lastRequestVerification.guidanceBlock, exact);
+});
+
 test('planner completion resets only the lightweight refresh schedule', () => {
     const state = applyPlannerAuthorLayer(analyzedState({ plannerSchedule: { turnsSincePlanner: 6 } }), { turnCount: 10, fingerprint: 'abc' });
     assert.equal(state.plannerSchedule.turnsSincePlanner, 0);

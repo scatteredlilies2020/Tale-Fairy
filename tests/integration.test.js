@@ -13,21 +13,21 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest and detached plugin identify the adaptive-director release', () => {
-    assert.equal(manifest.version, '0.11.122');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.122');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.122');
+    assert.equal(manifest.version, '0.11.123');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.123');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.123');
     assert.match(manifest.description, /always-on adaptive story director/i);
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.11\.122'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.11\.122'/);
+    assert.match(pluginSource, /const VERSION = '0\.11\.123'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.11\.123'/);
 });
 
-test('extension loads v122 adaptive-director modules', () => {
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.122'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.122'/);
-    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.122'/);
-    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.122'/);
-    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.122'/);
+test('extension loads v123 adaptive-director modules', () => {
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.123'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.123'/);
+    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.123'/);
+    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.123'/);
+    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.123'/);
 });
 
 test('long-form defaults reserve room for current turns, summaries, and thinking', () => {
@@ -72,6 +72,7 @@ test('provider injection uses the analyzed beat or a non-blocking live policy', 
     assert.match(source, /ensureGuidanceInText/);
     assert.match(source, /CHAT_COMPLETION_PROMPT_READY/);
     assert.match(source, /GENERATE_AFTER_COMBINE_PROMPTS/);
+    assert.match(source, /match\(\/<tale-fairy-context>/);
 });
 
 test('replacement generation archives semantic direction and the exact weighted sample', () => {
@@ -100,6 +101,8 @@ test('planner output is lightweight while retaining structured-output negotiatio
 });
 
 test('scratchpad exposes adaptive direction without misleading dormant triggers', () => {
+    assert.match(template, /Last provider-bound injection \(exact\)/);
+    assert.ok(template.indexOf('Last provider-bound injection (exact)') < template.indexOf('<h5>Current scene</h5>'));
     assert.match(template, />Adaptive direction</);
     assert.match(template, /weighted creative appetite/i);
     assert.match(template, />Continuity evidence</);
