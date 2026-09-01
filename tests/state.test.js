@@ -111,23 +111,22 @@ test('stale analysis fails closed while one explicitly allowed append remains de
     assert.equal(isAnalysisSourceCurrent(fingerprint, messages.length, assistantAppended, { allowOneAssistantAppend: true }), true);
 });
 
-test('analyzed beat injection is semantic, effective, and leaves concrete realization free', () => {
+test('analyzed injection exposes only broad flow and safety bounds', () => {
     const payload = buildPromptPayload(analyzedState(), {
         guidanceUsable: true,
         directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'favorable' },
     });
-    assert.match(payload, /REQUIRED NARRATIVE EFFECT: Let the routine interaction produce a small but observable development that opens a fresh possibility/);
-    assert.match(payload, /CURRENT TARGET: the service interaction/);
-    assert.match(payload, /SCENE PROMISE TO HONOR: A grounded canteen interaction/);
+    assert.match(payload, /NARRATIVE FLOW ONLY/);
+    assert.match(payload, /ANALYZED BEAT: movement=introduce; content=character; scope=social; intensity=low/);
     assert.match(payload, /PRESERVE: ordinary canteen tone/);
     assert.match(payload, /DO NOT: unrelated danger/);
-    assert.match(payload, /movement=introduce; content=character; scope=social; intensity=low/);
-    assert.match(payload, /Choose the exact prose and concrete details yourself/i);
+    assert.doesNotMatch(payload, /Let the routine interaction|the service interaction|A grounded canteen interaction/);
+    assert.match(payload, /Infer every concrete action, event, and detail from the provider context/i);
     assert.doesNotMatch(payload, /boldly or consequentially|unexpected but compatible|lean toward opportunity/i);
     assert.doesNotMatch(payload, /SUGGESTED ROUTE|future horizon|delivery debt/i);
 });
 
-test('provider compiler carries the analyzed intent instead of replacing it with generic prose', () => {
+test('provider compiler keeps the planner-specific intended event private', () => {
     const state = analyzedState();
     state.beatDirective = normalizeBeatDirective({
         ...state.beatDirective,
@@ -139,15 +138,14 @@ test('provider compiler carries the analyzed intent instead of replacing it with
         guidanceUsable: true,
         directorSample: { mode: 'balanced', intervention: 'major', novelty: 'grounded', fortune: 'adverse' },
     });
-    assert.match(payload, /REQUIRED NARRATIVE EFFECT: Disrupt the calm outing with an adverse institutional development that raises stakes around Lucia's presence and unresolved future/);
-    assert.match(payload, /CURRENT TARGET: the unhurried garden visit/);
-    assert.doesNotMatch(payload, /Introduce a fitting complication that materially changes the immediate possibilities/);
+    assert.match(payload, /ANALYZED BEAT: movement=complicate; content=character; scope=social; intensity=low/);
+    assert.doesNotMatch(payload, /Disrupt the calm outing|the unhurried garden visit|Lucia's presence/);
 });
 
 test('analyzed quiet beats reach the provider without a generic sampled overlay', () => {
     const payload = formatBeatContract({}, { operation: 'deepen', requiredEffect: 'Let the quiet interaction settle into comfortable companionship without a new incident.' }, { directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' } });
-    assert.match(payload, /Let the quiet interaction settle into comfortable companionship without a new incident/);
-    assert.match(payload, /movement=deepen/);
+    assert.match(payload, /ANALYZED BEAT: movement=deepen/);
+    assert.doesNotMatch(payload, /Let the quiet interaction settle/);
     assert.doesNotMatch(payload, /boldly|unexpected|fresh possibilities|difficulty|danger/i);
 });
 
@@ -155,27 +153,30 @@ test('major adverse sampling cannot replace a scene-selected breather with compl
     const payload = formatBeatContract({}, { operation: 'deepen', requiredEffect: 'Settle into a peaceful garden reading spot without a new incident.' }, {
         directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'adverse' },
     });
-    assert.match(payload, /Settle into a peaceful garden reading spot without a new incident/);
+    assert.match(payload, /ANALYZED BEAT: movement=deepen/);
+    assert.doesNotMatch(payload, /peaceful garden reading spot/);
     assert.doesNotMatch(payload, /boldly|surprising|adversity|difficulty|danger|Increase the active pressure/i);
 });
 
 test('analyzed beat keeps AI invention open across context-native scene scales', () => {
     const payload = formatBeatContract({}, { operation: 'introduce', requiredEffect: 'Introduce a compatible development grounded in the present setting.' });
-    assert.match(payload, /Introduce a compatible development grounded in the present setting/);
-    assert.match(payload, /Choose the exact prose and concrete details yourself/i);
+    assert.match(payload, /ANALYZED BEAT: movement=introduce/);
+    assert.doesNotMatch(payload, /Introduce a compatible development grounded in the present setting/);
+    assert.match(payload, /Infer every concrete action, event, and detail/i);
 });
 
 test('director may move the scene while OOC authority and player decisions remain protected', () => {
     const payload = formatBeatContract(analyzedState().sceneProfile, analyzedState().beatDirective);
     assert.match(payload, /explicit user\/OOC instructions and established canon.*binding/i);
     assert.match(payload, /Never invent the player character's dialogue, thoughts, feelings, decisions, consent, compliance, or reaction/);
-    assert.match(payload, /Realize the required effect through context-compatible narration/i);
+    assert.match(payload, /Use the analyzed beat only to control narrative movement, scale, and impact/i);
     assert.doesNotMatch(payload, /USER-CONTROLLED PACING|ceiling, not a quota/i);
 });
 
-test('regeneration reuses semantic function but demands a different realization', () => {
+test('regeneration reuses broad flow without preserving a specific planned event', () => {
     const payload = buildPromptPayload(analyzedState(), { guidanceUsable: true, regeneration: true });
-    assert.match(payload, /preserve the same required effect and constraints while producing a genuinely different realization/i);
+    assert.match(payload, /retain only these broad flow and safety bounds while choosing a genuinely different context-compatible development/i);
+    assert.doesNotMatch(payload, /Let the routine interaction produce/);
     assert.doesNotMatch(payload, /Alternative 2|rotate|next route/i);
 });
 
@@ -253,11 +254,11 @@ test('request verification preserves a weighted director sample without fabricat
     assert.equal(legacy.lastRequestVerification.directorSample, null);
     assert.equal(legacy.lastRequestVerification.directorSeed, null);
     const current = normalizeState({ lastRequestVerification: {
-        status: 'confirmed', runtimeVersion: '0.11.141', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
+        status: 'confirmed', runtimeVersion: '0.11.142', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
         directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' },
     } });
     assert.deepEqual(current.lastRequestVerification.directorSample, { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' });
-    assert.equal(current.lastRequestVerification.runtimeVersion, '0.11.141');
+    assert.equal(current.lastRequestVerification.runtimeVersion, '0.11.142');
     assert.equal(current.lastRequestVerification.directorSeed, 0);
 });
 

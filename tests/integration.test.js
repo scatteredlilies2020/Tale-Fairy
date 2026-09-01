@@ -13,21 +13,21 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest and detached plugin identify the adaptive-director release', () => {
-    assert.equal(manifest.version, '0.11.141');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.141');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.141');
+    assert.equal(manifest.version, '0.11.142');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.142');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.142');
     assert.match(manifest.description, /always-on adaptive story director/i);
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.11\.141'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.11\.141'/);
+    assert.match(pluginSource, /const VERSION = '0\.11\.142'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.11\.142'/);
 });
 
-test('extension loads v141 adaptive-director modules', () => {
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.141'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.141'/);
-    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.141'/);
-    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.141'/);
-    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.141'/);
+test('extension loads v142 adaptive-director modules', () => {
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.142'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.142'/);
+    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.142'/);
+    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.142'/);
+    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.142'/);
 });
 
 test('long-form defaults reserve room for current turns, summaries, and thinking', () => {
@@ -84,7 +84,7 @@ test('obsolete pacing selector and pacing ceiling are absent while player agency
     assert.doesNotMatch(template, /data-setting="pacing"|Scene pacing/);
     assert.doesNotMatch(source, /updatePacing|data-setting="pacing"/);
     assert.doesNotMatch(directorSource, /USER-CONTROLLED PACING|maximum time, activity, and player progress/i);
-    assert.match(directorSource, /Realize the required effect through context-compatible narration/i);
+    assert.match(directorSource, /Use the analyzed beat only to control narrative movement, scale, and impact/i);
     assert.match(directorSource, /Never invent the player character/i);
 });
 
@@ -95,8 +95,8 @@ test('adaptive analysis uses freeform direction rather than an event taxonomy', 
     assert.match(analysisSource, /other context-compatible movement/i);
     assert.match(analysisSource, /countries, societies, and worlds/i);
     assert.match(analysisSource, /operation.*other/);
-    assert.match(analysisSource, /sends required_effect, target, scene promise, preserve\/forbid constraints, and analyzed bounds downstream/i);
-    assert.match(analysisSource, /basis, audit, retained evidence, canon records, and user-note records remain private/i);
+    assert.match(analysisSource, /sends only broad beat and scale bounds plus preserve\/forbid safety constraints downstream/i);
+    assert.match(analysisSource, /required_effect, target, scene promise, basis, audit, retained evidence, canon records, and user-note records remain private/i);
     assert.match(stateSource, /export const STATE_VERSION = 48/);
     assert.match(stateSource, /beatContractUpgrade/);
 });
@@ -130,12 +130,12 @@ test('replacement generation archives semantic direction and the exact weighted 
     assert.match(source, /generationRetrySource\(currentMessages, true\)/);
     assert.match(source, /Preparing exact regeneration direction/);
     assert.match(source, /allowOneAssistantAppend: currentMessages\.length === sourceMessages\.length \+ 1/);
-    assert.match(directorSource, /preserve the same required effect and constraints while producing a genuinely different realization/i);
+    assert.match(directorSource, /retain only these broad flow and safety bounds while choosing a genuinely different context-compatible development/i);
     assert.doesNotMatch(source, /\(previousIndex \+ 1\) % candidates\.length/);
 });
 
 test('rapid-fire turns consume guidance once and coalesce planner catch-up', () => {
-    assert.match(directorSource, /REQUIRED NARRATIVE EFFECT/);
+    assert.match(directorSource, /NARRATIVE FLOW ONLY/);
     assert.match(schedulerSource, /replacement response reuses the archived semantic beat and never spends a planner call/i);
     assert.match(source, /function queueLatestAnalysis/);
     assert.match(source, /Planner active · latest turn queued/);
@@ -146,11 +146,11 @@ test('rapid-fire turns consume guidance once and coalesce planner catch-up', () 
     assert.doesNotMatch(directorSource, /delivery debt|release condition|event queue/i);
 });
 
-test('roleplay injection exposes analyzed semantic direction, never private planner evidence', () => {
+test('roleplay injection exposes broad beat bounds, never private planner intent', () => {
     assert.doesNotMatch(stateSource, /<user-established-canon>|<tale-fairy-user-notes>/i);
     assert.doesNotMatch(directorSource, /PLANNER LEAN|WEIGHTED DIRECTOR SAMPLE|INTERVENTION_GUIDANCE|FORTUNE_GUIDANCE/i);
-    assert.match(directorSource, /formatBeatContract[\s\S]*beat\.requiredEffect/);
-    assert.match(directorSource, /SCENE PROMISE TO HONOR/);
+    assert.doesNotMatch(directorSource, /REQUIRED NARRATIVE EFFECT|CURRENT TARGET|SCENE PROMISE TO HONOR/);
+    assert.match(directorSource, /ANALYZED BEAT/);
     assert.match(directorSource, /beat\.preserve/);
     assert.match(directorSource, /beat\.forbid/);
     assert.doesNotMatch(directorSource, /beat\.basis|scene\.basis/);
