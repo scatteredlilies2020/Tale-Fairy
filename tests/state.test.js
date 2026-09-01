@@ -30,7 +30,7 @@ test('default and normalized state use the v48 scene-first planner contract', ()
     assert.equal(state.version, 48);
     assert.equal(state.mode, 'balanced');
     assert.equal(state.sceneProfile.phase, 'developing');
-    assert.equal(state.beatDirective.operation, 'retain');
+    assert.equal(state.beatDirective.operation, '');
 });
 
 test('scene and beat normalization constrain impact without choosing exact fiction', () => {
@@ -42,6 +42,7 @@ test('scene and beat normalization constrain impact without choosing exact ficti
     assert.equal(beat.relativePower, 'fodder');
     assert.equal(beat.scope, 'world');
     assert.equal(beat.target, 'current activity');
+    assert.equal(normalizeBeatDirective({ operation: 'let the shared joke turn unexpectedly tender' }).operation, 'let the shared joke turn unexpectedly tender');
 });
 
 test('v45 migration clears future routes, debt, conductor, and author board', () => {
@@ -250,11 +251,11 @@ test('request verification preserves a weighted director sample without fabricat
     assert.equal(legacy.lastRequestVerification.directorSample, null);
     assert.equal(legacy.lastRequestVerification.directorSeed, null);
     const current = normalizeState({ lastRequestVerification: {
-        status: 'confirmed', runtimeVersion: '0.11.144', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
+        status: 'confirmed', runtimeVersion: '0.11.145', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
         directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' },
     } });
     assert.deepEqual(current.lastRequestVerification.directorSample, { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' });
-    assert.equal(current.lastRequestVerification.runtimeVersion, '0.11.144');
+    assert.equal(current.lastRequestVerification.runtimeVersion, '0.11.145');
     assert.equal(current.lastRequestVerification.directorSeed, 0);
 });
 

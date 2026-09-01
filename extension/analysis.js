@@ -1,8 +1,8 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.11.144';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.11.145';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.11.96';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.11.144';
+import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.11.145';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
@@ -55,7 +55,7 @@ export const ANALYSIS_SCHEMA_VALUE = {
             novelty_ceiling: { type: 'string', enum: ['none', 'incidental', 'context-native', 'meaningful', 'major'] },
         }, required: ['frame', 'frame_basis', 'status', 'immediate_action', 'activity', 'situation', 'activity_role', 'temporal_scope', 'location', 'time', 'loop', 'scene_promise', 'phase', 'emotional_direction', 'pressure', 'intrusion', 'novelty_ceiling'] },
         beat: { type: 'object', additionalProperties: false, properties: {
-            operation: { type: 'string', enum: ['retain', 'deepen', 'introduce', 'complicate', 'escalate', 'deescalate', 'resolve', 'transition', 'withdraw', 'stalemate', 'disrupt', 'other'] },
+            operation: text(80),
             target: text(160), required_effect: text(260),
             content_class: { type: 'string', enum: ['none', 'texture', 'reaction', 'obstacle', 'conflict', 'character', 'opposition', 'event', 'opportunity', 'revelation', 'consequence', 'other'] },
             scope: { type: 'string', enum: ['personal', 'social', 'institutional', 'societal', 'world'] },
@@ -151,7 +151,6 @@ function validateBeatAnalysisResult(result) {
         'current.temporal_scope': ['moment', 'action', 'activity', 'scene', 'extended'], 'current.phase': ['establishing', 'developing', 'turning', 'landing', 'aftermath', 'transition'],
         'current.emotional_direction': ['preserve', 'brighten', 'darken', 'release', 'intensify'], 'current.pressure': ['none', 'latent', 'active', 'high', 'saturated'],
         'current.intrusion': ['closed', 'incidental', 'socially-open', 'dramatically-open', 'primed'], 'current.novelty_ceiling': ['none', 'incidental', 'context-native', 'meaningful', 'major'],
-        'beat.operation': ['retain', 'deepen', 'introduce', 'complicate', 'escalate', 'deescalate', 'resolve', 'transition', 'withdraw', 'stalemate', 'disrupt', 'other'],
         'beat.content_class': ['none', 'texture', 'reaction', 'obstacle', 'conflict', 'character', 'opposition', 'event', 'opportunity', 'revelation', 'consequence', 'other'],
         'beat.scope': ['personal', 'social', 'institutional', 'societal', 'world'], 'beat.intensity': ['none', 'low', 'moderate', 'high', 'severe'],
         'beat.quantity': ['none', 'singular', 'pair', 'group', 'numerous', 'swarm'], 'beat.relative_power': ['none', 'fodder', 'inferior', 'peer', 'elite', 'overwhelming', 'established'],
@@ -1323,26 +1322,13 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     const playerName = playerCharacterName(messages);
     const payload = {
         task: 'direct_current_beat',
-        instruction: 'Analyze the current scene and conduct the next response. State the exact context-aware intention in required_effect for private planner consistency; Tale Fairy sends only the broad analyzed beat bounds and preserve/forbid safety constraints to the roleplay model.',
+        instruction: 'Analyze the current scene and conduct the next response. State the exact context-aware intention in required_effect for private planner consistency; Tale Fairy sends only the freely chosen movement description and abstract scale classifications to the roleplay model.',
         authority: 'Explicit OOC/scenario commands and the latest user action outrank every retained inference. OOC outcome commands bind the stated outcome; continue or advance-time commands widen scope only as stated. Never invent player dialogue, thoughts, consent, choices, compliance, retreat, or extra actions.',
         direction_policy: DIRECTOR_POLICY,
         calibration: 'Choose movement from scene need first; apply the sampled appetite only within that compatible movement. A high or adverse sample never independently warrants complication, conflict, interruption, or escalation. It may instead make a breather, deepening, relief, resolution, or transition more vivid and consequential.',
-        invention: 'Any context-compatible narrative development is available, including an entirely new cause. required_effect must precisely state the intended narrative result for private planner validation, but is not injected. The roleplay model receives broad flow and scale bounds plus safety constraints, then chooses the actual development, prose, and concrete realization. basis and retained evidence remain private.',
+        invention: 'Any context-compatible narrative development is available, including an entirely new cause. required_effect must precisely state the intended narrative result for private planner validation, but is not injected. The roleplay model receives the freely chosen movement description and abstract scale classifications, then chooses the actual development, prose, and concrete realization. basis and retained evidence remain private.',
         simulation: 'Use the causal unit natural to the scope. Personal and life simulation may move through needs, relationships, work, routine, opportunity, or consequence. Organization and country simulation may move through decisions, institutions, resources, factions, policy effects, public reaction, trends, or systemic pressures. World simulation may move through broad forces. Do not translate every scale into a conventional adventure encounter.',
-        operations: {
-            retain: 'preserve the beat without adding an incident',
-            deepen: 'add texture, reaction, understanding, or meaningful progress inside it',
-            introduce: 'bring in one fitting new functional element without fixing its identity in advance',
-            complicate: 'add difficulty or a tradeoff without necessarily escalating stakes',
-            escalate: 'increase already-active pressure',
-            deescalate: 'release pressure or make space without erasing consequences',
-            resolve: 'close only what is ready within the resolution ceiling',
-            transition: 'move to an authorized next state or time',
-            withdraw: 'allow opposition or pressure to retreat; never force the player to retreat',
-            stalemate: 'preserve an unresolved balance or partial outcome when decisive loss is premature',
-            disrupt: 'break the current pattern only when the scene is open or primed for it',
-            other: 'use when no listed relationship captures the freeform direction; explain the actual function in required_effect',
-        },
+        movement: 'Write operation in your own concise verb or short phrase for how the next response should move relative to the current scene. There is no fixed taxonomy, approved vocabulary, nearest label, or other bucket. Keep it abstract enough to leave the concrete realization to the roleplay model.',
         scale_fields: 'content_class is a broad function. scope selects personal/social/institutional/societal/world. quantity and relative_power constrain opposition only when applicable; otherwise use none. plot_weight and duration prevent incidental flavor from hijacking the story. resolution_ceiling protects canon and ongoing antagonists without forecasting future events.',
         current: useSpecificPlayerName(stateForPrompt(state), playerName),
         messages: selected.map(({ index, kind, message, content }) => ({
@@ -1841,9 +1827,9 @@ DIRECTION: ${DIRECTOR_POLICY}
 
 CALIBRATION: Quietness is not stagnation. A scene may warrant a breather, continuation, deepening, relief, resolution, or transition with no new incident. A high-intervention sample means a fuller expression of the already-chosen movement, not compulsory disruption. An adverse sample may shade an appropriate movement but cannot justify manufacturing difficulty. Escalate or complicate only when current pressure, causality, unresolved action, or explicit user direction independently supports it.
 
-MOVEMENT: RETAIN, DEEPEN, INTRODUCE, COMPLICATE, ESCALATE, DEESCALATE, RESOLVE, TRANSITION, WITHDRAW, STALEMATE, DISRUPT, and OTHER are bookkeeping labels for broad relationships to the current scene, not limits on invention. Choose the nearest label—or OTHER when none fits—then use required_effect to express the actual freeform narrative function. Scene changes, pressure shifts, reversals, discoveries, good turns, bad turns, mixed consequences, new causes, and other context-compatible movement are all available.
+MOVEMENT: Write beat.operation in your own concise verb or short phrase for how the next response should move relative to the current scene. There is no fixed taxonomy, approved vocabulary, nearest label, or fallback bucket. Keep the movement abstract rather than prescribing the concrete event. Scene changes, pressure shifts, reversals, discoveries, good turns, bad turns, mixed consequences, new causes, stillness, and any other context-compatible movement are all available.
 
-INVENTION: The writing model may freely invent any compatible realization, including an entirely new causal element. Write required_effect as precise private direction for planner validation. Tale Fairy sends only broad beat and scale bounds plus preserve/forbid safety constraints downstream; the writing model chooses the actual development, prose, and concrete realization. required_effect, target, scene promise, basis, audit, retained evidence, canon records, and user-note records remain private.
+INVENTION: The writing model may freely invent any compatible realization, including an entirely new causal element. Write required_effect as precise private direction for planner validation. Tale Fairy sends only the freely chosen movement description and abstract scale classifications downstream; the writing model chooses the actual development, prose, and concrete realization. required_effect, target, preserve, forbid, scene promise, basis, audit, retained evidence, canon records, and user-note records remain private.
 
 SIMULATION: Apply the same causal logic to roleplay, life simulation, relationships, workplaces, organizations, countries, societies, and worlds. Use the unit natural to the scale: individual action, relationship response, institutional decision, resource movement, faction behavior, policy effect, public response, trend, or system pressure. Do not turn every simulation into a conventional adventure encounter.
 
@@ -1856,7 +1842,7 @@ Keep strings concise. audit briefly states how the direction expresses the weigh
 export const ANALYSIS_OUTPUT_CONTRACT = `Return exactly: contract_version=3, current, beat, world, thread_updates, actor_updates, canon_updates, ledger, note_resolution, audit.
 current={frame,frame_basis,status,immediate_action,activity,situation,activity_role,temporal_scope,location,time,loop,scene_promise,phase,emotional_direction,pressure,intrusion,novelty_ceiling}
 beat={operation,target,required_effect,content_class,scope,intensity,quantity,relative_power,plot_weight,duration,resolution_ceiling,preserve,forbid,basis}
-Only broad analyzed beat bounds and preserve/forbid safety constraints direct the roleplay response. required_effect, target, scene promise, basis, and retained evidence remain private and are never injected.
+Only the freely chosen operation and abstract scale classifications direct the roleplay response. required_effect, target, preserve, forbid, scene promise, basis, and retained evidence remain private and are never injected.
 world={identity,baseline,variant_rules,rp_changes,signatures,forces,confidence}
 thread_updates and actor_updates contain factual changes only; canon_updates contains explicit durable additions/removals only. Empty arrays mean no change. audit is one concise string. No other keys.`;
 

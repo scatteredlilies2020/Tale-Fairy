@@ -61,18 +61,18 @@ test('valid current-beat result passes validation', () => {
     assert.deepEqual(validateAnalysisResult(result()), { valid: true, errors: [] });
 });
 
-test('validation rejects missing semantic effect and invalid scale values', () => {
+test('validation rejects missing semantic effect and invalid scale values without restricting movement words', () => {
     const missing = result({ beat: { ...result().beat, required_effect: '' } });
     assert.equal(validateAnalysisResult(missing).valid, false);
     const invalid = result({ beat: { ...result().beat, operation: 'summon-dragon', scope: 'scene' } });
     const check = validateAnalysisResult(invalid);
     assert.equal(check.valid, false);
-    assert.ok(check.errors.includes('beat.operation is invalid'));
+    assert.ok(!check.errors.includes('beat.operation is invalid'));
     assert.ok(check.errors.includes('beat.scope is invalid'));
 });
 
-test('every supported operation and simulation scope validates', () => {
-    for (const operation of ['retain', 'deepen', 'introduce', 'complicate', 'escalate', 'deescalate', 'resolve', 'transition', 'withdraw', 'stalemate', 'disrupt', 'other']) {
+test('freeform movement phrases and every simulation scope validate', () => {
+    for (const operation of ['let the silence acquire meaning', 'reframe through an unintended kindness', 'fracture the apparent consensus', 'summon-dragon']) {
         assert.equal(validateAnalysisResult(result({ beat: { ...result().beat, operation } })).valid, true, operation);
     }
     for (const scope of ['personal', 'social', 'institutional', 'societal', 'world']) {
@@ -87,7 +87,7 @@ test('planner chooses scene-warranted movement before applying randomness', () =
     assert.match(SYSTEM, /not compulsory disruption/i);
     assert.match(SYSTEM, /cannot justify manufacturing difficulty/i);
     assert.match(SYSTEM, /Scene changes, pressure shifts, reversals, discoveries/i);
-    assert.match(SYSTEM, /OTHER when none fits/i);
+    assert.match(SYSTEM, /There is no fixed taxonomy, approved vocabulary, nearest label, or fallback bucket/i);
     assert.match(SYSTEM, /Never invent player dialogue, thoughts, feelings, consent, decisions/i);
 });
 
@@ -97,8 +97,8 @@ test('planner permits freeform AI invention and scale-native simulation', () => 
     assert.match(SYSTEM, /life simulation/i);
     assert.match(SYSTEM, /countries, societies, and worlds/i);
     assert.match(SYSTEM, /policy effect, public response, trend, or system pressure/i);
-    assert.match(SYSTEM, /sends only broad beat and scale bounds plus preserve\/forbid safety constraints downstream/i);
-    assert.match(SYSTEM, /required_effect, target, scene promise, basis, audit, retained evidence, canon records, and user-note records remain private/i);
+    assert.match(SYSTEM, /sends only the freely chosen movement description and abstract scale classifications downstream/i);
+    assert.match(SYSTEM, /required_effect, target, preserve, forbid, scene promise, basis, audit, retained evidence, canon records, and user-note records remain private/i);
     assert.doesNotMatch(SYSTEM, /generate six to eight.*routes|schedule future milestones|maintain event queues/i);
     assert.ok(estimateTokenCount(`${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}`) < 1800);
 });
@@ -121,7 +121,7 @@ test('analysis prompt carries current context, identity, variation, bootstrap, a
     assert.equal(prompt.summary_sources[0].label, 'Continuity Memory');
     assert.match(prompt.invention, /Any context-compatible narrative development/i);
     assert.match(prompt.invention, /required_effect must precisely state the intended narrative result/i);
-    assert.match(prompt.invention, /roleplay model receives broad flow and scale bounds plus safety constraints.*chooses the actual development, prose, and concrete realization/i);
+    assert.match(prompt.invention, /roleplay model receives the freely chosen movement description and abstract scale classifications.*chooses the actual development, prose, and concrete realization/i);
     assert.match(prompt.simulation, /country simulation/i);
     assert.match(prompt.direction_policy, /choose one coherent authorial direction before applying random creative appetite/i);
     assert.match(prompt.direction_policy, /breathing room.*as legitimate as complication/i);

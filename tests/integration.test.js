@@ -13,21 +13,21 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest and detached plugin identify the adaptive-director release', () => {
-    assert.equal(manifest.version, '0.11.144');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.144');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.144');
+    assert.equal(manifest.version, '0.11.145');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.145');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.145');
     assert.match(manifest.description, /always-on adaptive story director/i);
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.11\.144'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.11\.144'/);
+    assert.match(pluginSource, /const VERSION = '0\.11\.145'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.11\.145'/);
 });
 
-test('extension loads v144 adaptive-director modules', () => {
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.144'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.144'/);
-    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.144'/);
-    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.144'/);
-    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.144'/);
+test('extension loads v145 adaptive-director modules', () => {
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.145'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.145'/);
+    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.145'/);
+    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.145'/);
+    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.145'/);
 });
 
 test('long-form defaults reserve room for current turns, summaries, and thinking', () => {
@@ -94,9 +94,10 @@ test('adaptive analysis uses freeform direction rather than an event taxonomy', 
     assert.match(analysisSource, /not an event taxonomy/i);
     assert.match(analysisSource, /other context-compatible movement/i);
     assert.match(analysisSource, /countries, societies, and worlds/i);
-    assert.match(analysisSource, /operation.*other/);
-    assert.match(analysisSource, /sends only broad beat and scale bounds plus preserve\/forbid safety constraints downstream/i);
-    assert.match(analysisSource, /required_effect, target, scene promise, basis, audit, retained evidence, canon records, and user-note records remain private/i);
+    assert.match(analysisSource, /operation: text\(80\)/);
+    assert.doesNotMatch(analysisSource, /beat\.operation': \[/);
+    assert.match(analysisSource, /sends only the freely chosen movement description and abstract scale classifications downstream/i);
+    assert.match(analysisSource, /required_effect, target, preserve, forbid, scene promise, basis, audit, retained evidence, canon records, and user-note records remain private/i);
     assert.match(stateSource, /export const STATE_VERSION = 48/);
     assert.match(stateSource, /beatContractUpgrade/);
 });

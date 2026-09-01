@@ -1,4 +1,3 @@
-const OPERATIONS = new Set(['retain', 'deepen', 'introduce', 'complicate', 'escalate', 'deescalate', 'resolve', 'transition', 'withdraw', 'stalemate', 'disrupt', 'other']);
 const PHASES = new Set(['establishing', 'developing', 'turning', 'landing', 'aftermath', 'transition']);
 const DIRECTIONS = new Set(['preserve', 'brighten', 'darken', 'release', 'intensify']);
 const PRESSURES = new Set(['none', 'latent', 'active', 'high', 'saturated']);
@@ -14,6 +13,7 @@ const CEILINGS = new Set(['none', 'local', 'partial', 'decisive', 'open']);
 const SCOPES = new Set(['personal', 'social', 'institutional', 'societal', 'world']);
 
 function text(value, limit = 240) { return String(value ?? '').trim().slice(0, limit); }
+function movement(value) { return text(value, 80).replace(/\s+/gu, ' '); }
 function choice(value, allowed, fallback) {
     const candidate = String(value ?? '').trim().toLowerCase();
     return allowed.has(candidate) ? candidate : fallback;
@@ -27,7 +27,7 @@ export function defaultSceneProfile() {
 }
 
 export function defaultBeatDirective() {
-    return { operation: 'retain', target: 'current activity', requiredEffect: '', contentClass: 'none', scope: 'personal', intensity: 'none', quantity: 'none', relativePower: 'none', plotWeight: 'none', duration: 'beat', resolutionCeiling: 'open', preserve: [], forbid: [], basis: '' };
+    return { operation: '', target: 'current activity', requiredEffect: '', contentClass: 'none', scope: 'personal', intensity: 'none', quantity: 'none', relativePower: 'none', plotWeight: 'none', duration: 'beat', resolutionCeiling: 'open', preserve: [], forbid: [], basis: '' };
 }
 
 export function normalizeSceneProfile(value = {}) {
@@ -44,7 +44,7 @@ export function normalizeSceneProfile(value = {}) {
 
 export function normalizeBeatDirective(value = {}) {
     return {
-        operation: choice(value.operation, OPERATIONS, 'retain'),
+        operation: movement(value.operation),
         target: text(value.target, 160) || 'current activity',
         requiredEffect: text(value.requiredEffect ?? value.required_effect, 260),
         contentClass: choice(value.contentClass ?? value.content_class, CONTENT, 'none'),
@@ -63,7 +63,7 @@ export function normalizeBeatDirective(value = {}) {
 
 export function hasUsableBeatDirective(value) {
     const beat = normalizeBeatDirective(value);
-    return Boolean(beat.requiredEffect);
+    return Boolean(beat.operation && beat.requiredEffect);
 }
 
 export function formatBeatContract(_sceneValue, beatValue, _options = {}) {
