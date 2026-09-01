@@ -13,21 +13,21 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest and detached plugin identify the adaptive-director release', () => {
-    assert.equal(manifest.version, '0.11.126');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.126');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.126');
+    assert.equal(manifest.version, '0.11.127');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.127');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.127');
     assert.match(manifest.description, /always-on adaptive story director/i);
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.11\.126'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.11\.126'/);
+    assert.match(pluginSource, /const VERSION = '0\.11\.127'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.11\.127'/);
 });
 
-test('extension loads v126 adaptive-director modules', () => {
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.126'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.126'/);
-    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.126'/);
-    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.126'/);
-    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.126'/);
+test('extension loads v127 adaptive-director modules', () => {
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.127'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.127'/);
+    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.127'/);
+    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.127'/);
+    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.127'/);
 });
 
 test('long-form defaults reserve room for current turns, summaries, and thinking', () => {
@@ -43,7 +43,7 @@ test('long-form defaults reserve room for current turns, summaries, and thinking
     assert.match(template, /separately reserves up to 4,096 output\/thinking tokens/i);
 });
 
-test('depth one is the default and outbound inclusion proof repairs without blocking generation', () => {
+test('depth one is the default and injection proof cannot block roleplay generation', () => {
     assert.match(source, /injectionDepth: 1/);
     assert.match(source, /injectionDepth\) === 2[\s\S]*settings\.injectionDepth = 1/);
     assert.match(template, /0 = newest edge; default 1/);
@@ -53,13 +53,14 @@ test('depth one is the default and outbound inclusion proof repairs without bloc
     assert.match(source, /scheduleVerificationPersistence\(context\)/);
     assert.match(source, /Proof fingerprint:/);
     assert.match(source, /savedState\.lastRequestVerification\?\.status === 'included'/);
-    assert.match(source, /let guidanceBlock = extractTaleFairyContext\(request\)/);
-    assert.match(source, /ensureGuidanceInChat\(request\.messages, payload/);
-    assert.match(source, /request\.prompt = ensureGuidanceInText\(request\.prompt, payload\)/);
-    assert.match(source, /outboundInit = \{ \.\.\.init, body: JSON\.stringify\(request\) \}/);
-    assert.match(source, /blocked this roleplay request because its context was missing from the final outbound payload/);
-    assert.match(source, /Injection verified at the outbound network boundary/);
-    assert.equal(source.match(/rememberVerifiedRequest\(/g)?.length, 2);
+    assert.match(source, /const response = plannerNativeFetch\(input, init\);[\s\S]*queueMicrotask/);
+    assert.match(source, /Passive injection verification failed without affecting generation/);
+    assert.match(source, /Injection observed after network dispatch/);
+    assert.doesNotMatch(source, /blocked this roleplay request because its context was missing/);
+    assert.match(source, /taleFairyNativeFetch/);
+    assert.match(source, /reportNonBlockingInjectionFailure/);
+    assert.match(source, /Generation will continue without Tale Fairy blocking it/);
+    assert.match(source, /Injection verified in the final provider payload/);
     assert.match(source, /INCLUDED — exact context verified in the outbound request/);
 });
 
