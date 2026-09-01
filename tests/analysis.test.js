@@ -95,9 +95,8 @@ test('planner permits freeform AI invention and scale-native simulation', () => 
     assert.match(SYSTEM, /life simulation/i);
     assert.match(SYSTEM, /countries, societies, and worlds/i);
     assert.match(SYSTEM, /policy effect, public response, trend, or system pressure/i);
-    assert.match(SYSTEM, /required_effect is the only planner-authored direction passed onward/i);
-    assert.match(SYSTEM, /Never copy evidence or canon into it/i);
-    assert.match(SYSTEM, /never use character or place names/i);
+    assert.match(SYSTEM, /All beat fields, including required_effect, are private planner reasoning/i);
+    assert.match(SYSTEM, /receives no planner prose, names, evidence, targets, or prescribed realization/i);
     assert.doesNotMatch(SYSTEM, /generate six to eight.*routes|schedule future milestones|maintain event queues/i);
     assert.ok(estimateTokenCount(`${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}`) < 1800);
 });
@@ -119,8 +118,8 @@ test('analysis prompt carries current context, identity, variation, bootstrap, a
     assert.equal(prompt.bootstrap.scenario, 'A grounded school life simulation.');
     assert.equal(prompt.summary_sources[0].label, 'Continuity Memory');
     assert.match(prompt.invention, /Any context-compatible narrative development/i);
-    assert.match(prompt.invention, /Do not copy evidence or canon/i);
-    assert.match(prompt.invention, /writing model chooses all concrete realization details/i);
+    assert.match(prompt.invention, /private planner reasoning/i);
+    assert.match(prompt.invention, /roleplay model.*chooses all concrete realization details/i);
     assert.match(prompt.simulation, /country simulation/i);
     assert.match(prompt.direction_policy, /choose one coherent authorial direction/i);
     assert.match(prompt.direction_policy, /transition the scene/i);

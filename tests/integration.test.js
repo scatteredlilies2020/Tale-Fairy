@@ -13,21 +13,21 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest and detached plugin identify the adaptive-director release', () => {
-    assert.equal(manifest.version, '0.11.134');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.134');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.134');
+    assert.equal(manifest.version, '0.11.135');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.135');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.135');
     assert.match(manifest.description, /always-on adaptive story director/i);
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.11\.134'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.11\.134'/);
+    assert.match(pluginSource, /const VERSION = '0\.11\.135'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.11\.135'/);
 });
 
-test('extension loads v134 adaptive-director modules', () => {
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.134'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.134'/);
-    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.134'/);
-    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.134'/);
-    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.134'/);
+test('extension loads v135 adaptive-director modules', () => {
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.135'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.135'/);
+    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.135'/);
+    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.135'/);
+    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.135'/);
 });
 
 test('long-form defaults reserve room for current turns, summaries, and thinking', () => {
@@ -84,7 +84,7 @@ test('obsolete pacing selector and pacing ceiling are absent while player agency
     assert.doesNotMatch(template, /data-setting="pacing"|Scene pacing/);
     assert.doesNotMatch(source, /updatePacing|data-setting="pacing"/);
     assert.doesNotMatch(directorSource, /USER-CONTROLLED PACING|maximum time, activity, and player progress/i);
-    assert.match(directorSource, /abstract story function, not a prescribed event/i);
+    assert.match(directorSource, /Use the complete current context to choose every concrete actor/i);
     assert.match(directorSource, /Never invent the player character/i);
 });
 
@@ -95,8 +95,8 @@ test('adaptive analysis uses freeform direction rather than an event taxonomy', 
     assert.match(analysisSource, /other context-compatible movement/i);
     assert.match(analysisSource, /countries, societies, and worlds/i);
     assert.match(analysisSource, /operation.*other/);
-    assert.match(analysisSource, /required_effect is the only planner-authored direction passed onward/i);
-    assert.match(analysisSource, /Never copy evidence or canon into it/i);
+    assert.match(analysisSource, /All beat fields, including required_effect, are private planner reasoning/i);
+    assert.match(analysisSource, /receives no planner prose, names, evidence, targets, or prescribed realization/i);
     assert.match(stateSource, /export const STATE_VERSION = 47/);
     assert.match(stateSource, /beatContractUpgrade/);
 });
@@ -129,7 +129,7 @@ test('replacement generation archives semantic direction and the exact weighted 
 });
 
 test('rapid-fire turns do not wait for a new planner call', () => {
-    assert.match(directorSource, /TALE FAIRY — STORY DIRECTION/);
+    assert.match(directorSource, /const MOVEMENT_GUIDANCE/);
     assert.match(schedulerSource, /replacement response reuses the archived semantic beat and never spends a planner call/i);
     assert.match(source, /void analyzeNow\(/);
     assert.doesNotMatch(directorSource, /delivery debt|release condition|event queue/i);
@@ -138,7 +138,10 @@ test('rapid-fire turns do not wait for a new planner call', () => {
 test('roleplay injection exposes only distilled direction, never private planner evidence', () => {
     assert.doesNotMatch(stateSource, /<user-established-canon>|<tale-fairy-user-notes>/i);
     assert.doesNotMatch(directorSource, /PLANNER LEAN|WEIGHTED DIRECTOR SAMPLE|CONTENT ENVELOPE|SCENE PROMISE/i);
-    assert.match(directorSource, /beat\.requiredEffect/);
+    assert.doesNotMatch(directorSource, /formatBeatContract[\s\S]*beat\.requiredEffect/);
+    assert.match(directorSource, /MOVEMENT_GUIDANCE\[beat\.operation\]/);
+    assert.match(source, /runtimeVersion: RUNTIME_VERSION/);
+    assert.match(source, /item\?\.runtimeVersion === RUNTIME_VERSION/);
 });
 
 test('planner output is lightweight while retaining structured-output negotiation', () => {

@@ -113,14 +113,29 @@ test('analyzed beat injection is semantic, effective, and leaves concrete realiz
         guidanceUsable: true,
         directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'favorable' },
     });
-    assert.match(payload, /TALE FAIRY — STORY DIRECTION/);
-    assert.match(payload, /Let the routine interaction produce a small but observable development/);
+    assert.match(payload, /Allow a fitting new element to enter and open fresh possibilities/);
     assert.match(payload, /bold or story-altering change/i);
     assert.match(payload, /unexpected but context-compatible/i);
     assert.match(payload, /lean toward opportunity, relief, advantage/i);
     assert.match(payload, /choose every concrete actor, event, object, action, and outcome yourself/i);
-    assert.doesNotMatch(payload, /cashier|server|waitress|PLANNER|INTRODUCE|CONTENT ENVELOPE|the service interaction/iu);
+    assert.doesNotMatch(payload, /routine interaction|fresh possibility|cashier|server|waitress|PLANNER|INTRODUCE|CONTENT ENVELOPE|the service interaction/iu);
     assert.doesNotMatch(payload, /SUGGESTED ROUTE|future horizon|delivery debt/i);
+});
+
+test('provider compiler cannot leak concrete prose even when private planner direction contains it', () => {
+    const state = analyzedState();
+    state.beatDirective = normalizeBeatDirective({
+        ...state.beatDirective,
+        operation: 'complicate',
+        target: 'the unhurried garden visit',
+        requiredEffect: 'Disrupt the calm outing with an adverse institutional development that raises stakes around Lucia\'s presence and unresolved future.',
+    });
+    const payload = buildPromptPayload(state, {
+        guidanceUsable: true,
+        directorSample: { mode: 'balanced', intervention: 'major', novelty: 'grounded', fortune: 'adverse' },
+    });
+    assert.match(payload, /Introduce a fitting complication that materially changes the immediate possibilities/);
+    assert.doesNotMatch(payload, /Lucia|garden|outing|institutional|unresolved future/i);
 });
 
 test('quiet scenes receive scale-native movement instead of mandatory conflict or stagnation', () => {
@@ -140,7 +155,7 @@ test('director may move the scene while OOC authority and player decisions remai
     const payload = formatBeatContract(analyzedState().sceneProfile, analyzedState().beatDirective);
     assert.match(payload, /explicit user\/OOC instructions and established canon.*binding/i);
     assert.match(payload, /Never invent the player character's dialogue, thoughts, feelings, decisions, consent, compliance, or reaction/);
-    assert.match(payload, /abstract story function, not a prescribed event/i);
+    assert.match(payload, /Use the complete current context to choose every concrete actor/i);
     assert.doesNotMatch(payload, /USER-CONTROLLED PACING|ceiling, not a quota/i);
 });
 
@@ -152,7 +167,6 @@ test('regeneration reuses semantic function but demands a different realization'
 
 test('missing or stale planner state injects a lightweight live policy instead of blocking generation', () => {
     const payload = buildPromptPayload(defaultState(), { guidanceUsable: false });
-    assert.match(payload, /TALE FAIRY — STORY DIRECTION/);
     assert.match(payload, /changes the immediate possibilities rather than merely repeating/i);
     assert.ok(payload.length < 3500, payload.length);
 });
@@ -208,13 +222,15 @@ test('request verification confirms only the matching chat and returned assistan
 
 test('request verification preserves a weighted director sample without fabricating one for legacy records', () => {
     const legacy = normalizeState({ lastRequestVerification: { status: 'confirmed', guidanceBlock: '<living-world-guide>old</living-world-guide>' } });
+    assert.equal(legacy.lastRequestVerification.runtimeVersion, '');
     assert.equal(legacy.lastRequestVerification.directorSample, null);
     assert.equal(legacy.lastRequestVerification.directorSeed, null);
     const current = normalizeState({ lastRequestVerification: {
-        status: 'confirmed', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
+        status: 'confirmed', runtimeVersion: '0.11.135', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
         directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' },
     } });
     assert.deepEqual(current.lastRequestVerification.directorSample, { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' });
+    assert.equal(current.lastRequestVerification.runtimeVersion, '0.11.135');
     assert.equal(current.lastRequestVerification.directorSeed, 0);
 });
 
