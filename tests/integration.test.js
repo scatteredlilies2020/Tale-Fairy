@@ -13,21 +13,21 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest and detached plugin identify the adaptive-director release', () => {
-    assert.equal(manifest.version, '0.11.132');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.132');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.132');
+    assert.equal(manifest.version, '0.11.133');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.133');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.133');
     assert.match(manifest.description, /always-on adaptive story director/i);
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.11\.132'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.11\.132'/);
+    assert.match(pluginSource, /const VERSION = '0\.11\.133'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.11\.133'/);
 });
 
-test('extension loads v132 adaptive-director modules', () => {
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.132'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.132'/);
-    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.132'/);
-    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.132'/);
-    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.132'/);
+test('extension loads v133 adaptive-director modules', () => {
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.133'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.133'/);
+    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.133'/);
+    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.133'/);
+    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.133'/);
 });
 
 test('long-form defaults reserve room for current turns, summaries, and thinking', () => {
@@ -119,6 +119,9 @@ test('replacement generation archives semantic direction and the exact weighted 
     assert.match(source, /beatDirective: archivedUsable \? archived\.beatDirective/);
     assert.match(source, /archived\?\.directorSample/);
     assert.match(source, /archived\?\.directorSeed/);
+    assert.match(source, /const currentBeatUsable = Boolean\(state\.lastInject/);
+    assert.match(source, /usable: archivedUsable \|\| currentBeatUsable/);
+    assert.match(source, /archivedUsable \? archived\.canonConstraints : state\.canonConstraints/);
     assert.match(directorSource, /reuse this weighted sample and directorial purpose/i);
     assert.doesNotMatch(source, /\(previousIndex \+ 1\) % candidates\.length/);
 });

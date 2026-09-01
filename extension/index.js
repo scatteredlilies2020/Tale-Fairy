@@ -4,25 +4,25 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.132';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.132';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.133';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.133';
 import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.11.101';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.132';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.132';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.132';
-import { normalizeModelListResponse } from './models.js?v=0.11.132';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.133';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.133';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.133';
+import { normalizeModelListResponse } from './models.js?v=0.11.133';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.108';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.132';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.132';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.132';
-import { estimateTokenCount } from './token-budget.js?v=0.11.132';
-import { completionText } from './completion-response.js?v=0.11.132';
-import { sampleDirectorSignals } from './director-sampling.js?v=0.11.132';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.133';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.133';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.133';
+import { estimateTokenCount } from './token-budget.js?v=0.11.133';
+import { completionText } from './completion-response.js?v=0.11.133';
+import { sampleDirectorSignals } from './director-sampling.js?v=0.11.133';
 import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.11.105';
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.132';
+const RUNTIME_VERSION = '0.11.133';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -639,7 +639,8 @@ function prepareGenerationGuide(state, type) {
     const messages = messagesFromChat(context.chat || []);
     const replacement = type === 'swipe' || type === 'regenerate';
     const archived = replacement ? state.lastRequestVerification : null;
-    const archivedUsable = Boolean(archived?.beatDirective);
+    const archivedUsable = Boolean(String(archived?.beatDirective?.requiredEffect || '').trim());
+    const currentBeatUsable = Boolean(state.lastInject && String(state.beatDirective?.requiredEffect || '').trim());
     const hasArchivedSeed = replacement && Number.isInteger(archived?.directorSeed) && archived.directorSeed >= 0;
     const directorSeed = hasArchivedSeed ? archived.directorSeed : randomVariationNonce();
     const directorSample = replacement && archived?.directorSample
@@ -648,14 +649,17 @@ function prepareGenerationGuide(state, type) {
     generationGuideSelection = {
         chatId,
         candidates: [], index: 0,
-        usable: archivedUsable || (!replacement && isGuidanceUsable(state, messages, chatId)),
+        // A replacement archive is preferred because it records the exact
+        // pre-response direction. Missing archival proof must not make a
+        // long-lived analyzed beat disappear into a generic fallback.
+        usable: archivedUsable || currentBeatUsable || (!replacement && isGuidanceUsable(state, messages, chatId)),
         regeneration: replacement,
         replacement,
         variationCue: directorSeed,
         directorSample,
         // A replacement must not receive canon inferred from the assistant
         // reply being discarded. Reuse the exact pre-response canon snapshot.
-        canonConstraints: replacement ? (archived?.canonConstraints || []) : null,
+        canonConstraints: replacement ? (archivedUsable ? archived.canonConstraints : state.canonConstraints) : null,
         sceneProfile: archivedUsable ? archived.sceneProfile : state.sceneProfile,
         beatDirective: archivedUsable ? archived.beatDirective : state.beatDirective,
     };
