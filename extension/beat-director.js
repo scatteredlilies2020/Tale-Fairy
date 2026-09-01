@@ -1,4 +1,4 @@
-import { formatDirectorSample } from './director-sampling.js?v=0.11.125';
+import { formatDirectorSample } from './director-sampling.js?v=0.11.126';
 
 const OPERATIONS = new Set(['retain', 'deepen', 'introduce', 'complicate', 'escalate', 'deescalate', 'resolve', 'transition', 'withdraw', 'stalemate', 'disrupt', 'other']);
 const PHASES = new Set(['establishing', 'developing', 'turning', 'landing', 'aftermath', 'transition']);

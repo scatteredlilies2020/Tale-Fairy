@@ -4,25 +4,25 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.125';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.125';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.126';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.126';
 import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.11.101';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.125';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.125';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.125';
-import { normalizeModelListResponse } from './models.js?v=0.11.125';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.126';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.126';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.126';
+import { normalizeModelListResponse } from './models.js?v=0.11.126';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.108';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.125';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.125';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.125';
-import { estimateTokenCount } from './token-budget.js?v=0.11.125';
-import { completionText } from './completion-response.js?v=0.11.125';
-import { sampleDirectorSignals } from './director-sampling.js?v=0.11.125';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.126';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.126';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.126';
+import { estimateTokenCount } from './token-budget.js?v=0.11.126';
+import { completionText } from './completion-response.js?v=0.11.126';
+import { sampleDirectorSignals } from './director-sampling.js?v=0.11.126';
 import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.11.105';
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.125';
+const RUNTIME_VERSION = '0.11.126';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -258,18 +258,30 @@ function installDetachedPlannerTransport() {
             return plannerNativeFetch(input, init);
         }
 
-        const guidanceBlock = extractTaleFairyContext(request);
+        let guidanceBlock = extractTaleFairyContext(request);
+        let outboundInit = init;
+        if (!guidanceBlock) {
+            const payload = currentGuidancePayload();
+            if (Array.isArray(request?.messages)) {
+                ensureGuidanceInChat(request.messages, payload, requestInjectionOptions());
+            } else if (typeof request?.prompt === 'string') {
+                request.prompt = ensureGuidanceInText(request.prompt, payload);
+            }
+            guidanceBlock = extractTaleFairyContext(request);
+            if (guidanceBlock) outboundInit = { ...init, body: JSON.stringify(request) };
+        }
         if (!guidanceBlock) {
             const error = 'Tale Fairy blocked this roleplay request because its context was missing from the final outbound payload.';
             renderAnalysisActivity(error, false);
+            globalThis.toastr?.error(error, 'Tale Fairy');
             throw new Error(error);
         }
-        await rememberVerifiedRequest(guidanceBlock, {
+        rememberVerifiedRequest(guidanceBlock, {
             provider: request.chat_completion_source || context.mainApi,
             model: request.model,
         });
         renderAnalysisActivity('Injection verified at the outbound network boundary', false);
-        return plannerNativeFetch(input, init);
+        return plannerNativeFetch(input, outboundInit);
     };
 }
 
@@ -672,7 +684,16 @@ function verificationFingerprint(value) {
     return `tf-${source.length}-${(hash >>> 0).toString(16).padStart(8, '0')}`;
 }
 
-async function rememberVerifiedRequest(payload, { provider = '', model = '' } = {}) {
+function scheduleVerificationPersistence(context) {
+    if (typeof context.saveMetadata !== 'function') return;
+    setTimeout(() => {
+        void Promise.resolve(context.saveMetadata()).catch(error => {
+            console.warn(`[${EXTENSION_ID}] Could not persist injection proof immediately; the next chat save will retry it.`, error);
+        });
+    }, 0);
+}
+
+function rememberVerifiedRequest(payload, { provider = '', model = '' } = {}) {
     const guidanceBlock = extractTaleFairyContext(payload);
     if (!guidanceBlock) return;
     const context = currentContext();
@@ -706,8 +727,11 @@ async function rememberVerifiedRequest(payload, { provider = '', model = '' } = 
     pendingRequestVerification = verification;
     state.lastRequestVerification = verification;
     context.updateChatMetadata(saveState(context.chatMetadata, state));
-    if (typeof context.saveMetadata === 'function') await context.saveMetadata();
     renderBoard(state);
+    // Do not make the provider request wait on SillyTavern's chat-save lock.
+    // The in-memory metadata is already authoritative and will also be written
+    // by the normal response save; this timer makes the proof durable sooner.
+    scheduleVerificationPersistence(context);
 }
 
 function ensureChatCompletionRequestGuidance(eventData) {
