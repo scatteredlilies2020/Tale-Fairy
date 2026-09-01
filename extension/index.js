@@ -4,25 +4,25 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.130';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.130';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.131';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, isAnalysisSourceCurrent, isGuidanceUsable, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.131';
 import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.11.101';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.130';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.130';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.130';
-import { normalizeModelListResponse } from './models.js?v=0.11.130';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.131';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.131';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.131';
+import { normalizeModelListResponse } from './models.js?v=0.11.131';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.108';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.130';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.130';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.130';
-import { estimateTokenCount } from './token-budget.js?v=0.11.130';
-import { completionText } from './completion-response.js?v=0.11.130';
-import { sampleDirectorSignals } from './director-sampling.js?v=0.11.130';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.131';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.131';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.131';
+import { estimateTokenCount } from './token-budget.js?v=0.11.131';
+import { completionText } from './completion-response.js?v=0.11.131';
+import { sampleDirectorSignals } from './director-sampling.js?v=0.11.131';
 import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.11.105';
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.130';
+const RUNTIME_VERSION = '0.11.131';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -727,6 +727,24 @@ function scheduleVerificationPersistence(context) {
     }, 0);
 }
 
+function cacheProviderBoundVerification(verification) {
+    if (!verification?.chatId || !verification?.guidanceBlock) return;
+    const s = getSettings();
+    s.lastProviderBoundVerification = verification;
+    saveSettingsDebounced();
+}
+
+function cachedProviderBoundVerification(chatId) {
+    const verification = getSettings().lastProviderBoundVerification;
+    return verification?.chatId === String(chatId || '') && verification?.guidanceBlock ? verification : null;
+}
+
+function newestProviderBoundVerification(chatId, ...candidates) {
+    return candidates
+        .filter(item => item?.chatId === String(chatId || '') && item?.guidanceBlock)
+        .sort((left, right) => Number(right.requestedAt || 0) - Number(left.requestedAt || 0))[0] || null;
+}
+
 function rememberVerifiedRequest(payload, { provider = '', model = '' } = {}) {
     const guidanceBlock = extractTaleFairyContext(payload);
     if (!guidanceBlock) return;
@@ -761,6 +779,7 @@ function rememberVerifiedRequest(payload, { provider = '', model = '' } = {}) {
     pendingRequestVerification = verification;
     state.lastRequestVerification = verification;
     context.updateChatMetadata(saveState(context.chatMetadata, state));
+    cacheProviderBoundVerification(verification);
     renderBoard(state);
     // Do not make the provider request wait on SillyTavern's chat-save lock.
     // The in-memory metadata is already authoritative and will also be written
@@ -823,10 +842,14 @@ function ensureProviderChatRequestGuidance(generateData) {
 async function confirmReturnedReplyUsedGuidance() {
     const context = currentContext();
     const savedState = loadState(context.chatMetadata);
-    const pending = pendingRequestVerification
-        || (savedState.lastRequestVerification?.status === 'included' ? savedState.lastRequestVerification : null);
-    if (!pending) return false;
     const chatId = String(context.getCurrentChatId?.() || '');
+    const pending = newestProviderBoundVerification(
+        chatId,
+        pendingRequestVerification,
+        savedState.lastRequestVerification?.status === 'included' ? savedState.lastRequestVerification : null,
+        cachedProviderBoundVerification(chatId)?.status === 'included' ? cachedProviderBoundVerification(chatId) : null,
+    );
+    if (!pending) return false;
     const messages = messagesFromChat(context.chat || []);
     if (!returnedReplyMatchesVerification(pending, messages, chatId)) return false;
 
@@ -838,6 +861,7 @@ async function confirmReturnedReplyUsedGuidance() {
         responseMessageCount: messages.length,
     };
     context.updateChatMetadata(saveState(context.chatMetadata, state));
+    cacheProviderBoundVerification(state.lastRequestVerification);
     pendingRequestVerification = null;
     if (typeof context.saveMetadata === 'function') {
         try {
@@ -1690,7 +1714,12 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     scratchpadText(board, 'scratchpad-self-challenge', analyzed ? auditText : '', 'No direction audit yet.');
 
     const chatId = String(currentContext().getCurrentChatId?.() || '');
-    const verification = pendingRequestVerification?.chatId === chatId ? pendingRequestVerification : state.lastRequestVerification;
+    const verification = newestProviderBoundVerification(
+        chatId,
+        pendingRequestVerification,
+        state.lastRequestVerification,
+        cachedProviderBoundVerification(chatId),
+    );
     const verificationText = verification ? [
         verification.status === 'confirmed' ? 'CONFIRMED — provider reply used this exact Tale Fairy block.' : 'INCLUDED — exact context verified in the outbound request.',
         verification.requestedAt ? `Request: ${new Date(verification.requestedAt).toLocaleString()}` : '',
@@ -1714,6 +1743,11 @@ async function resetState({ rebuilding = false } = {}) {
         stopAnalysis();
     }
     pendingRequestVerification = null;
+    const cachedVerification = getSettings().lastProviderBoundVerification;
+    if (cachedVerification?.chatId === String(context.getCurrentChatId?.() || '')) {
+        delete getSettings().lastProviderBoundVerification;
+        saveSettingsDebounced();
+    }
     // SillyTavern merges chat metadata by default. Omitting STATE_KEY from a
     // normal update therefore leaves the previous Tale Fairy state intact.
     // Replacement mode removes only our key from the complete current
