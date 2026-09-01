@@ -1,12 +1,12 @@
-import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.11.133';
+import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.11.134';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
 import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js';
-import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, formatFreshBeatFallback, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile } from './beat-director.js?v=0.11.133';
-import { normalizeDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.11.133';
+import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, formatFreshBeatFallback, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile } from './beat-director.js?v=0.11.134';
+import { normalizeDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.11.134';
 
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 46;
+export const STATE_VERSION = 47;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -424,13 +424,15 @@ export function normalizeState(input = {}) {
     // v44 temporarily removed durable author direction; v45 restores it as a
     // provisional future-facing author map, distinct from factual history and
     // from the immediate pacing boundary. v46 retires that agenda at runtime:
-    // planning now describes only the current scene and one semantic beat.
+    // planning now describes only the current scene and one semantic beat. v47
+    // rebuilds the beat so no direction created under the old provider-visible
+    // evidence contract can survive into the privacy-safe injection format.
     const unsafePlannerUpgrade = inputVersion > 0 && inputVersion < 18;
     const movementUpgrade = inputVersion > 0 && inputVersion < 42;
     const recoveryUpgrade = inputVersion > 0 && inputVersion < 26;
     const chronologyAuditUpgrade = inputVersion > 0 && inputVersion < 31;
     const authorMapUpgrade = inputVersion > 0 && inputVersion < 45;
-    const beatContractUpgrade = inputVersion > 0 && inputVersion < 46;
+    const beatContractUpgrade = inputVersion > 0 && inputVersion < 47;
     const normalizedLayers = normalizeNarrativeLayers(value.narrativeLayers);
     const normalizedDirector = normalizeDirectorScore(value.directorScore);
     const state = {
@@ -648,32 +650,9 @@ function normalizeLoreModel(value = {}) {
     };
 }
 
-function boundedPromptLines(items, prefix, perItem, total) {
-    if (!items.length) return '';
-    const fairShare = Math.max(100, Math.floor(total / items.length) - prefix.length - 1);
-    const cap = Math.min(perItem, fairShare);
-    const compact = item => {
-        const value = String(item);
-        if (value.length <= cap) return value;
-        const head = Math.ceil((cap - 3) * 0.65);
-        return `${value.slice(0, head)} … ${value.slice(-(cap - head - 3))}`;
-    };
-    return items.map(item => `${prefix}${compact(item)}`).join('\n').slice(0, total);
-}
-
 export function buildPromptPayload(state, { enabled = true, guidanceUsable = false, guideCandidates = null, guideIndex = 0, regeneration = false, variationCue = 0, directorSample = null, canonConstraints = null, latestUserAction = '', sceneProfile = null, beatDirective = null } = {}) {
     if (!enabled) return '';
     const s = normalizeState(state);
-    const noteLabels = { suggest: 'OPTIONAL SUGGESTION', correct: 'USER CORRECTION', establish: 'USER-ESTABLISHED CANON', forbid: 'HARD EXCLUSION' };
-    const promptCanon = Array.isArray(canonConstraints) ? canonConstraints : s.canonConstraints;
-    const canon = boundedPromptLines(promptCanon, '- ', 300, 1550);
-    const canonPrompt = canon
-        ? `\n<user-established-canon>\nBinding user-established facts; preserve their stated magnitude, scope, and qualifiers. Use relevant abilities, limitations, knowledge, condition, equipment, and circumstances as causal modifiers to ease, difficulty, process, and outcome; do not flatten an exceptional advantage or inflate opposition to cancel it. Unstated details remain creative space.\n${canon}\n</user-established-canon>`
-        : '';
-    const notes = boundedPromptLines(s.userNotes.map(note => `${noteLabels[note.kind]}: ${note.text}`), '- ', 300, 1550);
-    const notePrompt = notes
-        ? `\n<tale-fairy-user-notes>\nUser directives: exclusions, corrections, and canon are binding; suggestions are optional.\n${notes}\n</tale-fairy-user-notes>`
-        : '';
     const sample = directorSample
         ? normalizeDirectorSample(directorSample)
         : sampleDirectorSignals(s.mode, variationCue || s.plannerSeed);
@@ -681,7 +660,7 @@ export function buildPromptPayload(state, { enabled = true, guidanceUsable = fal
         ? formatBeatContract(sceneProfile || s.sceneProfile, beatDirective || s.beatDirective, { regeneration, directorSample: sample })
         : formatFreshBeatFallback({ regeneration, directorSample: sample });
     const guidancePrompt = `\n<living-world-guide>\n${routePrompt}\n</living-world-guide>`;
-    return `<tale-fairy-context>${notePrompt}${canonPrompt}${guidancePrompt}\n</tale-fairy-context>`;
+    return `<tale-fairy-context>${guidancePrompt}\n</tale-fairy-context>`;
 }
 
 export function fingerprintMessages(messages = []) {

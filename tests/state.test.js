@@ -17,17 +17,17 @@ function analyzedState(extra = {}) {
         ...defaultState(),
         scene: { ...defaultState().scene, status: 'At the canteen counter.', activity: 'Ordering lunch.' },
         sceneProfile: { promise: 'A grounded canteen interaction.', phase: 'developing', emotionalDirection: 'preserve', pressure: 'none', intrusion: 'socially-open', noveltyCeiling: 'context-native', basis: 'The user approached a staffed counter.' },
-        beatDirective: { operation: 'introduce', target: 'the service interaction', requiredEffect: 'Let one context-native person respond as part of ordinary service.', contentClass: 'character', scope: 'social', intensity: 'low', quantity: 'singular', relativePower: 'none', plotWeight: 'incidental', duration: 'beat', resolutionCeiling: 'local', preserve: ['ordinary canteen tone'], forbid: ['unrelated danger'], basis: 'A service interaction naturally involves staff.' },
+        beatDirective: { operation: 'introduce', target: 'the service interaction', requiredEffect: 'Let the routine interaction produce a small but observable development that opens a fresh possibility.', contentClass: 'character', scope: 'social', intensity: 'low', quantity: 'singular', relativePower: 'none', plotWeight: 'incidental', duration: 'beat', resolutionCeiling: 'local', preserve: ['ordinary canteen tone'], forbid: ['unrelated danger'], basis: 'A service interaction naturally involves staff.' },
         lastInject: true,
         lastAnalysisFingerprint: fingerprintMessages(messages), sourceMessageCount: messages.length, sourceChatId: 'chat-a',
     };
     return normalizeState({ ...beat, ...extra });
 }
 
-test('default and normalized state use the v46 current-beat contract', () => {
+test('default and normalized state use the v47 private-planner contract', () => {
     const state = normalizeState({ mode: 'invalid' });
-    assert.equal(STATE_VERSION, 46);
-    assert.equal(state.version, 46);
+    assert.equal(STATE_VERSION, 47);
+    assert.equal(state.version, 47);
     assert.equal(state.mode, 'balanced');
     assert.equal(state.sceneProfile.phase, 'developing');
     assert.equal(state.beatDirective.operation, 'retain');
@@ -64,11 +64,24 @@ test('v45 migration clears future routes, debt, conductor, and author board', ()
     assert.equal(state.conductor.status, 'uninitialized');
 });
 
-test('v46 state preserves a normalized analyzed beat', () => {
+test('current state preserves a normalized analyzed beat', () => {
     const state = analyzedState();
     assert.equal(state.sceneProfile.promise, 'A grounded canteen interaction.');
-    assert.equal(state.beatDirective.requiredEffect, 'Let one context-native person respond as part of ordinary service.');
+    assert.equal(state.beatDirective.requiredEffect, 'Let the routine interaction produce a small but observable development that opens a fresh possibility.');
     assert.equal(state.beatDirective.contentClass, 'character');
+});
+
+test('v46 migration discards the old injectable beat but preserves private continuity evidence', () => {
+    const state = normalizeState({
+        ...analyzedState(), version: 46, lastInject: true,
+        canonConstraints: ['A private established fact remains available to the planner.'],
+        beatDirective: { ...analyzedState().beatDirective, requiredEffect: 'Old provider-visible direction.' },
+        lastRequestVerification: { status: 'confirmed', guidanceBlock: '<tale-fairy-context>old leak</tale-fairy-context>' },
+    });
+    assert.equal(state.lastInject, false);
+    assert.equal(state.beatDirective.requiredEffect, '');
+    assert.equal(state.lastRequestVerification, null);
+    assert.deepEqual(state.canonConstraints, ['A private established fact remains available to the planner.']);
 });
 
 test('planner prompt state excludes obsolete future machinery', () => {
@@ -96,51 +109,51 @@ test('stale analysis fails closed while one explicitly allowed append remains de
 });
 
 test('analyzed beat injection is semantic, effective, and leaves concrete realization free', () => {
-    const payload = buildPromptPayload(analyzedState(), { guidanceUsable: true });
-    assert.match(payload, /TALE FAIRY — ADAPTIVE DIRECTOR/);
-    assert.match(payload, /WEIGHTED DIRECTOR SAMPLE/);
-    assert.match(payload, /PLANNER LEAN: INTRODUCE — the service interaction/);
-    assert.match(payload, /PLANNER DIRECTION: Let one context-native person respond/);
-    assert.match(payload, /CONTENT ENVELOPE: character; social scope; low intensity; singular/);
-    assert.match(payload, /exact event, actor, challenge, opportunity, consequence, or other realization/i);
-    assert.doesNotMatch(payload, /cashier|server|waitress|named/iu);
+    const payload = buildPromptPayload(analyzedState(), {
+        guidanceUsable: true,
+        directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'favorable' },
+    });
+    assert.match(payload, /TALE FAIRY — STORY DIRECTION/);
+    assert.match(payload, /Let the routine interaction produce a small but observable development/);
+    assert.match(payload, /bold or story-altering change/i);
+    assert.match(payload, /unexpected but context-compatible/i);
+    assert.match(payload, /lean toward opportunity, relief, advantage/i);
+    assert.match(payload, /choose every concrete actor, event, object, action, and outcome yourself/i);
+    assert.doesNotMatch(payload, /cashier|server|waitress|PLANNER|INTRODUCE|CONTENT ENVELOPE|the service interaction/iu);
     assert.doesNotMatch(payload, /SUGGESTED ROUTE|future horizon|delivery debt/i);
 });
 
 test('quiet scenes receive scale-native movement instead of mandatory conflict or stagnation', () => {
     const payload = formatFreshBeatFallback({ directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' } });
-    assert.match(payload, /story-altering development/i);
-    assert.match(payload, /Calibrate the contribution to the setting and current stakes/i);
-    assert.match(payload, /Do not stagnate merely because no retained thread demands movement/i);
+    assert.match(payload, /bold or story-altering change/i);
+    assert.match(payload, /unexpected but context-compatible/i);
+    assert.match(payload, /changes the immediate possibilities rather than merely repeating/i);
 });
 
 test('fallback keeps AI invention open across context-native scene scales', () => {
     const payload = formatFreshBeatFallback();
-    assert.match(payload, /take another fitting approach/i);
-    assert.match(payload, /personal life, relationships, school, work, institutions, politics/i);
-    assert.match(payload, /new compatible cause/i);
+    assert.match(payload, /established cause or a new compatible cause/i);
+    assert.match(payload, /choose every concrete actor, event, object, action, and outcome yourself/i);
 });
 
 test('director may move the scene while OOC authority and player decisions remain protected', () => {
     const payload = formatBeatContract(analyzedState().sceneProfile, analyzedState().beatDirective);
-    assert.match(payload, /Explicit user\/OOC instructions remain binding/);
+    assert.match(payload, /explicit user\/OOC instructions and established canon.*binding/i);
     assert.match(payload, /Never invent the player character's dialogue, thoughts, feelings, decisions, consent, compliance, or reaction/);
-    assert.match(payload, /Scene progression and transitions are allowed/i);
-    assert.match(payload, /player decisions remain the player's alone/i);
+    assert.match(payload, /abstract story function, not a prescribed event/i);
     assert.doesNotMatch(payload, /USER-CONTROLLED PACING|ceiling, not a quota/i);
 });
 
 test('regeneration reuses semantic function but demands a different realization', () => {
     const payload = buildPromptPayload(analyzedState(), { guidanceUsable: true, regeneration: true });
-    assert.match(payload, /reuse this weighted sample and directorial purpose/i);
-    assert.match(payload, /realize it differently from the discarded response/i);
+    assert.match(payload, /preserve the same broad intent while producing a genuinely different realization/i);
     assert.doesNotMatch(payload, /Alternative 2|rotate|next route/i);
 });
 
 test('missing or stale planner state injects a lightweight live policy instead of blocking generation', () => {
     const payload = buildPromptPayload(defaultState(), { guidanceUsable: false });
-    assert.match(payload, /TALE FAIRY — LIVE ADAPTIVE DIRECTOR/);
-    assert.match(payload, /WEIGHTED DIRECTOR SAMPLE/);
+    assert.match(payload, /TALE FAIRY — STORY DIRECTION/);
+    assert.match(payload, /changes the immediate possibilities rather than merely repeating/i);
     assert.ok(payload.length < 3500, payload.length);
 });
 
@@ -148,23 +161,26 @@ test('disabled injection is empty', () => {
     assert.equal(buildPromptPayload(defaultState(), { enabled: false }), '');
 });
 
-test('canon and user notes remain binding without prescribing a plot', () => {
+test('canon and user notes remain private planner evidence instead of leaking into roleplay injection', () => {
     const state = analyzedState({
-        canonConstraints: ['The main antagonist cannot be decisively defeated in this scene.'],
+        canonConstraints: ['My Midichlorian count is explicitly off the charts.'],
         userNotes: [{ kind: 'forbid', text: 'Do not introduce an attack during the concert-eve bedroom scene.' }],
     });
     const payload = buildPromptPayload(state, { guidanceUsable: true });
-    assert.match(payload, /main antagonist cannot be decisively defeated/);
-    assert.match(payload, /HARD EXCLUSION/);
-    assert.match(payload, /Do not introduce an attack/);
+    assert.equal(state.canonConstraints[0], 'My Midichlorian count is explicitly off the charts.');
+    assert.equal(state.userNotes[0].text, 'Do not introduce an attack during the concert-eve bedroom scene.');
+    assert.doesNotMatch(payload, /Midichlorian|off the charts|HARD EXCLUSION|concert-eve|Do not introduce an attack/i);
+    assert.doesNotMatch(payload, /user-established-canon|tale-fairy-user-notes/i);
 });
 
-test('large canon and note collections are bounded', () => {
+test('large private canon and note collections do not enlarge roleplay injection', () => {
     const state = analyzedState({
         canonConstraints: Array.from({ length: 100 }, (_, index) => `${index} ${'canon '.repeat(100)}`),
         userNotes: Array.from({ length: 100 }, (_, index) => ({ kind: 'suggest', text: `${index} ${'note '.repeat(100)}` })),
     });
-    assert.ok(buildPromptPayload(state, { guidanceUsable: true }).length < 7000);
+    const payload = buildPromptPayload(state, { guidanceUsable: true });
+    assert.ok(payload.length < 2500, payload.length);
+    assert.doesNotMatch(payload, /canon canon|note note/i);
 });
 
 test('save, load, and clear preserve unrelated metadata', () => {

@@ -37,7 +37,7 @@ Alternatively, copy this folder into SillyTavern's `public/scripts/extensions/th
 - **Connection profile**: uses a saved Connection Manager profile without rewriting its prompt.
 - **Custom / proxy** and **OpenRouter**: enter the model and URL, then optionally save the key with SillyTavern's secret storage. The key is not written to chat metadata.
 
-The planner returns structured JSON. If a provider rejects native JSON schema, the extension retries with an exact-shape JSON prompt. Planner failure never strands or delays the roleplay reply; the generic guidance fallback remains available. **Stop analysis** cancels background planning.
+The planner returns structured JSON. If a provider rejects native JSON schema, the extension retries with an exact-shape JSON prompt. Planner failure never strands or delays the roleplay reply; a generic direction is used only when no analyzed beat is available. **Stop analysis** cancels background planning.
 
 Browser-independent planning requires the bundled `plugin` directory to be installed as a SillyTavern server plugin and SillyTavern to be restarted. For a source checkout installed at `public/scripts/extensions/third-party/Tale-Fairy`, link `plugins/tale-fairy` to Tale Fairy's `plugin` directory. The extension checks `/api/plugins/tale-fairy/health` at startup and falls back to ordinary in-page requests when the server plugin is unavailable.
 

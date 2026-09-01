@@ -128,12 +128,11 @@ test('provider-bound request receives one complete semantic beat on regeneration
     assert.equal(chatHasCurrentGuidance(chat, prompt), true);
     assert.equal(chat.length, 1);
     assert.equal(chat.at(-1).role, 'user');
-    assert.match(chat.at(-1).content, /PLANNER LEAN: COMPLICATE — the report discussion/);
-    assert.match(chat.at(-1).content, /PLANNER DIRECTION: Add a credible difficulty/);
-    assert.match(chat.at(-1).content, /WEIGHTED DIRECTOR SAMPLE/);
-    assert.match(chat.at(-1).content, /exact event, actor, challenge, opportunity, consequence, or other realization/i);
-    assert.match(chat.at(-1).content, /reuse this weighted sample and directorial purpose/i);
-    assert.doesNotMatch(chat.at(-1).content, /Vekk|war update|urgent contradiction/);
+    assert.match(chat.at(-1).content, /TALE FAIRY — STORY DIRECTION/);
+    assert.match(chat.at(-1).content, /Add a credible difficulty that changes how the current information is understood/);
+    assert.match(chat.at(-1).content, /choose every concrete actor, event, object, action, and outcome yourself/i);
+    assert.match(chat.at(-1).content, /preserve the same broad intent while producing a genuinely different realization/i);
+    assert.doesNotMatch(chat.at(-1).content, /PLANNER|COMPLICATE|the report discussion|WEIGHTED DIRECTOR SAMPLE|Vekk|war update|urgent contradiction/i);
     assert.match(chat.at(-1).content, /Tell me what happened\.$/);
     assert.doesNotMatch(chat.at(-1).content, /GROUNDING:|EXECUTION:/);
     assert.equal(chat.map(message => String(message.content)).join('\n').match(/<tale-fairy-context>/g)?.length, 1);

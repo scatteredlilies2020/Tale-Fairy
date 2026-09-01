@@ -1,8 +1,8 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.11.133';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.11.134';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.11.96';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.11.133';
+import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.11.134';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
@@ -1323,11 +1323,11 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     const playerName = playerCharacterName(messages);
     const payload = {
         task: 'direct_current_beat',
-        instruction: 'Analyze the current scene and conduct the next response. Return one clear freeform narrative function through required_effect, using operation only as the nearest bookkeeping label. Leave the exact realization to the roleplay model.',
+        instruction: 'Analyze the current scene and conduct the next response. Return one clear abstract narrative function through required_effect, using operation only as private bookkeeping. The roleplay model must choose the exact realization.',
         authority: 'Explicit OOC/scenario commands and the latest user action outrank every retained inference. OOC outcome commands bind the stated outcome; continue or advance-time commands widen scope only as stated. Never invent player dialogue, thoughts, consent, choices, compliance, retreat, or extra actions.',
         direction_policy: DIRECTOR_POLICY,
         calibration: 'Match the sampled appetite at the scene’s native scale. Do not default to minimal movement. Everyday scenes support consequential everyday developments; dangerous scenes support severe stakes. Let subtle samples remain subtle.',
-        invention: 'Any context-compatible narrative development is available, including an entirely new cause. The writing model may choose the exact person, event, interruption, opportunity, obstacle, reaction, discovery, policy, resource shift, systemic pressure, consequence, or other realization.',
+        invention: 'Any context-compatible narrative development is available, including an entirely new cause. In required_effect, state only the intended kind of narrative change and its qualitative effect. Do not copy evidence or canon, use character/place names, quote dialogue, or prescribe a concrete person, event, object, action, revelation, or outcome. The writing model chooses all concrete realization details.',
         simulation: 'Use the causal unit natural to the scope. Personal and life simulation may move through needs, relationships, work, routine, opportunity, or consequence. Organization and country simulation may move through decisions, institutions, resources, factions, policy effects, public reaction, trends, or systemic pressures. World simulation may move through broad forces. Do not translate every scale into a conventional adventure encounter.',
         operations: {
             retain: 'preserve the beat without adding an incident',
@@ -1488,7 +1488,7 @@ function applyBeatAnalysis(next, value, messages) {
     for (const claim of explicitCanonClaims(messages)) if (!canon.some(item => item.toLocaleLowerCase() === claim.toLocaleLowerCase())) canon.push(claim);
     next.canonConstraints = canon.slice(-12);
 
-    // v46 deliberately has no future route lifecycle. These fields remain in
+    // v47 deliberately has no future route lifecycle. These fields remain in
     // saved-state shape for downgrade/migration safety but never drive output.
     next.objectives = [];
     next.possibilities = [];
@@ -1843,7 +1843,7 @@ CALIBRATION: Do not confuse context awareness with timidity. A high-intervention
 
 MOVEMENT: RETAIN, DEEPEN, INTRODUCE, COMPLICATE, ESCALATE, DEESCALATE, RESOLVE, TRANSITION, WITHDRAW, STALEMATE, DISRUPT, and OTHER are bookkeeping labels for broad relationships to the current scene, not limits on invention. Choose the nearest label—or OTHER when none fits—then use required_effect to express the actual freeform narrative function. Scene changes, pressure shifts, reversals, discoveries, good turns, bad turns, mixed consequences, new causes, and other context-compatible movement are all available.
 
-INVENTION: The writing model may freely invent any compatible realization, including an entirely new causal element. Use content_class, scope, quantity, relative_power, plot_weight, duration, and resolution_ceiling only as an impact envelope. Do not make required_effect generic: state clearly what kind of change it should accomplish while leaving its exact fictional identity open.
+INVENTION: The writing model may freely invent any compatible realization, including an entirely new causal element. Use content_class, scope, quantity, relative_power, plot_weight, duration, and resolution_ceiling only as a private impact envelope. required_effect is the only planner-authored direction passed onward: make it a concise, abstract story function that states the intended kind of change and qualitative effect. Never copy evidence or canon into it; never use character or place names, quote dialogue, or prescribe a concrete person, event, object, action, revelation, or outcome. The writing model chooses every concrete realization detail.
 
 SIMULATION: Apply the same causal logic to roleplay, life simulation, relationships, workplaces, organizations, countries, societies, and worlds. Use the unit natural to the scale: individual action, relationship response, institutional decision, resource movement, faction behavior, policy effect, public response, trend, or system pressure. Do not turn every simulation into a conventional adventure encounter.
 
@@ -1856,6 +1856,7 @@ Keep strings concise. audit briefly states how the direction expresses the weigh
 export const ANALYSIS_OUTPUT_CONTRACT = `Return exactly: contract_version=3, current, beat, world, thread_updates, actor_updates, canon_updates, ledger, note_resolution, audit.
 current={frame,frame_basis,status,immediate_action,activity,situation,activity_role,temporal_scope,location,time,loop,scene_promise,phase,emotional_direction,pressure,intrusion,novelty_ceiling}
 beat={operation,target,required_effect,content_class,scope,intensity,quantity,relative_power,plot_weight,duration,resolution_ceiling,preserve,forbid,basis}
+required_effect contains only an abstract story function for the writing model. All other beat fields are private planner reasoning and must carry any concrete evidence or constraints needed for internal bookkeeping.
 world={identity,baseline,variant_rules,rp_changes,signatures,forces,confidence}
 thread_updates and actor_updates contain factual changes only; canon_updates contains explicit durable additions/removals only. Empty arrays mean no change. audit is one concise string. No other keys.`;
 
