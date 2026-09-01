@@ -5,7 +5,7 @@ import { exceedsAppendAllowance, mergePlannerIntents } from '../extension/planne
 
 test('latest planner intent coalesces without losing rebuild or note semantics', () => {
     const merged = mergePlannerIntents(
-        { chatId: 'chat-a', note: 'Keep this correction.', rebuild: true, waitForContinuity: true },
+        { chatId: 'chat-a', note: 'Keep this correction.', rebuild: true, waitForContinuity: true, allowOneAssistantAppend: true },
         { chatId: 'chat-a', allowStaleContinuity: true },
     );
     assert.deepEqual(merged, {
@@ -14,6 +14,7 @@ test('latest planner intent coalesces without losing rebuild or note semantics',
         rebuild: true,
         waitForContinuity: true,
         allowStaleContinuity: true,
+        allowOneAssistantAppend: true,
     });
 });
 

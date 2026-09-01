@@ -13,21 +13,21 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest and detached plugin identify the adaptive-director release', () => {
-    assert.equal(manifest.version, '0.11.140');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.140');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.140');
+    assert.equal(manifest.version, '0.11.141');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.141');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.141');
     assert.match(manifest.description, /always-on adaptive story director/i);
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.11\.140'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.11\.140'/);
+    assert.match(pluginSource, /const VERSION = '0\.11\.141'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.11\.141'/);
 });
 
-test('extension loads v140 adaptive-director modules', () => {
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.140'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.140'/);
-    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.140'/);
-    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.140'/);
-    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.140'/);
+test('extension loads v141 adaptive-director modules', () => {
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.141'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.141'/);
+    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.141'/);
+    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.141'/);
+    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.141'/);
 });
 
 test('long-form defaults reserve room for current turns, summaries, and thinking', () => {
@@ -122,11 +122,14 @@ test('replacement generation archives semantic direction and the exact weighted 
     assert.match(source, /beatDirective: archivedUsable \? archived\.beatDirective/);
     assert.match(source, /archived\?\.directorSample/);
     assert.match(source, /archived\?\.directorSeed/);
-    assert.match(source, /const currentGuidanceUsable = !replacement && isGuidanceUsable/);
+    assert.match(source, /const replacementMessages = generationRetrySource\(messages, replacement\)/);
+    assert.match(source, /const currentGuidanceUsable = isGuidanceUsable\(state, replacementMessages, chatId\)/);
     assert.match(source, /usable: archivedUsable \|\| currentGuidanceUsable/);
     assert.match(source, /isReplacementVerificationCurrent\(archived, messages, chatId\)/);
     assert.doesNotMatch(source, /currentBeatUsable|Boolean\(state\.lastInject/);
-    assert.match(source, /archivedUsable \? archived\.canonConstraints : state\.canonConstraints/);
+    assert.match(source, /generationRetrySource\(currentMessages, true\)/);
+    assert.match(source, /Preparing exact regeneration direction/);
+    assert.match(source, /allowOneAssistantAppend: currentMessages\.length === sourceMessages\.length \+ 1/);
     assert.match(directorSource, /preserve the same required effect and constraints while producing a genuinely different realization/i);
     assert.doesNotMatch(source, /\(previousIndex \+ 1\) % candidates\.length/);
 });
@@ -169,6 +172,10 @@ test('scratchpad exposes adaptive direction without misleading dormant triggers'
     assert.match(template, /weighted creative appetite/i);
     assert.match(template, />Continuity evidence</);
     assert.match(template, /never dormant triggers, delivery promises, or a scheduled event queue/i);
+    assert.match(template, /scratchpad-continuity-section" hidden/);
+    assert.match(template, /scratchpad-entities-section" hidden/);
+    assert.doesNotMatch(template, /Direction audit|No relevant continuity evidence|No generated entities or processes/);
+    assert.match(source, /function scratchpadOptionalText/);
     assert.doesNotMatch(source, /\[\$\{item\.status \|\| 'dormant'\}\]/);
     assert.doesNotMatch(template, /Conditional pathways|Plan horizons|Private idea bank|Private causal events|Durable directions/);
     assert.match(source, /function renderBoard/);

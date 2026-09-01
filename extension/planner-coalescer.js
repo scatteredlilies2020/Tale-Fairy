@@ -5,6 +5,7 @@ export function normalizePlannerIntent(value = {}) {
         rebuild: value?.rebuild === true,
         waitForContinuity: value?.waitForContinuity === true,
         allowStaleContinuity: value?.allowStaleContinuity === true,
+        allowOneAssistantAppend: value?.allowOneAssistantAppend === true,
     };
 }
 
@@ -18,6 +19,7 @@ export function mergePlannerIntents(older, newer) {
         rebuild: left.rebuild || right.rebuild,
         waitForContinuity: left.waitForContinuity || right.waitForContinuity,
         allowStaleContinuity: left.allowStaleContinuity || right.allowStaleContinuity,
+        allowOneAssistantAppend: left.allowOneAssistantAppend || right.allowOneAssistantAppend,
     };
 }
 

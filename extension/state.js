@@ -1,9 +1,9 @@
-import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.11.140';
+import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.11.141';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
 import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js';
-import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile } from './beat-director.js?v=0.11.140';
-import { normalizeDirectorSample } from './director-sampling.js?v=0.11.140';
+import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile } from './beat-director.js?v=0.11.141';
+import { normalizeDirectorSample } from './director-sampling.js?v=0.11.141';
 
 export const STATE_KEY = 'livingWorldGuide';
 export const STATE_VERSION = 48;
@@ -604,13 +604,12 @@ export function generationRetrySource(messages = [], replacementGeneration = fal
     return messages.slice(0, -1);
 }
 
-export function isAnalysisSourceCurrent(fingerprint, messageCount, messages = [], { allowOneUserAppend = false } = {}) {
+export function isAnalysisSourceCurrent(fingerprint, messageCount, messages = [], { allowOneUserAppend = false, allowOneAssistantAppend = false } = {}) {
     const count = Math.max(0, Number(messageCount) || 0);
     if (messages.length === count && fingerprintMessages(messages) === fingerprint) return true;
-    return Boolean(allowOneUserAppend
-        && messages.length === count + 1
-        && messages.at(-1)?.is_user
-        && fingerprintMessages(messages.slice(0, -1)) === fingerprint);
+    if (messages.length !== count + 1 || fingerprintMessages(messages.slice(0, -1)) !== fingerprint) return false;
+    return Boolean((allowOneUserAppend && messages.at(-1)?.is_user)
+        || (allowOneAssistantAppend && !messages.at(-1)?.is_user));
 }
 
 export function hasExplicitProgressDirective(value) {

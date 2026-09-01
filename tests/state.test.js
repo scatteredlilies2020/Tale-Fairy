@@ -106,6 +106,9 @@ test('stale analysis fails closed while one explicitly allowed append remains de
     const appended = [...messages, { is_user: true, mes: 'Continue.' }];
     assert.equal(isAnalysisSourceCurrent(fingerprint, messages.length, appended), false);
     assert.equal(isAnalysisSourceCurrent(fingerprint, messages.length, appended, { allowOneUserAppend: true }), true);
+    const assistantAppended = [...messages, { is_user: false, mes: 'A discarded answer.' }];
+    assert.equal(isAnalysisSourceCurrent(fingerprint, messages.length, assistantAppended), false);
+    assert.equal(isAnalysisSourceCurrent(fingerprint, messages.length, assistantAppended, { allowOneAssistantAppend: true }), true);
 });
 
 test('analyzed beat injection is semantic, effective, and leaves concrete realization free', () => {
@@ -250,11 +253,11 @@ test('request verification preserves a weighted director sample without fabricat
     assert.equal(legacy.lastRequestVerification.directorSample, null);
     assert.equal(legacy.lastRequestVerification.directorSeed, null);
     const current = normalizeState({ lastRequestVerification: {
-        status: 'confirmed', runtimeVersion: '0.11.140', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
+        status: 'confirmed', runtimeVersion: '0.11.141', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
         directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' },
     } });
     assert.deepEqual(current.lastRequestVerification.directorSample, { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' });
-    assert.equal(current.lastRequestVerification.runtimeVersion, '0.11.140');
+    assert.equal(current.lastRequestVerification.runtimeVersion, '0.11.141');
     assert.equal(current.lastRequestVerification.directorSeed, 0);
 });
 
