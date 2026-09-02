@@ -13,21 +13,21 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest and detached plugin identify the adaptive-director release', () => {
-    assert.equal(manifest.version, '0.11.149');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.149');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.149');
+    assert.equal(manifest.version, '0.11.150');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.150');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.150');
     assert.match(manifest.description, /always-on adaptive story director/i);
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.11\.149'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.11\.149'/);
+    assert.match(pluginSource, /const VERSION = '0\.11\.150'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.11\.150'/);
 });
 
-test('extension loads v149 primary-direction modules', () => {
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.149'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.149'/);
-    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.149'/);
-    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.149'/);
-    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.149'/);
+test('extension loads v150 persistent-guidance-view modules', () => {
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.150'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.150'/);
+    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.150'/);
+    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.150'/);
+    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.150'/);
 });
 
 test('long-form defaults reserve room for current turns, summaries, and thinking', () => {
@@ -171,11 +171,13 @@ test('planner output is lightweight while retaining structured-output negotiatio
     assert.match(source, /PLANNER_MAX_AUTO_RETRIES = 2/);
 });
 
-test('scratchpad previews the next provider guidance without misleading dormant triggers', () => {
-    assert.match(template, /Next provider guidance \(exact preview\)/);
-    assert.ok(template.indexOf('Next provider guidance (exact preview)') < template.indexOf('<h5>Current scene</h5>'));
-    assert.match(template, /exact Tale Fairy context currently eligible for the next roleplay request/i);
+test('scratchpad always shows upcoming or most recently used guidance without misleading dormant triggers', () => {
+    assert.match(template, />Tale Fairy guidance</);
+    assert.ok(template.indexOf('<h5>Tale Fairy guidance</h5>') < template.indexOf('<h5>Current scene</h5>'));
+    assert.match(template, /upcoming exact direction when ready, otherwise the most recently used exact direction/i);
     assert.match(source, /const previewPayload = buildPromptPayload\(state, \{ enabled: getSettings\(\)\.enabled, \.\.\.previewOptions \}\)/);
+    assert.match(source, /MOST RECENT USED DIRECTION/);
+    assert.match(source, /historicalVerification\.guidanceBlock/);
     assert.match(source, /NEXT NORMAL GENERATION/);
     assert.match(source, /CURRENT REGENERATION REQUEST/);
     assert.match(template, />Adaptive direction</);

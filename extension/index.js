@@ -4,26 +4,26 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.149';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.149';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.150';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.150';
 import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.11.101';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.149';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.149';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.149';
-import { normalizeModelListResponse } from './models.js?v=0.11.149';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.150';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.150';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.150';
+import { normalizeModelListResponse } from './models.js?v=0.11.150';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.108';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.149';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.149';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.149';
-import { estimateTokenCount } from './token-budget.js?v=0.11.149';
-import { completionText } from './completion-response.js?v=0.11.149';
-import { sampleDirectorSignals } from './director-sampling.js?v=0.11.149';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.150';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.150';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.150';
+import { estimateTokenCount } from './token-budget.js?v=0.11.150';
+import { completionText } from './completion-response.js?v=0.11.150';
+import { sampleDirectorSignals } from './director-sampling.js?v=0.11.150';
 import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.11.105';
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
-import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.11.149';
+import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.11.150';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.149';
+const RUNTIME_VERSION = '0.11.150';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -1865,10 +1865,15 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const previewPlacement = previewSettings.injectionPosition === 'at-depth'
         ? `at-depth · ${previewSettings.injectionRole} · depth ${previewSettings.injectionDepth}`
         : `${previewSettings.injectionPosition} · ${previewSettings.injectionRole}`;
+    const historicalVerification = [state.lastRequestVerification, previewSettings.lastProviderBoundVerification]
+        .filter(item => item?.chatId === chatId && item?.guidanceBlock)
+        .sort((left, right) => Number(right.requestedAt || 0) - Number(left.requestedAt || 0))[0] || null;
     const previewText = previewPayload
         ? `${previewKind} — Tale Fairy plans to inject this exact context.\nPlacement: ${previewPlacement}\n\n${previewPayload}`
-        : `${previewKind} — Tale Fairy would inject nothing with the current planner state.`;
-    scratchpadText(board, 'scratchpad-request-verification', previewText, 'Tale Fairy would currently inject nothing.');
+        : historicalVerification
+            ? `MOST RECENT USED DIRECTION — no new direction is ready yet.\n\n${historicalVerification.guidanceBlock}`
+            : 'No Tale Fairy direction exists yet. Run Guide now to create one.';
+    scratchpadText(board, 'scratchpad-request-verification', previewText, 'No Tale Fairy direction exists yet.');
 
     scratchpadOptionalText(board, 'scratchpad-continuity-section', 'scratchpad-continuity-processes', analyzed ? scratchpadList(state.continuityThreads, item => item?.thread ? `${item.thread} — ${item.state}` : '', '') : '');
     scratchpadOptionalText(board, 'scratchpad-entities-section', 'scratchpad-entities', analyzed ? scratchpadList(state.entities, item => item?.name ? `${item.name}${item.state ? ` — ${item.state}` : ''}${item.agenda ? ` · Agenda: ${item.agenda}` : ''}` : '', '') : '');
