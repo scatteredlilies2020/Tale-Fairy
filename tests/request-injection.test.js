@@ -140,7 +140,14 @@ test('provider-bound request receives binding movement, effect, and balanced tre
     const state = {
         ...defaultState(),
         sceneProfile: { promise: 'A tense report is being discussed.', phase: 'developing', emotionalDirection: 'intensify', pressure: 'active', intrusion: 'open', noveltyCeiling: 'moderate' },
-        beatDirective: { operation: 'complicate', target: 'the report discussion', requiredEffect: 'Add a credible difficulty that changes how the current information is understood.', contentClass: 'information', scope: 'social', intensity: 'moderate', quantity: 'single', relativePower: 'peer', plotWeight: 'supporting', duration: 'beat', resolutionCeiling: 'partial', preserve: ['user authority'], forbid: ['a predetermined incident'], basis: 'The information is already unstable.' },
+        beatDirective: {
+            operation: 'complicate', primaryWhen: 'The user continues examining or discussing the report.', target: 'the report discussion', requiredEffect: 'Add a credible difficulty that changes how the current information is understood.',
+            alternatives: [
+                { when: 'The user rejects or ends the report discussion.', operation: 'let that refusal change the immediate relationship to the report', requiredEffect: 'Make the consequence of ending the discussion perceptible without reopening it.', contentClass: 'consequence', scope: 'social', intensity: 'low', quantity: 'singular', relativePower: 'none', plotWeight: 'incidental', duration: 'beat', resolutionCeiling: 'local' },
+                { when: 'The user redirects attention to a different active concern.', operation: 'follow the redirected concern while retaining relevant report pressure', requiredEffect: 'Advance the selected concern with one compatible connection to the report.', contentClass: 'reaction', scope: 'social', intensity: 'moderate', quantity: 'singular', relativePower: 'none', plotWeight: 'connective', duration: 'beat', resolutionCeiling: 'open' },
+            ],
+            contentClass: 'revelation', scope: 'social', intensity: 'moderate', quantity: 'singular', relativePower: 'peer', plotWeight: 'connective', duration: 'beat', resolutionCeiling: 'partial', preserve: ['user authority'], forbid: ['a predetermined incident'], basis: 'The information is already unstable.',
+        },
     };
     const prompt = buildPromptPayload(state, { guidanceUsable: true, regeneration: true });
     const chat = [{ role: 'user', content: 'Tell me what happened.' }];
@@ -149,14 +156,15 @@ test('provider-bound request receives binding movement, effect, and balanced tre
     assert.equal(chatHasCurrentGuidance(chat, prompt), true);
     assert.equal(chat.length, 1);
     assert.equal(chat.at(-1).role, 'user');
-    assert.match(chat.at(-1).content, /PRIMARY NARRATIVE DIRECTION: Complicate, keeping the development social in scope, moderate in intensity/i);
-    assert.match(chat.at(-1).content, /REQUIRED EFFECT: Add a credible difficulty that changes how the current information is understood\./i);
+    assert.match(chat.at(-1).content, /CONDITIONAL TALE FAIRY DIRECTION SET/i);
+    assert.match(chat.at(-1).content, /PRIMARY DIRECTION: Complicate, keeping the development revelation-led, social in scope, moderate in intensity/i);
+    assert.match(chat.at(-1).content, /PRIMARY REQUIRED EFFECT: Add a credible difficulty that changes how the current information is understood\./i);
     assert.match(chat.at(-1).content, /BALANCED TREATMENT: Make the required effect clear and meaningful/i);
-    assert.match(chat.at(-1).content, /Treat the direction and required effect as binding/i);
+    assert.match(chat.at(-1).content, /treat only its direction and required effect as binding/i);
     assert.doesNotMatch(chat.at(-1).content, /movement=|content=|scope=|intensity=|plot weight=/i);
     assert.doesNotMatch(chat.at(-1).content, /PRESERVE:|DO NOT:/);
     assert.doesNotMatch(chat.at(-1).content, /Infer every concrete action|Treat explicit user\/OOC|For this regeneration|Do not expose/i);
-    assert.doesNotMatch(chat.at(-1).content, /the report discussion|A tense report|The information is already unstable|WEIGHTED DIRECTOR SAMPLE|Vekk|war update|urgent contradiction/i);
+    assert.doesNotMatch(chat.at(-1).content, /A tense report|The information is already unstable|WEIGHTED DIRECTOR SAMPLE|Vekk|war update|urgent contradiction/i);
     assert.match(chat.at(-1).content, /Tell me what happened\.$/);
     assert.doesNotMatch(chat.at(-1).content, /GROUNDING:|EXECUTION:/);
     assert.equal(chat.map(message => String(message.content)).join('\n').match(/<tale-fairy-context>/g)?.length, 1);

@@ -56,7 +56,7 @@ export function defaultSceneProfile() {
 }
 
 export function defaultBeatDirective() {
-    return { operation: '', target: 'current activity', requiredEffect: '', inject: false, injectReason: '', contentClass: 'none', scope: 'personal', intensity: 'none', quantity: 'none', relativePower: 'none', plotWeight: 'none', duration: 'beat', resolutionCeiling: 'open', preserve: [], forbid: [], basis: '' };
+    return { operation: '', primaryWhen: '', target: 'current activity', requiredEffect: '', alternatives: [], inject: false, injectReason: '', contentClass: 'none', scope: 'personal', intensity: 'none', quantity: 'none', relativePower: 'none', plotWeight: 'none', duration: 'beat', resolutionCeiling: 'open', preserve: [], forbid: [], basis: '' };
 }
 
 export function normalizeSceneProfile(value = {}) {
@@ -74,10 +74,25 @@ export function normalizeSceneProfile(value = {}) {
 export function normalizeBeatDirective(value = {}) {
     const operation = movement(value.operation);
     const requiredEffect = text(value.requiredEffect ?? value.required_effect, 260);
+    const alternatives = (Array.isArray(value.alternatives) ? value.alternatives : []).slice(0, 2).map(item => ({
+        when: text(item?.when, 180),
+        operation: movement(item?.operation),
+        requiredEffect: text(item?.requiredEffect ?? item?.required_effect, 260),
+        contentClass: choice(item?.contentClass ?? item?.content_class, CONTENT, 'none'),
+        scope: choice(item?.scope, SCOPES, 'personal'),
+        intensity: choice(item?.intensity, INTENSITY, 'none'),
+        quantity: choice(item?.quantity, QUANTITY, 'none'),
+        relativePower: choice(item?.relativePower ?? item?.relative_power, POWER, 'none'),
+        plotWeight: choice(item?.plotWeight ?? item?.plot_weight, WEIGHT, 'none'),
+        duration: choice(item?.duration, DURATION, 'beat'),
+        resolutionCeiling: choice(item?.resolutionCeiling ?? item?.resolution_ceiling, CEILINGS, 'open'),
+    })).filter(item => item.when && item.operation && item.requiredEffect);
     return {
         operation,
+        primaryWhen: text(value.primaryWhen ?? value.primary_when, 180),
         target: text(value.target, 160) || 'current activity',
         requiredEffect,
+        alternatives,
         inject: Object.hasOwn(value, 'inject') ? value.inject === true : Boolean(operation && requiredEffect),
         injectReason: text(value.injectReason ?? value.inject_reason, 220),
         contentClass: choice(value.contentClass ?? value.content_class, CONTENT, 'none'),
@@ -96,7 +111,7 @@ export function normalizeBeatDirective(value = {}) {
 
 export function hasUsableBeatDirective(value) {
     const beat = normalizeBeatDirective(value);
-    return Boolean(beat.inject && beat.operation && beat.requiredEffect);
+    return Boolean(beat.inject && beat.operation && beat.primaryWhen && beat.requiredEffect && beat.alternatives.length === 2);
 }
 
 function sentence(value) {
@@ -115,25 +130,34 @@ function naturalList(items) {
     return `${items.slice(0, -1).join(', ')}, and ${items.at(-1)}`;
 }
 
+function branchDirection(label, branch) {
+    const qualities = [];
+    if (branch.contentClass !== 'none') qualities.push(CONTENT_WORDING[branch.contentClass]);
+    if (branch.scope !== 'personal') qualities.push(`${branch.scope} in scope`);
+    if (branch.intensity !== 'none') qualities.push(`${branch.intensity} in intensity`);
+    if (branch.quantity !== 'none') qualities.push(QUANTITY_WORDING[branch.quantity]);
+    if (branch.relativePower !== 'none') qualities.push(POWER_WORDING[branch.relativePower]);
+    if (branch.plotWeight !== 'none') qualities.push(PLOT_WORDING[branch.plotWeight]);
+    if (branch.duration !== 'beat') qualities.push(DURATION_WORDING[branch.duration]);
+    if (branch.resolutionCeiling !== 'open') qualities.push(RESOLUTION_WORDING[branch.resolutionCeiling]);
+    const treatment = qualities.length ? `, keeping the development ${naturalList(qualities)}` : '';
+    return `${label} DIRECTION: ${sentence(branch.operation)}${treatment}.\n${label} REQUIRED EFFECT: ${effectSentence(branch.requiredEffect)}.`;
+}
+
 export function formatBeatContract(_sceneValue, beatValue, options = {}) {
     const beat = normalizeBeatDirective(beatValue);
-    if (!beat.inject || !beat.operation || !beat.requiredEffect) return '';
-    const qualities = [];
-    if (beat.contentClass !== 'none') qualities.push(CONTENT_WORDING[beat.contentClass]);
-    if (beat.scope !== 'personal') qualities.push(`${beat.scope} in scope`);
-    if (beat.intensity !== 'none') qualities.push(`${beat.intensity} in intensity`);
-    if (beat.quantity !== 'none') qualities.push(QUANTITY_WORDING[beat.quantity]);
-    if (beat.relativePower !== 'none') qualities.push(POWER_WORDING[beat.relativePower]);
-    if (beat.plotWeight !== 'none') qualities.push(PLOT_WORDING[beat.plotWeight]);
-    if (beat.duration !== 'beat') qualities.push(DURATION_WORDING[beat.duration]);
-    if (beat.resolutionCeiling !== 'open') qualities.push(RESOLUTION_WORDING[beat.resolutionCeiling]);
-    const treatment = qualities.length ? `, keeping the development ${naturalList(qualities)}` : '';
+    if (!hasUsableBeatDirective(beat)) return '';
     const requestedMode = String(options.mode ?? options.directorSample?.mode ?? '').trim().toLowerCase();
     const mode = MODES.has(requestedMode) ? requestedMode : 'balanced';
     return [
-        `PRIMARY NARRATIVE DIRECTION: ${sentence(beat.operation)}${treatment}.`,
-        `REQUIRED EFFECT: ${effectSentence(beat.requiredEffect)}.`,
+        'CONDITIONAL TALE FAIRY DIRECTION SET: Resolve this set only after reading the latest user action. Select exactly one fitting branch. Never combine branches. If no WHEN condition fits, use none of the set and answer the user action directly.',
+        `PRIMARY WHEN: ${effectSentence(beat.primaryWhen)}.`,
+        branchDirection('PRIMARY', beat),
+        ...beat.alternatives.flatMap((branch, index) => [
+            `ALTERNATIVE ${index + 1} WHEN: ${effectSentence(branch.when)}.`,
+            branchDirection(`ALTERNATIVE ${index + 1}`, branch),
+        ]),
         MODE_TREATMENT[mode],
-        'Treat the direction and required effect as binding while freely choosing their context-compatible concrete realization. Do not decide the player character\'s dialogue, thoughts, feelings, consent, choices, or reactions.',
+        'After selecting a branch, treat only its direction and required effect as binding while freely choosing their context-compatible concrete realization. The latest user action always takes priority; never override or reinterpret that action to make a branch fit. Do not decide the player character\'s dialogue, thoughts, feelings, consent, choices, or reactions.',
     ].join('\n');
 }

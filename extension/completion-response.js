@@ -15,7 +15,7 @@ function finalBlockText(value) {
     if (typeof value.text === 'string') return value.text;
     if (typeof value.text?.value === 'string') return value.text.value;
     if (typeof value.output_text === 'string') return value.output_text;
-    if ([2, 3].includes(value.contract_version) || value.scene) return JSON.stringify(value);
+    if ([2, 3, 4].includes(value.contract_version) || value.scene) return JSON.stringify(value);
     if (value.content !== undefined) return finalBlockText(value.content);
     return '';
 }
@@ -67,7 +67,7 @@ export function completionText(value) {
         addCandidate(candidates, root.message?.content);
         addCandidate(candidates, root.content);
         addCandidate(candidates, root.text);
-        if ([2, 3].includes(root.contract_version) || root.scene) addCandidate(candidates, root);
+        if ([2, 3, 4].includes(root.contract_version) || root.scene) addCandidate(candidates, root);
     }
 
     return candidates[0] || '';

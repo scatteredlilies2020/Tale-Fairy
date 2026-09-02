@@ -1,12 +1,12 @@
-import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.11.153';
+import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.12.0';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
 import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js';
-import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile } from './beat-director.js?v=0.11.153';
-import { normalizeDirectorSample } from './director-sampling.js?v=0.11.153';
+import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile } from './beat-director.js?v=0.12.0';
+import { normalizeDirectorSample } from './director-sampling.js?v=0.12.0';
 
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 50;
+export const STATE_VERSION = 51;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -462,14 +462,16 @@ export function normalizeState(input = {}) {
     // random creative appetite colors its expression. v49 adds a private reply
     // audit and an explicit necessity gate. v50 clears the current direction
     // once because required_effect becomes a general provider-visible result
-    // rather than a private exact realization.
+    // rather than a private exact realization. v51 replaces the single
+    // ahead-of-time beat with a conditional direction set; old single beats
+    // are cleared so they can never masquerade as fresh conditional guidance.
     const unsafePlannerUpgrade = inputVersion > 0 && inputVersion < 18;
     const movementUpgrade = inputVersion > 0 && inputVersion < 42;
     const recoveryUpgrade = inputVersion > 0 && inputVersion < 26;
     const chronologyAuditUpgrade = inputVersion > 0 && inputVersion < 31;
     const authorMapUpgrade = inputVersion > 0 && inputVersion < 45;
     const beatContractUpgrade = inputVersion > 0 && inputVersion < 48;
-    const providerEffectUpgrade = inputVersion > 0 && inputVersion < 50;
+    const conditionalSetUpgrade = inputVersion > 0 && inputVersion < 51;
     const normalizedLayers = normalizeNarrativeLayers(value.narrativeLayers);
     const normalizedDirector = normalizeDirectorScore(value.directorScore);
     const state = {
@@ -490,7 +492,7 @@ export function normalizeState(input = {}) {
         },
         scene: chronologyAuditUpgrade ? base.scene : { ...base.scene, ...(value.scene || {}) },
         sceneProfile: beatContractUpgrade ? base.sceneProfile : normalizeSceneProfile(value.sceneProfile ?? value.scene_profile),
-        beatDirective: providerEffectUpgrade ? base.beatDirective : normalizeBeatDirective(value.beatDirective ?? value.beat_directive),
+        beatDirective: conditionalSetUpgrade ? base.beatDirective : normalizeBeatDirective(value.beatDirective ?? value.beat_directive),
         responseAudit: normalizeResponseAudit(value.responseAudit ?? value.response_audit),
         responsePatternMemory: cap(value.responsePatternMemory ?? value.response_pattern_memory, 12).map(item => clippedText(item, 140)).filter(Boolean),
         narrativeLayers: chronologyAuditUpgrade
@@ -515,7 +517,7 @@ export function normalizeState(input = {}) {
         canonBootstrapPending: value.canonBootstrapPending === true || plannerUpgradePending,
         userNotes: cap(value.userNotes).map(normalizeNote).filter(note => note.text),
         guidance: beatContractUpgrade || recoveryUpgrade ? '' : text(value.guidance).slice(0, 700),
-        lastInject: providerEffectUpgrade || recoveryUpgrade ? false : value.lastInject === true,
+        lastInject: conditionalSetUpgrade || recoveryUpgrade ? false : value.lastInject === true,
         lastReason: text(value.lastReason).slice(0, 500),
         contextLedger: inputVersion > 0 && inputVersion < 44 ? '' : (chronologyAuditUpgrade ? '' : text(value.contextLedger).slice(0, 3000)),
         ledgerMessageCount: Math.max(0, Number(value.ledgerMessageCount) || 0),
@@ -528,7 +530,7 @@ export function normalizeState(input = {}) {
         lastAnalyzedAt: Number(value.lastAnalyzedAt) || 0,
         turnCount: Math.max(0, Number(value.turnCount) || 0),
         plannerSeed: Number.isInteger(value.plannerSeed) ? value.plannerSeed : 0,
-        lastRequestVerification: providerEffectUpgrade ? null : normalizeRequestVerification(value.lastRequestVerification),
+        lastRequestVerification: conditionalSetUpgrade ? null : normalizeRequestVerification(value.lastRequestVerification),
     };
     state.authorBoard = beatContractUpgrade ? defaultAuthorBoard() : normalizeAuthorBoard(authorMapUpgrade ? {
         ...(value.authorBoard || {}),
@@ -612,7 +614,7 @@ export function isGuidanceUsable(state, messages = [], chatId = '') {
 
 export function isDirectionCurrent(state, messages = [], chatId = '') {
     const s = normalizeState(state);
-    if (!s.beatDirective.operation || !s.beatDirective.requiredEffect) return false;
+    if (!s.beatDirective.operation || !s.beatDirective.primaryWhen || !s.beatDirective.requiredEffect || s.beatDirective.alternatives.length !== 2) return false;
     if (isStateAligned(s, messages, chatId)) return true;
     if (s.sourceChatId && chatId && s.sourceChatId !== String(chatId)) return false;
     if (!messages.at(-1)?.is_user || s.sourceMessageCount !== messages.length - 1) return false;

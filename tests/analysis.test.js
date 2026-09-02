@@ -10,7 +10,7 @@ import { estimateTokenCount } from '../extension/token-budget.js';
 
 function result(overrides = {}) {
     const value = {
-        contract_version: 3,
+        contract_version: 4,
         current: {
             frame: 'grounded', frame_basis: 'A quiet work session is physically and socially ordinary.',
             status: 'The user is working alone on an assignment.', immediate_action: 'Continue the current attempt.',
@@ -21,8 +21,12 @@ function result(overrides = {}) {
         },
         beat: {
             inject: true, inject_reason: 'The scene benefits from a light directional nudge without prescribing its realization.',
-            operation: 'complicate', target: 'the current assignment attempt',
+            operation: 'complicate', primary_when: 'The user continues or engages with the assignment.', target: 'the current assignment attempt',
             required_effect: 'Expose one manageable, task-native difficulty that makes progress require a concrete adjustment.',
+            alternatives: [
+                { when: 'The user pauses, resists, or leaves the task.', operation: 'let the pause reveal a grounded consequence of disengaging', required_effect: 'Make the changed relationship to the unfinished task perceptible without forcing a return.', content_class: 'consequence', scope: 'personal', intensity: 'low', quantity: 'singular', relative_power: 'none', plot_weight: 'incidental', duration: 'beat', resolution_ceiling: 'local' },
+                { when: 'The user redirects attention to another present concern.', operation: 'carry the unfinished pressure into the newly chosen focus', required_effect: 'Let the new focus proceed while preserving one observable connection to the unfinished work.', content_class: 'reaction', scope: 'personal', intensity: 'low', quantity: 'singular', relative_power: 'none', plot_weight: 'connective', duration: 'beat', resolution_ceiling: 'open' },
+            ],
             content_class: 'obstacle', scope: 'personal', intensity: 'low', quantity: 'singular', relative_power: 'inferior',
             plot_weight: 'incidental', duration: 'beat', resolution_ceiling: 'local',
             preserve: ['the solitary work scene', 'the user controls how to respond'],
@@ -50,15 +54,17 @@ const messages = [
 ];
 
 test('extractJson accepts fenced, wrapped, and locally repairable JSON', () => {
-    assert.deepEqual(extractJson('```json\n{"contract_version":3}\n```'), { contract_version: 3 });
+    assert.deepEqual(extractJson('```json\n{"contract_version":4}\n```'), { contract_version: 4 });
     assert.deepEqual(extractJson('prefix {"ok":true} suffix'), { ok: true });
     assert.deepEqual(extractJson('{"current":{"activity":"reading"\n"phase":"developing"},}'), { current: { activity: 'reading', phase: 'developing' } });
 });
 
-test('structured output contract is the compact current-beat v3 shape', () => {
-    assert.equal(ANALYSIS_SCHEMA_VALUE.properties.contract_version.const, 3);
+test('structured output contract is the conditional direction-set v4 shape', () => {
+    assert.equal(ANALYSIS_SCHEMA_VALUE.properties.contract_version.const, 4);
     assert.deepEqual(ANALYSIS_SCHEMA_VALUE.required, ['contract_version', 'current', 'beat', 'response_audit', 'world', 'thread_updates', 'actor_updates', 'canon_updates', 'ledger', 'note_resolution', 'audit']);
     assert.equal(ANALYSIS_SCHEMA.strict, true);
+    assert.equal(ANALYSIS_SCHEMA_VALUE.properties.beat.properties.alternatives.minItems, 2);
+    assert.equal(ANALYSIS_SCHEMA_VALUE.properties.beat.properties.alternatives.maxItems, 2);
     assert.match(ANALYSIS_OUTPUT_CONTRACT, /No other keys/);
     assert.doesNotMatch(JSON.stringify(ANALYSIS_SCHEMA_VALUE), /routes|guides|horizons|milestones|future_setup/i);
 });
@@ -75,6 +81,7 @@ test('validation rejects missing semantic effect and invalid scale values withou
     assert.equal(check.valid, false);
     assert.ok(!check.errors.includes('beat.operation is invalid'));
     assert.ok(check.errors.includes('beat.scope is invalid'));
+    assert.equal(validateAnalysisResult(result({ beat: { ...result().beat, alternatives: result().beat.alternatives.slice(0, 1) } })).valid, false);
 });
 
 test('freeform movement phrases and every simulation scope validate', () => {
@@ -98,6 +105,9 @@ test('planner chooses scene-warranted movement before applying randomness', () =
     assert.match(SYSTEM, /Scene changes, pressure shifts, reversals, discoveries/i);
     assert.match(SYSTEM, /There is no fixed taxonomy, approved vocabulary, nearest label, or fallback bucket/i);
     assert.match(SYSTEM, /Never invent player dialogue, thoughts, feelings, consent, decisions/i);
+    assert.match(SYSTEM, /conditional movement set/i);
+    assert.match(SYSTEM, /exactly two materially distinct redirect-safe branches/i);
+    assert.match(SYSTEM, /If no condition later fits, the writing model will use none/i);
 });
 
 test('planner permits freeform AI invention and scale-native simulation', () => {
@@ -106,11 +116,12 @@ test('planner permits freeform AI invention and scale-native simulation', () => 
     assert.match(SYSTEM, /life simulation/i);
     assert.match(SYSTEM, /countries, societies, and worlds/i);
     assert.match(SYSTEM, /policy effect, public response, trend, or system pressure/i);
-    assert.match(SYSTEM, /operation, required_effect, and useful non-default abstract scale classifications are provider-visible and binding/i);
+    assert.match(SYSTEM, /conditional movement set and useful non-default abstract scale classifications are provider-visible/i);
+    assert.match(SYSTEM, /exactly one fitting branch becomes binding/i);
     assert.match(SYSTEM, /without prescribing the exact event, actor, action, dialogue, prose, outcome detail, or player reaction/i);
     assert.match(SYSTEM, /target, inject_reason, preserve, forbid, scene promise, basis, audit, response_audit, response pattern memory, retained evidence, canon records, and user-note records remain private/i);
     assert.doesNotMatch(SYSTEM, /generate six to eight.*routes|schedule future milestones|maintain event queues/i);
-    assert.ok(estimateTokenCount(`${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}`) < 1800);
+    assert.ok(estimateTokenCount(`${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}`) < 2100);
 });
 
 test('all modes alter sampled appetite without weakening authority', () => {
@@ -127,19 +138,21 @@ test('analysis prompt carries current context, identity, variation, bootstrap, a
     const prompt = JSON.parse(buildAnalysisPrompt(messages, { ...defaultState(), mode: 'fun' }, '', { scenario: 'A grounded school life simulation.' }, {
         variationNonce: 731, summarySources: [{ label: 'Continuity Memory', kind: 'summary', text: 'The assignment is due tomorrow.' }],
     }));
-    assert.equal(prompt.task, 'direct_current_beat');
+    assert.equal(prompt.task, 'prepare_conditional_direction_set');
     assert.equal(prompt.player_character, 'Ari');
     assert.equal(prompt.variation_nonce, 731);
     assert.equal(prompt.bootstrap.scenario, 'A grounded school life simulation.');
     assert.equal(prompt.summary_sources[0].label, 'Continuity Memory');
     assert.match(prompt.invention, /Any context-compatible narrative development/i);
-    assert.match(prompt.invention, /required_effect is provider-visible when inject=true/i);
+    assert.match(prompt.invention, /Conditions, operations, effects, and useful scale fields are provider-visible when inject=true/i);
     assert.match(prompt.invention, /observable narrative function or change.*do not prescribe the exact event, actor, action, dialogue, prose, outcome detail, or player reaction/i);
-    assert.match(prompt.invention, /must achieve the operation and required effect while freely choosing their compatible concrete realization/i);
+    assert.match(prompt.instruction, /writing model selects one fitting branch or none/i);
+    assert.match(prompt.instruction, /never combines branches/i);
     assert.match(prompt.necessity_gate, /inject=false/i);
     assert.match(prompt.response_audit_rule, /never injected/i);
     assert.match(prompt.simulation, /country simulation/i);
-    assert.match(prompt.direction_policy, /choose one coherent authorial direction before applying random creative appetite/i);
+    assert.match(prompt.direction_policy, /choose one coherent primary authorial direction before applying random creative appetite/i);
+    assert.match(prompt.direction_policy, /two materially distinct alternatives/i);
     assert.match(prompt.direction_policy, /breathing room.*as legitimate as complication/i);
     assert.match(prompt.direction_policy, /Quiet situations may gain texture, emotion, discovery, or character meaning without an incident/i);
     assert.match(prompt.direction_policy, /instead of hijacking the current activity/i);

@@ -4,27 +4,26 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.153';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.153';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.12.0';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.12.0';
 import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.11.101';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.153';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.153';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.153';
-import { normalizeModelListResponse } from './models.js?v=0.11.153';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.12.0';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.12.0';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.12.0';
+import { normalizeModelListResponse } from './models.js?v=0.12.0';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.108';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.153';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.153';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.153';
-import { estimateTokenCount } from './token-budget.js?v=0.11.153';
-import { completionText } from './completion-response.js?v=0.11.153';
-import { sampleDirectorSignals } from './director-sampling.js?v=0.11.153';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.12.0';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.12.0';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.12.0';
+import { estimateTokenCount } from './token-budget.js?v=0.12.0';
+import { completionText } from './completion-response.js?v=0.12.0';
+import { sampleDirectorSignals } from './director-sampling.js?v=0.12.0';
 import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.11.105';
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
-import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.11.153';
-import { ACTION_GATE_SCHEMA, ACTION_GATE_SYSTEM, applyActionGateResult, buildActionGatePrompt, validateActionGateResult } from './action-gate.js?v=0.11.153';
+import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.12.0';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.153';
+const RUNTIME_VERSION = '0.12.0';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -68,8 +67,6 @@ let detachedPlannerRecovering = false;
 // Reasoning providers may count hidden thinking against this ceiling. The
 // planner prompt and schema separately target a concise visible JSON result.
 const PLANNER_RESPONSE_TOKENS = 16384;
-const ACTION_GATE_RESPONSE_TOKENS = 512;
-const ACTION_GATE_TIMEOUT_MS = 10000;
 const PLANNER_MAX_AUTO_RETRIES = 2;
 const UI_MOUNT_TIMEOUT_MS = 30000;
 const LEGACY_UPGRADE_MAX_ATTEMPTS = 1;
@@ -1174,22 +1171,6 @@ function parseAnalysisResponse(value) {
     }
 }
 
-function parseActionGateResponse(value) {
-    try {
-        const rawResult = value && typeof value === 'object' && !Array.isArray(value) && value.decision
-            ? value
-            : extractJson(completionText(value));
-        const validation = validateActionGateResult(rawResult);
-        if (!validation.valid) {
-            throw new AnalysisValidationError(`Action gate violated its output contract: ${validation.errors.join('; ')}.`);
-        }
-        return rawResult;
-    } catch (error) {
-        if (error instanceof AnalysisValidationError) throw error;
-        throw new AnalysisValidationError(`Action gate did not return valid JSON: ${error?.message || error}.`);
-    }
-}
-
 async function acknowledgeDetachedPlannerJob(id) {
     if (!id || !detachedPlannerEnabled) return;
     await plannerServerApi(`/planner-jobs/${encodeURIComponent(id)}/ack`, { method: 'POST', body: '{}' });
@@ -1638,69 +1619,6 @@ async function requestAnalysis(prompt, externalSignal, detachedMeta) {
     return requestAnalysisOnce(prompt, externalSignal, detachedMeta);
 }
 
-async function adjustGuideForLatestAction(state, type, externalAbort = null) {
-    const replacement = type === 'swipe' || type === 'regenerate';
-    const selection = generationGuideSelection;
-    if (replacement || !selection?.usable) return;
-
-    const context = currentContext();
-    const messages = messagesFromChat(context.chat || []);
-    const chatId = String(context.getCurrentChatId?.() || '');
-    const latest = messages.at(-1);
-    const preparedBeforeAction = latest?.is_user
-        && state.sourceMessageCount === messages.length - 1
-        && (!state.sourceChatId || state.sourceChatId === chatId)
-        && state.lastAnalysisFingerprint === fingerprintMessages(messages.slice(0, -1));
-    if (!preparedBeforeAction || !String(latest?.mes || '').trim()) return;
-
-    const previousAssistant = [...messages.slice(0, -1)].reverse().find(message => !message.is_user)?.mes || '';
-    const prompt = buildActionGatePrompt({
-        mode: selection.directorSample?.mode || state.mode,
-        scenePromise: selection.sceneProfile?.promise || state.sceneProfile?.promise,
-        situation: state.narrativeLayers?.situation || state.scene?.intent,
-        activity: state.narrativeLayers?.localActivity || state.scene?.activity,
-        previousAssistant,
-        latestUserAction: latest.mes,
-        beatDirective: selection.beatDirective,
-    });
-    const outerSignal = externalAbort?.signal || externalAbort;
-    const gateController = new AbortController();
-    const forwardAbort = () => gateController.abort(outerSignal?.reason || new DOMException('Generation stopped.', 'AbortError'));
-    if (outerSignal?.aborted) forwardAbort();
-    else outerSignal?.addEventListener?.('abort', forwardAbort, { once: true });
-    const timeout = setTimeout(() => gateController.abort(new DOMException('Quick action check timed out.', 'TimeoutError')), ACTION_GATE_TIMEOUT_MS);
-    renderAnalysisActivity('Quickly checking latest action…', true);
-    try {
-        const result = await requestAnalysisOnce(prompt, gateController.signal, null, {
-            systemPrompt: ACTION_GATE_SYSTEM,
-            schema: ACTION_GATE_SCHEMA,
-            responseTokens: ACTION_GATE_RESPONSE_TOKENS,
-            parseResponse: parseActionGateResponse,
-            reasoningMode: 'minimum',
-            temperature: 0.2,
-            label: 'action gate',
-            cacheNamespace: 'action-gate',
-        });
-        const adjusted = applyActionGateResult(selection.beatDirective, result);
-        if (!adjusted) throw new AnalysisValidationError('Action gate returned no usable direction.');
-        selection.beatDirective = adjusted;
-        selection.actionGateDecision = String(result.decision || '').toLowerCase();
-        recordRuntimeStage('action-gate-complete', { decision: selection.actionGateDecision });
-        renderAnalysisActivity(`Latest action checked · ${selection.actionGateDecision}`, false);
-    } catch (error) {
-        if (outerSignal?.aborted) throw error;
-        selection.usable = false;
-        selection.skipped = true;
-        selection.actionGateDecision = 'skipped';
-        recordRuntimeStage('action-gate-skipped', { error: String(error?.message || error).slice(0, 300) });
-        renderAnalysisActivity('Quick action check unavailable · stale direction skipped', false);
-        console.warn(`[${EXTENSION_ID}] Quick action check failed; generation will continue without stale guidance.`, error);
-    } finally {
-        clearTimeout(timeout);
-        outerSignal?.removeEventListener?.('abort', forwardAbort);
-    }
-}
-
 export async function analyzeNow({ note = null, force = false, messages = null, rebuild = false, allowOneUserAppend = false, allowOneAssistantAppend = false, allowStaleContinuity = false, waitForContinuity = false, retryAttempt = 0 } = {}) {
     const context = currentContext();
     const s = getSettings();
@@ -1902,9 +1820,14 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const beat = state.beatDirective || {};
     const envelope = [beat.contentClass, beat.scope && `${beat.scope} scope`, beat.intensity && beat.intensity !== 'none' && `${beat.intensity} intensity`, beat.quantity && beat.quantity !== 'none' && beat.quantity, beat.relativePower && beat.relativePower !== 'none' && `${beat.relativePower} power`, beat.plotWeight && beat.plotWeight !== 'none' && `${beat.plotWeight} weight`, beat.duration && `${beat.duration} duration`, beat.resolutionCeiling && `${beat.resolutionCeiling} resolution`].filter(Boolean).join(' · ');
     const beatText = [
-        beat.inject ? `Provider guidance: inject this sparse beat${beat.injectReason ? ` — ${beat.injectReason}` : ''}` : `Provider guidance: inject nothing${beat.injectReason ? ` — ${beat.injectReason}` : ''}`,
+        beat.inject ? `Provider guidance: inject this conditional direction set${beat.injectReason ? ` — ${beat.injectReason}` : ''}` : `Provider guidance: inject nothing${beat.injectReason ? ` — ${beat.injectReason}` : ''}`,
+        beat.primaryWhen && `Primary when: ${beat.primaryWhen}`,
         `${String(beat.operation).toUpperCase()} — ${beat.target}`,
         beat.requiredEffect,
+        ...(beat.alternatives || []).flatMap((branch, index) => [
+            `Alternative ${index + 1} when: ${branch.when}`,
+            `${String(branch.operation).toUpperCase()} — ${branch.requiredEffect}`,
+        ]),
         envelope && `Envelope: ${envelope}`,
         beat.preserve?.length && `Preserve: ${beat.preserve.join('; ')}`,
         beat.forbid?.length && `Do not: ${beat.forbid.join('; ')}`,
@@ -1954,15 +1877,14 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const previewPlacement = previewSettings.injectionPosition === 'at-depth'
         ? `at-depth · ${previewSettings.injectionRole} · depth ${previewSettings.injectionDepth}`
         : `${previewSettings.injectionPosition} · ${previewSettings.injectionRole}`;
-    const historicalVerification = [state.lastRequestVerification, previewSettings.lastProviderBoundVerification]
-        .filter(item => item?.chatId === chatId && item?.guidanceBlock)
-        .sort((left, right) => Number(right.requestedAt || 0) - Number(left.requestedAt || 0))[0] || null;
     const previewText = previewPayload
         ? `${previewKind} — Tale Fairy plans to inject this exact context.\nPlacement: ${previewPlacement}\n\n${previewPayload}`
-        : historicalVerification
-            ? `MOST RECENT USED DIRECTION — no new direction is ready yet.\n\n${historicalVerification.guidanceBlock}`
-            : 'No Tale Fairy direction exists yet. Run Guide now to create one.';
-    scratchpadText(board, 'scratchpad-request-verification', previewText, 'No Tale Fairy direction exists yet.');
+        : isDirectionCurrent(state, messagesFromChat(previewContext.chat || []), chatId) && !state.lastInject
+            ? 'FRESH NO-INJECTION DECISION — Tale Fairy found no useful direction to add to the next request.'
+            : analysisPromise
+                ? 'PREPARING FRESH DIRECTION IN BACKGROUND — roleplay generation will not wait for it.'
+                : 'NO FRESH DIRECTION READY — used or stale direction is audit history only and will not be reused.';
+    scratchpadText(board, 'scratchpad-request-verification', previewText, 'No fresh Tale Fairy direction is ready.');
 
     scratchpadOptionalText(board, 'scratchpad-continuity-section', 'scratchpad-continuity-processes', analyzed ? scratchpadList(state.continuityThreads, item => item?.thread ? `${item.thread} — ${item.state}` : '', '') : '');
     scratchpadOptionalText(board, 'scratchpad-entities-section', 'scratchpad-entities', analyzed ? scratchpadList(state.entities, item => item?.name ? `${item.name}${item.state ? ` — ${item.state}` : ''}${item.agenda ? ` · Agenda: ${item.agenda}` : ''}` : '', '') : '');
@@ -2307,34 +2229,13 @@ function refreshControls(root = document.querySelector(`#${EXTENSION_ID}-setting
 export async function livingWorldGuideGenerateInterceptor(_chat, _contextSize, _abort, type) {
     if (type === 'quiet' || !getSettings().enabled) return;
     const context = currentContext();
-    let state = prepareAuthorContract(loadState(context.chatMetadata), type);
+    const state = prepareAuthorContract(loadState(context.chatMetadata), type);
     // Normal planning never blocks generation. The completed-turn guide is
-    // already in metadata; the latest user action may use, reshape, or discard it.
+    // already in metadata and the latest user action has absolute priority.
     prepareGenerationGuide(state, type);
-    const replacement = type === 'swipe' || type === 'regenerate';
-    if (replacement && !generationGuideSelection?.usable && !generationGuideSelection?.skipped) {
-        const currentMessages = messagesFromChat(context.chat || []);
-        const sourceMessages = generationRetrySource(currentMessages, true);
-        if (sourceMessages.length) {
-            // A first regeneration (or one immediately after Full Rebuild) has
-            // no provider-bound archive to reuse. Replan synchronously from the
-            // transcript before the discarded assistant reply. This is the one
-            // generation path where correctness must win over non-blocking
-            // planning: stale or assistant-inferred guidance is never revived.
-            renderAnalysisActivity('Preparing exact regeneration direction…', true);
-            state = await analyzeNow({
-                force: true,
-                rebuild: true,
-                messages: sourceMessages,
-                allowOneAssistantAppend: currentMessages.length === sourceMessages.length + 1,
-                allowStaleContinuity: true,
-            });
-            prepareGenerationGuide(state, type);
-        }
-    }
-    // Only this tiny adjudication blocks a normal response: it validates the
-    // already-prepared direction against the one newly appended user action.
-    await adjustGuideForLatestAction(state, type, _abort);
+    // Planning is strictly ahead-of-time. Never spend roleplay-generation
+    // latency on a planner request; an unavailable direction simply injects
+    // nothing while its successor is prepared in the background.
     updatePrompt(state);
     renderBoard(state);
 }
@@ -2363,7 +2264,7 @@ eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
     const receivedChatId = String(currentContext().getCurrentChatId?.() || '');
     const supersededIntent = analysisPromise ? activeAnalysisIntent : null;
     generationRevision++;
-    const consumedCurrentGuide = await confirmReturnedReplyUsedGuidance();
+    await confirmReturnedReplyUsedGuidance();
     generationGuideSelection = null;
     const context = currentContext();
     if (String(context.getCurrentChatId?.() || '') !== receivedChatId) return;
@@ -2378,9 +2279,11 @@ eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
     context.updateChatMetadata(saveState(context.chatMetadata, state));
     updatePrompt(state);
     renderBoard(state);
-    // Consuming an exact guide schedules its successor. If chat advances while
+    // Every accepted reply schedules its successor. If chat advances while
     // planning, retain only one catch-up request for the newest transcript.
-    if (getSettings().enabled && (decision.shouldRun || supersededIntent || (consumedCurrentGuide && !replacement))) {
+    // This also covers missing provider verification and replacement replies.
+    const freshDirectionNeeded = !isDirectionCurrent(state, messages, String(context.getCurrentChatId?.() || ''));
+    if (getSettings().enabled && (decision.shouldRun || supersededIntent || freshDirectionNeeded)) {
         void queueLatestAnalysis({
             ...supersededIntent,
             chatId: String(context.getCurrentChatId?.() || ''),

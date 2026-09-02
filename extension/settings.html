@@ -162,8 +162,8 @@
           </div>
           <section>
             <h5>Tale Fairy guidance</h5>
-            <small>Always shows the upcoming exact direction when ready, otherwise the most recently used exact direction.</small>
-            <div data-role="scratchpad-request-verification">No Tale Fairy direction exists yet.</div>
+            <small>Shows only the conditional direction set eligible for the next request. The latest user action selects one fitting branch or none; used and stale sets are never fallbacks.</small>
+            <div data-role="scratchpad-request-verification">No fresh Tale Fairy direction is ready.</div>
           </section>
           <section>
             <h5>Current scene</h5>
@@ -180,7 +180,7 @@
           </section>
           <section>
             <h5>Adaptive direction</h5>
-            <small>A freeform narrative function plus a weighted creative appetite, not a scripted event. The writing AI chooses the concrete, context-native realization.</small>
+            <small>A primary movement and two redirect-safe alternatives plus a weighted creative appetite, not scripted events. The writing AI selects one branch from the latest user action and chooses its concrete realization.</small>
             <div data-role="scratchpad-next-guides">No generated adaptive direction yet.</div>
           </section>
           <section data-role="scratchpad-response-audit-section" hidden>

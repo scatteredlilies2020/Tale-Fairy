@@ -13,22 +13,22 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest and detached plugin identify the adaptive-director release', () => {
-    assert.equal(manifest.version, '0.11.153');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.153');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.153');
+    assert.equal(manifest.version, '0.12.0');
+    assert.equal(manifest.js, 'extension/index.js?v=0.12.0');
+    assert.equal(manifest.css, 'extension/style.css?v=0.12.0');
     assert.match(manifest.description, /always-on adaptive story director/i);
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.11\.153'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.11\.153'/);
+    assert.match(pluginSource, /const VERSION = '0\.12\.0'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.12\.0'/);
 });
 
-test('extension loads v153 fast-action modules', () => {
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.153'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.153'/);
-    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.153'/);
-    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.153'/);
-    assert.match(source, /from '\.\/action-gate\.js\?v=0\.11\.153'/);
-    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.153'/);
+test('extension loads the background-only direction modules', () => {
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.12\.0'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.12\.0'/);
+    assert.match(source, /from '\.\/request-injection\.js\?v=0\.12\.0'/);
+    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.12\.0'/);
+    assert.doesNotMatch(source, /action-gate/);
+    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.12\.0'/);
 });
 
 test('long-form defaults reserve room for current turns, summaries, and thinking', () => {
@@ -92,16 +92,17 @@ test('obsolete pacing selector and static provider boilerplate are absent', () =
 });
 
 test('adaptive analysis uses freeform direction rather than an event taxonomy', () => {
-    assert.match(analysisSource, /contract_version=3/);
+    assert.match(analysisSource, /contract_version=4/);
     assert.match(analysisSource, /adaptive narrative director/i);
     assert.match(analysisSource, /not an event taxonomy/i);
     assert.match(analysisSource, /other context-compatible movement/i);
     assert.match(analysisSource, /countries, societies, and worlds/i);
     assert.match(analysisSource, /operation: text\(80\)/);
     assert.doesNotMatch(analysisSource, /beat\.operation': \[/);
-    assert.match(analysisSource, /operation, required_effect, and useful non-default abstract scale classifications are provider-visible and binding/i);
+    assert.match(analysisSource, /conditional movement set and useful non-default abstract scale classifications are provider-visible/i);
+    assert.match(analysisSource, /exactly one fitting branch becomes binding/i);
     assert.match(analysisSource, /target, inject_reason, preserve, forbid, scene promise, basis, audit, response_audit, response pattern memory, retained evidence, canon records, and user-note records remain private/i);
-    assert.match(stateSource, /export const STATE_VERSION = 50/);
+    assert.match(stateSource, /export const STATE_VERSION = 51/);
     assert.match(stateSource, /beatContractUpgrade/);
 });
 
@@ -119,7 +120,7 @@ test('provider injection uses only an analyzed beat and otherwise removes stale 
     assert.match(source, /guidanceBlock = extractTaleFairyContext\(JSON\.parse\(outboundInit\.body\)\)/);
     assert.match(source, /rememberSkippedRequest/);
     assert.match(source, /provider-bound-skip-saved/);
-    assert.match(pluginSource, /\[2, 3\]\.includes\(value\.contract_version\)/);
+    assert.match(pluginSource, /\[2, 3, 4\]\.includes\(value\.contract_version\)/);
 });
 
 test('replacement generation archives semantic direction and the exact weighted sample', () => {
@@ -134,9 +135,9 @@ test('replacement generation archives semantic direction and the exact weighted 
     assert.match(source, /usable: archivedUsable \|\| currentGuidanceUsable/);
     assert.match(source, /isReplacementVerificationCurrent\(archived, messages, chatId\)/);
     assert.doesNotMatch(source, /currentBeatUsable|Boolean\(state\.lastInject/);
-    assert.match(source, /generationRetrySource\(currentMessages, true\)/);
-    assert.match(source, /Preparing exact regeneration direction/);
-    assert.match(source, /allowOneAssistantAppend: currentMessages\.length === sourceMessages\.length \+ 1/);
+    const interceptor = source.slice(source.indexOf('export async function livingWorldGuideGenerateInterceptor'), source.indexOf('globalThis.livingWorldGuideGenerateInterceptor'));
+    assert.doesNotMatch(interceptor, /await |analyzeNow\(/);
+    assert.match(interceptor, /an unavailable direction simply injects/);
     assert.doesNotMatch(directorSource, /For this regeneration|different realization|context-compatible development/i);
     assert.doesNotMatch(source, /\(previousIndex \+ 1\) % candidates\.length/);
 });
@@ -147,22 +148,27 @@ test('rapid-fire turns consume guidance once and coalesce planner catch-up', () 
     assert.match(source, /function queueLatestAnalysis/);
     assert.match(source, /Planner active · latest turn queued/);
     assert.match(source, /decision\.shouldRun \|\| supersededIntent/);
-    assert.match(source, /consumedCurrentGuide && !replacement/);
+    assert.match(source, /const freshDirectionNeeded = !isDirectionCurrent/);
+    assert.doesNotMatch(source, /freshDirectionNeeded = !replacement/);
+    assert.match(source, /decision\.shouldRun \|\| supersededIntent \|\| freshDirectionNeeded/);
     assert.match(source, /revision !== generationRevision[\s\S]{0,160}acknowledgeDetachedPlannerRun/);
     assert.doesNotMatch(source, /MESSAGE_RECEIVED[\s\S]{0,180}cancelRunningAnalysis/);
     assert.doesNotMatch(directorSource, /delivery debt|release condition|event queue/i);
 });
 
-test('roleplay injection exposes general observable effect but never private planner evidence', () => {
+test('roleplay injection exposes a conditional direction set but never private planner evidence', () => {
     assert.doesNotMatch(stateSource, /<user-established-canon>|<tale-fairy-user-notes>/i);
     assert.doesNotMatch(directorSource, /PLANNER LEAN|WEIGHTED DIRECTOR SAMPLE|INTERVENTION_GUIDANCE|FORTUNE_GUIDANCE/i);
     assert.doesNotMatch(directorSource, /CURRENT TARGET|SCENE PROMISE TO HONOR/);
-    assert.match(directorSource, /PRIMARY NARRATIVE DIRECTION/);
+    assert.match(directorSource, /CONDITIONAL TALE FAIRY DIRECTION SET/);
+    assert.match(directorSource, /PRIMARY WHEN/);
+    assert.match(directorSource, /ALTERNATIVE.*WHEN/);
     assert.match(directorSource, /REQUIRED EFFECT/);
     assert.match(directorSource, /LIGHT TREATMENT/);
     assert.match(directorSource, /BALANCED TREATMENT/);
     assert.match(directorSource, /FUN TREATMENT/);
-    assert.match(directorSource, /Treat the direction and required effect as binding/);
+    assert.match(directorSource, /treat only its direction and required effect as binding/i);
+    assert.match(directorSource, /If no WHEN condition fits, use none/i);
     assert.doesNotMatch(directorSource, /movement=|content=|scope=|intensity=|plot weight=/i);
     assert.doesNotMatch(directorSource, /beat\.preserve|beat\.forbid/);
     assert.doesNotMatch(directorSource, /beat\.basis|scene\.basis/);
@@ -178,26 +184,21 @@ test('planner output is lightweight while retaining structured-output negotiatio
     assert.match(source, /PLANNER_MAX_AUTO_RETRIES = 2/);
 });
 
-test('latest user actions receive a tiny bounded Keep, Adapt, or Regenerate check', () => {
-    assert.match(source, /const ACTION_GATE_RESPONSE_TOKENS = 512/);
-    assert.match(source, /const ACTION_GATE_TIMEOUT_MS = 10000/);
-    assert.match(source, /await waitForAbortable\(detachedPlannerReady, controller\.signal\)/);
-    assert.match(source, /reasoningMode: 'minimum'/);
-    assert.match(source, /actionGateDecision = String\(result\.decision/);
-    assert.match(source, /selection\.usable = false;[\s\S]{0,120}selection\.skipped = true/);
-    assert.match(source, /stale direction skipped/);
-    const gateIndex = source.indexOf('await adjustGuideForLatestAction(state, type, _abort)');
-    assert.ok(gateIndex > source.indexOf('export async function livingWorldGuideGenerateInterceptor'));
-    assert.ok(gateIndex < source.indexOf('updatePrompt(state)', gateIndex));
+test('latest user actions never trigger a blocking Tale Fairy planner call', () => {
+    assert.doesNotMatch(source, /ACTION_GATE|adjustGuideForLatestAction|Quickly checking latest action/);
+    assert.match(directorSource, /latest user action always takes priority/i);
+    assert.match(directorSource, /never override or reinterpret that action/i);
 });
 
-test('scratchpad always shows upcoming or most recently used guidance without misleading dormant triggers', () => {
+test('scratchpad shows only fresh upcoming guidance and rejects stale fallback', () => {
     assert.match(template, />Tale Fairy guidance</);
     assert.ok(template.indexOf('<h5>Tale Fairy guidance</h5>') < template.indexOf('<h5>Current scene</h5>'));
-    assert.match(template, /upcoming exact direction when ready, otherwise the most recently used exact direction/i);
+    assert.match(template, /used and stale sets are never fallbacks/i);
     assert.match(source, /const previewPayload = buildPromptPayload\(state, \{ enabled: getSettings\(\)\.enabled, \.\.\.previewOptions \}\)/);
-    assert.match(source, /MOST RECENT USED DIRECTION/);
-    assert.match(source, /historicalVerification\.guidanceBlock/);
+    assert.doesNotMatch(source, /MOST RECENT USED DIRECTION|historicalVerification\.guidanceBlock/);
+    assert.match(source, /NO FRESH DIRECTION READY/);
+    assert.match(source, /PREPARING FRESH DIRECTION IN BACKGROUND/);
+    assert.match(source, /FRESH NO-INJECTION DECISION/);
     assert.match(source, /NEXT NORMAL GENERATION/);
     assert.match(source, /CURRENT REGENERATION REQUEST/);
     assert.match(template, />Adaptive direction</);
