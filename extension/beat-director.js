@@ -11,6 +11,7 @@ const WEIGHT = new Set(['none', 'incidental', 'connective', 'consequential']);
 const DURATION = new Set(['moment', 'beat', 'scene', 'extended']);
 const CEILINGS = new Set(['none', 'local', 'partial', 'decisive', 'open']);
 const SCOPES = new Set(['personal', 'social', 'institutional', 'societal', 'world']);
+const MODES = new Set(['light', 'balanced', 'fun']);
 
 const CONTENT_WORDING = Object.freeze({
     texture: 'texture-led',
@@ -34,6 +35,11 @@ const POWER_WORDING = Object.freeze({
 const DURATION_WORDING = Object.freeze({ moment: 'momentary', scene: 'sustained through the scene', extended: 'extended in duration' });
 const RESOLUTION_WORDING = Object.freeze({ none: 'left unresolved', local: 'locally resolvable', partial: 'only partially resolvable', decisive: 'open to decisive resolution' });
 const PLOT_WORDING = Object.freeze({ incidental: 'incidental to the ongoing story', connective: 'connective to the ongoing story', consequential: 'consequential for the ongoing story' });
+const MODE_TREATMENT = Object.freeze({
+    light: 'LIGHT TREATMENT: Keep it understated, but make the required effect perceptible in this response; subtle does not mean optional.',
+    balanced: 'BALANCED TREATMENT: Make the required effect clear and meaningful enough to change the immediate situation or its possibilities.',
+    fun: 'FUN TREATMENT: Give the selected movement and required effect a prominent, lively expression; prefer a bold or surprising realization where it fits, without changing the movement\'s kind or natural scale.',
+});
 
 function text(value, limit = 240) { return String(value ?? '').trim().slice(0, limit); }
 function movement(value) { return text(value, 80).replace(/\s+/gu, ' '); }
@@ -98,15 +104,20 @@ function sentence(value) {
     return source ? `${source.charAt(0).toUpperCase()}${source.slice(1)}` : '';
 }
 
+function effectSentence(value) {
+    const source = text(value, 260).replace(/\s+/gu, ' ').replace(/[.!?]+$/u, '');
+    return source ? `${source.charAt(0).toUpperCase()}${source.slice(1)}` : '';
+}
+
 function naturalList(items) {
     if (items.length < 2) return items[0] || '';
     if (items.length === 2) return `${items[0]} and ${items[1]}`;
     return `${items.slice(0, -1).join(', ')}, and ${items.at(-1)}`;
 }
 
-export function formatBeatContract(_sceneValue, beatValue, _options = {}) {
+export function formatBeatContract(_sceneValue, beatValue, options = {}) {
     const beat = normalizeBeatDirective(beatValue);
-    if (!beat.inject || !beat.operation) return '';
+    if (!beat.inject || !beat.operation || !beat.requiredEffect) return '';
     const qualities = [];
     if (beat.contentClass !== 'none') qualities.push(CONTENT_WORDING[beat.contentClass]);
     if (beat.scope !== 'personal') qualities.push(`${beat.scope} in scope`);
@@ -117,5 +128,12 @@ export function formatBeatContract(_sceneValue, beatValue, _options = {}) {
     if (beat.duration !== 'beat') qualities.push(DURATION_WORDING[beat.duration]);
     if (beat.resolutionCeiling !== 'open') qualities.push(RESOLUTION_WORDING[beat.resolutionCeiling]);
     const treatment = qualities.length ? `, keeping the development ${naturalList(qualities)}` : '';
-    return `PRIMARY NARRATIVE DIRECTION: ${sentence(beat.operation)}${treatment}.\nThis direction governs how the next response moves. Freely choose its context-compatible concrete realization.`;
+    const requestedMode = String(options.mode ?? options.directorSample?.mode ?? '').trim().toLowerCase();
+    const mode = MODES.has(requestedMode) ? requestedMode : 'balanced';
+    return [
+        `PRIMARY NARRATIVE DIRECTION: ${sentence(beat.operation)}${treatment}.`,
+        `REQUIRED EFFECT: ${effectSentence(beat.requiredEffect)}.`,
+        MODE_TREATMENT[mode],
+        'Treat the direction and required effect as binding while freely choosing their context-compatible concrete realization. Do not decide the player character\'s dialogue, thoughts, feelings, consent, choices, or reactions.',
+    ].join('\n');
 }

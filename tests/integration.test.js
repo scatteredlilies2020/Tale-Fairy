@@ -13,21 +13,22 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest and detached plugin identify the adaptive-director release', () => {
-    assert.equal(manifest.version, '0.11.151');
-    assert.equal(manifest.js, 'extension/index.js?v=0.11.151');
-    assert.equal(manifest.css, 'extension/style.css?v=0.11.151');
+    assert.equal(manifest.version, '0.11.153');
+    assert.equal(manifest.js, 'extension/index.js?v=0.11.153');
+    assert.equal(manifest.css, 'extension/style.css?v=0.11.153');
     assert.match(manifest.description, /always-on adaptive story director/i);
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.11\.151'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.11\.151'/);
+    assert.match(pluginSource, /const VERSION = '0\.11\.153'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.11\.153'/);
 });
 
-test('extension loads v151 context-native-interest modules', () => {
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.151'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.11\.151'/);
-    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.151'/);
-    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.151'/);
-    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.151'/);
+test('extension loads v153 fast-action modules', () => {
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.11\.153'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.11\.153'/);
+    assert.match(source, /from '\.\/request-injection\.js\?v=0\.11\.153'/);
+    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.11\.153'/);
+    assert.match(source, /from '\.\/action-gate\.js\?v=0\.11\.153'/);
+    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.11\.153'/);
 });
 
 test('long-form defaults reserve room for current turns, summaries, and thinking', () => {
@@ -85,6 +86,8 @@ test('obsolete pacing selector and static provider boilerplate are absent', () =
     assert.doesNotMatch(source, /updatePacing|data-setting="pacing"/);
     assert.doesNotMatch(directorSource, /USER-CONTROLLED PACING|maximum time, activity, and player progress/i);
     assert.doesNotMatch(directorSource, /Use the analyzed beat only|Never invent the player character/i);
+    assert.match(directorSource, /Do not decide the player character/i);
+    assert.match(directorSource, /dialogue, thoughts, feelings, consent, choices, or reactions/i);
     assert.match(analysisSource, /Never invent player dialogue, thoughts, feelings, consent, decisions/i);
 });
 
@@ -96,9 +99,9 @@ test('adaptive analysis uses freeform direction rather than an event taxonomy', 
     assert.match(analysisSource, /countries, societies, and worlds/i);
     assert.match(analysisSource, /operation: text\(80\)/);
     assert.doesNotMatch(analysisSource, /beat\.operation': \[/);
-    assert.match(analysisSource, /sends only the freely chosen movement description and non-default abstract scale classifications downstream/i);
-    assert.match(analysisSource, /required_effect, target, inject_reason, preserve, forbid, scene promise, basis, audit, response_audit, response pattern memory, retained evidence, canon records, and user-note records remain private/i);
-    assert.match(stateSource, /export const STATE_VERSION = 49/);
+    assert.match(analysisSource, /operation, required_effect, and useful non-default abstract scale classifications are provider-visible and binding/i);
+    assert.match(analysisSource, /target, inject_reason, preserve, forbid, scene promise, basis, audit, response_audit, response pattern memory, retained evidence, canon records, and user-note records remain private/i);
+    assert.match(stateSource, /export const STATE_VERSION = 50/);
     assert.match(stateSource, /beatContractUpgrade/);
 });
 
@@ -150,12 +153,16 @@ test('rapid-fire turns consume guidance once and coalesce planner catch-up', () 
     assert.doesNotMatch(directorSource, /delivery debt|release condition|event queue/i);
 });
 
-test('roleplay injection exposes abstract flow and scale, never private planner intent', () => {
+test('roleplay injection exposes general observable effect but never private planner evidence', () => {
     assert.doesNotMatch(stateSource, /<user-established-canon>|<tale-fairy-user-notes>/i);
     assert.doesNotMatch(directorSource, /PLANNER LEAN|WEIGHTED DIRECTOR SAMPLE|INTERVENTION_GUIDANCE|FORTUNE_GUIDANCE/i);
-    assert.doesNotMatch(directorSource, /REQUIRED NARRATIVE EFFECT|CURRENT TARGET|SCENE PROMISE TO HONOR/);
+    assert.doesNotMatch(directorSource, /CURRENT TARGET|SCENE PROMISE TO HONOR/);
     assert.match(directorSource, /PRIMARY NARRATIVE DIRECTION/);
-    assert.match(directorSource, /This direction governs how the next response moves/);
+    assert.match(directorSource, /REQUIRED EFFECT/);
+    assert.match(directorSource, /LIGHT TREATMENT/);
+    assert.match(directorSource, /BALANCED TREATMENT/);
+    assert.match(directorSource, /FUN TREATMENT/);
+    assert.match(directorSource, /Treat the direction and required effect as binding/);
     assert.doesNotMatch(directorSource, /movement=|content=|scope=|intensity=|plot weight=/i);
     assert.doesNotMatch(directorSource, /beat\.preserve|beat\.forbid/);
     assert.doesNotMatch(directorSource, /beat\.basis|scene\.basis/);
@@ -166,9 +173,22 @@ test('roleplay injection exposes abstract flow and scale, never private planner 
 
 test('planner output is lightweight while retaining structured-output negotiation', () => {
     assert.match(source, /const PLANNER_RESPONSE_TOKENS = 16384/);
-    assert.match(source, /mode === PLANNER_OUTPUT_MODE\.JSON_SCHEMA \? \{ json_schema: ANALYSIS_SCHEMA \} : \{\}/);
-    assert.match(source, /plannerMessages\(PLANNER_SYSTEM_PROMPT, prompt, ANALYSIS_SCHEMA, mode\)/);
+    assert.match(source, /mode === PLANNER_OUTPUT_MODE\.JSON_SCHEMA \? \{ json_schema: schema \} : \{\}/);
+    assert.match(source, /plannerMessages\(systemPrompt, prompt, schema, mode\)/);
     assert.match(source, /PLANNER_MAX_AUTO_RETRIES = 2/);
+});
+
+test('latest user actions receive a tiny bounded Keep, Adapt, or Regenerate check', () => {
+    assert.match(source, /const ACTION_GATE_RESPONSE_TOKENS = 512/);
+    assert.match(source, /const ACTION_GATE_TIMEOUT_MS = 10000/);
+    assert.match(source, /await waitForAbortable\(detachedPlannerReady, controller\.signal\)/);
+    assert.match(source, /reasoningMode: 'minimum'/);
+    assert.match(source, /actionGateDecision = String\(result\.decision/);
+    assert.match(source, /selection\.usable = false;[\s\S]{0,120}selection\.skipped = true/);
+    assert.match(source, /stale direction skipped/);
+    const gateIndex = source.indexOf('await adjustGuideForLatestAction(state, type, _abort)');
+    assert.ok(gateIndex > source.indexOf('export async function livingWorldGuideGenerateInterceptor'));
+    assert.ok(gateIndex < source.indexOf('updatePrompt(state)', gateIndex));
 });
 
 test('scratchpad always shows upcoming or most recently used guidance without misleading dormant triggers', () => {

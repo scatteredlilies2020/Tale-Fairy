@@ -106,16 +106,20 @@ test('planner permits freeform AI invention and scale-native simulation', () => 
     assert.match(SYSTEM, /life simulation/i);
     assert.match(SYSTEM, /countries, societies, and worlds/i);
     assert.match(SYSTEM, /policy effect, public response, trend, or system pressure/i);
-    assert.match(SYSTEM, /sends only the freely chosen movement description and non-default abstract scale classifications downstream/i);
-    assert.match(SYSTEM, /required_effect, target, inject_reason, preserve, forbid, scene promise, basis, audit, response_audit, response pattern memory, retained evidence, canon records, and user-note records remain private/i);
+    assert.match(SYSTEM, /operation, required_effect, and useful non-default abstract scale classifications are provider-visible and binding/i);
+    assert.match(SYSTEM, /without prescribing the exact event, actor, action, dialogue, prose, outcome detail, or player reaction/i);
+    assert.match(SYSTEM, /target, inject_reason, preserve, forbid, scene promise, basis, audit, response_audit, response pattern memory, retained evidence, canon records, and user-note records remain private/i);
     assert.doesNotMatch(SYSTEM, /generate six to eight.*routes|schedule future milestones|maintain event queues/i);
     assert.ok(estimateTokenCount(`${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}`) < 1800);
 });
 
 test('all modes alter sampled appetite without weakening authority', () => {
     assert.match(MODE_INSTRUCTIONS.light, /scene need choose the movement first/i);
+    assert.match(MODE_INSTRUCTIONS.light, /required effect must still be perceptible.*subtle does not mean optional/i);
     assert.match(MODE_INSTRUCTIONS.balanced, /breathers.*equal legitimacy/i);
-    assert.match(MODE_INSTRUCTIONS.fun, /randomness never manufactures conflict/i);
+    assert.match(MODE_INSTRUCTIONS.balanced, /required effect a clear, meaningful change/i);
+    assert.match(MODE_INSTRUCTIONS.fun, /prominent, lively expression.*bold or surprising/i);
+    assert.match(MODE_INSTRUCTIONS.fun, /never changes the kind or natural scale/i);
     for (const mode of Object.values(MODE_INSTRUCTIONS)) assert.doesNotMatch(mode, /control the player|force the player/i);
 });
 
@@ -129,8 +133,9 @@ test('analysis prompt carries current context, identity, variation, bootstrap, a
     assert.equal(prompt.bootstrap.scenario, 'A grounded school life simulation.');
     assert.equal(prompt.summary_sources[0].label, 'Continuity Memory');
     assert.match(prompt.invention, /Any context-compatible narrative development/i);
-    assert.match(prompt.invention, /required_effect must precisely state the intended narrative result/i);
-    assert.match(prompt.invention, /roleplay model must follow the freely chosen movement description and only useful, non-default scale classifications as its primary narrative direction.*freely choosing the actual development, prose, and concrete realization/i);
+    assert.match(prompt.invention, /required_effect is provider-visible when inject=true/i);
+    assert.match(prompt.invention, /observable narrative function or change.*do not prescribe the exact event, actor, action, dialogue, prose, outcome detail, or player reaction/i);
+    assert.match(prompt.invention, /must achieve the operation and required effect while freely choosing their compatible concrete realization/i);
     assert.match(prompt.necessity_gate, /inject=false/i);
     assert.match(prompt.response_audit_rule, /never injected/i);
     assert.match(prompt.simulation, /country simulation/i);

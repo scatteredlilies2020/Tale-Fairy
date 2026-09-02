@@ -4,26 +4,27 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.151';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.151';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.11.153';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.11.153';
 import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.11.101';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.151';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.151';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.151';
-import { normalizeModelListResponse } from './models.js?v=0.11.151';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.11.153';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.11.153';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.11.153';
+import { normalizeModelListResponse } from './models.js?v=0.11.153';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.108';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.151';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.151';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.151';
-import { estimateTokenCount } from './token-budget.js?v=0.11.151';
-import { completionText } from './completion-response.js?v=0.11.151';
-import { sampleDirectorSignals } from './director-sampling.js?v=0.11.151';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.11.153';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.11.153';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.11.153';
+import { estimateTokenCount } from './token-budget.js?v=0.11.153';
+import { completionText } from './completion-response.js?v=0.11.153';
+import { sampleDirectorSignals } from './director-sampling.js?v=0.11.153';
 import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.11.105';
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
-import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.11.151';
+import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.11.153';
+import { ACTION_GATE_SCHEMA, ACTION_GATE_SYSTEM, applyActionGateResult, buildActionGatePrompt, validateActionGateResult } from './action-gate.js?v=0.11.153';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.11.151';
+const RUNTIME_VERSION = '0.11.153';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -67,6 +68,8 @@ let detachedPlannerRecovering = false;
 // Reasoning providers may count hidden thinking against this ceiling. The
 // planner prompt and schema separately target a concise visible JSON result.
 const PLANNER_RESPONSE_TOKENS = 16384;
+const ACTION_GATE_RESPONSE_TOKENS = 512;
+const ACTION_GATE_TIMEOUT_MS = 10000;
 const PLANNER_MAX_AUTO_RETRIES = 2;
 const UI_MOUNT_TIMEOUT_MS = 30000;
 const LEGACY_UPGRADE_MAX_ATTEMPTS = 1;
@@ -1171,6 +1174,22 @@ function parseAnalysisResponse(value) {
     }
 }
 
+function parseActionGateResponse(value) {
+    try {
+        const rawResult = value && typeof value === 'object' && !Array.isArray(value) && value.decision
+            ? value
+            : extractJson(completionText(value));
+        const validation = validateActionGateResult(rawResult);
+        if (!validation.valid) {
+            throw new AnalysisValidationError(`Action gate violated its output contract: ${validation.errors.join('; ')}.`);
+        }
+        return rawResult;
+    } catch (error) {
+        if (error instanceof AnalysisValidationError) throw error;
+        throw new AnalysisValidationError(`Action gate did not return valid JSON: ${error?.message || error}.`);
+    }
+}
+
 async function acknowledgeDetachedPlannerJob(id) {
     if (!id || !detachedPlannerEnabled) return;
     await plannerServerApi(`/planner-jobs/${encodeURIComponent(id)}/ack`, { method: 'POST', body: '{}' });
@@ -1335,7 +1354,7 @@ function plannerModelRejectsTemperature(model) {
     return /(?:^|\/)(?:gpt-5(?:[.\-]|$)|o[134](?:[.\-]|$))/i.test(id);
 }
 
-function isolatePlannerGenerationData(generateData, reasoningMode, temperature = plannerTemperature(), samplingEnabled = true, outputMode = PLANNER_OUTPUT_MODE.JSON_SCHEMA) {
+function isolatePlannerGenerationData(generateData, reasoningMode, temperature = plannerTemperature(), samplingEnabled = true, outputMode = PLANNER_OUTPUT_MODE.JSON_SCHEMA, responseTokens = PLANNER_RESPONSE_TOKENS) {
     if (!generateData || typeof generateData !== 'object') return;
     generateData.stream = false;
     generateData.n = 1;
@@ -1353,10 +1372,10 @@ function isolatePlannerGenerationData(generateData, reasoningMode, temperature =
     let responseLengthSet = false;
     for (const key of responseLengthKeys) {
         if (!Object.hasOwn(generateData, key)) continue;
-        generateData[key] = PLANNER_RESPONSE_TOKENS;
+        generateData[key] = responseTokens;
         responseLengthSet = true;
     }
-    if (!responseLengthSet && Array.isArray(generateData.messages)) generateData.max_tokens = PLANNER_RESPONSE_TOKENS;
+    if (!responseLengthSet && Array.isArray(generateData.messages)) generateData.max_tokens = responseTokens;
     const reasoning = buildReasoningRequest({
         mode: reasoningMode,
         source: generateData.chat_completion_source,
@@ -1440,22 +1459,29 @@ async function persistRebuildPending(context = currentContext()) {
     return pending;
 }
 
-async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null) {
+async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, requestSpec = {}) {
     const controller = new AbortController();
     const forwardAbort = () => controller.abort(externalSignal?.reason || new DOMException('Tale Fairy analysis stopped.', 'AbortError'));
     if (externalSignal?.aborted) forwardAbort();
     else externalSignal?.addEventListener('abort', forwardAbort, { once: true });
     try {
         controller.signal.throwIfAborted();
-        await detachedPlannerReady;
+        await waitForAbortable(detachedPlannerReady, controller.signal);
         controller.signal.throwIfAborted();
+        const systemPrompt = requestSpec.systemPrompt || PLANNER_SYSTEM_PROMPT;
+        const schema = requestSpec.schema || ANALYSIS_SCHEMA;
+        const responseTokens = Math.max(128, Number(requestSpec.responseTokens) || PLANNER_RESPONSE_TOKENS);
+        const parseResponse = requestSpec.parseResponse || parseAnalysisResponse;
+        const requestedReasoningMode = requestSpec.reasoningMode || '';
+        const requestLabel = requestSpec.label || 'planner';
+        const cacheNamespace = requestSpec.cacheNamespace || 'analysis';
         const detachedMarker = detachedPlannerEnabled && detachedMeta ? { _taleFairyPlanner: detachedMeta } : {};
         const model = analysisModelOptions();
-        const temperature = plannerTemperature();
+        const temperature = requestSpec.temperature === undefined ? plannerTemperature() : normalizePlannerTemperature(requestSpec.temperature);
         if (model.profileId) {
             const profile = ConnectionManagerRequestService.getProfile(model.profileId);
             const apiMap = ConnectionManagerRequestService.validateProfile(profile);
-            const reasoningMode = plannerReasoningMode(profile);
+            const reasoningMode = requestedReasoningMode || plannerReasoningMode(profile);
             const reasoning = buildReasoningRequest({
                 mode: reasoningMode,
                 source: apiMap.source,
@@ -1467,11 +1493,11 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null) 
             let samplingEnabled = !plannerModelRejectsTemperature(profile.model);
             const sendProfileRaw = mode => ConnectionManagerRequestService.sendRequest(
                 model.profileId,
-                plannerMessages(PLANNER_SYSTEM_PROMPT, prompt, ANALYSIS_SCHEMA, mode),
-                PLANNER_RESPONSE_TOKENS,
+                plannerMessages(systemPrompt, prompt, schema, mode),
+                responseTokens,
                 { stream: false, extractData: false, includePreset: false, includeInstruct: false, signal: controller.signal },
                 {
-                    ...(mode === PLANNER_OUTPUT_MODE.JSON_SCHEMA ? { json_schema: ANALYSIS_SCHEMA } : {}),
+                    ...(mode === PLANNER_OUTPUT_MODE.JSON_SCHEMA ? { json_schema: schema } : {}),
                     custom_prompt_post_processing: '',
                     ...plannerTemperaturePayload(temperature, samplingEnabled),
                     ...reasoningPayload,
@@ -1486,7 +1512,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null) 
                 try {
                     const response = await sendProfile(mode);
                     controller.signal.throwIfAborted();
-                    return parseAnalysisResponse(response);
+                    return parseResponse(response);
                 } catch (error) {
                     controller.signal.throwIfAborted();
                     if (error instanceof AnalysisValidationError) throw error;
@@ -1494,19 +1520,19 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null) 
                     reasoningPayload = reasoningFallbackPayload(error, reasoningPayload);
                     const response = await sendProfile(mode);
                     controller.signal.throwIfAborted();
-                    return parseAnalysisResponse(response);
+                    return parseResponse(response);
                 }
             };
             return negotiatePlannerOutput(
                 runProfileMode,
                 [PLANNER_OUTPUT_MODE.JSON_SCHEMA, PLANNER_OUTPUT_MODE.PROMPT_ONLY],
-                'connection profile',
+                `${requestLabel} connection profile`,
                 controller.signal,
-                `profile:${model.profileId}:${apiMap.source}:${profile.model || ''}:${profile['api-url'] || ''}`,
+                `${cacheNamespace}:profile:${model.profileId}:${apiMap.source}:${profile.model || ''}:${profile['api-url'] || ''}`,
             );
         }
         if (model.active) {
-            let activeReasoningMode = plannerReasoningMode();
+            let activeReasoningMode = requestedReasoningMode || plannerReasoningMode();
             let samplingEnabled = true;
             const activeContext = currentContext();
             const activeSource = String(activeContext.chatCompletionSettings?.chat_completion_source || activeContext.mainApi || 'active');
@@ -1518,18 +1544,18 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null) 
                     const requestSamplingEnabled = samplingEnabled
                         && Object.hasOwn(generateData, 'temperature')
                         && !plannerModelRejectsTemperature(generateData.model);
-                    isolatePlannerGenerationData(generateData, activeReasoningMode, temperature, requestSamplingEnabled, mode);
+                    isolatePlannerGenerationData(generateData, activeReasoningMode, temperature, requestSamplingEnabled, mode, responseTokens);
                     Object.assign(generateData, detachedMarker);
                 };
                 eventSource.on(seedEvent, configurePlanner);
                 return waitForAbortable(generateRaw({
-                    prompt: plannerPrompt(prompt, ANALYSIS_SCHEMA, mode),
+                    prompt: plannerPrompt(prompt, schema, mode),
                     // The planner must not inherit the user's text-completion
                     // instruct template or preset formatting.
                     instructOverride: true,
-                    systemPrompt: PLANNER_SYSTEM_PROMPT,
+                    systemPrompt,
                     suppressErrorToasts: true,
-                    ...(mode === PLANNER_OUTPUT_MODE.JSON_SCHEMA ? { jsonSchema: ANALYSIS_SCHEMA } : {}),
+                    ...(mode === PLANNER_OUTPUT_MODE.JSON_SCHEMA ? { jsonSchema: schema } : {}),
                     trimNames: false,
                 }), controller.signal).finally(() => eventSource.removeListener(seedEvent, configurePlanner));
             };
@@ -1541,25 +1567,25 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null) 
                 try {
                     const raw = await runActiveCompatible(mode);
                     controller.signal.throwIfAborted();
-                    return parseAnalysisResponse(raw);
+                    return parseResponse(raw);
                 } catch (error) {
                     controller.signal.throwIfAborted();
                     if (error instanceof AnalysisValidationError || !isReasoningControlError(error)) throw error;
                     activeReasoningMode = isMandatoryReasoningError(error) ? 'minimum' : 'default';
                     const raw = await runActiveCompatible(mode);
                     controller.signal.throwIfAborted();
-                    return parseAnalysisResponse(raw);
+                    return parseResponse(raw);
                 }
             };
             return negotiatePlannerOutput(
                 runActiveMode,
                 [PLANNER_OUTPUT_MODE.JSON_SCHEMA, PLANNER_OUTPUT_MODE.PROMPT_ONLY],
-                'active model',
+                `${requestLabel} active model`,
                 controller.signal,
-                `active:${activeContext.mainApi || ''}:${activeSource}`,
+                `${cacheNamespace}:active:${activeContext.mainApi || ''}:${activeSource}`,
             );
         }
-        const reasoningMode = plannerReasoningMode();
+        const reasoningMode = requestedReasoningMode || plannerReasoningMode();
         const reasoning = buildReasoningRequest({
             mode: reasoningMode,
             source: model.provider === 'openrouter' ? 'openrouter' : 'custom',
@@ -1570,13 +1596,13 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null) 
         let samplingEnabled = !plannerModelRejectsTemperature(model.model);
         const sendRaw = async mode => {
             const modePayload = model.provider === 'custom' ? customOutputPayload(reasoningPayload, mode) : reasoningPayload;
-            const body = { chat_completion_source: model.provider, model: model.model, messages: plannerMessages(PLANNER_SYSTEM_PROMPT, prompt, ANALYSIS_SCHEMA, mode), max_tokens: PLANNER_RESPONSE_TOKENS, stream: false, ...plannerTemperaturePayload(temperature, samplingEnabled), ...modePayload, ...(mode === PLANNER_OUTPUT_MODE.JSON_SCHEMA ? { json_schema: ANALYSIS_SCHEMA } : {}), ...(model.provider === 'openrouter' ? { api_url: model.url.replace(/\/$/, '') } : { custom_url: model.url.replace(/\/$/, '') }), ...detachedMarker };
+            const body = { chat_completion_source: model.provider, model: model.model, messages: plannerMessages(systemPrompt, prompt, schema, mode), max_tokens: responseTokens, stream: false, ...plannerTemperaturePayload(temperature, samplingEnabled), ...modePayload, ...(mode === PLANNER_OUTPUT_MODE.JSON_SCHEMA ? { json_schema: schema } : {}), ...(model.provider === 'openrouter' ? { api_url: model.url.replace(/\/$/, '') } : { custom_url: model.url.replace(/\/$/, '') }), ...detachedMarker };
             if (model.secretId) body.secret_id = model.secretId;
             const response = await fetch('/api/backends/chat-completions/generate', { method: 'POST', headers: currentContext().getRequestHeaders?.() || getRequestHeaders?.() || { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
             const payload = await response.json();
             if (!response.ok || payload?.error) throw new Error(payload?.error?.message || payload?.error || `Analysis request failed (${response.status}).`);
             controller.signal.throwIfAborted();
-            return parseAnalysisResponse(payload);
+            return parseResponse(payload);
         };
         const send = mode => retryWithoutUnsupportedTemperature(
             () => sendRaw(mode),
@@ -1598,9 +1624,9 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null) 
         return negotiatePlannerOutput(
             runDirectMode,
             modes,
-            'direct model',
+            `${requestLabel} direct model`,
             controller.signal,
-            `direct:${model.provider}:${model.model}:${model.url}`,
+            `${cacheNamespace}:direct:${model.provider}:${model.model}:${model.url}`,
             { retryInvalidOutput: !glmTarget },
         );
     } finally {
@@ -1610,6 +1636,69 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null) 
 
 async function requestAnalysis(prompt, externalSignal, detachedMeta) {
     return requestAnalysisOnce(prompt, externalSignal, detachedMeta);
+}
+
+async function adjustGuideForLatestAction(state, type, externalAbort = null) {
+    const replacement = type === 'swipe' || type === 'regenerate';
+    const selection = generationGuideSelection;
+    if (replacement || !selection?.usable) return;
+
+    const context = currentContext();
+    const messages = messagesFromChat(context.chat || []);
+    const chatId = String(context.getCurrentChatId?.() || '');
+    const latest = messages.at(-1);
+    const preparedBeforeAction = latest?.is_user
+        && state.sourceMessageCount === messages.length - 1
+        && (!state.sourceChatId || state.sourceChatId === chatId)
+        && state.lastAnalysisFingerprint === fingerprintMessages(messages.slice(0, -1));
+    if (!preparedBeforeAction || !String(latest?.mes || '').trim()) return;
+
+    const previousAssistant = [...messages.slice(0, -1)].reverse().find(message => !message.is_user)?.mes || '';
+    const prompt = buildActionGatePrompt({
+        mode: selection.directorSample?.mode || state.mode,
+        scenePromise: selection.sceneProfile?.promise || state.sceneProfile?.promise,
+        situation: state.narrativeLayers?.situation || state.scene?.intent,
+        activity: state.narrativeLayers?.localActivity || state.scene?.activity,
+        previousAssistant,
+        latestUserAction: latest.mes,
+        beatDirective: selection.beatDirective,
+    });
+    const outerSignal = externalAbort?.signal || externalAbort;
+    const gateController = new AbortController();
+    const forwardAbort = () => gateController.abort(outerSignal?.reason || new DOMException('Generation stopped.', 'AbortError'));
+    if (outerSignal?.aborted) forwardAbort();
+    else outerSignal?.addEventListener?.('abort', forwardAbort, { once: true });
+    const timeout = setTimeout(() => gateController.abort(new DOMException('Quick action check timed out.', 'TimeoutError')), ACTION_GATE_TIMEOUT_MS);
+    renderAnalysisActivity('Quickly checking latest action…', true);
+    try {
+        const result = await requestAnalysisOnce(prompt, gateController.signal, null, {
+            systemPrompt: ACTION_GATE_SYSTEM,
+            schema: ACTION_GATE_SCHEMA,
+            responseTokens: ACTION_GATE_RESPONSE_TOKENS,
+            parseResponse: parseActionGateResponse,
+            reasoningMode: 'minimum',
+            temperature: 0.2,
+            label: 'action gate',
+            cacheNamespace: 'action-gate',
+        });
+        const adjusted = applyActionGateResult(selection.beatDirective, result);
+        if (!adjusted) throw new AnalysisValidationError('Action gate returned no usable direction.');
+        selection.beatDirective = adjusted;
+        selection.actionGateDecision = String(result.decision || '').toLowerCase();
+        recordRuntimeStage('action-gate-complete', { decision: selection.actionGateDecision });
+        renderAnalysisActivity(`Latest action checked · ${selection.actionGateDecision}`, false);
+    } catch (error) {
+        if (outerSignal?.aborted) throw error;
+        selection.usable = false;
+        selection.skipped = true;
+        selection.actionGateDecision = 'skipped';
+        recordRuntimeStage('action-gate-skipped', { error: String(error?.message || error).slice(0, 300) });
+        renderAnalysisActivity('Quick action check unavailable · stale direction skipped', false);
+        console.warn(`[${EXTENSION_ID}] Quick action check failed; generation will continue without stale guidance.`, error);
+    } finally {
+        clearTimeout(timeout);
+        outerSignal?.removeEventListener?.('abort', forwardAbort);
+    }
 }
 
 export async function analyzeNow({ note = null, force = false, messages = null, rebuild = false, allowOneUserAppend = false, allowOneAssistantAppend = false, allowStaleContinuity = false, waitForContinuity = false, retryAttempt = 0 } = {}) {
@@ -2243,6 +2332,9 @@ export async function livingWorldGuideGenerateInterceptor(_chat, _contextSize, _
             prepareGenerationGuide(state, type);
         }
     }
+    // Only this tiny adjudication blocks a normal response: it validates the
+    // already-prepared direction against the one newly appended user action.
+    await adjustGuideForLatestAction(state, type, _abort);
     updatePrompt(state);
     renderBoard(state);
 }

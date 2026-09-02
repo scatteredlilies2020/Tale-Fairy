@@ -24,10 +24,10 @@ function analyzedState(extra = {}) {
     return normalizeState({ ...beat, ...extra });
 }
 
-test('default and normalized state use the v49 sparse feedback planner contract', () => {
+test('default and normalized state use the v50 observable-effect planner contract', () => {
     const state = normalizeState({ mode: 'invalid' });
-    assert.equal(STATE_VERSION, 49);
-    assert.equal(state.version, 49);
+    assert.equal(STATE_VERSION, 50);
+    assert.equal(state.version, 50);
     assert.equal(state.mode, 'balanced');
     assert.equal(state.sceneProfile.phase, 'developing');
     assert.equal(state.beatDirective.operation, '');
@@ -72,9 +72,9 @@ test('current state preserves a normalized analyzed beat', () => {
     assert.equal(state.beatDirective.contentClass, 'character');
 });
 
-test('pre-v48 migration discards the old planner decision but preserves private continuity evidence', () => {
+test('pre-v50 migration discards private-style required effects but preserves continuity evidence', () => {
     const state = normalizeState({
-        ...analyzedState(), version: 47, lastInject: true,
+        ...analyzedState(), version: 49, lastInject: true,
         canonConstraints: ['A private established fact remains available to the planner.'],
         beatDirective: { ...analyzedState().beatDirective, requiredEffect: 'Old provider-visible direction.' },
         lastRequestVerification: { status: 'confirmed', guidanceBlock: '<tale-fairy-context>old leak</tale-fairy-context>' },
@@ -82,6 +82,7 @@ test('pre-v48 migration discards the old planner decision but preserves private 
     assert.equal(state.lastInject, false);
     assert.equal(state.beatDirective.requiredEffect, '');
     assert.equal(state.lastRequestVerification, null);
+    assert.equal(state.sceneProfile.promise, 'A grounded canteen interaction.');
     assert.deepEqual(state.canonConstraints, ['A private established fact remains available to the planner.']);
 });
 
@@ -122,65 +123,71 @@ test('necessity gate keeps a current private direction while injecting nothing',
     assert.equal(buildPromptPayload(state, { guidanceUsable: true }), '');
 });
 
-test('analyzed injection expresses abstract flow and scale in natural wording', () => {
+test('analyzed injection makes its general effect binding with the selected mode', () => {
     const payload = buildPromptPayload(analyzedState(), {
         guidanceUsable: true,
         directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'favorable' },
     });
     assert.match(payload, /PRIMARY NARRATIVE DIRECTION: Introduce, keeping the development character-focused, social in scope, low in intensity/i);
+    assert.match(payload, /REQUIRED EFFECT: Let the routine interaction produce a small but observable development that opens a fresh possibility\./i);
+    assert.match(payload, /FUN TREATMENT:.*prominent, lively expression.*bold or surprising realization/i);
     assert.doesNotMatch(payload, /movement=|content=|scope=|intensity=|plot weight=/i);
     assert.doesNotMatch(payload, /PRESERVE:|DO NOT:/);
-    assert.doesNotMatch(payload, /Let the routine interaction|the service interaction|A grounded canteen interaction/);
+    assert.doesNotMatch(payload, /the service interaction|A grounded canteen interaction/);
     assert.doesNotMatch(payload, /Infer every concrete action|Treat explicit user\/OOC|Do not expose/i);
-    assert.doesNotMatch(payload, /boldly or consequentially|unexpected but compatible|lean toward opportunity/i);
     assert.doesNotMatch(payload, /SUGGESTED ROUTE|future horizon|delivery debt/i);
     assert.equal(payload.match(/PRIMARY NARRATIVE DIRECTION:/g)?.length, 1);
-    assert.match(payload, /This direction governs how the next response moves/);
+    assert.match(payload, /Treat the direction and required effect as binding/i);
 });
 
-test('sparse compiler omits default scale fields without limiting freeform movement', () => {
+test('sparse compiler omits default scale fields but retains a balanced required effect', () => {
     const payload = formatBeatContract({}, {
-        inject: true, operation: 'let the ordinary answer open an unforeseen possibility', requiredEffect: 'Privately validate a compatible change.',
+        inject: true, operation: 'let the ordinary answer open an unforeseen possibility', requiredEffect: 'Make a compatible change observable without prescribing how.',
         contentClass: 'none', scope: 'personal', intensity: 'none', quantity: 'none', relativePower: 'none', plotWeight: 'none', duration: 'beat', resolutionCeiling: 'open',
     });
-    assert.equal(payload, 'PRIMARY NARRATIVE DIRECTION: Let the ordinary answer open an unforeseen possibility.\nThis direction governs how the next response moves. Freely choose its context-compatible concrete realization.');
+    assert.match(payload, /^PRIMARY NARRATIVE DIRECTION: Let the ordinary answer open an unforeseen possibility\./);
+    assert.match(payload, /REQUIRED EFFECT: Make a compatible change observable without prescribing how\./);
+    assert.match(payload, /BALANCED TREATMENT: Make the required effect clear and meaningful/);
+    assert.match(payload, /freely choosing their context-compatible concrete realization/);
 });
 
 test('scene-aware movement becomes general natural direction rather than field syntax', () => {
     const payload = formatBeatContract({}, {
         inject: true,
         operation: 'deepen through personal cost',
-        requiredEffect: 'Privately specify the exact scene realization.',
+        requiredEffect: 'Make a personal cost alter the immediate emotional stakes.',
         contentClass: 'character',
         intensity: 'moderate',
         plotWeight: 'connective',
     });
-    assert.equal(payload, 'PRIMARY NARRATIVE DIRECTION: Deepen through personal cost, keeping the development character-focused, moderate in intensity, and connective to the ongoing story.\nThis direction governs how the next response moves. Freely choose its context-compatible concrete realization.');
+    assert.match(payload, /^PRIMARY NARRATIVE DIRECTION: Deepen through personal cost, keeping the development character-focused, moderate in intensity, and connective to the ongoing story\./);
+    assert.match(payload, /REQUIRED EFFECT: Make a personal cost alter the immediate emotional stakes\./);
     assert.doesNotMatch(payload, /movement=|content=|intensity=|plot weight=/i);
-    assert.doesNotMatch(payload, /Privately specify/);
 });
 
-test('provider compiler keeps the planner-specific intended event private', () => {
+test('provider compiler exposes a general observable effect but keeps its target private', () => {
     const state = analyzedState();
     state.beatDirective = normalizeBeatDirective({
         ...state.beatDirective,
         operation: 'complicate',
-        target: 'the unhurried garden visit',
-        requiredEffect: 'Disrupt the calm outing with an adverse institutional development that raises stakes around Lucia\'s presence and unresolved future.',
+        target: 'Lucia during the unhurried garden visit',
+        requiredEffect: 'Create a credible complication that changes how the calm outing can proceed.',
     });
     const payload = buildPromptPayload(state, {
         guidanceUsable: true,
         directorSample: { mode: 'balanced', intervention: 'major', novelty: 'grounded', fortune: 'adverse' },
     });
     assert.match(payload, /PRIMARY NARRATIVE DIRECTION: Complicate, keeping the development character-focused, social in scope, low in intensity/i);
-    assert.doesNotMatch(payload, /Disrupt the calm outing|the unhurried garden visit|Lucia's presence/);
+    assert.match(payload, /REQUIRED EFFECT: Create a credible complication that changes how the calm outing can proceed\./i);
+    assert.doesNotMatch(payload, /Lucia|the unhurried garden visit/);
 });
 
 test('analyzed quiet beats reach the provider without a generic sampled overlay', () => {
     const payload = formatBeatContract({}, { operation: 'deepen', requiredEffect: 'Let the quiet interaction settle into comfortable companionship without a new incident.' }, { directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' } });
     assert.match(payload, /PRIMARY NARRATIVE DIRECTION: Deepen\./);
-    assert.doesNotMatch(payload, /Let the quiet interaction settle/);
-    assert.doesNotMatch(payload, /boldly|unexpected|fresh possibilities|difficulty|danger/i);
+    assert.match(payload, /REQUIRED EFFECT: Let the quiet interaction settle into comfortable companionship without a new incident\./i);
+    assert.match(payload, /FUN TREATMENT:/);
+    assert.doesNotMatch(payload, /fresh possibilities|difficulty|danger/i);
 });
 
 test('major adverse sampling cannot replace a scene-selected breather with complication', () => {
@@ -188,26 +195,27 @@ test('major adverse sampling cannot replace a scene-selected breather with compl
         directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'adverse' },
     });
     assert.match(payload, /PRIMARY NARRATIVE DIRECTION: Deepen\./);
-    assert.doesNotMatch(payload, /peaceful garden reading spot/);
-    assert.doesNotMatch(payload, /boldly|surprising|adversity|difficulty|danger|Increase the active pressure/i);
+    assert.match(payload, /REQUIRED EFFECT: Settle into a peaceful garden reading spot without a new incident\./i);
+    assert.doesNotMatch(payload, /adversity|difficulty|danger|Increase the active pressure/i);
 });
 
 test('analyzed beat keeps AI invention open across context-native scene scales', () => {
     const payload = formatBeatContract({}, { operation: 'introduce', requiredEffect: 'Introduce a compatible development grounded in the present setting.' });
     assert.match(payload, /PRIMARY NARRATIVE DIRECTION: Introduce\./);
-    assert.doesNotMatch(payload, /Introduce a compatible development grounded in the present setting/);
-    assert.equal(payload.split('\n').length, 2);
+    assert.match(payload, /REQUIRED EFFECT: Introduce a compatible development grounded in the present setting\./i);
+    assert.equal(payload.split('\n').length, 4);
 });
 
-test('provider contract contains no static authority boilerplate', () => {
+test('provider contract protects player agency without exposing planner evidence', () => {
     const payload = formatBeatContract(analyzedState().sceneProfile, analyzedState().beatDirective);
-    assert.doesNotMatch(payload, /explicit user\/OOC|Never invent the player character|Use the analyzed beat|Do not expose/i);
+    assert.match(payload, /Do not decide the player character's dialogue, thoughts, feelings, consent, choices, or reactions/i);
+    assert.doesNotMatch(payload, /explicit user\/OOC|Use the analyzed beat|Do not expose/i);
 });
 
 test('regeneration reuses the same compact beat without generic regeneration instructions', () => {
     const payload = buildPromptPayload(analyzedState(), { guidanceUsable: true, regeneration: true });
     assert.doesNotMatch(payload, /For this regeneration|different realization|context-compatible development/i);
-    assert.doesNotMatch(payload, /Let the routine interaction produce/);
+    assert.match(payload, /REQUIRED EFFECT: Let the routine interaction produce/i);
     assert.doesNotMatch(payload, /Alternative 2|rotate|next route/i);
 });
 
@@ -285,11 +293,11 @@ test('request verification preserves a weighted director sample without fabricat
     assert.equal(legacy.lastRequestVerification.directorSample, null);
     assert.equal(legacy.lastRequestVerification.directorSeed, null);
     const current = normalizeState({ lastRequestVerification: {
-        status: 'confirmed', runtimeVersion: '0.11.151', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
+        status: 'confirmed', runtimeVersion: '0.11.153', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
         directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' },
     } });
     assert.deepEqual(current.lastRequestVerification.directorSample, { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' });
-    assert.equal(current.lastRequestVerification.runtimeVersion, '0.11.151');
+    assert.equal(current.lastRequestVerification.runtimeVersion, '0.11.153');
     assert.equal(current.lastRequestVerification.directorSeed, 0);
 });
 

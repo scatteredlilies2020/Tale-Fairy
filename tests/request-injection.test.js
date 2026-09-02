@@ -136,7 +136,7 @@ test('stale cleanup preserves non-text multimodal blocks', () => {
     assert.deepEqual(chat, [{ role: 'user', content: [{ type: 'text', text: '' }, image] }]);
 });
 
-test('provider-bound request receives only abstract flow and scale on regeneration', () => {
+test('provider-bound request receives binding movement, effect, and balanced treatment on regeneration', () => {
     const state = {
         ...defaultState(),
         sceneProfile: { promise: 'A tense report is being discussed.', phase: 'developing', emotionalDirection: 'intensify', pressure: 'active', intrusion: 'open', noveltyCeiling: 'moderate' },
@@ -150,11 +150,13 @@ test('provider-bound request receives only abstract flow and scale on regenerati
     assert.equal(chat.length, 1);
     assert.equal(chat.at(-1).role, 'user');
     assert.match(chat.at(-1).content, /PRIMARY NARRATIVE DIRECTION: Complicate, keeping the development social in scope, moderate in intensity/i);
-    assert.match(chat.at(-1).content, /This direction governs how the next response moves/);
+    assert.match(chat.at(-1).content, /REQUIRED EFFECT: Add a credible difficulty that changes how the current information is understood\./i);
+    assert.match(chat.at(-1).content, /BALANCED TREATMENT: Make the required effect clear and meaningful/i);
+    assert.match(chat.at(-1).content, /Treat the direction and required effect as binding/i);
     assert.doesNotMatch(chat.at(-1).content, /movement=|content=|scope=|intensity=|plot weight=/i);
     assert.doesNotMatch(chat.at(-1).content, /PRESERVE:|DO NOT:/);
     assert.doesNotMatch(chat.at(-1).content, /Infer every concrete action|Treat explicit user\/OOC|For this regeneration|Do not expose/i);
-    assert.doesNotMatch(chat.at(-1).content, /Add a credible difficulty|the report discussion|A tense report|The information is already unstable|WEIGHTED DIRECTOR SAMPLE|Vekk|war update|urgent contradiction/i);
+    assert.doesNotMatch(chat.at(-1).content, /the report discussion|A tense report|The information is already unstable|WEIGHTED DIRECTOR SAMPLE|Vekk|war update|urgent contradiction/i);
     assert.match(chat.at(-1).content, /Tell me what happened\.$/);
     assert.doesNotMatch(chat.at(-1).content, /GROUNDING:|EXECUTION:/);
     assert.equal(chat.map(message => String(message.content)).join('\n').match(/<tale-fairy-context>/g)?.length, 1);
