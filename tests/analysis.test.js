@@ -90,6 +90,9 @@ test('planner chooses scene-warranted movement before applying randomness', () =
     assert.match(SYSTEM, /First determine what movement the scene actually warrants/i);
     assert.match(SYSTEM, /never selects the movement and never creates a need for an incident/i);
     assert.match(SYSTEM, /Quietness is not stagnation/i);
+    assert.match(SYSTEM, /context-native interest/i);
+    assert.match(SYSTEM, /Active danger, competition, demanding tasks, and instability may exert credible pressure and produce real difficulty/i);
+    assert.match(SYSTEM, /new cause or plot thread is welcome when it grows organically/i);
     assert.match(SYSTEM, /not compulsory disruption/i);
     assert.match(SYSTEM, /cannot justify manufacturing difficulty/i);
     assert.match(SYSTEM, /Scene changes, pressure shifts, reversals, discoveries/i);
@@ -133,6 +136,9 @@ test('analysis prompt carries current context, identity, variation, bootstrap, a
     assert.match(prompt.simulation, /country simulation/i);
     assert.match(prompt.direction_policy, /choose one coherent authorial direction before applying random creative appetite/i);
     assert.match(prompt.direction_policy, /breathing room.*as legitimate as complication/i);
+    assert.match(prompt.direction_policy, /Quiet situations may gain texture, emotion, discovery, or character meaning without an incident/i);
+    assert.match(prompt.direction_policy, /instead of hijacking the current activity/i);
+    assert.equal(Object.hasOwn(prompt, 'director_policy'), false);
     assert.match(prompt.director_sample, /WEIGHTED DIRECTOR SAMPLE/);
     assert.match(prompt.director_sample, /Choose movement from scene need before applying these signals/i);
     assert.equal(Object.hasOwn(prompt, 'pacing'), false);

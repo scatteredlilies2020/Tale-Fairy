@@ -1,8 +1,8 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.11.150';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.11.151';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.11.96';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.11.150';
+import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.11.151';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
@@ -102,7 +102,7 @@ export const MODE_INSTRUCTIONS = Object.freeze({
     fun: 'FUN — Let scene need choose the movement first. Then express compatible samples more boldly and surprisingly. Major or story-altering treatment is welcome, but randomness never manufactures conflict, interruption, escalation, or adversity that the scene does not warrant.',
 });
 
-export const DIRECTOR_POLICY = 'Interpret what the complete current scene needs and choose one coherent authorial direction before applying random creative appetite. Deepening, breathing room, relief, continuation, resolution, and transition are as legitimate as complication, interruption, escalation, or transformation. A new compatible cause is allowed only when it improves the scene. Do not create movement merely to avoid quietness. Explicit user/OOC instructions bind, and player decisions remain the player’s alone.';
+export const DIRECTOR_POLICY = 'Interpret the complete scene and choose one coherent authorial direction before applying random creative appetite. Make it worth experiencing through context-native interest: grounded need not mean uneventful, and interesting need not mean disruptive. Quiet situations may gain texture, emotion, discovery, or character meaning without an incident. Active danger, competition, demanding tasks, and instability may exert credible pressure and produce real difficulty. Deepening, breathing room, relief, continuation, resolution, and transition are as legitimate as complication, interruption, escalation, or transformation. A compatible new cause or plot thread is welcome when it grows organically from the world instead of hijacking the current activity. Explicit user/OOC instructions bind, and player decisions remain the player’s alone.';
 
 export const EXTREME_CANON_INSTRUCTION = 'Explicit user/OOC canon remains authoritative even when extreme or unprecedented. Preserve its magnitude and apply relevant strengths and limits causally; averages are not ceilings. Unspecified compatible details remain creative space.';
 
@@ -1365,8 +1365,6 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     if (playerName) payload.player_character = playerName;
     if (Number.isInteger(options.variationNonce)) payload.variation_nonce = options.variationNonce;
     payload.director_sample = formatDirectorSample(sampleDirectorSignals(payload.current.mode, options.variationNonce));
-    payload.director_policy = DIRECTOR_POLICY;
-
     let serialized = JSON.stringify(payload);
     if (estimateTokenCount(serialized) > budget && payload.summary_sources) {
         payload.summary_sources = compactSummarySources(payload.summary_sources, 500, { maxSources: 4 }).map(source => ({ label: source.label, kind: source.kind, text: source.text }));
