@@ -149,7 +149,8 @@ test('provider-bound request receives only abstract flow and scale on regenerati
     assert.equal(chatHasCurrentGuidance(chat, prompt), true);
     assert.equal(chat.length, 1);
     assert.equal(chat.at(-1).role, 'user');
-    assert.match(chat.at(-1).content, /NARRATIVE DIRECTION: Complicate, keeping the development social in scope, moderate in intensity/i);
+    assert.match(chat.at(-1).content, /PRIMARY NARRATIVE DIRECTION: Complicate, keeping the development social in scope, moderate in intensity/i);
+    assert.match(chat.at(-1).content, /This direction governs how the next response moves/);
     assert.doesNotMatch(chat.at(-1).content, /movement=|content=|scope=|intensity=|plot weight=/i);
     assert.doesNotMatch(chat.at(-1).content, /PRESERVE:|DO NOT:/);
     assert.doesNotMatch(chat.at(-1).content, /Infer every concrete action|Treat explicit user\/OOC|For this regeneration|Do not expose/i);

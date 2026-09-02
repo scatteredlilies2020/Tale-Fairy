@@ -1,9 +1,9 @@
-import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.11.148';
+import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.11.149';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
 import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js';
-import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile } from './beat-director.js?v=0.11.148';
-import { normalizeDirectorSample } from './director-sampling.js?v=0.11.148';
+import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile } from './beat-director.js?v=0.11.149';
+import { normalizeDirectorSample } from './director-sampling.js?v=0.11.149';
 
 export const STATE_KEY = 'livingWorldGuide';
 export const STATE_VERSION = 49;

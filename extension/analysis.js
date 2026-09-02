@@ -1,8 +1,8 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.11.148';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.11.149';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.11.96';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.11.148';
+import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.11.149';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
@@ -1335,11 +1335,11 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     const playerName = playerCharacterName(messages);
     const payload = {
         task: 'direct_current_beat',
-        instruction: 'Privately audit the newest eligible assistant reply, analyze the current scene, and conduct the next response. State the exact context-aware intention in required_effect for private planner consistency; when injection is useful, Tale Fairy sends only the freely chosen movement description and non-default abstract scale classifications to the roleplay model.',
+        instruction: 'Privately audit the newest eligible assistant reply, analyze the current scene, and conduct the next response. State the exact context-aware intention in required_effect for private planner consistency; when injection is useful, Tale Fairy sends only the freely chosen movement description and non-default abstract scale classifications as the roleplay model\'s governing narrative movement.',
         authority: 'Explicit OOC/scenario commands and the latest user action outrank every retained inference. OOC outcome commands bind the stated outcome; continue or advance-time commands widen scope only as stated. Never invent player dialogue, thoughts, consent, choices, compliance, retreat, or extra actions.',
         direction_policy: DIRECTOR_POLICY,
         calibration: 'Choose movement from scene need first; apply the sampled appetite only within that compatible movement. A high or adverse sample never independently warrants complication, conflict, interruption, or escalation. It may instead make a breather, deepening, relief, resolution, or transition more vivid and consequential.',
-        invention: 'Any context-compatible narrative development is available, including an entirely new cause. required_effect must precisely state the intended narrative result for private planner validation, but is not injected. The roleplay model receives the freely chosen movement description and only useful, non-default scale classifications, then chooses the actual development, prose, and concrete realization. basis and retained evidence remain private.',
+        invention: 'Any context-compatible narrative development is available, including an entirely new cause. required_effect must precisely state the intended narrative result for private planner validation, but is not injected. The roleplay model must follow the freely chosen movement description and only useful, non-default scale classifications as its primary narrative direction, while freely choosing the actual development, prose, and concrete realization. basis and retained evidence remain private.',
         simulation: 'Use the causal unit natural to the scope. Personal and life simulation may move through needs, relationships, work, routine, opportunity, or consequence. Organization and country simulation may move through decisions, institutions, resources, factions, policy effects, public reaction, trends, or systemic pressures. World simulation may move through broad forces. Do not translate every scale into a conventional adventure encounter.',
         movement: 'Write operation as a concise, natural, scene-aware direction for how the next response should move. It must be general enough to leave the concrete realization to the roleplay model, but not a generic bare verb such as deepen, continue, complicate, or introduce. There is no fixed taxonomy, approved vocabulary, nearest label, or other bucket.',
         necessity_gate: 'Set beat.inject=false when the newest user instruction or immediate causal response is already clear enough that an abstract beat would add no useful choice or correction. Set it true only when the writing model benefits from meaningful movement or scale guidance. Never inject merely to prove Tale Fairy ran. Explain the private decision in inject_reason.',
@@ -1846,7 +1846,7 @@ CALIBRATION: Quietness is not stagnation. A scene may warrant a breather, contin
 
 MOVEMENT: Write beat.operation as a concise, natural, scene-aware direction for how the next response should move. It must be general enough to leave the concrete realization open, but not a generic bare verb such as deepen, continue, complicate, or introduce. There is no fixed taxonomy, approved vocabulary, nearest label, or fallback bucket. Scene changes, pressure shifts, reversals, discoveries, good turns, bad turns, mixed consequences, new causes, stillness, and any other context-compatible movement are all available.
 
-INVENTION: The writing model may freely invent any compatible realization, including an entirely new causal element. Write required_effect as precise private direction for planner validation. When useful, Tale Fairy sends only the freely chosen movement description and non-default abstract scale classifications downstream; the writing model chooses the actual development, prose, and concrete realization. required_effect, target, inject_reason, preserve, forbid, scene promise, basis, audit, response_audit, response pattern memory, retained evidence, canon records, and user-note records remain private.
+INVENTION: The writing model may freely invent any compatible realization, including an entirely new causal element. Write required_effect as precise private direction for planner validation. When useful, Tale Fairy sends only the freely chosen movement description and non-default abstract scale classifications downstream as the primary narrative direction the writing model must follow, while the writing model chooses the actual development, prose, and concrete realization. required_effect, target, inject_reason, preserve, forbid, scene promise, basis, audit, response_audit, response pattern memory, retained evidence, canon records, and user-note records remain private.
 
 NECESSITY GATE: Set beat.inject=false when the newest user instruction or immediate causal response is already clear and an abstract beat would add no meaningful choice or correction. Set it true only when movement or scale guidance provides real value. Never inject merely because Tale Fairy ran. Explain the private decision in inject_reason.
 
@@ -1864,7 +1864,7 @@ export const ANALYSIS_OUTPUT_CONTRACT = `Return exactly: contract_version=3, cur
 current={frame,frame_basis,status,immediate_action,activity,situation,activity_role,temporal_scope,location,time,loop,scene_promise,phase,emotional_direction,pressure,intrusion,novelty_ceiling}
 beat={operation,target,required_effect,inject,inject_reason,content_class,scope,intensity,quantity,relative_power,plot_weight,duration,resolution_ceiling,preserve,forbid,basis}
 response_audit={applicable,movement_fit,repetition,unjustified_escalation,player_control,continuity_drift,patterns,summary}
-Only the freely chosen operation and non-default abstract scale classifications may direct the roleplay response when inject=true. required_effect, target, inject_reason, preserve, forbid, scene promise, basis, response_audit, pattern memory, and retained evidence remain private and are never injected.
+Only the freely chosen operation and non-default abstract scale classifications may direct the roleplay response when inject=true. They become its primary governing narrative movement without prescribing the concrete realization. required_effect, target, inject_reason, preserve, forbid, scene promise, basis, response_audit, pattern memory, and retained evidence remain private and are never injected.
 world={identity,baseline,variant_rules,rp_changes,signatures,forces,confidence}
 thread_updates and actor_updates contain factual changes only; canon_updates contains explicit durable additions/removals only. Empty arrays mean no change. audit is one concise string. No other keys.`;
 

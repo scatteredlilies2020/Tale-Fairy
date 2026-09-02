@@ -127,7 +127,7 @@ test('analysis prompt carries current context, identity, variation, bootstrap, a
     assert.equal(prompt.summary_sources[0].label, 'Continuity Memory');
     assert.match(prompt.invention, /Any context-compatible narrative development/i);
     assert.match(prompt.invention, /required_effect must precisely state the intended narrative result/i);
-    assert.match(prompt.invention, /roleplay model receives the freely chosen movement description and only useful, non-default scale classifications.*chooses the actual development, prose, and concrete realization/i);
+    assert.match(prompt.invention, /roleplay model must follow the freely chosen movement description and only useful, non-default scale classifications as its primary narrative direction.*freely choosing the actual development, prose, and concrete realization/i);
     assert.match(prompt.necessity_gate, /inject=false/i);
     assert.match(prompt.response_audit_rule, /never injected/i);
     assert.match(prompt.simulation, /country simulation/i);

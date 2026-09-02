@@ -117,5 +117,5 @@ export function formatBeatContract(_sceneValue, beatValue, _options = {}) {
     if (beat.duration !== 'beat') qualities.push(DURATION_WORDING[beat.duration]);
     if (beat.resolutionCeiling !== 'open') qualities.push(RESOLUTION_WORDING[beat.resolutionCeiling]);
     const treatment = qualities.length ? `, keeping the development ${naturalList(qualities)}` : '';
-    return `NARRATIVE DIRECTION: ${sentence(beat.operation)}${treatment}.`;
+    return `PRIMARY NARRATIVE DIRECTION: ${sentence(beat.operation)}${treatment}.\nThis direction governs how the next response moves. Freely choose its context-compatible concrete realization.`;
 }
