@@ -93,13 +93,27 @@ test('freeform movement phrases and every simulation scope validate', () => {
     }
 });
 
+test('provider-visible branches reject canon-specific names instead of injecting a miniature scene', () => {
+    const leaky = result({
+        beat: {
+            ...result().beat,
+            operation: 'Let Vekk offer a small personal reflection',
+            required_effect: 'Lucia feels more known through a connection to Jabiim or the Force.',
+        },
+    });
+    const check = validateAnalysisResult(leaky);
+    assert.equal(check.valid, false);
+    assert.ok(check.errors.some(error => /beat\.operation.*Vekk/i.test(error)));
+    assert.ok(check.errors.some(error => /beat\.required_effect.*Lucia/i.test(error)));
+});
+
 test('planner chooses scene-warranted movement before applying randomness', () => {
     assert.match(SYSTEM, /First determine what movement the scene actually warrants/i);
     assert.match(SYSTEM, /never selects the movement and never creates a need for an incident/i);
     assert.match(SYSTEM, /Quietness is not stagnation/i);
-    assert.match(SYSTEM, /context-native interest/i);
-    assert.match(SYSTEM, /Active danger, competition, demanding tasks, and instability may exert credible pressure and produce real difficulty/i);
-    assert.match(SYSTEM, /new cause or plot thread is welcome when it grows organically/i);
+    assert.match(SYSTEM, /every branch worth experiencing/i);
+    assert.match(SYSTEM, /Active danger, competition, demanding tasks, and instability may exert credible pressure/i);
+    assert.match(SYSTEM, /New causes require conversational or explicit-canon support/i);
     assert.match(SYSTEM, /not compulsory disruption/i);
     assert.match(SYSTEM, /cannot justify manufacturing difficulty/i);
     assert.match(SYSTEM, /Scene changes, pressure shifts, reversals, discoveries/i);
@@ -112,16 +126,18 @@ test('planner chooses scene-warranted movement before applying randomness', () =
 
 test('planner permits freeform AI invention and scale-native simulation', () => {
     assert.match(SYSTEM, /not an event taxonomy/i);
-    assert.match(SYSTEM, /entirely new causal element/i);
+    assert.match(SYSTEM, /New causes require conversational or explicit-canon support/i);
     assert.match(SYSTEM, /life simulation/i);
     assert.match(SYSTEM, /countries, societies, and worlds/i);
     assert.match(SYSTEM, /policy effect, public response, trend, or system pressure/i);
-    assert.match(SYSTEM, /conditional movement set and useful non-default abstract scale classifications are provider-visible/i);
-    assert.match(SYSTEM, /exactly one fitting branch becomes binding/i);
-    assert.match(SYSTEM, /without prescribing the exact event, actor, action, dialogue, prose, outcome detail, or player reaction/i);
-    assert.match(SYSTEM, /target, inject_reason, preserve, forbid, scene promise, basis, audit, response_audit, response pattern memory, retained evidence, canon records, and user-note records remain private/i);
+    assert.match(SYSTEM, /conditional set and useful non-default scale classifications are provider-visible/i);
+    assert.match(SYSTEM, /one fitting branch becomes binding/i);
+    assert.match(SYSTEM, /portable to any scene with the same dramatic shape/i);
+    assert.match(SYSTEM, /Never name or repeat a character, location, faction, lore concept/i);
+    assert.match(SYSTEM, /Introduce a quiet, favorable discovery/i);
+    assert.match(SYSTEM, /Keep scene specifics in private fields/i);
     assert.doesNotMatch(SYSTEM, /generate six to eight.*routes|schedule future milestones|maintain event queues/i);
-    assert.ok(estimateTokenCount(`${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}`) < 2100);
+    assert.ok(estimateTokenCount(`${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}`) < 2400);
 });
 
 test('all modes alter sampled appetite without weakening authority', () => {
@@ -143,19 +159,20 @@ test('analysis prompt carries current context, identity, variation, bootstrap, a
     assert.equal(prompt.variation_nonce, 731);
     assert.equal(prompt.bootstrap.scenario, 'A grounded school life simulation.');
     assert.equal(prompt.summary_sources[0].label, 'Continuity Memory');
-    assert.match(prompt.invention, /Any context-compatible narrative development/i);
-    assert.match(prompt.invention, /Conditions, operations, effects, and useful scale fields are provider-visible when inject=true/i);
-    assert.match(prompt.invention, /observable narrative function or change.*do not prescribe the exact event, actor, action, dialogue, prose, outcome detail, or player reaction/i);
+    assert.match(prompt.invention, /New causes or conditions require conversational or explicit-canon support/i);
+    assert.match(prompt.invention, /provider-visible when, operation, and required_effect text must contain only portable abstractions/i);
+    assert.match(prompt.invention, /Never copy names or concrete nouns from the scene/i);
+    assert.match(prompt.invention, /current activity, current interaction, current environment/i);
     assert.match(prompt.instruction, /writing model selects one fitting branch or none/i);
     assert.match(prompt.instruction, /never combines branches/i);
     assert.match(prompt.necessity_gate, /inject=false/i);
     assert.match(prompt.response_audit_rule, /never injected/i);
     assert.match(prompt.simulation, /country simulation/i);
-    assert.match(prompt.direction_policy, /choose one coherent primary authorial direction before applying random creative appetite/i);
-    assert.match(prompt.direction_policy, /two materially distinct alternatives/i);
+    assert.match(prompt.direction_policy, /choose one coherent primary direction before applying random appetite/i);
+    assert.match(prompt.direction_policy, /two distinct redirect-safe alternatives/i);
     assert.match(prompt.direction_policy, /breathing room.*as legitimate as complication/i);
     assert.match(prompt.direction_policy, /Quiet situations may gain texture, emotion, discovery, or character meaning without an incident/i);
-    assert.match(prompt.direction_policy, /instead of hijacking the current activity/i);
+    assert.match(prompt.direction_policy, /Provider-visible text states only abstract function and effect/i);
     assert.equal(Object.hasOwn(prompt, 'director_policy'), false);
     assert.match(prompt.director_sample, /WEIGHTED DIRECTOR SAMPLE/);
     assert.match(prompt.director_sample, /Choose movement from scene need before applying these signals/i);

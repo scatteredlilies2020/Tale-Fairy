@@ -160,7 +160,7 @@ test('provider-bound request receives binding movement, effect, and balanced tre
     assert.match(chat.at(-1).content, /PRIMARY DIRECTION: Complicate, keeping the development revelation-led, social in scope, moderate in intensity/i);
     assert.match(chat.at(-1).content, /PRIMARY REQUIRED EFFECT: Add a credible difficulty that changes how the current information is understood\./i);
     assert.match(chat.at(-1).content, /BALANCED TREATMENT: Make the required effect clear and meaningful/i);
-    assert.match(chat.at(-1).content, /treat only its direction and required effect as binding/i);
+    assert.match(chat.at(-1).content, /Use only the selected direction and required effect as abstract guidance/i);
     assert.doesNotMatch(chat.at(-1).content, /movement=|content=|scope=|intensity=|plot weight=/i);
     assert.doesNotMatch(chat.at(-1).content, /PRESERVE:|DO NOT:/);
     assert.doesNotMatch(chat.at(-1).content, /Infer every concrete action|Treat explicit user\/OOC|For this regeneration|Do not expose/i);

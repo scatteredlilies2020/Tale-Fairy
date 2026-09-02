@@ -158,7 +158,7 @@ test('analyzed injection makes its general effect binding with the selected mode
     assert.doesNotMatch(payload, /SUGGESTED ROUTE|future horizon|delivery debt/i);
     assert.equal(payload.match(/PRIMARY DIRECTION:/g)?.length, 1);
     assert.equal(payload.match(/ALTERNATIVE \d DIRECTION:/g)?.length, 2);
-    assert.match(payload, /treat only its direction and required effect as binding/i);
+    assert.match(payload, /Use only the selected direction and required effect as abstract guidance/i);
 });
 
 test('sparse compiler omits default scale fields but retains a balanced required effect', () => {
@@ -170,7 +170,7 @@ test('sparse compiler omits default scale fields but retains a balanced required
     assert.match(payload, /PRIMARY DIRECTION: Let the ordinary answer open an unforeseen possibility\./);
     assert.match(payload, /PRIMARY REQUIRED EFFECT: Make a compatible change observable without prescribing how\./);
     assert.match(payload, /BALANCED TREATMENT: Make the required effect clear and meaningful/);
-    assert.match(payload, /freely choosing their context-compatible concrete realization/);
+    assert.match(payload, /Use only the selected direction and required effect as abstract guidance/);
 });
 
 test('scene-aware movement becomes general natural direction rather than field syntax', () => {
@@ -230,7 +230,7 @@ test('analyzed beat keeps AI invention open across context-native scene scales',
 
 test('provider contract protects player agency without exposing planner evidence', () => {
     const payload = formatBeatContract(analyzedState().sceneProfile, analyzedState().beatDirective);
-    assert.match(payload, /Do not decide the player character's dialogue, thoughts, feelings, consent, choices, or reactions/i);
+    assert.match(payload, /without controlling the player character/i);
     assert.doesNotMatch(payload, /explicit user\/OOC|Use the analyzed beat|Do not expose/i);
 });
 

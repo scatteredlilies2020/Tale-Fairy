@@ -86,8 +86,10 @@ test('obsolete pacing selector and static provider boilerplate are absent', () =
     assert.doesNotMatch(source, /updatePacing|data-setting="pacing"/);
     assert.doesNotMatch(directorSource, /USER-CONTROLLED PACING|maximum time, activity, and player progress/i);
     assert.doesNotMatch(directorSource, /Use the analyzed beat only|Never invent the player character/i);
-    assert.match(directorSource, /Do not decide the player character/i);
-    assert.match(directorSource, /dialogue, thoughts, feelings, consent, choices, or reactions/i);
+    assert.match(directorSource, /without controlling the player character/i);
+    assert.match(directorSource, /broad narrative guidance, not a script/i);
+    assert.doesNotMatch(directorSource, /fatigue, sleepiness, pain, fear, readiness/i);
+    assert.doesNotMatch(directorSource, /dialogue, thoughts, feelings, consent, choices, or reactions/i);
     assert.match(analysisSource, /Never invent player dialogue, thoughts, feelings, consent, decisions/i);
 });
 
@@ -99,9 +101,9 @@ test('adaptive analysis uses freeform direction rather than an event taxonomy', 
     assert.match(analysisSource, /countries, societies, and worlds/i);
     assert.match(analysisSource, /operation: text\(80\)/);
     assert.doesNotMatch(analysisSource, /beat\.operation': \[/);
-    assert.match(analysisSource, /conditional movement set and useful non-default abstract scale classifications are provider-visible/i);
-    assert.match(analysisSource, /exactly one fitting branch becomes binding/i);
-    assert.match(analysisSource, /target, inject_reason, preserve, forbid, scene promise, basis, audit, response_audit, response pattern memory, retained evidence, canon records, and user-note records remain private/i);
+    assert.match(analysisSource, /conditional set and useful non-default scale classifications are provider-visible/i);
+    assert.match(analysisSource, /one fitting branch becomes binding/i);
+    assert.match(analysisSource, /Keep scene specifics in private fields/i);
     assert.match(stateSource, /export const STATE_VERSION = 51/);
     assert.match(stateSource, /beatContractUpgrade/);
 });
@@ -167,7 +169,7 @@ test('roleplay injection exposes a conditional direction set but never private p
     assert.match(directorSource, /LIGHT TREATMENT/);
     assert.match(directorSource, /BALANCED TREATMENT/);
     assert.match(directorSource, /FUN TREATMENT/);
-    assert.match(directorSource, /treat only its direction and required effect as binding/i);
+    assert.match(directorSource, /Use only the selected direction and required effect as abstract guidance/i);
     assert.match(directorSource, /If no WHEN condition fits, use none/i);
     assert.doesNotMatch(directorSource, /movement=|content=|scope=|intensity=|plot weight=/i);
     assert.doesNotMatch(directorSource, /beat\.preserve|beat\.forbid/);
@@ -186,8 +188,8 @@ test('planner output is lightweight while retaining structured-output negotiatio
 
 test('latest user actions never trigger a blocking Tale Fairy planner call', () => {
     assert.doesNotMatch(source, /ACTION_GATE|adjustGuideForLatestAction|Quickly checking latest action/);
-    assert.match(directorSource, /latest user action always takes priority/i);
-    assert.match(directorSource, /never override or reinterpret that action/i);
+    assert.match(directorSource, /after reading the latest user action/i);
+    assert.match(directorSource, /Choose every concrete realization from the latest user action/i);
 });
 
 test('scratchpad shows only fresh upcoming guidance and rejects stale fallback', () => {
