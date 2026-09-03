@@ -1,12 +1,12 @@
-import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.12.3';
+import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.12.4';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
 import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js';
-import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile } from './beat-director.js?v=0.12.3';
-import { normalizeDirectorSample } from './director-sampling.js?v=0.12.3';
+import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile } from './beat-director.js?v=0.12.4';
+import { normalizeDirectorSample } from './director-sampling.js?v=0.12.4';
 
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 53;
+export const STATE_VERSION = 54;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -473,15 +473,16 @@ export function normalizeState(input = {}) {
     // v52 makes successful direction sets total-coverage and always-injected;
     // v51 sets are cleared so their use-none branch cannot survive the upgrade.
     // v53 makes every direction subordinate to the latest user's intended
-    // action and removes planner-authored resolution ceilings. Older sets are
-    // cleared so a cached cap cannot survive the upgrade.
+    // action and removes planner-authored resolution ceilings. v54 removes
+    // user-action interpretation from Tale Fairy entirely; older sets are
+    // cleared so no action-target inference survives the upgrade.
     const unsafePlannerUpgrade = inputVersion > 0 && inputVersion < 18;
     const movementUpgrade = inputVersion > 0 && inputVersion < 42;
     const recoveryUpgrade = inputVersion > 0 && inputVersion < 26;
     const chronologyAuditUpgrade = inputVersion > 0 && inputVersion < 31;
     const authorMapUpgrade = inputVersion > 0 && inputVersion < 45;
     const beatContractUpgrade = inputVersion > 0 && inputVersion < 48;
-    const conditionalSetUpgrade = inputVersion > 0 && inputVersion < 53;
+    const conditionalSetUpgrade = inputVersion > 0 && inputVersion < 54;
     const normalizedLayers = normalizeNarrativeLayers(value.narrativeLayers);
     const normalizedDirector = normalizeDirectorScore(value.directorScore);
     const state = {
@@ -692,7 +693,7 @@ function narrativeConductor(score, layers, continuityThreads = [], latestUserAct
     const actionLabel = latestUserAction ? 'LATEST USER ACTION' : 'IMMEDIATE CONTEXT';
     const openThreads = continuityThreads.slice(0, 5).map(item => `${item.status}: ${clippedText(item.thread, 62)} — ${clippedText(item.state, 78)}`).join(' | ');
     const threadLine = openThreads ? `\nESTABLISHED OPEN THREADS (continuity only; do not force onscreen): ${openThreads}` : '';
-    return `TALE FAIRY AUTHORIAL FRAME:\nSELECTED FUTURE CAUSE: ${clippedText(presentPressure, 90)}\nCURRENT SITUATION: ${clippedText(situation, 100)}\nLOCAL ACTIVITY: ${clippedText(layers.localActivity || 'Use the latest established activity.', 90)} [${layers.activityRole.toUpperCase()}]\n${actionLabel}: ${currentAction}\nCAUSAL RANGE: ${layers.temporalScope.toUpperCase()}\nWIDER WORLD: ${clippedText(widerWorld, 65)}${threadLine}\nACTIVE CAUSAL FORCES: ${forces}\nSTORY OPERATION: ${score.causalTempo.toUpperCase()}\nTale Fairy may influence the world's response and natural next causal step after the user action. It never changes the user's meaning, target, immediate result, or agency; realize exact events, NPC actions, dialogue, outcomes, and prose from context.`;
+    return `TALE FAIRY AUTHORIAL FRAME:\nSELECTED FUTURE CAUSE: ${clippedText(presentPressure, 90)}\nCURRENT SITUATION: ${clippedText(situation, 100)}\nLOCAL ACTIVITY: ${clippedText(layers.localActivity || 'Use the latest established activity.', 90)} [${layers.activityRole.toUpperCase()}]\n${actionLabel}: ${currentAction}\nCAUSAL RANGE: ${layers.temporalScope.toUpperCase()}\nWIDER WORLD: ${clippedText(widerWorld, 65)}${threadLine}\nACTIVE CAUSAL FORCES: ${forces}\nSTORY OPERATION: ${score.causalTempo.toUpperCase()}\nTale Fairy may influence only NPC or world response and the natural next causal step. It does not interpret or define the user action; realize exact events, NPC actions, dialogue, outcomes, and prose from context.`;
 }
 function normalizeLoreModel(value = {}) {
     const confidence = text(value.confidence, 'low').toLowerCase();

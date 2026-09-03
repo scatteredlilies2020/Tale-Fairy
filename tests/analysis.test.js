@@ -10,7 +10,7 @@ import { estimateTokenCount } from '../extension/token-budget.js';
 
 function result(overrides = {}) {
     const value = {
-        contract_version: 5,
+        contract_version: 6,
         current: {
             frame: 'grounded', frame_basis: 'A quiet work session is physically and socially ordinary.',
             status: 'The user is working alone on an assignment.', immediate_action: 'Continue the current attempt.',
@@ -59,8 +59,8 @@ test('extractJson accepts fenced, wrapped, and locally repairable JSON', () => {
     assert.deepEqual(extractJson('{"current":{"activity":"reading"\n"phase":"developing"},}'), { current: { activity: 'reading', phase: 'developing' } });
 });
 
-test('structured output contract is the user-intent-first v5 shape', () => {
-    assert.equal(ANALYSIS_SCHEMA_VALUE.properties.contract_version.const, 5);
+test('structured output contract is the external-reaction v6 shape', () => {
+    assert.equal(ANALYSIS_SCHEMA_VALUE.properties.contract_version.const, 6);
     assert.deepEqual(ANALYSIS_SCHEMA_VALUE.required, ['contract_version', 'current', 'beat', 'response_audit', 'world', 'thread_updates', 'actor_updates', 'canon_updates', 'ledger', 'note_resolution', 'audit']);
     assert.equal(ANALYSIS_SCHEMA.strict, true);
     assert.equal(ANALYSIS_SCHEMA_VALUE.properties.beat.properties.alternatives.minItems, 2);
@@ -155,7 +155,7 @@ test('planner chooses scene-warranted movement before applying randomness', () =
     assert.match(SYSTEM, /First determine what movement the scene actually warrants/i);
     assert.match(SYSTEM, /never selects the movement and never creates a need for an incident/i);
     assert.match(SYSTEM, /Quietness is not stagnation/i);
-    assert.match(SYSTEM, /playable forward motion/i);
+    assert.match(SYSTEM, /playable movement through an NPC reaction, world reaction/i);
     assert.match(SYSTEM, /Active danger, competition, demanding tasks, and instability may exert credible pressure/i);
     assert.match(SYSTEM, /New causes require conversational or explicit-canon support/i);
     assert.match(SYSTEM, /not compulsory disruption/i);
@@ -165,8 +165,8 @@ test('planner chooses scene-warranted movement before applying randomness', () =
     assert.match(SYSTEM, /Never invent player dialogue, thoughts, feelings, consent, decisions/i);
     assert.match(SYSTEM, /conditional movement set/i);
     assert.match(SYSTEM, /exactly two materially distinct redirect-safe branches/i);
-    assert.match(SYSTEM, /collectively cover plausible next actions/i);
-    assert.match(SYSTEM, /ignore all branches if they conflict/i);
+    assert.match(SYSTEM, /conditions distinguish external response routes/i);
+    assert.match(SYSTEM, /ignore all branches if they cross into defining or modifying the user action/i);
     assert.match(SYSTEM, /Quiet listening, assignments, rest, travel/i);
     assert.match(SYSTEM, /Never manufacture conflict, interruption, pressure, urgency, or restriction/i);
 });
@@ -178,7 +178,7 @@ test('planner permits freeform AI invention and scale-native simulation', () => 
     assert.match(SYSTEM, /countries, societies, and worlds/i);
     assert.match(SYSTEM, /policy effect, public response, trend, or system pressure/i);
     assert.match(SYSTEM, /every scale classification in private fields/i);
-    assert.match(SYSTEM, /subordinate follow-through.*never a binding outcome ceiling/i);
+    assert.match(SYSTEM, /governs only NPC or world follow-through, never the user action/i);
     assert.match(SYSTEM, /portable to any scene with the same dramatic shape/i);
     assert.match(SYSTEM, /Never name or repeat a character, location, faction, lore concept/i);
     assert.match(SYSTEM, /Introduce a quiet, favorable discovery/i);
@@ -187,12 +187,12 @@ test('planner permits freeform AI invention and scale-native simulation', () => 
     assert.ok(estimateTokenCount(`${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}`) < 2700);
 });
 
-test('all modes alter sampled appetite without weakening authority', () => {
-    for (const mode of Object.values(MODE_INSTRUCTIONS)) assert.match(mode, /user action and its immediate causal result come first/i);
+test('all modes alter only external follow-through without touching the user action', () => {
+    for (const mode of Object.values(MODE_INSTRUCTIONS)) assert.match(mode, /NPC or world|NPC or world follow-through/i);
     assert.match(MODE_INSTRUCTIONS.light, /follow-through, expressed subtly but perceptibly/i);
     assert.match(MODE_INSTRUCTIONS.balanced, /clear, meaningful next step/i);
     assert.match(MODE_INSTRUCTIONS.fun, /prominent, lively expression/i);
-    assert.match(MODE_INSTRUCTIONS.fun, /never changes, delays, weakens, or caps what the user meant/i);
+    assert.match(MODE_INSTRUCTIONS.fun, /Randomness never touches the user action/i);
     for (const mode of Object.values(MODE_INSTRUCTIONS)) assert.doesNotMatch(mode, /control the player|force the player/i);
 });
 
@@ -209,19 +209,19 @@ test('analysis prompt carries current context, identity, variation, bootstrap, a
     assert.match(prompt.invention, /provider-visible when, operation, and required_effect text must contain only portable abstractions/i);
     assert.match(prompt.invention, /Never copy names or concrete nouns from the scene/i);
     assert.match(prompt.invention, /current activity, current interaction, current environment/i);
-    assert.match(prompt.instruction, /user action and its immediate causal result happen first/i);
-    assert.match(prompt.instruction, /compatible forward motion afterward/i);
+    assert.match(prompt.instruction, /governing only NPC or world follow-through/i);
+    assert.match(prompt.instruction, /main roleplay instructions resolve the user action/i);
     assert.match(prompt.contribution_rule, /Always set beat\.inject=true/i);
     assert.match(prompt.contribution_rule, /Quiet listening, assignments, rest, travel/i);
-    assert.match(prompt.movement, /broadly compatible follow-through condition/i);
+    assert.match(prompt.movement, /broadly compatible external-response condition/i);
     assert.match(prompt.response_audit_rule, /never injected/i);
     assert.match(prompt.simulation, /country simulation/i);
-    assert.match(prompt.direction_policy, /choose one coherent primary follow-through before applying random appetite/i);
+    assert.match(prompt.direction_policy, /choose one coherent primary NPC-or-world follow-through before applying random appetite/i);
     assert.match(prompt.direction_policy, /two distinct redirect-safe alternatives/i);
     assert.match(prompt.direction_policy, /breathing room.*as legitimate as complication/i);
-    assert.match(prompt.direction_policy, /Quiet or routine situations still gain a perceptible next step/i);
-    assert.match(prompt.direction_policy, /response, consequence, opportunity, or next step/i);
-    assert.match(prompt.direction_policy, /Provider-visible text states only abstract function and effect/i);
+    assert.match(prompt.direction_policy, /Quiet or routine situations still gain a perceptible external response/i);
+    assert.match(prompt.direction_policy, /NPC reaction, world reaction, consequence, opportunity, or natural next causal step/i);
+    assert.match(prompt.direction_policy, /Provider-visible text states only abstract external function and effect/i);
     assert.equal(Object.hasOwn(prompt, 'director_policy'), false);
     assert.match(prompt.director_sample, /WEIGHTED DIRECTOR SAMPLE/);
     assert.match(prompt.director_sample, /Choose movement from scene need before applying these signals/i);
@@ -234,7 +234,8 @@ test('analysis prompt treats OOC and scenario authority as binding, not future s
         { is_user: true, name: 'Ari', mes: 'OOC: I kill the dragon here. Do not advance beyond the immediate aftermath.' },
     ], defaultState()));
     assert.match(prompt.authority, /OOC outcome commands bind the stated outcome/i);
-    assert.match(prompt.authority, /Never use planning to deny, delay, narrow, weaken, cap, or reinterpret/i);
+    assert.match(prompt.authority, /user action is outside Tale Fairy’s authority/i);
+    assert.match(prompt.authority, /Never use planning to deny, delay, weaken, cap, or modify the user action/i);
     assert.match(prompt.evidence_rule, /Never predict or force a known canon event/i);
     assert.match(prompt.messages.at(-1).content, /I kill the dragon here/);
 });

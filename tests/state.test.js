@@ -31,10 +31,10 @@ function analyzedState(extra = {}) {
     return normalizeState({ ...beat, ...extra });
 }
 
-test('default and normalized state use the v53 user-intent-first contract', () => {
+test('default and normalized state use the v54 external-reaction contract', () => {
     const state = normalizeState({ mode: 'invalid' });
-    assert.equal(STATE_VERSION, 53);
-    assert.equal(state.version, 53);
+    assert.equal(STATE_VERSION, 54);
+    assert.equal(state.version, 54);
     assert.equal(state.mode, 'balanced');
     assert.equal(state.sceneProfile.phase, 'developing');
     assert.equal(state.beatDirective.operation, '');
@@ -96,7 +96,7 @@ test('v51 use-none direction is invalidated before the always-contributing contr
     assert.equal(state.lastRequestVerification, null);
 });
 
-test('v52 outcome-capping direction is invalidated before user-intent-first guidance runs', () => {
+test('v52 outcome-capping direction is invalidated before external-reaction guidance runs', () => {
     const old = analyzedState();
     const state = normalizeState({
         ...old,
@@ -106,6 +106,18 @@ test('v52 outcome-capping direction is invalidated before user-intent-first guid
             requiredEffect: 'Make a limited change without granting unrestricted access.',
         },
         lastRequestVerification: { status: 'confirmed', guidanceBlock: '<tale-fairy-context>old capped guidance</tale-fairy-context>' },
+    });
+    assert.equal(state.lastInject, false);
+    assert.equal(state.beatDirective.operation, '');
+    assert.equal(state.lastRequestVerification, null);
+});
+
+test('v53 user-action inference is invalidated before external-reaction guidance runs', () => {
+    const old = analyzedState();
+    const state = normalizeState({
+        ...old,
+        version: 53,
+        lastRequestVerification: { status: 'confirmed', guidanceBlock: '<tale-fairy-context>old target-inference guidance</tale-fairy-context>' },
     });
     assert.equal(state.lastInject, false);
     assert.equal(state.beatDirective.operation, '');
@@ -163,24 +175,22 @@ test('legacy non-injection state is never exposed as usable guidance', () => {
     assert.equal(buildPromptPayload(state, { guidanceUsable: true }), '');
 });
 
-test('analyzed injection makes user intent primary and the selected follow-through subordinate', () => {
+test('analyzed injection governs only NPC and world follow-through', () => {
     const payload = buildPromptPayload(analyzedState(), {
         guidanceUsable: true,
         directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'favorable' },
     });
-    assert.match(payload, /TALE FAIRY USER-INTENT-FIRST GUIDE/i);
-    assert.match(payload, /latest user action outranks this entire guide/i);
-    assert.match(payload, /immediate causal answer or result on-page/i);
-    assert.match(payload, /natural target and minimal implied positioning/i);
-    assert.match(payload, /Do not replace a literal action with a symbolic, metaphorical, remote, or interface-based substitute/i);
-    assert.match(payload, /Never use this guide to deny, delay, narrow, weaken, cap, or reinterpret/i);
+    assert.match(payload, /TALE FAIRY EXTERNAL-REACTION GUIDE/i);
+    assert.match(payload, /user action is outside Tale Fairy’s authority/i);
+    assert.match(payload, /Do not use this guide to infer, reinterpret, expand, narrow, relocate, complete, substitute, or judge the user action/i);
+    assert.match(payload, /Tale Fairy begins only with what NPCs or the surrounding world do in response/i);
     assert.match(payload, /PRIMARY WHEN: The user continues the service interaction\./i);
     assert.match(payload, /PRIMARY NEXT-STEP DIRECTION: Introduce\./i);
     assert.match(payload, /PRIMARY NEXT-STEP EFFECT: Let the routine interaction produce a small but observable development that opens a fresh possibility\./i);
     assert.match(payload, /ALTERNATIVE 1 WHEN: The user leaves or declines the interaction\./i);
-    assert.match(payload, /select exactly one closest-fitting branch for additional forward motion/i);
-    assert.match(payload, /ignore them and follow the user’s intent or the natural next causal step/i);
-    assert.match(payload, /FUN TREATMENT:.*prominent, lively expression.*without changing what the user meant/i);
+    assert.match(payload, /select exactly one closest-fitting branch for external forward motion/i);
+    assert.match(payload, /ignore them and let the main roleplay instructions govern the response/i);
+    assert.match(payload, /FUN TREATMENT:.*prominent, lively expression.*without touching the user action/i);
     assert.doesNotMatch(payload, /movement=|content=|scope=|intensity=|plot weight=/i);
     assert.doesNotMatch(payload, /PRESERVE:|DO NOT:/);
     assert.doesNotMatch(payload, /A grounded canteen interaction/);
@@ -188,7 +198,8 @@ test('analyzed injection makes user intent primary and the selected follow-throu
     assert.doesNotMatch(payload, /SUGGESTED ROUTE|future horizon|delivery debt/i);
     assert.equal(payload.match(/PRIMARY NEXT-STEP DIRECTION:/g)?.length, 1);
     assert.equal(payload.match(/ALTERNATIVE \d NEXT-STEP DIRECTION:/g)?.length, 2);
-    assert.match(payload, /subordinate follow-through, never an outcome ceiling/i);
+    assert.match(payload, /govern only NPC or world follow-through/i);
+    assert.doesNotMatch(payload, /infer the natural target|minimal implied positioning/i);
     assert.doesNotMatch(payload, /only partially resolvable|resolution ceiling|institutional in scope|low in intensity/i);
 });
 
@@ -204,16 +215,17 @@ test('compiler neutralizes planner-authored outcome caps before provider injecti
         ],
     });
     assert.doesNotMatch(payload, /limited change|unrestricted access|boundary answer|narrower way|keeping access restricted/i);
-    assert.match(payload, /give a direct response and carry the action into the natural next step/i);
-    assert.match(payload, /immediate consequence observable and open a meaningful next change/i);
+    assert.match(payload, /let an NPC or the world respond directly and create the natural next step/i);
+    assert.match(payload, /external response observable and open a meaningful next change/i);
 });
 
-test('terse-action contract authorizes implied target but forbids metaphorical substitution', () => {
+test('terse-action contract leaves every part of the user action to the main roleplay prompt', () => {
     const payload = formatBeatContract({}, analyzedState().beatDirective);
-    assert.match(payload, /infer the natural target and minimal implied positioning from the current interaction and goal/i);
-    assert.match(payload, /Do not replace a literal action with a symbolic, metaphorical, remote, or interface-based substitute/i);
-    assert.match(payload, /show its immediate causal answer or result on-page/i);
-    assert.match(payload, /If every branch conflicts.*ignore them.*natural next causal step/is);
+    assert.match(payload, /user action is outside Tale Fairy’s authority/i);
+    assert.match(payload, /Do not use this guide to infer, reinterpret, expand, narrow, relocate, complete, substitute, or judge/i);
+    assert.match(payload, /begins only with what NPCs or the surrounding world do in response/i);
+    assert.match(payload, /If every branch would affect the user action.*ignore them/is);
+    assert.doesNotMatch(payload, /infer the natural target|minimal implied positioning/i);
 });
 
 test('sparse compiler omits default scale fields but retains a balanced required effect', () => {
@@ -224,8 +236,8 @@ test('sparse compiler omits default scale fields but retains a balanced required
     });
     assert.match(payload, /PRIMARY NEXT-STEP DIRECTION: Let the ordinary answer open an unforeseen possibility\./);
     assert.match(payload, /PRIMARY NEXT-STEP EFFECT: Make a compatible change observable without prescribing how\./);
-    assert.match(payload, /BALANCED TREATMENT: Give Tale Fairy's follow-through a clear, meaningful effect/);
-    assert.match(payload, /subordinate follow-through, never an outcome ceiling/);
+    assert.match(payload, /BALANCED TREATMENT: Give the NPC or world follow-through a clear, meaningful effect/);
+    assert.match(payload, /govern only NPC or world follow-through/);
 });
 
 test('scene-aware movement becomes general natural direction rather than field syntax', () => {
@@ -286,7 +298,7 @@ test('analyzed beat keeps AI invention open across context-native scene scales',
 
 test('provider contract protects player agency without exposing planner evidence', () => {
     const payload = formatBeatContract(analyzedState().sceneProfile, analyzedState().beatDirective);
-    assert.match(payload, /without controlling the player character/i);
+    assert.match(payload, /never control the player character/i);
     assert.doesNotMatch(payload, /explicit user\/OOC|Use the analyzed beat|Do not expose/i);
 });
 
