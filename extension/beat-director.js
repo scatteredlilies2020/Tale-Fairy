@@ -13,14 +13,14 @@ const SCOPES = new Set(['personal', 'social', 'institutional', 'societal', 'worl
 const MODES = new Set(['light', 'balanced', 'fun']);
 
 const MODE_TREATMENT = Object.freeze({
-    light: 'LIGHT TREATMENT: Keep Tale Fairy\'s follow-through understated but perceptible after fully honoring the user action.',
-    balanced: 'BALANCED TREATMENT: Give Tale Fairy\'s follow-through a clear, meaningful effect after fully honoring the user action.',
-    fun: 'FUN TREATMENT: Give Tale Fairy\'s follow-through a prominent, lively expression after fully honoring the user action, without changing what the user meant.',
+    light: 'LIGHT TREATMENT: Keep the NPC or world follow-through understated but perceptible.',
+    balanced: 'BALANCED TREATMENT: Give the NPC or world follow-through a clear, meaningful effect.',
+    fun: 'FUN TREATMENT: Give the NPC or world follow-through a prominent, lively expression without touching the user action.',
 });
 const OUTCOME_CAP_PATTERN = /(?:\b(?:narrower way|remain pending|remain closed|stay closed|stay sealed|unrestricted access)\b|\bonly partially resolv\w*\b|\b(?:deny|delay|defer|withhold|block|prevent|restrict)\w*\b.{0,48}\b(?:access|answer|availability|information|outcome|progress|resolution|response)\b|\b(?:limit|limited)\b.{0,48}\b(?:access|answer|availability|information|outcome|progress|resolution|response)\b|\bwithout\b.{0,48}\b(?:allowing|answering|granting|opening|providing|resolving)\b|\bnot\b.{0,32}\b(?:allow|answer|grant|open|provide|resolve)\b)/iu;
 const SAFE_FOLLOW_THROUGH = Object.freeze({
-    operation: 'give a direct response and carry the action into the natural next step',
-    requiredEffect: 'Make the action’s immediate consequence observable and open a meaningful next change',
+    operation: 'let an NPC or the world respond directly and create the natural next step',
+    requiredEffect: 'Make the external response observable and open a meaningful next change',
 });
 
 function text(value, limit = 240) { return String(value ?? '').trim().slice(0, limit); }
@@ -116,9 +116,9 @@ export function formatBeatContract(_sceneValue, beatValue, options = {}) {
     const requestedMode = String(options.mode ?? options.directorSample?.mode ?? '').trim().toLowerCase();
     const mode = MODES.has(requestedMode) ? requestedMode : 'balanced';
     return [
-        'TALE FAIRY USER-INTENT-FIRST GUIDE: The latest user action outranks this entire guide. First perform that action according to its ordinary intended meaning and show its immediate causal answer or result on-page. For terse input, infer the natural target and minimal implied positioning from the current interaction and goal. Do not replace a literal action with a symbolic, metaphorical, remote, or interface-based substitute.',
-        'A user attempt may fail only because an already-established causal fact makes it fail—not because this guide prefers restraint. Even then, show the concrete response and move to the next actionable change. Never use this guide to deny, delay, narrow, weaken, cap, or reinterpret what the user attempted or explicitly intended.',
-        'After honoring the user action, select exactly one closest-fitting branch for additional forward motion and never combine branches. If every branch conflicts with the user’s intent or natural next step, ignore them and follow the user’s intent or the natural next causal step instead.',
+        'TALE FAIRY EXTERNAL-REACTION GUIDE: The user action is outside Tale Fairy’s authority. Resolve it only from the user text, established context, and the main roleplay instructions. Do not use this guide to infer, reinterpret, expand, narrow, relocate, complete, substitute, or judge the user action, its target, its manner, or the player’s intent.',
+        'Tale Fairy begins only with what NPCs or the surrounding world do in response. It may add an external reaction, consequence, opportunity, or natural next causal step. It may not deny, delay, weaken, cap, or otherwise modify the user action or an outcome explicitly established by the user.',
+        'Select exactly one closest-fitting branch for external forward motion and never combine branches. If every branch would affect the user action instead of only the NPC or world response, ignore them and let the main roleplay instructions govern the response.',
         `PRIMARY WHEN: ${effectSentence(beat.primaryWhen)}.`,
         branchDirection('PRIMARY', beat),
         ...beat.alternatives.flatMap((branch, index) => [
@@ -126,6 +126,6 @@ export function formatBeatContract(_sceneValue, beatValue, options = {}) {
             branchDirection(`ALTERNATIVE ${index + 1}`, branch),
         ]),
         MODE_TREATMENT[mode],
-        'The selected next-step direction and effect are subordinate follow-through, never an outcome ceiling. Choose every concrete realization from the latest user action and established context without controlling the player character.',
+        'The selected next-step direction and effect govern only NPC or world follow-through. They never define the user action and never control the player character.',
     ].join('\n');
 }

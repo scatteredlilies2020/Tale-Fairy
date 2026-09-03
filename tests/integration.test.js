@@ -13,22 +13,22 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest and detached plugin identify the adaptive-director release', () => {
-    assert.equal(manifest.version, '0.12.3');
-    assert.equal(manifest.js, 'extension/index.js?v=0.12.3');
-    assert.equal(manifest.css, 'extension/style.css?v=0.12.3');
+    assert.equal(manifest.version, '0.12.4');
+    assert.equal(manifest.js, 'extension/index.js?v=0.12.4');
+    assert.equal(manifest.css, 'extension/style.css?v=0.12.4');
     assert.match(manifest.description, /always-on adaptive story director/i);
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.12\.3'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.12\.3'/);
+    assert.match(pluginSource, /const VERSION = '0\.12\.4'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.12\.4'/);
 });
 
 test('extension loads the background-only direction modules', () => {
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.12\.3'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.12\.3'/);
-    assert.match(source, /from '\.\/request-injection\.js\?v=0\.12\.3'/);
-    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.12\.3'/);
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.12\.4'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.12\.4'/);
+    assert.match(source, /from '\.\/request-injection\.js\?v=0\.12\.4'/);
+    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.12\.4'/);
     assert.doesNotMatch(source, /action-gate/);
-    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.12\.3'/);
+    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.12\.4'/);
 });
 
 test('long-form defaults reserve room for current turns, summaries, and thinking', () => {
@@ -86,15 +86,15 @@ test('obsolete pacing selector and static provider boilerplate are absent', () =
     assert.doesNotMatch(source, /updatePacing|data-setting="pacing"/);
     assert.doesNotMatch(directorSource, /USER-CONTROLLED PACING|maximum time, activity, and player progress/i);
     assert.doesNotMatch(directorSource, /Use the analyzed beat only|Never invent the player character/i);
-    assert.match(directorSource, /without controlling the player character/i);
-    assert.match(directorSource, /USER-INTENT-FIRST GUIDE/i);
+    assert.match(directorSource, /never control the player character/i);
+    assert.match(directorSource, /EXTERNAL-REACTION GUIDE/i);
     assert.doesNotMatch(directorSource, /fatigue, sleepiness, pain, fear, readiness/i);
     assert.doesNotMatch(directorSource, /dialogue, thoughts, feelings, consent, choices, or reactions/i);
     assert.match(analysisSource, /Never invent player dialogue, thoughts, feelings, consent, decisions/i);
 });
 
 test('adaptive analysis uses freeform direction rather than an event taxonomy', () => {
-    assert.match(analysisSource, /contract_version=5/);
+    assert.match(analysisSource, /contract_version=6/);
     assert.match(analysisSource, /adaptive narrative director/i);
     assert.match(analysisSource, /not an event taxonomy/i);
     assert.match(analysisSource, /other context-compatible movement/i);
@@ -102,9 +102,9 @@ test('adaptive analysis uses freeform direction rather than an event taxonomy', 
     assert.match(analysisSource, /operation: text\(80\)/);
     assert.doesNotMatch(analysisSource, /beat\.operation': \[/);
     assert.match(analysisSource, /every scale classification in private fields/i);
-    assert.match(analysisSource, /subordinate follow-through.*never a binding outcome ceiling/i);
+    assert.match(analysisSource, /governs only NPC or world follow-through, never the user action/i);
     assert.match(analysisSource, /Keep scene specifics.*private fields/i);
-    assert.match(stateSource, /export const STATE_VERSION = 53/);
+    assert.match(stateSource, /export const STATE_VERSION = 54/);
     assert.match(stateSource, /beatContractUpgrade/);
 });
 
@@ -122,7 +122,7 @@ test('provider injection uses only an analyzed beat and otherwise removes stale 
     assert.match(source, /guidanceBlock = extractTaleFairyContext\(JSON\.parse\(outboundInit\.body\)\)/);
     assert.match(source, /rememberSkippedRequest/);
     assert.match(source, /provider-bound-skip-saved/);
-    assert.match(pluginSource, /\[2, 3, 4, 5\]\.includes\(value\.contract_version\)/);
+    assert.match(pluginSource, /\[2, 3, 4, 5, 6\]\.includes\(value\.contract_version\)/);
 });
 
 test('replacement generation archives semantic direction and the exact weighted sample', () => {
@@ -170,16 +170,16 @@ test('roleplay injection exposes a conditional direction set but never private p
     assert.doesNotMatch(stateSource, /<user-established-canon>|<tale-fairy-user-notes>/i);
     assert.doesNotMatch(directorSource, /PLANNER LEAN|WEIGHTED DIRECTOR SAMPLE|INTERVENTION_GUIDANCE|FORTUNE_GUIDANCE/i);
     assert.doesNotMatch(directorSource, /CURRENT TARGET|SCENE PROMISE TO HONOR/);
-    assert.match(directorSource, /TALE FAIRY USER-INTENT-FIRST GUIDE/);
+    assert.match(directorSource, /TALE FAIRY EXTERNAL-REACTION GUIDE/);
     assert.match(directorSource, /PRIMARY WHEN/);
     assert.match(directorSource, /ALTERNATIVE.*WHEN/);
     assert.match(directorSource, /NEXT-STEP EFFECT/);
     assert.match(directorSource, /LIGHT TREATMENT/);
     assert.match(directorSource, /BALANCED TREATMENT/);
     assert.match(directorSource, /FUN TREATMENT/);
-    assert.match(directorSource, /subordinate follow-through, never an outcome ceiling/i);
-    assert.match(directorSource, /latest user action outranks this entire guide/i);
-    assert.match(directorSource, /select exactly one closest-fitting branch for additional forward motion/i);
+    assert.match(directorSource, /govern only NPC or world follow-through/i);
+    assert.match(directorSource, /user action is outside Tale Fairy’s authority/i);
+    assert.match(directorSource, /select exactly one closest-fitting branch for external forward motion/i);
     assert.doesNotMatch(directorSource, /movement=|content=|scope=|intensity=|plot weight=/i);
     assert.doesNotMatch(directorSource, /beat\.preserve|beat\.forbid/);
     assert.doesNotMatch(directorSource, /beat\.basis|scene\.basis/);
@@ -201,8 +201,9 @@ test('planner output is lightweight while retaining structured-output negotiatio
 
 test('latest user actions never trigger a blocking Tale Fairy planner call', () => {
     assert.doesNotMatch(source, /ACTION_GATE|adjustGuideForLatestAction|Quickly checking latest action/);
-    assert.match(directorSource, /latest user action outranks this entire guide/i);
-    assert.match(directorSource, /Choose every concrete realization from the latest user action/i);
+    assert.match(directorSource, /user action is outside Tale Fairy’s authority/i);
+    assert.match(directorSource, /Resolve it only from the user text, established context, and the main roleplay instructions/i);
+    assert.doesNotMatch(directorSource, /infer the natural target|minimal implied positioning/i);
 });
 
 test('scratchpad shows only fresh upcoming guidance and rejects stale fallback', () => {
@@ -219,7 +220,7 @@ test('scratchpad shows only fresh upcoming guidance and rejects stale fallback',
     assert.match(template, />Adaptive direction</);
     assert.match(template, /Observed response effect \(private\)/);
     assert.match(template, /never injected and never triggers automatic regeneration/i);
-    assert.match(template, /primary next step and two redirect-safe alternatives/i);
+    assert.match(template, /one primary NPC\/world response and two redirect-safe alternatives/i);
     assert.match(template, />Continuity evidence</);
     assert.match(template, /never dormant triggers, delivery promises, or a scheduled event queue/i);
     assert.match(template, /scratchpad-continuity-section" hidden/);

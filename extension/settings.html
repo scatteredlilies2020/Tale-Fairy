@@ -22,7 +22,7 @@
               <option value="balanced">Balanced (default)</option>
               <option value="fun">Fun</option>
             </select>
-            <small>Modes color only Tale Fairy's added follow-through. They never alter the user's action, intended result, or established causal facts.</small>
+            <small>Modes color only NPC or world follow-through. Tale Fairy never interprets or alters the user's action.</small>
           </label>
           <label>Recent raw context budget (tokens)
             <input class="text_pole" type="number" data-setting="recent-budget" min="1000" max="12000" step="500" value="6000">
@@ -162,7 +162,7 @@
           </div>
           <section>
             <h5>Tale Fairy guidance</h5>
-            <small>Shows only the follow-through set eligible for the next request. User intent and its immediate result come first; one compatible branch adds forward motion, or all branches are ignored. Used and stale sets are never fallbacks.</small>
+            <small>Shows only the NPC/world follow-through set eligible for the next request. Tale Fairy does not interpret the user action; one compatible external branch adds forward motion, or all branches are ignored. Used and stale sets are never fallbacks.</small>
             <div data-role="scratchpad-request-verification">No fresh Tale Fairy direction is ready.</div>
           </section>
           <section>
@@ -180,7 +180,7 @@
           </section>
           <section>
             <h5>Adaptive direction</h5>
-            <small>User intent and its immediate result come first. Tale Fairy then offers a primary next step and two redirect-safe alternatives; the writing AI ignores any branch that would redirect, delay, narrow, or cap the action.</small>
+            <small>Tale Fairy offers one primary NPC/world response and two redirect-safe alternatives. It never defines the user action; the writing AI ignores any branch that crosses that boundary.</small>
             <div data-role="scratchpad-next-guides">No generated adaptive direction yet.</div>
           </section>
           <section data-role="scratchpad-response-audit-section" hidden>

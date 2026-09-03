@@ -156,12 +156,12 @@ test('provider-bound request receives subordinate follow-through and balanced tr
     assert.equal(chatHasCurrentGuidance(chat, prompt), true);
     assert.equal(chat.length, 1);
     assert.equal(chat.at(-1).role, 'user');
-    assert.match(chat.at(-1).content, /TALE FAIRY USER-INTENT-FIRST GUIDE/i);
+    assert.match(chat.at(-1).content, /TALE FAIRY EXTERNAL-REACTION GUIDE/i);
     assert.match(chat.at(-1).content, /PRIMARY NEXT-STEP DIRECTION: Complicate\./i);
     assert.match(chat.at(-1).content, /PRIMARY NEXT-STEP EFFECT: Add a credible difficulty that changes how the current information is understood\./i);
-    assert.match(chat.at(-1).content, /BALANCED TREATMENT: Give Tale Fairy's follow-through a clear, meaningful effect/i);
-    assert.match(chat.at(-1).content, /subordinate follow-through, never an outcome ceiling/i);
-    assert.match(chat.at(-1).content, /latest user action outranks this entire guide/i);
+    assert.match(chat.at(-1).content, /BALANCED TREATMENT: Give the NPC or world follow-through a clear, meaningful effect/i);
+    assert.match(chat.at(-1).content, /govern only NPC or world follow-through/i);
+    assert.match(chat.at(-1).content, /user action is outside Tale Fairy’s authority/i);
     assert.doesNotMatch(chat.at(-1).content, /revelation-led|social in scope|moderate in intensity|partially resolvable/i);
     assert.doesNotMatch(chat.at(-1).content, /movement=|content=|scope=|intensity=|plot weight=/i);
     assert.doesNotMatch(chat.at(-1).content, /PRESERVE:|DO NOT:/);
