@@ -31,10 +31,10 @@ function analyzedState(extra = {}) {
     return normalizeState({ ...beat, ...extra });
 }
 
-test('default and normalized state use the v51 conditional-set planner contract', () => {
+test('default and normalized state use the v52 always-contributing conditional-set contract', () => {
     const state = normalizeState({ mode: 'invalid' });
-    assert.equal(STATE_VERSION, 51);
-    assert.equal(state.version, 51);
+    assert.equal(STATE_VERSION, 52);
+    assert.equal(state.version, 52);
     assert.equal(state.mode, 'balanced');
     assert.equal(state.sceneProfile.phase, 'developing');
     assert.equal(state.beatDirective.operation, '');
@@ -88,6 +88,14 @@ test('v50 single-beat state is invalidated instead of reused as conditional guid
     assert.equal(state.lastRequestVerification, null);
 });
 
+test('v51 use-none direction is invalidated before the always-contributing contract runs', () => {
+    const old = analyzedState();
+    const state = normalizeState({ ...old, version: 51 });
+    assert.equal(state.lastInject, false);
+    assert.equal(state.beatDirective.operation, '');
+    assert.equal(state.lastRequestVerification, null);
+});
+
 test('pre-v50 migration discards private-style required effects but preserves continuity evidence', () => {
     const state = normalizeState({
         ...analyzedState(), version: 49, lastInject: true,
@@ -129,10 +137,10 @@ test('stale analysis fails closed while one explicitly allowed append remains de
     assert.equal(isAnalysisSourceCurrent(fingerprint, messages.length, assistantAppended, { allowOneAssistantAppend: true }), true);
 });
 
-test('necessity gate keeps a current private direction while injecting nothing', () => {
+test('legacy non-injection state is never exposed as usable guidance', () => {
     const state = analyzedState({
         lastInject: false,
-        beatDirective: { ...analyzedState().beatDirective, inject: false, injectReason: 'The user action already determines the immediate response.' },
+        beatDirective: { ...analyzedState().beatDirective, inject: false, injectReason: 'Legacy planner output.' },
     });
     assert.equal(isDirectionCurrent(state, messages, 'chat-a'), true);
     assert.equal(isGuidanceUsable(state, messages, 'chat-a'), false);
@@ -149,7 +157,9 @@ test('analyzed injection makes its general effect binding with the selected mode
     assert.match(payload, /PRIMARY DIRECTION: Introduce, keeping the development character-focused, social in scope, low in intensity/i);
     assert.match(payload, /PRIMARY REQUIRED EFFECT: Let the routine interaction produce a small but observable development that opens a fresh possibility\./i);
     assert.match(payload, /ALTERNATIVE 1 WHEN: The user leaves or declines the interaction\./i);
-    assert.match(payload, /If no WHEN condition fits, use none/i);
+    assert.match(payload, /conditions collectively cover the user’s action/i);
+    assert.match(payload, /select exactly one closest-fitting branch/i);
+    assert.match(payload, /Follow the user’s action exactly while applying that branch’s required effect/i);
     assert.match(payload, /FUN TREATMENT:.*prominent, lively expression.*bold or surprising realization/i);
     assert.doesNotMatch(payload, /movement=|content=|scope=|intensity=|plot weight=/i);
     assert.doesNotMatch(payload, /PRESERVE:|DO NOT:/);
@@ -339,11 +349,11 @@ test('request verification preserves a weighted director sample without fabricat
     assert.equal(legacy.lastRequestVerification.directorSample, null);
     assert.equal(legacy.lastRequestVerification.directorSeed, null);
     const current = normalizeState({ lastRequestVerification: {
-        status: 'confirmed', runtimeVersion: '0.12.0', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
+        status: 'confirmed', runtimeVersion: '0.12.1', guidanceBlock: '<living-world-guide>current</living-world-guide>', directorSeed: 0,
         directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' },
     } });
     assert.deepEqual(current.lastRequestVerification.directorSample, { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' });
-    assert.equal(current.lastRequestVerification.runtimeVersion, '0.12.0');
+    assert.equal(current.lastRequestVerification.runtimeVersion, '0.12.1');
     assert.equal(current.lastRequestVerification.directorSeed, 0);
 });
 

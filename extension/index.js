@@ -4,26 +4,26 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.12.0';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.12.0';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.12.1';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.12.1';
 import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.11.101';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.12.0';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.12.0';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.12.0';
-import { normalizeModelListResponse } from './models.js?v=0.12.0';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.12.1';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.12.1';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.12.1';
+import { normalizeModelListResponse } from './models.js?v=0.12.1';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.108';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.12.0';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.12.0';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.12.0';
-import { estimateTokenCount } from './token-budget.js?v=0.12.0';
-import { completionText } from './completion-response.js?v=0.12.0';
-import { sampleDirectorSignals } from './director-sampling.js?v=0.12.0';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.12.1';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.12.1';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.12.1';
+import { estimateTokenCount } from './token-budget.js?v=0.12.1';
+import { completionText } from './completion-response.js?v=0.12.1';
+import { sampleDirectorSignals } from './director-sampling.js?v=0.12.1';
 import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.11.105';
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
-import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.12.0';
+import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.12.1';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.12.0';
+const RUNTIME_VERSION = '0.12.1';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -269,7 +269,7 @@ function installDetachedPlannerTransport() {
                     } else if (typeof request.prompt === 'string') {
                         request.prompt = ensureGuidanceInText(request.prompt, payload);
                     }
-                    // Serialize even when the necessity gate chose no guidance:
+                    // Serialize even when no fresh usable guidance was available:
                     // ensureGuidance* may have removed stale Tale Fairy context.
                     outboundInit = { ...init, body: JSON.stringify(request) };
                 }
@@ -287,7 +287,7 @@ function installDetachedPlannerTransport() {
                         model: request.model,
                     });
                     recordRuntimeStage('provider-bound-skip-saved', { generationType: String(request?.type || '') });
-                    renderAnalysisActivity('Planner necessity gate recorded · no injection', false);
+                    renderAnalysisActivity('No fresh usable direction · no injection', false);
                 }
             } catch (error) {
                 recordRuntimeStage('provider-bound-proof-error', {
@@ -931,7 +931,7 @@ async function confirmReturnedReplyUsedGuidance() {
         }
     }
     renderBoard(state);
-    renderAnalysisActivity(pending.injectionDecision === 'skip' ? 'No-injection decision confirmed in returned reply' : 'Guidance confirmed in returned reply', false);
+    renderAnalysisActivity(pending.injectionDecision === 'skip' ? 'No fresh usable direction confirmed in returned reply' : 'Guidance confirmed in returned reply', false);
     return true;
 }
 
@@ -1887,7 +1887,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const beat = state.beatDirective || {};
     const envelope = [beat.contentClass, beat.scope && `${beat.scope} scope`, beat.intensity && beat.intensity !== 'none' && `${beat.intensity} intensity`, beat.quantity && beat.quantity !== 'none' && beat.quantity, beat.relativePower && beat.relativePower !== 'none' && `${beat.relativePower} power`, beat.plotWeight && beat.plotWeight !== 'none' && `${beat.plotWeight} weight`, beat.duration && `${beat.duration} duration`, beat.resolutionCeiling && `${beat.resolutionCeiling} resolution`].filter(Boolean).join(' · ');
     const beatText = [
-        beat.inject ? `Provider guidance: inject this conditional direction set${beat.injectReason ? ` — ${beat.injectReason}` : ''}` : `Provider guidance: inject nothing${beat.injectReason ? ` — ${beat.injectReason}` : ''}`,
+        beat.inject ? `Provider guidance: inject this conditional direction set${beat.injectReason ? ` — ${beat.injectReason}` : ''}` : `Provider guidance: no usable fresh direction${beat.injectReason ? ` — ${beat.injectReason}` : ''}`,
         beat.primaryWhen && `Primary when: ${beat.primaryWhen}`,
         `${String(beat.operation).toUpperCase()} — ${beat.target}`,
         beat.requiredEffect,
@@ -1947,7 +1947,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const previewText = previewPayload
         ? `${previewKind} — Tale Fairy plans to inject this exact context.\nPlacement: ${previewPlacement}\n\n${previewPayload}`
         : isDirectionCurrent(state, messagesFromChat(previewContext.chat || []), chatId) && !state.lastInject
-            ? 'FRESH NO-INJECTION DECISION — Tale Fairy found no useful direction to add to the next request.'
+            ? 'INVALID OR LEGACY NON-INJECTION DIRECTION — waiting for a fresh plan that always contributes.'
             : analysisPromise
                 ? 'PREPARING FRESH DIRECTION IN BACKGROUND — roleplay generation will not wait for it.'
                 : 'NO FRESH DIRECTION READY — used or stale direction is audit history only and will not be reused.';

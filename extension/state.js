@@ -1,12 +1,12 @@
-import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.12.0';
+import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.12.1';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
 import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js';
-import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile } from './beat-director.js?v=0.12.0';
-import { normalizeDirectorSample } from './director-sampling.js?v=0.12.0';
+import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile } from './beat-director.js?v=0.12.1';
+import { normalizeDirectorSample } from './director-sampling.js?v=0.12.1';
 
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 51;
+export const STATE_VERSION = 52;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -470,13 +470,15 @@ export function normalizeState(input = {}) {
     // rather than a private exact realization. v51 replaces the single
     // ahead-of-time beat with a conditional direction set; old single beats
     // are cleared so they can never masquerade as fresh conditional guidance.
+    // v52 makes successful direction sets total-coverage and always-injected;
+    // v51 sets are cleared so their use-none branch cannot survive the upgrade.
     const unsafePlannerUpgrade = inputVersion > 0 && inputVersion < 18;
     const movementUpgrade = inputVersion > 0 && inputVersion < 42;
     const recoveryUpgrade = inputVersion > 0 && inputVersion < 26;
     const chronologyAuditUpgrade = inputVersion > 0 && inputVersion < 31;
     const authorMapUpgrade = inputVersion > 0 && inputVersion < 45;
     const beatContractUpgrade = inputVersion > 0 && inputVersion < 48;
-    const conditionalSetUpgrade = inputVersion > 0 && inputVersion < 51;
+    const conditionalSetUpgrade = inputVersion > 0 && inputVersion < 52;
     const normalizedLayers = normalizeNarrativeLayers(value.narrativeLayers);
     const normalizedDirector = normalizeDirectorScore(value.directorScore);
     const state = {
