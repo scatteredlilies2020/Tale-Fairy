@@ -361,6 +361,7 @@ function normalizeRequestVerification(value) {
         requestedAt: Math.max(0, Number(value.requestedAt) || 0),
         confirmedAt: Math.max(0, Number(value.confirmedAt) || 0),
         sourceMessageCount: Math.max(0, Number(value.sourceMessageCount) || 0),
+        sourceFingerprint: text(value.sourceFingerprint ?? value.source_fingerprint).slice(0, 140),
         responseMessageCount: Math.max(0, Number(value.responseMessageCount) || 0),
         chatId: text(value.chatId).slice(0, 300),
         provider: text(value.provider).slice(0, 120),
@@ -412,6 +413,10 @@ export function isReplacementVerificationCurrent(verification, messages = [], ch
         || !messages.length) return false;
     const responseCount = Math.max(0, Number(verification.responseMessageCount) || 0);
     if (!responseCount) return false;
+    if (verification.sourceFingerprint) {
+        const sourceMessages = generationRetrySource(messages, true);
+        if (fingerprintMessages(sourceMessages) !== verification.sourceFingerprint) return false;
+    }
     if (messages.length === responseCount) return true;
     return Boolean(messages.at(-1)?.is_user && messages.length + 1 === responseCount);
 }

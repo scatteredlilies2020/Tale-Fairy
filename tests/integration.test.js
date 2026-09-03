@@ -158,6 +158,14 @@ test('rapid-fire turns consume guidance once and coalesce planner catch-up', () 
     assert.doesNotMatch(directorSource, /delivery debt|release condition|event queue/i);
 });
 
+test('transcript mutations cancel stale work and queue the newest snapshot', () => {
+    assert.match(source, /function scheduleTranscriptRefresh/);
+    assert.match(source, /cancelRunningAnalysis\(reason, status\)/);
+    assert.match(source, /cancelDetachedPlannerJobs\(chatId\)/);
+    assert.match(source, /void queueLatestAnalysis\(\{ chatId \}\)/);
+    assert.match(source, /scheduleTranscriptRefresh\('The chat changed while Tale Fairy was analyzing\.'/);
+});
+
 test('roleplay injection exposes a conditional direction set but never private planner evidence', () => {
     assert.doesNotMatch(stateSource, /<user-established-canon>|<tale-fairy-user-notes>/i);
     assert.doesNotMatch(directorSource, /PLANNER LEAN|WEIGHTED DIRECTOR SAMPLE|INTERVENTION_GUIDANCE|FORTUNE_GUIDANCE/i);
