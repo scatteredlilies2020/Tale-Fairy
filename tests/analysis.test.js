@@ -65,12 +65,19 @@ test('structured output contract is the conditional direction-set v4 shape', () 
     assert.equal(ANALYSIS_SCHEMA.strict, true);
     assert.equal(ANALYSIS_SCHEMA_VALUE.properties.beat.properties.alternatives.minItems, 2);
     assert.equal(ANALYSIS_SCHEMA_VALUE.properties.beat.properties.alternatives.maxItems, 2);
+    assert.equal(ANALYSIS_SCHEMA_VALUE.properties.beat.properties.inject.const, true);
     assert.match(ANALYSIS_OUTPUT_CONTRACT, /No other keys/);
     assert.doesNotMatch(JSON.stringify(ANALYSIS_SCHEMA_VALUE), /routes|guides|horizons|milestones|future_setup/i);
 });
 
 test('valid current-beat result passes validation', () => {
     assert.deepEqual(validateAnalysisResult(result()), { valid: true, errors: [] });
+});
+
+test('fresh planner results must always contribute a direction', () => {
+    const check = validateAnalysisResult(result({ beat: { ...result().beat, inject: false } }));
+    assert.equal(check.valid, false);
+    assert.ok(check.errors.includes('beat.inject must be true'));
 });
 
 test('validation rejects missing semantic effect and invalid scale values without restricting movement words', () => {
@@ -121,7 +128,10 @@ test('planner chooses scene-warranted movement before applying randomness', () =
     assert.match(SYSTEM, /Never invent player dialogue, thoughts, feelings, consent, decisions/i);
     assert.match(SYSTEM, /conditional movement set/i);
     assert.match(SYSTEM, /exactly two materially distinct redirect-safe branches/i);
-    assert.match(SYSTEM, /If no condition later fits, the writing model will use none/i);
+    assert.match(SYSTEM, /collectively cover every plausible next action/i);
+    assert.match(SYSTEM, /always selects exactly one closest-fitting branch/i);
+    assert.match(SYSTEM, /Quiet listening, assignments, rest, travel/i);
+    assert.match(SYSTEM, /Never manufacture conflict, interruption, pressure, or urgency/i);
 });
 
 test('planner permits freeform AI invention and scale-native simulation', () => {
@@ -137,7 +147,7 @@ test('planner permits freeform AI invention and scale-native simulation', () => 
     assert.match(SYSTEM, /Introduce a quiet, favorable discovery/i);
     assert.match(SYSTEM, /Keep scene specifics in private fields/i);
     assert.doesNotMatch(SYSTEM, /generate six to eight.*routes|schedule future milestones|maintain event queues/i);
-    assert.ok(estimateTokenCount(`${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}`) < 2400);
+    assert.ok(estimateTokenCount(`${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}`) < 2700);
 });
 
 test('all modes alter sampled appetite without weakening authority', () => {
@@ -163,15 +173,18 @@ test('analysis prompt carries current context, identity, variation, bootstrap, a
     assert.match(prompt.invention, /provider-visible when, operation, and required_effect text must contain only portable abstractions/i);
     assert.match(prompt.invention, /Never copy names or concrete nouns from the scene/i);
     assert.match(prompt.invention, /current activity, current interaction, current environment/i);
-    assert.match(prompt.instruction, /writing model selects one fitting branch or none/i);
+    assert.match(prompt.instruction, /always selects exactly one best-fitting branch/i);
     assert.match(prompt.instruction, /never combines branches/i);
-    assert.match(prompt.necessity_gate, /inject=false/i);
+    assert.match(prompt.contribution_rule, /Always set beat\.inject=true/i);
+    assert.match(prompt.contribution_rule, /Quiet listening, assignments, rest, travel/i);
+    assert.match(prompt.movement, /broadly compatible follow-through condition/i);
     assert.match(prompt.response_audit_rule, /never injected/i);
     assert.match(prompt.simulation, /country simulation/i);
     assert.match(prompt.direction_policy, /choose one coherent primary direction before applying random appetite/i);
     assert.match(prompt.direction_policy, /two distinct redirect-safe alternatives/i);
     assert.match(prompt.direction_policy, /breathing room.*as legitimate as complication/i);
-    assert.match(prompt.direction_policy, /Quiet situations may gain texture, emotion, discovery, or character meaning without an incident/i);
+    assert.match(prompt.direction_policy, /Quiet or routine situations such as listening, studying, resting, or ordinary work/i);
+    assert.match(prompt.direction_policy, /texture, interaction, progress, discovery, opportunity, meaning, or consequence/i);
     assert.match(prompt.direction_policy, /Provider-visible text states only abstract function and effect/i);
     assert.equal(Object.hasOwn(prompt, 'director_policy'), false);
     assert.match(prompt.director_sample, /WEIGHTED DIRECTOR SAMPLE/);

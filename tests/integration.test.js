@@ -13,22 +13,22 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest and detached plugin identify the adaptive-director release', () => {
-    assert.equal(manifest.version, '0.12.0');
-    assert.equal(manifest.js, 'extension/index.js?v=0.12.0');
-    assert.equal(manifest.css, 'extension/style.css?v=0.12.0');
+    assert.equal(manifest.version, '0.12.1');
+    assert.equal(manifest.js, 'extension/index.js?v=0.12.1');
+    assert.equal(manifest.css, 'extension/style.css?v=0.12.1');
     assert.match(manifest.description, /always-on adaptive story director/i);
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.12\.0'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.12\.0'/);
+    assert.match(pluginSource, /const VERSION = '0\.12\.1'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.12\.1'/);
 });
 
 test('extension loads the background-only direction modules', () => {
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.12\.0'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.12\.0'/);
-    assert.match(source, /from '\.\/request-injection\.js\?v=0\.12\.0'/);
-    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.12\.0'/);
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.12\.1'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.12\.1'/);
+    assert.match(source, /from '\.\/request-injection\.js\?v=0\.12\.1'/);
+    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.12\.1'/);
     assert.doesNotMatch(source, /action-gate/);
-    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.12\.0'/);
+    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.12\.1'/);
 });
 
 test('long-form defaults reserve room for current turns, summaries, and thinking', () => {
@@ -104,7 +104,7 @@ test('adaptive analysis uses freeform direction rather than an event taxonomy', 
     assert.match(analysisSource, /conditional set and useful non-default scale classifications are provider-visible/i);
     assert.match(analysisSource, /one fitting branch becomes binding/i);
     assert.match(analysisSource, /Keep scene specifics in private fields/i);
-    assert.match(stateSource, /export const STATE_VERSION = 51/);
+    assert.match(stateSource, /export const STATE_VERSION = 52/);
     assert.match(stateSource, /beatContractUpgrade/);
 });
 
@@ -178,7 +178,8 @@ test('roleplay injection exposes a conditional direction set but never private p
     assert.match(directorSource, /BALANCED TREATMENT/);
     assert.match(directorSource, /FUN TREATMENT/);
     assert.match(directorSource, /Use only the selected direction and required effect as abstract guidance/i);
-    assert.match(directorSource, /If no WHEN condition fits, use none/i);
+    assert.match(directorSource, /conditions collectively cover the user’s action/i);
+    assert.match(directorSource, /select exactly one closest-fitting branch/i);
     assert.doesNotMatch(directorSource, /movement=|content=|scope=|intensity=|plot weight=/i);
     assert.doesNotMatch(directorSource, /beat\.preserve|beat\.forbid/);
     assert.doesNotMatch(directorSource, /beat\.basis|scene\.basis/);
@@ -208,7 +209,7 @@ test('scratchpad shows only fresh upcoming guidance and rejects stale fallback',
     assert.doesNotMatch(source, /MOST RECENT USED DIRECTION|historicalVerification\.guidanceBlock/);
     assert.match(source, /NO FRESH DIRECTION READY/);
     assert.match(source, /PREPARING FRESH DIRECTION IN BACKGROUND/);
-    assert.match(source, /FRESH NO-INJECTION DECISION/);
+    assert.match(source, /INVALID OR LEGACY NON-INJECTION DIRECTION/);
     assert.match(source, /NEXT NORMAL GENERATION/);
     assert.match(source, /CURRENT REGENERATION REQUEST/);
     assert.match(template, />Adaptive direction</);

@@ -150,7 +150,7 @@ export function formatBeatContract(_sceneValue, beatValue, options = {}) {
     const requestedMode = String(options.mode ?? options.directorSample?.mode ?? '').trim().toLowerCase();
     const mode = MODES.has(requestedMode) ? requestedMode : 'balanced';
     return [
-        'CONDITIONAL TALE FAIRY DIRECTION SET: Resolve this set only after reading the latest user action. This is broad narrative guidance, not a script. Select exactly one fitting branch. Never combine branches. If no WHEN condition fits, use none of the set and answer the user action directly.',
+        'CONDITIONAL TALE FAIRY DIRECTION SET: Resolve this set only after reading the latest user action. This is broad narrative guidance, not a script. The conditions collectively cover the user’s action: select exactly one closest-fitting branch and never combine branches. Follow the user’s action exactly while applying that branch’s required effect.',
         `PRIMARY WHEN: ${effectSentence(beat.primaryWhen)}.`,
         branchDirection('PRIMARY', beat),
         ...beat.alternatives.flatMap((branch, index) => [
