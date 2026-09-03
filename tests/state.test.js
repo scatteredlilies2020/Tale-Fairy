@@ -310,6 +310,29 @@ test('replacement verification is usable only for the exact discarded response',
     assert.equal(isReplacementVerificationCurrent(verification, messages, 'chat-b'), false);
 });
 
+test('replacement verification rejects an edited transcript with the same message count', () => {
+    const base = [{ is_user: true, mes: 'Stay in the library.' }];
+    const original = [...base, { is_user: false, mes: 'Original reply.' }];
+    const edited = [{ is_user: true, mes: 'Leave the library.' }, original[1]];
+    const verification = {
+        status: 'confirmed', chatId: 'chat-a', responseMessageCount: original.length,
+        replacementGeneration: true, sourceFingerprint: fingerprintMessages(base),
+    };
+    assert.equal(isReplacementVerificationCurrent(verification, original, 'chat-a'), true);
+    assert.equal(isReplacementVerificationCurrent(verification, base, 'chat-a'), true);
+    assert.equal(isReplacementVerificationCurrent(verification, edited, 'chat-a'), false);
+});
+
+test('normal response archives remain valid for replacement generation', () => {
+    const base = [{ is_user: true, mes: 'Continue.' }];
+    const response = [...base, { is_user: false, mes: 'Original reply.' }];
+    const verification = {
+        status: 'confirmed', chatId: 'chat-a', responseMessageCount: response.length,
+        replacementGeneration: false, sourceFingerprint: fingerprintMessages(base),
+    };
+    assert.equal(isReplacementVerificationCurrent(verification, response, 'chat-a'), true);
+});
+
 test('request verification preserves a weighted director sample without fabricating one for legacy records', () => {
     const legacy = normalizeState({ lastRequestVerification: { status: 'confirmed', guidanceBlock: '<living-world-guide>old</living-world-guide>' } });
     assert.equal(legacy.lastRequestVerification.runtimeVersion, '');

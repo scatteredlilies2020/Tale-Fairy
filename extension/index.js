@@ -50,6 +50,7 @@ let analysisStopSequence = 0;
 let activeAnalysisIntent = null;
 let activeAnalysisMessageCount = 0;
 let queuedAnalysisIntent = null;
+let transcriptRefreshTimer = null;
 let lastAnalysisError = '';
 let pendingRequestVerification = null;
 let generationGuideSelection = null;
@@ -776,6 +777,8 @@ function rememberVerifiedRequest(payload, { provider = '', model = '' } = {}) {
     const messages = messagesFromChat(context.chat || []);
     const s = getSettings();
     const state = loadState(context.chatMetadata);
+    const replacementGeneration = generationGuideSelection?.replacement === true;
+    const sourceMessages = generationRetrySource(messages, replacementGeneration);
     const verification = {
         status: 'included',
         injectionDecision: 'inject',
@@ -785,6 +788,7 @@ function rememberVerifiedRequest(payload, { provider = '', model = '' } = {}) {
         requestedAt: Date.now(),
         confirmedAt: 0,
         sourceMessageCount: messages.length,
+        sourceFingerprint: fingerprintMessages(sourceMessages),
         responseMessageCount: 0,
         chatId: String(context.getCurrentChatId?.() || ''),
         provider: String(provider || ''),
@@ -795,7 +799,7 @@ function rememberVerifiedRequest(payload, { provider = '', model = '' } = {}) {
         guideCandidates: [],
         canonConstraints: state.canonConstraints,
         selectedGuideIndex: generationGuideSelection?.index || 0,
-        replacementGeneration: generationGuideSelection?.replacement === true,
+        replacementGeneration,
         sceneProfile: generationGuideSelection?.sceneProfile || state.sceneProfile,
         beatDirective: generationGuideSelection?.beatDirective || state.beatDirective,
         directorSample: generationGuideSelection?.directorSample || sampleDirectorSignals(state.mode, state.plannerSeed),
@@ -817,13 +821,15 @@ function rememberSkippedRequest({ provider = '', model = '' } = {}) {
     const context = currentContext();
     const messages = messagesFromChat(context.chat || []);
     const state = loadState(context.chatMetadata);
+    const replacementGeneration = generationGuideSelection?.replacement === true;
+    const sourceMessages = generationRetrySource(messages, replacementGeneration);
     const verification = {
         status: 'included', injectionDecision: 'skip', runtimeVersion: RUNTIME_VERSION,
         verificationId: verificationFingerprint(`skip:${fingerprintMessages(messages)}`), guidanceBlock: '', requestedAt: Date.now(), confirmedAt: 0,
-        sourceMessageCount: messages.length, responseMessageCount: 0, chatId: String(context.getCurrentChatId?.() || ''),
+        sourceMessageCount: messages.length, sourceFingerprint: fingerprintMessages(sourceMessages), responseMessageCount: 0, chatId: String(context.getCurrentChatId?.() || ''),
         provider: String(provider || ''), model: String(model || ''), position: '', role: 'user', depth: 0,
         guideCandidates: [], canonConstraints: state.canonConstraints, selectedGuideIndex: 0,
-        replacementGeneration: generationGuideSelection?.replacement === true,
+        replacementGeneration,
         sceneProfile: generationGuideSelection?.sceneProfile || state.sceneProfile,
         beatDirective: generationGuideSelection?.beatDirective || state.beatDirective,
         directorSample: generationGuideSelection?.directorSample || sampleDirectorSignals(state.mode, state.plannerSeed),
@@ -1054,6 +1060,66 @@ function clearQueuedAnalysis() {
     queuedAnalysisIntent = null;
 }
 
+function clearTranscriptRefresh() {
+    if (transcriptRefreshTimer) clearTimeout(transcriptRefreshTimer);
+    transcriptRefreshTimer = null;
+}
+
+function verificationMatchesTranscript(verification, messages, chatId) {
+    if (!verification) return false;
+    if (verification.sourceFingerprint) {
+        return fingerprintMessages(messages) === verification.sourceFingerprint;
+    }
+    return isReplacementVerificationCurrent(verification, messages, chatId);
+}
+
+function invalidateChangedTranscriptVerification(context, messages) {
+    const chatId = String(context.getCurrentChatId?.() || '');
+    const state = loadState(context.chatMetadata);
+    const verification = state.lastRequestVerification;
+    const verificationStillMatches = verificationMatchesTranscript(verification, messages, chatId);
+    if (verificationStillMatches && (!pendingRequestVerification || verificationMatchesTranscript(pendingRequestVerification, messages, chatId))) return state;
+
+    pendingRequestVerification = null;
+    if (state.lastRequestVerification) {
+        state.lastRequestVerification = null;
+        context.updateChatMetadata(saveState(context.chatMetadata, state));
+    }
+    const cached = getSettings().lastProviderBoundVerification;
+    if (cached?.chatId === chatId) {
+        delete getSettings().lastProviderBoundVerification;
+        saveSettingsDebounced();
+    }
+    return state;
+}
+
+function scheduleTranscriptRefresh(reason, status = 'Refreshing…') {
+    const context = currentContext();
+    const hadRunningAnalysis = Boolean(analysisPromise);
+    const chatId = String(context.getCurrentChatId?.() || '');
+    generationRevision++;
+    cancelRunningAnalysis(reason, status);
+    if (hadRunningAnalysis) void cancelDetachedPlannerJobs(chatId);
+    generationGuideSelection = null;
+    const messages = messagesFromChat(context.chat || []);
+    const state = invalidateChangedTranscriptVerification(context, messages);
+    updatePrompt(state);
+    renderBoard(state);
+    const archiveStillMatches = verificationMatchesTranscript(state.lastRequestVerification, messages, chatId);
+    const stateStillMatches = isStateAligned(state, messages, chatId);
+    if (archiveStillMatches || stateStillMatches) return;
+    clearTranscriptRefresh();
+    transcriptRefreshTimer = setTimeout(() => {
+        transcriptRefreshTimer = null;
+        const latestContext = currentContext();
+        const chatId = String(latestContext.getCurrentChatId?.() || '');
+        const latestMessages = messagesFromChat(latestContext.chat || []);
+        if (!getSettings().enabled || !chatId || !latestMessages.length) return;
+        renderAnalysisActivity('Checking the changed transcript…', true);
+        void queueLatestAnalysis({ chatId });
+    }, 0);
+}
+
 function drainQueuedAnalysis() {
     if (analysisPromise || !queuedAnalysisIntent) return;
     const intent = queuedAnalysisIntent;
@@ -1130,6 +1196,7 @@ function scheduleAnalysisRetry(error, options, chatId) {
 
 function interruptAnalysis(reason, status) {
     generationGuideSelection = null;
+    clearTranscriptRefresh();
     analysisStopSequence++;
     generationRevision++;
     clearQueuedAnalysis();
@@ -2256,6 +2323,7 @@ eventSource.on(event_types.GENERATION_ENDED, () => recordRuntimeStage('generatio
 
 if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPED, () => {
     recordRuntimeStage('generation-stopped');
+    clearTranscriptRefresh();
     pendingRequestVerification = null;
     generationGuideSelection = null;
     renderBoard();
@@ -2308,17 +2376,17 @@ if (event_types.MESSAGE_SENT) eventSource.on(event_types.MESSAGE_SENT, () => {
 });
 for (const event of [event_types.MESSAGE_EDITED, event_types.MESSAGE_UPDATED, event_types.MESSAGE_DELETED]) {
     if (event) eventSource.on(event, () => {
-        generationRevision++;
-        cancelRunningAnalysis('The chat was edited while Tale Fairy was analyzing.', 'Refreshing…');
-        const state = loadState(currentContext().chatMetadata);
-        updatePrompt(state);
-        renderBoard(state);
+        scheduleTranscriptRefresh('The chat changed while Tale Fairy was analyzing.');
     });
 }
 eventSource.on(event_types.MESSAGE_SWIPED, messageId => {
+    clearTranscriptRefresh();
+    const context = currentContext();
+    const chatId = String(context.getCurrentChatId?.() || '');
+    const hadRunningAnalysis = Boolean(analysisPromise);
     generationRevision++;
     cancelRunningAnalysis('The selected swipe changed while Tale Fairy was analyzing.', 'Refreshing…');
-    const context = currentContext();
+    if (hadRunningAnalysis) void cancelDetachedPlannerJobs(chatId);
     const state = loadState(context.chatMetadata);
     updatePrompt(state);
     renderBoard(state);
@@ -2326,6 +2394,7 @@ eventSource.on(event_types.MESSAGE_SWIPED, messageId => {
     // Newly generated replacements reuse the archived response contract.
 });
 eventSource.on(event_types.CHAT_CHANGED, () => {
+    clearTranscriptRefresh();
     pendingRequestVerification = null;
     generationGuideSelection = null;
     generationRevision++;
