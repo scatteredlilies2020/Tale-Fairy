@@ -179,7 +179,7 @@ function validateBeatAnalysisResult(result) {
             [`beat.alternatives[${index}].required_effect`, branch?.required_effect],
         ]) : []),
     ];
-    const abstractCapitalizedWords = new Set(['A', 'An', 'The', 'If', 'When', 'Let', 'Make', 'Keep', 'Give', 'Allow', 'Introduce', 'Deepen', 'Support', 'Preserve', 'Increase', 'Reduce', 'Resolve', 'Transition', 'Continue', 'Shift', 'Guide', 'Create', 'Add', 'Acknowledge', 'Carry', 'Expose', 'Maintain', 'Move', 'Use', 'Current', 'Established', 'Existing', 'Immediate', 'Observable', 'Narrative', 'Scene', 'User', 'Player']);
+    const abstractCapitalizedWords = new Set(['A', 'An', 'The', 'If', 'When', 'Let', 'Make', 'Keep', 'Give', 'Allow', 'Introduce', 'Deepen', 'Support', 'Preserve', 'Increase', 'Reduce', 'Resolve', 'Transition', 'Continue', 'Shift', 'Guide', 'Create', 'Add', 'Acknowledge', 'Carry', 'Expose', 'Maintain', 'Move', 'Use', 'Rest', 'Current', 'Established', 'Existing', 'Immediate', 'Observable', 'Narrative', 'Scene', 'User', 'Player']);
     for (const [path, value] of visibleText) {
         if (typeof value !== 'string') continue;
         const words = [...value.matchAll(/\b[\p{Lu}][\p{L}'’-]*\b/gu)];
