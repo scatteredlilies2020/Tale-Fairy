@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from '../extension/output-negotiation.js';
+import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, plannerValidationRepairInstruction, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from '../extension/output-negotiation.js';
 
 const schema = { value: { type: 'object', required: ['contract_version'] } };
 
@@ -18,6 +18,18 @@ test('compatibility modes give the model the complete schema in its prompt', () 
     assert.match(messages[2].content, /JSON schema for the response/);
     assert.match(messages[2].content, /contract_version/);
     assert.match(plannerPrompt('prompt', schema, PLANNER_OUTPUT_MODE.PROMPT_ONLY), /contract_version/);
+});
+
+test('validation repair requests a complete replacement and preserves exact validator feedback', () => {
+    const error = Object.assign(new Error('invalid'), {
+        validationErrors: ['beat.alternatives[0].when leaked Vekk', 'beat.required_effect controlled the player'],
+    });
+    const repair = plannerValidationRepairInstruction(error);
+    assert.match(repair, /complete replacement JSON object/i);
+    assert.match(repair, /Vekk/);
+    assert.match(repair, /controlled the player/);
+    assert.equal(plannerMessages('system', 'prompt', schema, PLANNER_OUTPUT_MODE.JSON_SCHEMA, repair).at(-1).content, repair);
+    assert.match(plannerPrompt('prompt', schema, PLANNER_OUTPUT_MODE.PROMPT_ONLY, repair), /complete replacement JSON object/i);
 });
 
 test('JSON-object mode preserves reasoning controls while changing only response format', () => {

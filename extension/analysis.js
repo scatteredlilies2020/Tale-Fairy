@@ -1,15 +1,16 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.12.1';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.12.2';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.11.96';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.12.1';
+import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.12.2';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
 export class AnalysisValidationError extends Error {
-    constructor(message) {
+    constructor(message, validationErrors = []) {
         super(message);
         this.name = 'AnalysisValidationError';
+        this.validationErrors = Array.isArray(validationErrors) ? validationErrors : [];
     }
 }
 
@@ -149,6 +150,80 @@ function extractJson(raw) {
     throw new Error('Analysis model did not return JSON.');
 }
 
+function startsSentence(value, index) {
+    const before = String(value || '').slice(0, index).trimEnd();
+    return !before || /(?:[.!?;:]|[\r\n]|[([{<]|[-–—])$/u.test(before);
+}
+
+function capitalizedWords(value) {
+    return typeof value === 'string'
+        ? [...value.matchAll(/\b[\p{Lu}][\p{L}'’-]*\b/gu)]
+        : [];
+}
+
+function words(value) {
+    return typeof value === 'string'
+        ? [...value.matchAll(/\b[\p{L}][\p{L}'’-]*\b/gu)]
+        : [];
+}
+
+function normalizedPhrase(value) {
+    return words(String(value || ''))
+        .map(match => match[0].toLocaleLowerCase())
+        .join(' ');
+}
+
+function canonSpecificTerms(result) {
+    const terms = new Set();
+    const addActorName = value => {
+        const name = normalizedPhrase(value);
+        if (!name) return;
+        terms.add(name);
+        const parts = name.split(' ');
+        // Titles are often ordinary role nouns. The final component is the
+        // distinguishing name and must remain private even if lowercased.
+        terms.add(parts.at(-1));
+    };
+    const addNamedPlace = value => {
+        const source = String(value || '');
+        const phrases = source.match(/\b[\p{Lu}][\p{L}'’-]*(?:\s+[\p{Lu}][\p{L}'’-]*)*\b/gu) || [];
+        for (const phrase of phrases) {
+            if (/^(?:a|an|the)$/iu.test(phrase)) continue;
+            terms.add(normalizedPhrase(phrase));
+        }
+    };
+    const addEmbeddedNames = value => {
+        if (typeof value === 'string') {
+            for (const match of capitalizedWords(value)) {
+                if (!startsSentence(value, match.index)) terms.add(normalizedPhrase(match[0]));
+            }
+            return;
+        }
+        if (Array.isArray(value)) {
+            for (const item of value) addEmbeddedNames(item);
+            return;
+        }
+        if (!value || typeof value !== 'object') return;
+        for (const item of Object.values(value)) addEmbeddedNames(item);
+    };
+
+    for (const actor of asArray(result?.actor_updates)) addActorName(actor?.name);
+    addNamedPlace(result?.current?.location);
+    addNamedPlace(result?.world?.identity);
+    addEmbeddedNames(result?.current);
+    addEmbeddedNames(result?.world);
+    addEmbeddedNames(result?.thread_updates);
+    addEmbeddedNames(result?.actor_updates);
+    addEmbeddedNames(result?.canon_updates);
+    addEmbeddedNames(result?.beat?.target);
+    addEmbeddedNames(result?.beat?.inject_reason);
+    addEmbeddedNames(result?.beat?.preserve);
+    addEmbeddedNames(result?.beat?.forbid);
+    addEmbeddedNames(result?.beat?.basis);
+    addEmbeddedNames(result?.ledger);
+    return terms;
+}
+
 function validateBeatAnalysisResult(result) {
     const errors = [];
     const requiredStrings = (value, keys, label) => {
@@ -179,12 +254,22 @@ function validateBeatAnalysisResult(result) {
             [`beat.alternatives[${index}].required_effect`, branch?.required_effect],
         ]) : []),
     ];
-    const abstractCapitalizedWords = new Set(['A', 'An', 'The', 'If', 'When', 'Let', 'Make', 'Keep', 'Give', 'Allow', 'Introduce', 'Deepen', 'Support', 'Preserve', 'Increase', 'Reduce', 'Resolve', 'Transition', 'Continue', 'Shift', 'Guide', 'Create', 'Add', 'Acknowledge', 'Carry', 'Expose', 'Maintain', 'Move', 'Use', 'Rest', 'Current', 'Established', 'Existing', 'Immediate', 'Observable', 'Narrative', 'Scene', 'User', 'Player']);
+    const privateCanonTerms = canonSpecificTerms(result);
     for (const [path, value] of visibleText) {
         if (typeof value !== 'string') continue;
-        const words = [...value.matchAll(/\b[\p{Lu}][\p{L}'’-]*\b/gu)];
-        for (const match of words) {
-            if (abstractCapitalizedWords.has(match[0])) continue;
+        const normalizedVisible = ` ${normalizedPhrase(value)} `;
+        const reported = new Set();
+        for (const term of privateCanonTerms) {
+            if (!term || !normalizedVisible.includes(` ${term} `)) continue;
+            errors.push(`${path} must stay abstract and must not name canon-specific proper nouns (${term})`);
+            reported.add(term);
+        }
+        for (const match of words(value)) {
+            const term = match[0].toLocaleLowerCase();
+            const knownCanonWord = reported.has(term);
+            const unexpectedlyCapitalized = /^\p{Lu}/u.test(match[0]) && !startsSentence(value, match.index);
+            if (!knownCanonWord && !unexpectedlyCapitalized) continue;
+            if (knownCanonWord) continue;
             errors.push(`${path} must stay abstract and must not name canon-specific proper nouns (${match[0]})`);
         }
     }
