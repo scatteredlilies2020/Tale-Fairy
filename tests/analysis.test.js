@@ -114,6 +114,22 @@ test('provider-visible branches reject canon-specific names instead of injecting
     assert.ok(check.errors.some(error => /beat\.required_effect.*Lucia/i.test(error)));
 });
 
+test('provider-visible branches accept Rest as an abstract direction', () => {
+    const abstract = result({
+        beat: {
+            ...result().beat,
+            alternatives: [
+                result().beat.alternatives[0],
+                {
+                    ...result().beat.alternatives[1],
+                    required_effect: 'Rest remains available without erasing one observable consequence of the current activity.',
+                },
+            ],
+        },
+    });
+    assert.equal(validateAnalysisResult(abstract).valid, true);
+});
+
 test('planner chooses scene-warranted movement before applying randomness', () => {
     assert.match(SYSTEM, /First determine what movement the scene actually warrants/i);
     assert.match(SYSTEM, /never selects the movement and never creates a need for an incident/i);
