@@ -9,36 +9,18 @@ const QUANTITY = new Set(['none', 'singular', 'pair', 'group', 'numerous', 'swar
 const POWER = new Set(['none', 'fodder', 'inferior', 'peer', 'elite', 'overwhelming', 'established']);
 const WEIGHT = new Set(['none', 'incidental', 'connective', 'consequential']);
 const DURATION = new Set(['moment', 'beat', 'scene', 'extended']);
-const CEILINGS = new Set(['none', 'local', 'partial', 'decisive', 'open']);
 const SCOPES = new Set(['personal', 'social', 'institutional', 'societal', 'world']);
 const MODES = new Set(['light', 'balanced', 'fun']);
 
-const CONTENT_WORDING = Object.freeze({
-    texture: 'texture-led',
-    reaction: 'reaction-led',
-    obstacle: 'obstacle-centered',
-    conflict: 'conflict-centered',
-    character: 'character-focused',
-    opposition: 'opposition-driven',
-    event: 'event-led',
-    opportunity: 'opportunity-led',
-    revelation: 'revelation-led',
-    consequence: 'consequence-driven',
-    other: 'open to whatever form best fits the scene',
-});
-const QUANTITY_WORDING = Object.freeze({
-    singular: 'focused on one element', pair: 'focused on a pair', group: 'group-scaled', numerous: 'numerous in scale', swarm: 'swarm-scaled',
-});
-const POWER_WORDING = Object.freeze({
-    fodder: 'matched to minor opposition', inferior: 'matched to weaker opposition', peer: 'matched to peer-level opposition', elite: 'matched to elite opposition', overwhelming: 'matched to overwhelming opposition', established: 'matched to the established power level',
-});
-const DURATION_WORDING = Object.freeze({ moment: 'momentary', scene: 'sustained through the scene', extended: 'extended in duration' });
-const RESOLUTION_WORDING = Object.freeze({ none: 'left unresolved', local: 'locally resolvable', partial: 'only partially resolvable', decisive: 'open to decisive resolution' });
-const PLOT_WORDING = Object.freeze({ incidental: 'incidental to the ongoing story', connective: 'connective to the ongoing story', consequential: 'consequential for the ongoing story' });
 const MODE_TREATMENT = Object.freeze({
-    light: 'LIGHT TREATMENT: Keep it understated, but make the required effect perceptible in this response; subtle does not mean optional.',
-    balanced: 'BALANCED TREATMENT: Make the required effect clear and meaningful enough to change the immediate situation or its possibilities.',
-    fun: 'FUN TREATMENT: Give the selected movement and required effect a prominent, lively expression; prefer a bold or surprising realization where it fits, without changing the movement\'s kind or natural scale.',
+    light: 'LIGHT TREATMENT: Keep Tale Fairy\'s follow-through understated but perceptible after fully honoring the user action.',
+    balanced: 'BALANCED TREATMENT: Give Tale Fairy\'s follow-through a clear, meaningful effect after fully honoring the user action.',
+    fun: 'FUN TREATMENT: Give Tale Fairy\'s follow-through a prominent, lively expression after fully honoring the user action, without changing what the user meant.',
+});
+const OUTCOME_CAP_PATTERN = /(?:\b(?:narrower way|remain pending|remain closed|stay closed|stay sealed|unrestricted access)\b|\bonly partially resolv\w*\b|\b(?:deny|delay|defer|withhold|block|prevent|restrict)\w*\b.{0,48}\b(?:access|answer|availability|information|outcome|progress|resolution|response)\b|\b(?:limit|limited)\b.{0,48}\b(?:access|answer|availability|information|outcome|progress|resolution|response)\b|\bwithout\b.{0,48}\b(?:allowing|answering|granting|opening|providing|resolving)\b|\bnot\b.{0,32}\b(?:allow|answer|grant|open|provide|resolve)\b)/iu;
+const SAFE_FOLLOW_THROUGH = Object.freeze({
+    operation: 'give a direct response and carry the action into the natural next step',
+    requiredEffect: 'Make the action’s immediate consequence observable and open a meaningful next change',
 });
 
 function text(value, limit = 240) { return String(value ?? '').trim().slice(0, limit); }
@@ -56,7 +38,7 @@ export function defaultSceneProfile() {
 }
 
 export function defaultBeatDirective() {
-    return { operation: '', primaryWhen: '', target: 'current activity', requiredEffect: '', alternatives: [], inject: false, injectReason: '', contentClass: 'none', scope: 'personal', intensity: 'none', quantity: 'none', relativePower: 'none', plotWeight: 'none', duration: 'beat', resolutionCeiling: 'open', preserve: [], forbid: [], basis: '' };
+    return { operation: '', primaryWhen: '', target: 'current activity', requiredEffect: '', alternatives: [], inject: false, injectReason: '', contentClass: 'none', scope: 'personal', intensity: 'none', quantity: 'none', relativePower: 'none', plotWeight: 'none', duration: 'beat', preserve: [], forbid: [], basis: '' };
 }
 
 export function normalizeSceneProfile(value = {}) {
@@ -85,7 +67,6 @@ export function normalizeBeatDirective(value = {}) {
         relativePower: choice(item?.relativePower ?? item?.relative_power, POWER, 'none'),
         plotWeight: choice(item?.plotWeight ?? item?.plot_weight, WEIGHT, 'none'),
         duration: choice(item?.duration, DURATION, 'beat'),
-        resolutionCeiling: choice(item?.resolutionCeiling ?? item?.resolution_ceiling, CEILINGS, 'open'),
     })).filter(item => item.when && item.operation && item.requiredEffect);
     return {
         operation,
@@ -102,7 +83,6 @@ export function normalizeBeatDirective(value = {}) {
         relativePower: choice(value.relativePower ?? value.relative_power, POWER, 'none'),
         plotWeight: choice(value.plotWeight ?? value.plot_weight, WEIGHT, 'none'),
         duration: choice(value.duration, DURATION, 'beat'),
-        resolutionCeiling: choice(value.resolutionCeiling ?? value.resolution_ceiling, CEILINGS, 'open'),
         preserve: list(value.preserve),
         forbid: list(value.forbid),
         basis: text(value.basis, 220),
@@ -124,24 +104,10 @@ function effectSentence(value) {
     return source ? `${source.charAt(0).toUpperCase()}${source.slice(1)}` : '';
 }
 
-function naturalList(items) {
-    if (items.length < 2) return items[0] || '';
-    if (items.length === 2) return `${items[0]} and ${items[1]}`;
-    return `${items.slice(0, -1).join(', ')}, and ${items.at(-1)}`;
-}
-
 function branchDirection(label, branch) {
-    const qualities = [];
-    if (branch.contentClass !== 'none') qualities.push(CONTENT_WORDING[branch.contentClass]);
-    if (branch.scope !== 'personal') qualities.push(`${branch.scope} in scope`);
-    if (branch.intensity !== 'none') qualities.push(`${branch.intensity} in intensity`);
-    if (branch.quantity !== 'none') qualities.push(QUANTITY_WORDING[branch.quantity]);
-    if (branch.relativePower !== 'none') qualities.push(POWER_WORDING[branch.relativePower]);
-    if (branch.plotWeight !== 'none') qualities.push(PLOT_WORDING[branch.plotWeight]);
-    if (branch.duration !== 'beat') qualities.push(DURATION_WORDING[branch.duration]);
-    if (branch.resolutionCeiling !== 'open') qualities.push(RESOLUTION_WORDING[branch.resolutionCeiling]);
-    const treatment = qualities.length ? `, keeping the development ${naturalList(qualities)}` : '';
-    return `${label} DIRECTION: ${sentence(branch.operation)}${treatment}.\n${label} REQUIRED EFFECT: ${effectSentence(branch.requiredEffect)}.`;
+    const capped = OUTCOME_CAP_PATTERN.test(`${branch.operation} ${branch.requiredEffect}`);
+    const selected = capped ? SAFE_FOLLOW_THROUGH : branch;
+    return `${label} NEXT-STEP DIRECTION: ${sentence(selected.operation)}.\n${label} NEXT-STEP EFFECT: ${effectSentence(selected.requiredEffect)}.`;
 }
 
 export function formatBeatContract(_sceneValue, beatValue, options = {}) {
@@ -150,7 +116,9 @@ export function formatBeatContract(_sceneValue, beatValue, options = {}) {
     const requestedMode = String(options.mode ?? options.directorSample?.mode ?? '').trim().toLowerCase();
     const mode = MODES.has(requestedMode) ? requestedMode : 'balanced';
     return [
-        'CONDITIONAL TALE FAIRY DIRECTION SET: Resolve this set only after reading the latest user action. This is broad narrative guidance, not a script. The conditions collectively cover the user’s action: select exactly one closest-fitting branch and never combine branches. Follow the user’s action exactly while applying that branch’s required effect.',
+        'TALE FAIRY USER-INTENT-FIRST GUIDE: The latest user action outranks this entire guide. First perform that action according to its ordinary intended meaning and show its immediate causal answer or result on-page. For terse input, infer the natural target and minimal implied positioning from the current interaction and goal. Do not replace a literal action with a symbolic, metaphorical, remote, or interface-based substitute.',
+        'A user attempt may fail only because an already-established causal fact makes it fail—not because this guide prefers restraint. Even then, show the concrete response and move to the next actionable change. Never use this guide to deny, delay, narrow, weaken, cap, or reinterpret what the user attempted or explicitly intended.',
+        'After honoring the user action, select exactly one closest-fitting branch for additional forward motion and never combine branches. If every branch conflicts with the user’s intent or natural next step, ignore them and follow the user’s intent or the natural next causal step instead.',
         `PRIMARY WHEN: ${effectSentence(beat.primaryWhen)}.`,
         branchDirection('PRIMARY', beat),
         ...beat.alternatives.flatMap((branch, index) => [
@@ -158,6 +126,6 @@ export function formatBeatContract(_sceneValue, beatValue, options = {}) {
             branchDirection(`ALTERNATIVE ${index + 1}`, branch),
         ]),
         MODE_TREATMENT[mode],
-        'Use only the selected direction and required effect as abstract guidance. Choose every concrete realization from the latest user action and established context without controlling the player character.',
+        'The selected next-step direction and effect are subordinate follow-through, never an outcome ceiling. Choose every concrete realization from the latest user action and established context without controlling the player character.',
     ].join('\n');
 }
