@@ -10,7 +10,7 @@ import { estimateTokenCount } from '../extension/token-budget.js';
 
 function result(overrides = {}) {
     const value = {
-        contract_version: 4,
+        contract_version: 5,
         current: {
             frame: 'grounded', frame_basis: 'A quiet work session is physically and socially ordinary.',
             status: 'The user is working alone on an assignment.', immediate_action: 'Continue the current attempt.',
@@ -24,11 +24,11 @@ function result(overrides = {}) {
             operation: 'complicate', primary_when: 'The user continues or engages with the assignment.', target: 'the current assignment attempt',
             required_effect: 'Expose one manageable, task-native difficulty that makes progress require a concrete adjustment.',
             alternatives: [
-                { when: 'The user pauses, resists, or leaves the task.', operation: 'let the pause reveal a grounded consequence of disengaging', required_effect: 'Make the changed relationship to the unfinished task perceptible without forcing a return.', content_class: 'consequence', scope: 'personal', intensity: 'low', quantity: 'singular', relative_power: 'none', plot_weight: 'incidental', duration: 'beat', resolution_ceiling: 'local' },
-                { when: 'The user redirects attention to another present concern.', operation: 'carry the unfinished pressure into the newly chosen focus', required_effect: 'Let the new focus proceed while preserving one observable connection to the unfinished work.', content_class: 'reaction', scope: 'personal', intensity: 'low', quantity: 'singular', relative_power: 'none', plot_weight: 'connective', duration: 'beat', resolution_ceiling: 'open' },
+                { when: 'The user pauses, resists, or leaves the task.', operation: 'let the pause reveal a grounded consequence of disengaging', required_effect: 'Make the changed relationship to the unfinished task perceptible without forcing a return.', content_class: 'consequence', scope: 'personal', intensity: 'low', quantity: 'singular', relative_power: 'none', plot_weight: 'incidental', duration: 'beat' },
+                { when: 'The user redirects attention to another present concern.', operation: 'carry the unfinished pressure into the newly chosen focus', required_effect: 'Let the new focus proceed while preserving one observable connection to the unfinished work.', content_class: 'reaction', scope: 'personal', intensity: 'low', quantity: 'singular', relative_power: 'none', plot_weight: 'connective', duration: 'beat' },
             ],
             content_class: 'obstacle', scope: 'personal', intensity: 'low', quantity: 'singular', relative_power: 'inferior',
-            plot_weight: 'incidental', duration: 'beat', resolution_ceiling: 'local',
+            plot_weight: 'incidental', duration: 'beat',
             preserve: ['the solitary work scene', 'the user controls how to respond'],
             forbid: ['unrelated attackers', 'a forced player decision'], basis: 'The assignment supports a small practical obstacle, not a new plot.',
         },
@@ -59,8 +59,8 @@ test('extractJson accepts fenced, wrapped, and locally repairable JSON', () => {
     assert.deepEqual(extractJson('{"current":{"activity":"reading"\n"phase":"developing"},}'), { current: { activity: 'reading', phase: 'developing' } });
 });
 
-test('structured output contract is the conditional direction-set v4 shape', () => {
-    assert.equal(ANALYSIS_SCHEMA_VALUE.properties.contract_version.const, 4);
+test('structured output contract is the user-intent-first v5 shape', () => {
+    assert.equal(ANALYSIS_SCHEMA_VALUE.properties.contract_version.const, 5);
     assert.deepEqual(ANALYSIS_SCHEMA_VALUE.required, ['contract_version', 'current', 'beat', 'response_audit', 'world', 'thread_updates', 'actor_updates', 'canon_updates', 'ledger', 'note_resolution', 'audit']);
     assert.equal(ANALYSIS_SCHEMA.strict, true);
     assert.equal(ANALYSIS_SCHEMA_VALUE.properties.beat.properties.alternatives.minItems, 2);
@@ -155,7 +155,7 @@ test('planner chooses scene-warranted movement before applying randomness', () =
     assert.match(SYSTEM, /First determine what movement the scene actually warrants/i);
     assert.match(SYSTEM, /never selects the movement and never creates a need for an incident/i);
     assert.match(SYSTEM, /Quietness is not stagnation/i);
-    assert.match(SYSTEM, /every branch worth experiencing/i);
+    assert.match(SYSTEM, /playable forward motion/i);
     assert.match(SYSTEM, /Active danger, competition, demanding tasks, and instability may exert credible pressure/i);
     assert.match(SYSTEM, /New causes require conversational or explicit-canon support/i);
     assert.match(SYSTEM, /not compulsory disruption/i);
@@ -165,10 +165,10 @@ test('planner chooses scene-warranted movement before applying randomness', () =
     assert.match(SYSTEM, /Never invent player dialogue, thoughts, feelings, consent, decisions/i);
     assert.match(SYSTEM, /conditional movement set/i);
     assert.match(SYSTEM, /exactly two materially distinct redirect-safe branches/i);
-    assert.match(SYSTEM, /collectively cover every plausible next action/i);
-    assert.match(SYSTEM, /always selects exactly one closest-fitting branch/i);
+    assert.match(SYSTEM, /collectively cover plausible next actions/i);
+    assert.match(SYSTEM, /ignore all branches if they conflict/i);
     assert.match(SYSTEM, /Quiet listening, assignments, rest, travel/i);
-    assert.match(SYSTEM, /Never manufacture conflict, interruption, pressure, or urgency/i);
+    assert.match(SYSTEM, /Never manufacture conflict, interruption, pressure, urgency, or restriction/i);
 });
 
 test('planner permits freeform AI invention and scale-native simulation', () => {
@@ -177,23 +177,22 @@ test('planner permits freeform AI invention and scale-native simulation', () => 
     assert.match(SYSTEM, /life simulation/i);
     assert.match(SYSTEM, /countries, societies, and worlds/i);
     assert.match(SYSTEM, /policy effect, public response, trend, or system pressure/i);
-    assert.match(SYSTEM, /conditional set and useful non-default scale classifications are provider-visible/i);
-    assert.match(SYSTEM, /one fitting branch becomes binding/i);
+    assert.match(SYSTEM, /every scale classification in private fields/i);
+    assert.match(SYSTEM, /subordinate follow-through.*never a binding outcome ceiling/i);
     assert.match(SYSTEM, /portable to any scene with the same dramatic shape/i);
     assert.match(SYSTEM, /Never name or repeat a character, location, faction, lore concept/i);
     assert.match(SYSTEM, /Introduce a quiet, favorable discovery/i);
-    assert.match(SYSTEM, /Keep scene specifics in private fields/i);
+    assert.match(SYSTEM, /Keep scene specifics.*private fields/i);
     assert.doesNotMatch(SYSTEM, /generate six to eight.*routes|schedule future milestones|maintain event queues/i);
     assert.ok(estimateTokenCount(`${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}`) < 2700);
 });
 
 test('all modes alter sampled appetite without weakening authority', () => {
-    assert.match(MODE_INSTRUCTIONS.light, /scene need choose the movement first/i);
-    assert.match(MODE_INSTRUCTIONS.light, /required effect must still be perceptible.*subtle does not mean optional/i);
-    assert.match(MODE_INSTRUCTIONS.balanced, /breathers.*equal legitimacy/i);
-    assert.match(MODE_INSTRUCTIONS.balanced, /required effect a clear, meaningful change/i);
-    assert.match(MODE_INSTRUCTIONS.fun, /prominent, lively expression.*bold or surprising/i);
-    assert.match(MODE_INSTRUCTIONS.fun, /never changes the kind or natural scale/i);
+    for (const mode of Object.values(MODE_INSTRUCTIONS)) assert.match(mode, /user action and its immediate causal result come first/i);
+    assert.match(MODE_INSTRUCTIONS.light, /follow-through, expressed subtly but perceptibly/i);
+    assert.match(MODE_INSTRUCTIONS.balanced, /clear, meaningful next step/i);
+    assert.match(MODE_INSTRUCTIONS.fun, /prominent, lively expression/i);
+    assert.match(MODE_INSTRUCTIONS.fun, /never changes, delays, weakens, or caps what the user meant/i);
     for (const mode of Object.values(MODE_INSTRUCTIONS)) assert.doesNotMatch(mode, /control the player|force the player/i);
 });
 
@@ -210,18 +209,18 @@ test('analysis prompt carries current context, identity, variation, bootstrap, a
     assert.match(prompt.invention, /provider-visible when, operation, and required_effect text must contain only portable abstractions/i);
     assert.match(prompt.invention, /Never copy names or concrete nouns from the scene/i);
     assert.match(prompt.invention, /current activity, current interaction, current environment/i);
-    assert.match(prompt.instruction, /always selects exactly one best-fitting branch/i);
-    assert.match(prompt.instruction, /never combines branches/i);
+    assert.match(prompt.instruction, /user action and its immediate causal result happen first/i);
+    assert.match(prompt.instruction, /compatible forward motion afterward/i);
     assert.match(prompt.contribution_rule, /Always set beat\.inject=true/i);
     assert.match(prompt.contribution_rule, /Quiet listening, assignments, rest, travel/i);
     assert.match(prompt.movement, /broadly compatible follow-through condition/i);
     assert.match(prompt.response_audit_rule, /never injected/i);
     assert.match(prompt.simulation, /country simulation/i);
-    assert.match(prompt.direction_policy, /choose one coherent primary direction before applying random appetite/i);
+    assert.match(prompt.direction_policy, /choose one coherent primary follow-through before applying random appetite/i);
     assert.match(prompt.direction_policy, /two distinct redirect-safe alternatives/i);
     assert.match(prompt.direction_policy, /breathing room.*as legitimate as complication/i);
-    assert.match(prompt.direction_policy, /Quiet or routine situations such as listening, studying, resting, or ordinary work/i);
-    assert.match(prompt.direction_policy, /texture, interaction, progress, discovery, opportunity, meaning, or consequence/i);
+    assert.match(prompt.direction_policy, /Quiet or routine situations still gain a perceptible next step/i);
+    assert.match(prompt.direction_policy, /response, consequence, opportunity, or next step/i);
     assert.match(prompt.direction_policy, /Provider-visible text states only abstract function and effect/i);
     assert.equal(Object.hasOwn(prompt, 'director_policy'), false);
     assert.match(prompt.director_sample, /WEIGHTED DIRECTOR SAMPLE/);
@@ -234,8 +233,8 @@ test('analysis prompt treats OOC and scenario authority as binding, not future s
         ...messages,
         { is_user: true, name: 'Ari', mes: 'OOC: I kill the dragon here. Do not advance beyond the immediate aftermath.' },
     ], defaultState()));
-    assert.match(prompt.authority, /outcome commands bind the stated outcome/i);
-    assert.match(prompt.authority, /advance-time commands widen scope only as stated/i);
+    assert.match(prompt.authority, /OOC outcome commands bind the stated outcome/i);
+    assert.match(prompt.authority, /Never use planning to deny, delay, narrow, weaken, cap, or reinterpret/i);
     assert.match(prompt.evidence_rule, /Never predict or force a known canon event/i);
     assert.match(prompt.messages.at(-1).content, /I kill the dragon here/);
 });

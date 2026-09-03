@@ -17,8 +17,8 @@ test('reads structured tool arguments and Responses API output', () => {
     assert.equal(completionText({ output: [{ type: 'message', content: [{ type: 'output_text', text: 'response' }] }] }), 'response');
 });
 
-test('reads a direct conditional-set v4 structured result', () => {
-    const result = { contract_version: 4, current: {}, beat: {}, response_audit: {} };
+test('reads a direct user-intent-first v5 structured result', () => {
+    const result = { contract_version: 5, current: {}, beat: {}, response_audit: {} };
     assert.equal(completionText(result), JSON.stringify(result));
 });
 

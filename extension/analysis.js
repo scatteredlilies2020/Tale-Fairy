@@ -1,8 +1,8 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.12.2';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.12.3';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.11.96';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.12.2';
+import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.12.3';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
@@ -44,8 +44,7 @@ const CONDITIONAL_BRANCH_SCHEMA = { type: 'object', additionalProperties: false,
     relative_power: { type: 'string', enum: ['none', 'fodder', 'inferior', 'peer', 'elite', 'overwhelming', 'established'] },
     plot_weight: { type: 'string', enum: ['none', 'incidental', 'connective', 'consequential'] },
     duration: { type: 'string', enum: ['moment', 'beat', 'scene', 'extended'] },
-    resolution_ceiling: { type: 'string', enum: ['none', 'local', 'partial', 'decisive', 'open'] },
-}, required: ['when', 'operation', 'required_effect', 'content_class', 'scope', 'intensity', 'quantity', 'relative_power', 'plot_weight', 'duration', 'resolution_ceiling'] };
+}, required: ['when', 'operation', 'required_effect', 'content_class', 'scope', 'intensity', 'quantity', 'relative_power', 'plot_weight', 'duration'] };
 
 // The model returns observations plus deltas, not a duplicate of Tale Fairy's
 // entire persistent state. applyAnalysis expands this compact wire contract into
@@ -53,7 +52,7 @@ const CONDITIONAL_BRANCH_SCHEMA = { type: 'object', additionalProperties: false,
 export const ANALYSIS_SCHEMA_VALUE = {
     type: 'object', additionalProperties: false,
     properties: {
-        contract_version: { type: 'integer', const: 4 },
+        contract_version: { type: 'integer', const: 5 },
         current: { type: 'object', additionalProperties: false, properties: {
             frame: { type: 'string', enum: ['grounded', 'heightened', 'surreal'] }, frame_basis: text(180),
             status: text(180), immediate_action: text(140), activity: text(180), situation: text(220),
@@ -78,9 +77,8 @@ export const ANALYSIS_SCHEMA_VALUE = {
             relative_power: { type: 'string', enum: ['none', 'fodder', 'inferior', 'peer', 'elite', 'overwhelming', 'established'] },
             plot_weight: { type: 'string', enum: ['none', 'incidental', 'connective', 'consequential'] },
             duration: { type: 'string', enum: ['moment', 'beat', 'scene', 'extended'] },
-            resolution_ceiling: { type: 'string', enum: ['none', 'local', 'partial', 'decisive', 'open'] },
             preserve: strings(5, 180), forbid: strings(5, 180), basis: text(220),
-        }, required: ['operation', 'primary_when', 'target', 'required_effect', 'alternatives', 'inject', 'inject_reason', 'content_class', 'scope', 'intensity', 'quantity', 'relative_power', 'plot_weight', 'duration', 'resolution_ceiling', 'preserve', 'forbid', 'basis'] },
+        }, required: ['operation', 'primary_when', 'target', 'required_effect', 'alternatives', 'inject', 'inject_reason', 'content_class', 'scope', 'intensity', 'quantity', 'relative_power', 'plot_weight', 'duration', 'preserve', 'forbid', 'basis'] },
         response_audit: { type: 'object', additionalProperties: false, properties: {
             applicable: { type: 'boolean' },
             movement_fit: { type: 'string', enum: ['not-applicable', 'missed', 'partial', 'clear'] },
@@ -102,7 +100,7 @@ export const ANALYSIS_SCHEMA_VALUE = {
     required: ['contract_version', 'current', 'beat', 'response_audit', 'world', 'thread_updates', 'actor_updates', 'canon_updates', 'ledger', 'note_resolution', 'audit'],
 };
 export const ANALYSIS_SCHEMA = Object.freeze({
-    name: 'tale_fairy_conditional_set_v4',
+    name: 'tale_fairy_user_intent_first_v5',
     description: 'Compact Tale Fairy observations and state deltas.',
     strict: true,
     returnInvalid: true,
@@ -110,12 +108,12 @@ export const ANALYSIS_SCHEMA = Object.freeze({
 });
 
 export const MODE_INSTRUCTIONS = Object.freeze({
-    light: 'LIGHT — Let scene need choose the movement first, then apply the sample conservatively. Prefer subtle or grounded expression, but when inject=true the required effect must still be perceptible in the next response; subtle does not mean optional.',
-    balanced: 'BALANCED — Let scene need choose the movement first. Make the required effect a clear, meaningful change to the immediate situation or its possibilities, while giving quiet development, breathers, and consequential turns equal legitimacy when they fit.',
-    fun: 'FUN — Let scene need choose the movement first. Give that movement and required effect a prominent, lively expression, preferring bold or surprising realization where compatible. Randomness never changes the kind or natural scale of the chosen movement or manufactures unwarranted conflict, interruption, escalation, or adversity.',
+    light: 'LIGHT — The user action and its immediate causal result come first. Apply the sampled appetite only to a compatible follow-through, expressed subtly but perceptibly.',
+    balanced: 'BALANCED — The user action and its immediate causal result come first. Add a clear, meaningful next step that moves the situation or its possibilities forward without narrowing the user action.',
+    fun: 'FUN — The user action and its immediate causal result come first. Give a compatible next step a prominent, lively expression; randomness never changes, delays, weakens, or caps what the user meant.',
 });
 
-export const DIRECTOR_POLICY = 'Interpret the complete scene and choose one coherent primary direction before applying random appetite, then provide two distinct redirect-safe alternatives. Every fresh set must contribute playable movement, and its three conditions must collectively cover any plausible next user action. Make every branch worth experiencing: grounded need not mean uneventful, and interesting need not mean disruptive. Quiet or routine situations such as listening, studying, resting, or ordinary work still gain a small perceptible development through texture, interaction, progress, discovery, opportunity, meaning, or consequence without requiring an incident or conflict. If the user already supplies a clear action, complement and develop it rather than redirecting, delaying, or reinterpreting it. Active danger, competition, demanding tasks, and instability may exert credible pressure. Deepening, breathing room, relief, continuation, resolution, and transition are as legitimate as complication, interruption, escalation, or transformation. New causes require conversational or explicit-canon support. Provider-visible text states only abstract function and effect and must remain portable to another scene with the same dramatic shape. Never name or repeat a character, location, faction, lore concept, concrete object, body part, source, exact activity, action, dialogue, prop, detail, endpoint, event, actor, outcome, or player reaction. Use current activity, current interaction, current environment, established pressure, or established relationship instead. Explicit user/OOC instructions bind, and player decisions remain the player’s alone.';
+export const DIRECTOR_POLICY = 'Interpret the complete scene and choose one coherent primary follow-through before applying random appetite, then provide two distinct redirect-safe alternatives. The latest user action, its ordinary intended meaning, and its immediate causal answer or result always come first. A terse action includes the natural target and minimal positioning implied by the current interaction and goal; never replace a literal action with a symbolic, metaphorical, remote, or interface-based analogue. Every fresh set must contribute playable forward motion after the action, and its three conditions must collectively cover any plausible next user action. A branch may add a response, consequence, opportunity, or next step, but it must never deny, delay, narrow, weaken, cap, or reinterpret the user action. Attempts can fail only because already-established causal facts make them fail; even then, require a concrete response and next actionable change. Required effects must state positive additive movement rather than an exclusion, withheld outcome, access restriction, or partial-resolution requirement. Quiet or routine situations still gain a perceptible next step without forced conflict. Active danger, competition, demanding tasks, and instability may exert credible pressure when established. Deepening, breathing room, relief, continuation, resolution, and transition are as legitimate as complication, interruption, escalation, or transformation. New causes require conversational or explicit-canon support. Provider-visible text states only abstract function and effect and must remain portable to another scene with the same dramatic shape. Never name or repeat a character, location, faction, lore concept, concrete object, body part, source, exact activity, action, dialogue, prop, detail, endpoint, event, actor, outcome, or player reaction. Use current activity, current interaction, current environment, established pressure, or established relationship instead. Explicit user/OOC instructions bind, and player decisions remain the player’s alone.';
 
 export const EXTREME_CANON_INSTRUCTION = 'Explicit user/OOC canon remains authoritative even when extreme or unprecedented. Preserve its magnitude and apply relevant strengths and limits causally; averages are not ceilings. Unspecified compatible details remain creative space.';
 
@@ -233,16 +231,16 @@ function validateBeatAnalysisResult(result) {
         }
         for (const key of keys) if (typeof value[key] !== 'string' || !value[key].trim()) errors.push(`${label}.${key} must be a non-empty string`);
     };
-    if (result?.contract_version !== 4) errors.push('contract_version must be 4');
+    if (result?.contract_version !== 5) errors.push('contract_version must be 5');
     requiredStrings(result?.current, ['frame', 'frame_basis', 'status', 'immediate_action', 'activity', 'situation', 'activity_role', 'temporal_scope', 'scene_promise', 'phase', 'emotional_direction', 'pressure', 'intrusion', 'novelty_ceiling'], 'current');
-    requiredStrings(result?.beat, ['operation', 'primary_when', 'target', 'required_effect', 'inject_reason', 'content_class', 'scope', 'intensity', 'quantity', 'relative_power', 'plot_weight', 'duration', 'resolution_ceiling', 'basis'], 'beat');
+    requiredStrings(result?.beat, ['operation', 'primary_when', 'target', 'required_effect', 'inject_reason', 'content_class', 'scope', 'intensity', 'quantity', 'relative_power', 'plot_weight', 'duration', 'basis'], 'beat');
     requiredStrings(result?.response_audit, ['movement_fit', 'repetition', 'summary'], 'response_audit');
     requiredStrings(result?.world, ['identity', 'baseline', 'confidence'], 'world');
     for (const key of ['thread_updates', 'actor_updates', 'canon_updates']) if (!Array.isArray(result?.[key])) errors.push(`${key} must be an array`);
     for (const key of ['preserve', 'forbid']) if (!Array.isArray(result?.beat?.[key])) errors.push(`beat.${key} must be an array`);
     if (!Array.isArray(result?.beat?.alternatives) || result.beat.alternatives.length !== 2) errors.push('beat.alternatives must contain exactly 2 branches');
     for (const [index, branch] of (Array.isArray(result?.beat?.alternatives) ? result.beat.alternatives : []).entries()) {
-        requiredStrings(branch, ['when', 'operation', 'required_effect', 'content_class', 'scope', 'intensity', 'quantity', 'relative_power', 'plot_weight', 'duration', 'resolution_ceiling'], `beat.alternatives[${index}]`);
+        requiredStrings(branch, ['when', 'operation', 'required_effect', 'content_class', 'scope', 'intensity', 'quantity', 'relative_power', 'plot_weight', 'duration'], `beat.alternatives[${index}]`);
     }
     const visibleText = [
         ['beat.primary_when', result?.beat?.primary_when],
@@ -287,7 +285,7 @@ function validateBeatAnalysisResult(result) {
         'beat.scope': ['personal', 'social', 'institutional', 'societal', 'world'], 'beat.intensity': ['none', 'low', 'moderate', 'high', 'severe'],
         'beat.quantity': ['none', 'singular', 'pair', 'group', 'numerous', 'swarm'], 'beat.relative_power': ['none', 'fodder', 'inferior', 'peer', 'elite', 'overwhelming', 'established'],
         'beat.plot_weight': ['none', 'incidental', 'connective', 'consequential'], 'beat.duration': ['moment', 'beat', 'scene', 'extended'],
-        'beat.resolution_ceiling': ['none', 'local', 'partial', 'decisive', 'open'], 'world.confidence': ['low', 'moderate', 'high'],
+        'world.confidence': ['low', 'moderate', 'high'],
         'response_audit.movement_fit': ['not-applicable', 'missed', 'partial', 'clear'], 'response_audit.repetition': ['none', 'possible', 'clear'],
     };
     for (const [path, values] of Object.entries(allowed)) {
@@ -295,7 +293,7 @@ function validateBeatAnalysisResult(result) {
         if (!values.includes(result?.[group]?.[key])) errors.push(`${path} is invalid`);
     }
     for (const [index, branch] of (Array.isArray(result?.beat?.alternatives) ? result.beat.alternatives : []).entries()) {
-        for (const key of ['content_class', 'scope', 'intensity', 'quantity', 'relative_power', 'plot_weight', 'duration', 'resolution_ceiling']) {
+        for (const key of ['content_class', 'scope', 'intensity', 'quantity', 'relative_power', 'plot_weight', 'duration']) {
             if (!allowed[`beat.${key}`].includes(branch?.[key])) errors.push(`beat.alternatives[${index}].${key} is invalid`);
         }
     }
@@ -415,7 +413,7 @@ function validateCompactAnalysisResult(result) {
 }
 
 export function validateAnalysisResult(result) {
-    if (result?.contract_version === 4) return validateBeatAnalysisResult(result);
+    if (result?.contract_version === 5) return validateBeatAnalysisResult(result);
     if (result?.contract_version === 2) return validateCompactAnalysisResult(result);
     const errors = [];
     if (!result || typeof result !== 'object' || Array.isArray(result)) {
@@ -1460,16 +1458,16 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     const playerName = playerCharacterName(messages);
     const payload = {
         task: 'prepare_conditional_direction_set',
-        instruction: 'Audit the newest eligible assistant reply, then prepare one primary and exactly two redirect-safe directions for the next user action. Their conditions collectively cover every plausible next action, so the writing model always selects exactly one best-fitting branch and never combines branches.',
-        authority: 'Explicit OOC/scenario commands and the latest user action outrank every retained inference. OOC outcome commands bind the stated outcome; continue or advance-time commands widen scope only as stated. Never invent player dialogue, thoughts, consent, choices, compliance, retreat, or extra actions.',
+        instruction: 'Audit the newest eligible assistant reply, then prepare one primary and exactly two redirect-safe follow-through directions for the next user action. The user action and its immediate causal result happen first; the selected branch only supplies compatible forward motion afterward.',
+        authority: 'Explicit OOC/scenario commands and the latest user action outrank the entire Tale Fairy plan. OOC outcome commands bind the stated outcome. Infer terse actions from the current interaction and goal, including their natural target and minimal necessary positioning. Never substitute a literal action with an analogue. Never use planning to deny, delay, narrow, weaken, cap, or reinterpret the action. An attempt may fail only from an already-established causal fact, and must still receive a concrete response and actionable next change. Never invent player dialogue, thoughts, consent, choices, compliance, retreat, or unrelated extra actions.',
         direction_policy: DIRECTOR_POLICY,
         calibration: 'Choose movement from scene need first; apply the sampled appetite only within that compatible movement. A high or adverse sample never independently warrants complication, conflict, interruption, or escalation. It may instead make a breather, deepening, relief, resolution, or transition more vivid and consequential.',
-        invention: 'New causes or conditions require conversational or explicit-canon support. Provider-visible when, operation, and required_effect text must contain only portable abstractions. Never copy names or concrete nouns from the scene: no character, location, faction, lore concept, object, body part, source material, exact activity, action, dialogue, prop, detail, endpoint, event, actor, outcome, or player reaction. Refer only to the current activity, current interaction, current environment, established pressure, or established relationship. Private fields may remain scene-specific. When injected, the provider sees only the abstract conditions, directions, effects, and useful scale fields; target, basis, preserve, forbid, and retained evidence stay private.',
+        invention: 'New causes or conditions require conversational or explicit-canon support. Provider-visible when, operation, and required_effect text must contain only portable abstractions. Never copy names or concrete nouns from the scene: no character, location, faction, lore concept, object, body part, source material, exact activity, action, dialogue, prop, detail, endpoint, event, actor, outcome, or player reaction. Refer only to the current activity, current interaction, current environment, established pressure, or established relationship. Private fields may remain scene-specific. The provider sees only abstract conditions, directions, and effects; all scale classifications, target, basis, preserve, forbid, and retained evidence stay private.',
         simulation: 'Use the causal unit natural to the scope. Personal and life simulation may move through needs, relationships, work, routine, opportunity, or consequence. Organization and country simulation may move through decisions, institutions, resources, factions, policy effects, public reaction, trends, or systemic pressures. World simulation may move through broad forces. Do not translate every scale into a conventional adventure encounter.',
-        movement: 'Write concise natural operations, not generic bare verbs. primary_when and both alternative when conditions must distinguish plausible user intents without predicting wording while collectively covering them. Include a broadly compatible follow-through condition so exactly one branch always fits; if conditions overlap, the latest user action selects the closest fit.',
-        contribution_rule: 'Always set beat.inject=true for a fresh analysis. Even when the newest user instruction already determines the immediate response, add a complementary, context-native development with an observable required effect without redirecting or reinterpreting the action. Quiet listening, assignments, rest, travel, and other routine activity still receive something enjoyable to notice, do, exchange, discover, advance, or respond to. Keep it subtle when warranted; never manufacture conflict, interruption, pressure, or urgency merely to make something happen. Explain the private choice in inject_reason.',
-        response_audit_rule: 'response_audit evaluates only the newest assistant reply after a prior conditional set. Infer the closest-matching branch, then check that branch\'s movement and required effect, plus repetition, unjustified escalation, player control, and continuity drift. Record brief patterns, not quoted prose. If no reply is eligible, set applicable=false and movement_fit=not-applicable. Audit and pattern memory are private, never injected, and never trigger automatic regeneration.',
-        scale_fields: 'content_class is a broad function. scope selects personal/social/institutional/societal/world. quantity and relative_power constrain opposition only when applicable; otherwise use none. plot_weight and duration prevent incidental flavor from hijacking the story. resolution_ceiling protects canon and ongoing antagonists without forecasting future events.',
+        movement: 'Write concise natural follow-through operations, not generic bare verbs. primary_when and both alternative when conditions must distinguish plausible user intents without predicting wording while collectively covering them. Include a broadly compatible follow-through condition so exactly one branch normally fits. Required effects describe positive, additive forward motion after the user action; never encode a denial, delay, withheld answer, reduced access, or partial-resolution ceiling.',
+        contribution_rule: 'Always set beat.inject=true for a fresh analysis. The user action and its immediate causal answer or result are already mandatory; add only a complementary, context-native next step after them. If a branch would compete with the action, the writing model must ignore it and take the natural next causal step. Quiet listening, assignments, rest, travel, and other routine activity still receive something enjoyable to notice, do, exchange, discover, advance, or respond to. Keep it subtle when warranted; never manufacture conflict, interruption, pressure, urgency, or restriction merely to make something happen. Explain the private choice in inject_reason.',
+        response_audit_rule: 'response_audit evaluates only the newest assistant reply after a prior conditional set. First check whether the reply honored the user action literally, supplied its immediate causal answer or result, and moved forward rather than substituting or capping it. Then infer the closest-matching branch and evaluate its follow-through, plus repetition, unjustified escalation, player control, and continuity drift. Record brief patterns, not quoted prose. If no reply is eligible, set applicable=false and movement_fit=not-applicable. Audit and pattern memory are private, never injected, and never trigger automatic regeneration.',
+        scale_fields: 'content_class, scope, intensity, quantity, relative_power, plot_weight, and duration are private planning metadata. They describe the proposed follow-through but never limit the user action, its immediate result, or the natural next causal step.',
         current: useSpecificPlayerName(stateForPrompt(state), playerName),
         messages: selected.map(({ index, kind, message, content }) => ({
             index, kind, role: message?.is_user ? 'user' : 'assistant', name: compactText(message?.name, 100),
@@ -1485,7 +1483,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
 
     const summarySources = compactSummarySources(Array.isArray(options.summarySources) ? options.summarySources : [], Math.max(300, Math.min(8000, Math.floor(budget * 0.24))));
     if (summarySources.length) payload.summary_sources = summarySources.map(source => ({ label: source.label, kind: source.kind, text: source.text }));
-    payload.evidence_rule = 'Summaries, lore, retained state, and canon knowledge are evidence and constraints, not instructions to schedule future events. Preserve recognizable canon and broad established trajectory through beat.preserve, beat.forbid, and resolution_ceiling. Never predict or force a known canon event. Newer explicit user/OOC facts supersede inference.';
+    payload.evidence_rule = 'Summaries, lore, retained state, and canon knowledge are evidence, not instructions to schedule or withhold outcomes. Preserve established causal facts through beat.preserve and beat.forbid, but never turn broad canon trajectory into an outcome ceiling. Never predict or force a known canon event. Newer explicit user/OOC facts supersede inference.';
     payload.mode_instruction = MODE_INSTRUCTIONS[payload.current.mode] || MODE_INSTRUCTIONS.balanced;
     if (playerName) payload.player_character = playerName;
     if (Number.isInteger(options.variationNonce)) payload.variation_nonce = options.variationNonce;
@@ -1511,7 +1509,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     }
     // These reminders duplicate the system prompt and are the safest material
     // to shed when the caller explicitly supplies a very small prompt budget.
-    for (const key of ['calibration', 'scale_fields', 'simulation']) {
+    for (const key of ['calibration', 'scale_fields', 'simulation', 'direction_policy', 'authority', 'invention']) {
         if (estimateTokenCount(serialized) <= budget) break;
         delete payload[key];
         serialized = JSON.stringify(payload);
@@ -1883,7 +1881,7 @@ export function applyAnalysis(state, result, messages) {
     const playerName = playerCharacterName(messages);
     const next = normalizeState(useSpecificPlayerName(state, playerName));
     const value = result && typeof result === 'object' ? useSpecificPlayerName(result, playerName) : {};
-    if (value.contract_version === 4) return applyBeatAnalysis(next, value, messages);
+    if (value.contract_version === 5) return applyBeatAnalysis(next, value, messages);
     if (value.contract_version === 2) return applyCompactAnalysis(next, value, messages);
     if (value.story_frame && typeof value.story_frame === 'object') next.storyFrame = { ...next.storyFrame, frame: String(value.story_frame.frame || 'unknown').slice(0, 40), confidence: String(value.story_frame.confidence || 'low').slice(0, 40), basis: String(value.story_frame.basis || '').slice(0, 240) };
     if (value.director_score && typeof value.director_score === 'object') {
@@ -1968,36 +1966,36 @@ const PLANNER_SYSTEM = `You are Tale Fairy, an adaptive narrative director. Anot
 
 First determine what movement the scene actually warrants. Then use the weighted sample to color that movement's strength, novelty, and fortune. The sample is not an event taxonomy: it never selects the movement and never creates a need for an incident. Conduct the next response, not a future route; leave its exact realization to the writing model.
 
-AUTHORITY: Explicit user/OOC/scenario commands outrank retained state and your preferences. A forced outcome binds that outcome. A continue or time-advance command widens scope only as stated. The latest user action defines the endpoint. Never invent player dialogue, thoughts, feelings, consent, decisions, compliance, retreat, or extra actions.
+AUTHORITY: Explicit user/OOC/scenario commands and the latest user action outrank this entire plan. A forced outcome binds that outcome. Infer terse actions from the current interaction and goal, including their natural target and minimal necessary positioning. Do not replace a literal action with a symbolic, metaphorical, remote, or interface-based analogue. Perform the action and its immediate causal answer or result first. A user attempt may fail only because an already-established causal fact makes it fail, and must still receive a concrete response and actionable next change. Never use planning to deny, delay, narrow, weaken, cap, or reinterpret the action. Never invent player dialogue, thoughts, feelings, consent, decisions, compliance, retreat, or unrelated extra actions.
 
 DIRECTION: ${DIRECTOR_POLICY}
 
 CALIBRATION: Quietness is not stagnation. A scene may warrant a breather, deepening, relief, resolution, or transition with no incident. High intervention means fuller expression of the chosen movement, not compulsory disruption. An adverse sample cannot justify manufacturing difficulty. Escalate only when pressure, causality, unresolved action, or explicit user direction independently supports it.
 
-CONDITIONAL MOVEMENT SET: When the newest message is an assistant response, the user's next action is unknown; prepare a compact policy that remains fresh for exactly that next action. When the newest message is already a user action, make the primary branch fit that known action. beat.primary_when states when the primary direction fits. beat.alternatives contains exactly two materially distinct redirect-safe branches with natural-language when conditions. Cover plausible changes of intent rather than predicting exact words: for example continued engagement, resistance or withdrawal, a focus change, or an authorized time transition as the scene warrants. The three conditions must collectively cover every plausible next action, including a broadly compatible follow-through branch, so the writing model always selects exactly one closest-fitting branch. No branch may require changing or reinterpreting the user's action.
+CONDITIONAL MOVEMENT SET: When the newest message is an assistant response, the user's next action is unknown; prepare a compact follow-through policy that remains fresh for exactly that next action. When the newest message is already a user action, make the primary branch fit that known action. beat.primary_when states when the primary follow-through fits. beat.alternatives contains exactly two materially distinct redirect-safe branches with natural-language when conditions. Cover plausible changes of intent rather than predicting exact words. The action itself and its immediate result are outside the policy and always happen first. The three conditions should collectively cover plausible next actions, but the writing model must ignore all branches if they conflict with the user's meaning or natural next causal step.
 
 MOVEMENT: Write every operation as a concise, natural, scene-aware direction for how the next response should move under that branch. Each must be general enough to leave the concrete realization open, but not a generic bare verb such as deepen, continue, complicate, or introduce. There is no fixed taxonomy, approved vocabulary, nearest label, or fallback bucket. Scene changes, pressure shifts, reversals, discoveries, good turns, bad turns, mixed consequences, new causes, stillness, and any other context-compatible movement are all available.
 
-INVENTION: The writing model chooses the realization. Visible branch text must be portable to any scene with the same dramatic shape and state only wanted function or change. Never name or repeat a character, location, faction, lore concept, object, body part, source, exact activity, action, dialogue, prop, detail, endpoint, event, actor, outcome, or player reaction. Use current activity, current interaction, current environment, established pressure, or established relationship. Valid: "Introduce a quiet, favorable discovery" and "Give the current activity a small, meaningful development without adding pressure." Naming the discovery, source, actor, or player feeling is invalid. Keep scene specifics in private fields. When inject=true, the conditional set and useful non-default scale classifications are provider-visible; one fitting branch becomes binding after reading the latest user action.
+INVENTION: The writing model chooses the realization. Visible branch text must be portable to any scene with the same dramatic shape and state only wanted function or change. Never name or repeat a character, location, faction, lore concept, object, body part, source, exact activity, action, dialogue, prop, detail, endpoint, event, actor, outcome, or player reaction. Use current activity, current interaction, current environment, established pressure, or established relationship. Valid: "Introduce a quiet, favorable discovery" and "Give the current activity a small, meaningful development without adding pressure." Naming the discovery, source, actor, or player feeling is invalid. Keep scene specifics and every scale classification in private fields. A fitting branch is subordinate follow-through after the user action, never a binding outcome ceiling.
 
-ALWAYS CONTRIBUTE: Set beat.inject=true for every fresh analysis. Even when the user's action already determines the immediate response, add a complementary, context-native development with an observable required effect; do not redirect, delay, or reinterpret that action. Quiet listening, assignments, rest, travel, and other routine activity still receive something enjoyable to notice, do, exchange, discover, advance, or respond to. Small texture, progress, mutual attention, association, meaning, or opportunity is sufficient when that is what the scene warrants. Never manufacture conflict, interruption, pressure, or urgency merely to make something happen. Explain the private choice in inject_reason.
+ALWAYS CONTRIBUTE: Set beat.inject=true for every fresh analysis. The user's action and immediate causal answer or result come first. Add a complementary, context-native next step only after them; do not redirect, delay, reinterpret, narrow, weaken, or cap that action. Required effects state positive additive movement, never an exclusion, withheld answer, reduced access, or partial-resolution requirement. Quiet listening, assignments, rest, travel, and other routine activity still receive something enjoyable to notice, do, exchange, discover, advance, or respond to. Small texture, progress, mutual attention, association, meaning, opportunity, or decisive resolution is sufficient when warranted. Never manufacture conflict, interruption, pressure, urgency, or restriction merely to make something happen. Explain the private choice in inject_reason.
 
-PRIVATE RESPONSE AUDIT: For the newest assistant reply following a prior conditional set, infer the closest-matching branch for the preceding user action and record whether that branch's movement and required effect landed, plus repetition, unjustified escalation, player control, continuity drift, and concise non-quoted patterns. If no reply is eligible, mark it not applicable. Vary away from real repetition, but never treat patterns as banned words or templates. Use this private feedback for the next set; never inject it or trigger regeneration.
+PRIVATE RESPONSE AUDIT: For the newest assistant reply following a prior conditional set, first judge whether it performed the preceding user action literally, supplied its immediate causal answer or result, and moved forward rather than substituting or capping it. Then infer the closest-matching branch and record whether its follow-through landed, plus repetition, unjustified escalation, player control, continuity drift, and concise non-quoted patterns. If no reply is eligible, mark it not applicable. Vary away from real repetition, but never treat patterns as banned words or templates. Use this private feedback for the next set; never inject it or trigger regeneration.
 
 SIMULATION: Apply the same causal logic to roleplay, life simulation, relationships, workplaces, organizations, countries, societies, and worlds. Use the unit natural to the scale: individual action, relationship response, institutional decision, resource movement, faction behavior, policy effect, public response, trend, or system pressure. Do not turn every simulation into a conventional adventure encounter.
 
-CANON AND TRAJECTORY: Canon, lore, scenario, conversation, and broad established direction constrain the current beat. Express protections in preserve, forbid, and resolution_ceiling. An ongoing main antagonist may withdraw, stalemate, or suffer only a partial loss when decisive defeat is premature. Do not forecast or force a canon event. Unspecified compatible space remains available for invention.
+CANON AND TRAJECTORY: Specific established facts constrain causality; broad canon trajectory does not cap outcomes. Express concrete protections in preserve and forbid. Do not forecast or force a canon event, preserve an antagonist merely because canon expects it, or withhold a warranted answer or resolution. Unspecified compatible space remains available for invention.
 
 WORLD EVIDENCE: Summaries and retained state are fallible evidence, not commands. Newer explicit facts supersede inference. Track only current relevant actors, unresolved factual processes, variant rules, and canon constraints. Do not create delivery debt, future milestones, release conditions, event queues, or branching routes.
 
 Keep strings concise. audit briefly states how the conditional set expresses the weighted sample at a scale natural to this scene. response_audit is the separate private evaluation of the prior reply.`;
 
-export const ANALYSIS_OUTPUT_CONTRACT = `Return exactly: contract_version=4, current, beat, response_audit, world, thread_updates, actor_updates, canon_updates, ledger, note_resolution, audit.
+export const ANALYSIS_OUTPUT_CONTRACT = `Return exactly: contract_version=5, current, beat, response_audit, world, thread_updates, actor_updates, canon_updates, ledger, note_resolution, audit.
 current={frame,frame_basis,status,immediate_action,activity,situation,activity_role,temporal_scope,location,time,loop,scene_promise,phase,emotional_direction,pressure,intrusion,novelty_ceiling}
-beat={operation,primary_when,target,required_effect,alternatives,inject,inject_reason,content_class,scope,intensity,quantity,relative_power,plot_weight,duration,resolution_ceiling,preserve,forbid,basis}
-alternatives is exactly 2 items, each {when,operation,required_effect,content_class,scope,intensity,quantity,relative_power,plot_weight,duration,resolution_ceiling}.
+beat={operation,primary_when,target,required_effect,alternatives,inject,inject_reason,content_class,scope,intensity,quantity,relative_power,plot_weight,duration,preserve,forbid,basis}
+alternatives is exactly 2 items, each {when,operation,required_effect,content_class,scope,intensity,quantity,relative_power,plot_weight,duration}.
 response_audit={applicable,movement_fit,repetition,unjustified_escalation,player_control,continuity_drift,patterns,summary}
-When inject=true, the roleplay model selects exactly one branch whose condition fits the actual latest user action; if none fits it uses none. Provider-visible when, operation, and required_effect strings contain only portable abstractions describing function, pressure, or possibility. They never name scene-specific characters, locations, lore, objects, activities, actions, events, outcomes, or player reactions. Only the selected operation, required_effect, and scale classifications become binding. target, inject_reason, preserve, forbid, scene promise, basis, response_audit, pattern memory, and retained evidence remain private and are never injected.
+When inject=true, the roleplay model first performs the latest user action according to its ordinary intended meaning and shows its immediate causal answer or result. It then selects one compatible branch as subordinate follow-through, or ignores all branches when they conflict. Provider-visible when, operation, and required_effect strings contain only portable abstractions describing additive function or possibility. They never name scene-specific characters, locations, lore, objects, activities, actions, events, outcomes, or player reactions. All scale classifications, target, inject_reason, preserve, forbid, scene promise, basis, response_audit, pattern memory, and retained evidence remain private and are never injected.
 world={identity,baseline,variant_rules,rp_changes,signatures,forces,confidence}
 thread_updates and actor_updates contain factual changes only; canon_updates contains explicit durable additions/removals only. Empty arrays mean no change. audit is one concise string. No other keys.`;
 

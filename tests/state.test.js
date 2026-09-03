@@ -20,10 +20,10 @@ function analyzedState(extra = {}) {
         beatDirective: {
             operation: 'introduce', primaryWhen: 'The user continues the service interaction.', target: 'the service interaction', requiredEffect: 'Let the routine interaction produce a small but observable development that opens a fresh possibility.',
             alternatives: [
-                { when: 'The user leaves or declines the interaction.', operation: 'let the departure produce a grounded consequence', requiredEffect: 'Acknowledge the changed course without forcing the interaction to continue.', contentClass: 'consequence', scope: 'personal', intensity: 'low', quantity: 'singular', relativePower: 'none', plotWeight: 'incidental', duration: 'beat', resolutionCeiling: 'local' },
-                { when: 'The user redirects to someone or something else nearby.', operation: 'shift the social focus with the user', requiredEffect: 'Let the newly selected focus gain one meaningful response.', contentClass: 'reaction', scope: 'social', intensity: 'low', quantity: 'singular', relativePower: 'none', plotWeight: 'incidental', duration: 'beat', resolutionCeiling: 'open' },
+                { when: 'The user leaves or declines the interaction.', operation: 'let the departure produce a grounded consequence', requiredEffect: 'Acknowledge the changed course without forcing the interaction to continue.', contentClass: 'consequence', scope: 'personal', intensity: 'low', quantity: 'singular', relativePower: 'none', plotWeight: 'incidental', duration: 'beat' },
+                { when: 'The user redirects to someone or something else nearby.', operation: 'shift the social focus with the user', requiredEffect: 'Let the newly selected focus gain one meaningful response.', contentClass: 'reaction', scope: 'social', intensity: 'low', quantity: 'singular', relativePower: 'none', plotWeight: 'incidental', duration: 'beat' },
             ],
-            contentClass: 'character', scope: 'social', intensity: 'low', quantity: 'singular', relativePower: 'none', plotWeight: 'incidental', duration: 'beat', resolutionCeiling: 'local', preserve: ['ordinary canteen tone'], forbid: ['unrelated danger'], basis: 'A service interaction naturally involves staff.',
+            contentClass: 'character', scope: 'social', intensity: 'low', quantity: 'singular', relativePower: 'none', plotWeight: 'incidental', duration: 'beat', preserve: ['ordinary canteen tone'], forbid: ['unrelated danger'], basis: 'A service interaction naturally involves staff.',
         },
         lastInject: true,
         lastAnalysisFingerprint: fingerprintMessages(messages), sourceMessageCount: messages.length, sourceChatId: 'chat-a',
@@ -31,10 +31,10 @@ function analyzedState(extra = {}) {
     return normalizeState({ ...beat, ...extra });
 }
 
-test('default and normalized state use the v52 always-contributing conditional-set contract', () => {
+test('default and normalized state use the v53 user-intent-first contract', () => {
     const state = normalizeState({ mode: 'invalid' });
-    assert.equal(STATE_VERSION, 52);
-    assert.equal(state.version, 52);
+    assert.equal(STATE_VERSION, 53);
+    assert.equal(state.version, 53);
     assert.equal(state.mode, 'balanced');
     assert.equal(state.sceneProfile.phase, 'developing');
     assert.equal(state.beatDirective.operation, '');
@@ -96,6 +96,22 @@ test('v51 use-none direction is invalidated before the always-contributing contr
     assert.equal(state.lastRequestVerification, null);
 });
 
+test('v52 outcome-capping direction is invalidated before user-intent-first guidance runs', () => {
+    const old = analyzedState();
+    const state = normalizeState({
+        ...old,
+        version: 52,
+        beatDirective: {
+            ...old.beatDirective,
+            requiredEffect: 'Make a limited change without granting unrestricted access.',
+        },
+        lastRequestVerification: { status: 'confirmed', guidanceBlock: '<tale-fairy-context>old capped guidance</tale-fairy-context>' },
+    });
+    assert.equal(state.lastInject, false);
+    assert.equal(state.beatDirective.operation, '');
+    assert.equal(state.lastRequestVerification, null);
+});
+
 test('pre-v50 migration discards private-style required effects but preserves continuity evidence', () => {
     const state = normalizeState({
         ...analyzedState(), version: 49, lastInject: true,
@@ -147,40 +163,69 @@ test('legacy non-injection state is never exposed as usable guidance', () => {
     assert.equal(buildPromptPayload(state, { guidanceUsable: true }), '');
 });
 
-test('analyzed injection makes its general effect binding with the selected mode', () => {
+test('analyzed injection makes user intent primary and the selected follow-through subordinate', () => {
     const payload = buildPromptPayload(analyzedState(), {
         guidanceUsable: true,
         directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'favorable' },
     });
-    assert.match(payload, /CONDITIONAL TALE FAIRY DIRECTION SET/i);
+    assert.match(payload, /TALE FAIRY USER-INTENT-FIRST GUIDE/i);
+    assert.match(payload, /latest user action outranks this entire guide/i);
+    assert.match(payload, /immediate causal answer or result on-page/i);
+    assert.match(payload, /natural target and minimal implied positioning/i);
+    assert.match(payload, /Do not replace a literal action with a symbolic, metaphorical, remote, or interface-based substitute/i);
+    assert.match(payload, /Never use this guide to deny, delay, narrow, weaken, cap, or reinterpret/i);
     assert.match(payload, /PRIMARY WHEN: The user continues the service interaction\./i);
-    assert.match(payload, /PRIMARY DIRECTION: Introduce, keeping the development character-focused, social in scope, low in intensity/i);
-    assert.match(payload, /PRIMARY REQUIRED EFFECT: Let the routine interaction produce a small but observable development that opens a fresh possibility\./i);
+    assert.match(payload, /PRIMARY NEXT-STEP DIRECTION: Introduce\./i);
+    assert.match(payload, /PRIMARY NEXT-STEP EFFECT: Let the routine interaction produce a small but observable development that opens a fresh possibility\./i);
     assert.match(payload, /ALTERNATIVE 1 WHEN: The user leaves or declines the interaction\./i);
-    assert.match(payload, /conditions collectively cover the user’s action/i);
-    assert.match(payload, /select exactly one closest-fitting branch/i);
-    assert.match(payload, /Follow the user’s action exactly while applying that branch’s required effect/i);
-    assert.match(payload, /FUN TREATMENT:.*prominent, lively expression.*bold or surprising realization/i);
+    assert.match(payload, /select exactly one closest-fitting branch for additional forward motion/i);
+    assert.match(payload, /ignore them and follow the user’s intent or the natural next causal step/i);
+    assert.match(payload, /FUN TREATMENT:.*prominent, lively expression.*without changing what the user meant/i);
     assert.doesNotMatch(payload, /movement=|content=|scope=|intensity=|plot weight=/i);
     assert.doesNotMatch(payload, /PRESERVE:|DO NOT:/);
     assert.doesNotMatch(payload, /A grounded canteen interaction/);
     assert.doesNotMatch(payload, /Infer every concrete action|Treat explicit user\/OOC|Do not expose/i);
     assert.doesNotMatch(payload, /SUGGESTED ROUTE|future horizon|delivery debt/i);
-    assert.equal(payload.match(/PRIMARY DIRECTION:/g)?.length, 1);
-    assert.equal(payload.match(/ALTERNATIVE \d DIRECTION:/g)?.length, 2);
-    assert.match(payload, /Use only the selected direction and required effect as abstract guidance/i);
+    assert.equal(payload.match(/PRIMARY NEXT-STEP DIRECTION:/g)?.length, 1);
+    assert.equal(payload.match(/ALTERNATIVE \d NEXT-STEP DIRECTION:/g)?.length, 2);
+    assert.match(payload, /subordinate follow-through, never an outcome ceiling/i);
+    assert.doesNotMatch(payload, /only partially resolvable|resolution ceiling|institutional in scope|low in intensity/i);
+});
+
+test('compiler neutralizes planner-authored outcome caps before provider injection', () => {
+    const capped = analyzedState().beatDirective;
+    const payload = formatBeatContract({}, {
+        ...capped,
+        operation: 'honor the contact with a restrained acknowledgement',
+        requiredEffect: 'Make a limited change in availability without granting unrestricted access.',
+        alternatives: [
+            { ...capped.alternatives[0], operation: 'let the established boundary answer firmly but leave one narrower way', requiredEffect: 'Delay a full response while keeping access restricted.' },
+            capped.alternatives[1],
+        ],
+    });
+    assert.doesNotMatch(payload, /limited change|unrestricted access|boundary answer|narrower way|keeping access restricted/i);
+    assert.match(payload, /give a direct response and carry the action into the natural next step/i);
+    assert.match(payload, /immediate consequence observable and open a meaningful next change/i);
+});
+
+test('terse-action contract authorizes implied target but forbids metaphorical substitution', () => {
+    const payload = formatBeatContract({}, analyzedState().beatDirective);
+    assert.match(payload, /infer the natural target and minimal implied positioning from the current interaction and goal/i);
+    assert.match(payload, /Do not replace a literal action with a symbolic, metaphorical, remote, or interface-based substitute/i);
+    assert.match(payload, /show its immediate causal answer or result on-page/i);
+    assert.match(payload, /If every branch conflicts.*ignore them.*natural next causal step/is);
 });
 
 test('sparse compiler omits default scale fields but retains a balanced required effect', () => {
     const payload = formatBeatContract({}, {
         inject: true, operation: 'let the ordinary answer open an unforeseen possibility', primaryWhen: 'The user remains with the current exchange.', requiredEffect: 'Make a compatible change observable without prescribing how.',
         alternatives: analyzedState().beatDirective.alternatives,
-        contentClass: 'none', scope: 'personal', intensity: 'none', quantity: 'none', relativePower: 'none', plotWeight: 'none', duration: 'beat', resolutionCeiling: 'open',
+        contentClass: 'none', scope: 'personal', intensity: 'none', quantity: 'none', relativePower: 'none', plotWeight: 'none', duration: 'beat',
     });
-    assert.match(payload, /PRIMARY DIRECTION: Let the ordinary answer open an unforeseen possibility\./);
-    assert.match(payload, /PRIMARY REQUIRED EFFECT: Make a compatible change observable without prescribing how\./);
-    assert.match(payload, /BALANCED TREATMENT: Make the required effect clear and meaningful/);
-    assert.match(payload, /Use only the selected direction and required effect as abstract guidance/);
+    assert.match(payload, /PRIMARY NEXT-STEP DIRECTION: Let the ordinary answer open an unforeseen possibility\./);
+    assert.match(payload, /PRIMARY NEXT-STEP EFFECT: Make a compatible change observable without prescribing how\./);
+    assert.match(payload, /BALANCED TREATMENT: Give Tale Fairy's follow-through a clear, meaningful effect/);
+    assert.match(payload, /subordinate follow-through, never an outcome ceiling/);
 });
 
 test('scene-aware movement becomes general natural direction rather than field syntax', () => {
@@ -192,8 +237,9 @@ test('scene-aware movement becomes general natural direction rather than field s
         intensity: 'moderate',
         plotWeight: 'connective',
     });
-    assert.match(payload, /PRIMARY DIRECTION: Deepen through personal cost, keeping the development character-focused.*moderate in intensity.*connective to the ongoing story/i);
-    assert.match(payload, /PRIMARY REQUIRED EFFECT: Make a personal cost alter the immediate emotional stakes\./);
+    assert.match(payload, /PRIMARY NEXT-STEP DIRECTION: Deepen through personal cost\./i);
+    assert.match(payload, /PRIMARY NEXT-STEP EFFECT: Make a personal cost alter the immediate emotional stakes\./);
+    assert.doesNotMatch(payload, /character-focused|moderate in intensity|connective to the ongoing story/i);
     assert.doesNotMatch(payload, /movement=|content=|intensity=|plot weight=/i);
 });
 
@@ -209,15 +255,15 @@ test('provider compiler exposes a general observable effect but keeps its target
         guidanceUsable: true,
         directorSample: { mode: 'balanced', intervention: 'major', novelty: 'grounded', fortune: 'adverse' },
     });
-    assert.match(payload, /PRIMARY DIRECTION: Complicate, keeping the development character-focused, social in scope, low in intensity/i);
-    assert.match(payload, /PRIMARY REQUIRED EFFECT: Create a credible complication that changes how the calm outing can proceed\./i);
+    assert.match(payload, /PRIMARY NEXT-STEP DIRECTION: Complicate\./i);
+    assert.match(payload, /PRIMARY NEXT-STEP EFFECT: Create a credible complication that changes how the calm outing can proceed\./i);
     assert.doesNotMatch(payload, /Lucia|the unhurried garden visit/);
 });
 
 test('analyzed quiet beats reach the provider without a generic sampled overlay', () => {
     const payload = formatBeatContract({}, { ...analyzedState().beatDirective, operation: 'deepen', requiredEffect: 'Let the quiet interaction settle into comfortable companionship without a new incident.' }, { directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'mixed' } });
-    assert.match(payload, /PRIMARY DIRECTION: Deepen,/);
-    assert.match(payload, /PRIMARY REQUIRED EFFECT: Let the quiet interaction settle into comfortable companionship without a new incident\./i);
+    assert.match(payload, /PRIMARY NEXT-STEP DIRECTION: Deepen\./);
+    assert.match(payload, /PRIMARY NEXT-STEP EFFECT: Let the quiet interaction settle into comfortable companionship without a new incident\./i);
     assert.match(payload, /FUN TREATMENT:/);
     assert.doesNotMatch(payload, /fresh possibilities|difficulty|danger/i);
 });
@@ -226,16 +272,16 @@ test('major adverse sampling cannot replace a scene-selected breather with compl
     const payload = formatBeatContract({}, { ...analyzedState().beatDirective, operation: 'deepen', requiredEffect: 'Settle into a peaceful garden reading spot without a new incident.' }, {
         directorSample: { mode: 'fun', intervention: 'major', novelty: 'surprising', fortune: 'adverse' },
     });
-    assert.match(payload, /PRIMARY DIRECTION: Deepen,/);
-    assert.match(payload, /PRIMARY REQUIRED EFFECT: Settle into a peaceful garden reading spot without a new incident\./i);
+    assert.match(payload, /PRIMARY NEXT-STEP DIRECTION: Deepen\./);
+    assert.match(payload, /PRIMARY NEXT-STEP EFFECT: Settle into a peaceful garden reading spot without a new incident\./i);
     assert.doesNotMatch(payload, /adversity|difficulty|danger|Increase the active pressure/i);
 });
 
 test('analyzed beat keeps AI invention open across context-native scene scales', () => {
     const payload = formatBeatContract({}, { ...analyzedState().beatDirective, operation: 'introduce', requiredEffect: 'Introduce a compatible development grounded in the present setting.' });
-    assert.match(payload, /PRIMARY DIRECTION: Introduce,/);
-    assert.match(payload, /PRIMARY REQUIRED EFFECT: Introduce a compatible development grounded in the present setting\./i);
-    assert.equal(payload.split('\n').length, 12);
+    assert.match(payload, /PRIMARY NEXT-STEP DIRECTION: Introduce\./);
+    assert.match(payload, /PRIMARY NEXT-STEP EFFECT: Introduce a compatible development grounded in the present setting\./i);
+    assert.equal(payload.split('\n').length, 14);
 });
 
 test('provider contract protects player agency without exposing planner evidence', () => {
@@ -247,7 +293,7 @@ test('provider contract protects player agency without exposing planner evidence
 test('regeneration reuses the same conditional set without rotating branches', () => {
     const payload = buildPromptPayload(analyzedState(), { guidanceUsable: true, regeneration: true });
     assert.doesNotMatch(payload, /For this regeneration|different realization|context-compatible development/i);
-    assert.match(payload, /PRIMARY REQUIRED EFFECT: Let the routine interaction produce/i);
+    assert.match(payload, /PRIMARY NEXT-STEP EFFECT: Let the routine interaction produce/i);
     assert.match(payload, /ALTERNATIVE 2 WHEN:/i);
     assert.doesNotMatch(payload, /rotate|next route/i);
 });

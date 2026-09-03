@@ -136,17 +136,17 @@ test('stale cleanup preserves non-text multimodal blocks', () => {
     assert.deepEqual(chat, [{ role: 'user', content: [{ type: 'text', text: '' }, image] }]);
 });
 
-test('provider-bound request receives binding movement, effect, and balanced treatment on regeneration', () => {
+test('provider-bound request receives subordinate follow-through and balanced treatment on regeneration', () => {
     const state = {
         ...defaultState(),
         sceneProfile: { promise: 'A tense report is being discussed.', phase: 'developing', emotionalDirection: 'intensify', pressure: 'active', intrusion: 'open', noveltyCeiling: 'moderate' },
         beatDirective: {
             operation: 'complicate', primaryWhen: 'The user continues examining or discussing the report.', target: 'the report discussion', requiredEffect: 'Add a credible difficulty that changes how the current information is understood.',
             alternatives: [
-                { when: 'The user rejects or ends the report discussion.', operation: 'let that refusal change the immediate relationship to the report', requiredEffect: 'Make the consequence of ending the discussion perceptible without reopening it.', contentClass: 'consequence', scope: 'social', intensity: 'low', quantity: 'singular', relativePower: 'none', plotWeight: 'incidental', duration: 'beat', resolutionCeiling: 'local' },
-                { when: 'The user redirects attention to a different active concern.', operation: 'follow the redirected concern while retaining relevant report pressure', requiredEffect: 'Advance the selected concern with one compatible connection to the report.', contentClass: 'reaction', scope: 'social', intensity: 'moderate', quantity: 'singular', relativePower: 'none', plotWeight: 'connective', duration: 'beat', resolutionCeiling: 'open' },
+                { when: 'The user rejects or ends the report discussion.', operation: 'let that refusal change the immediate relationship to the report', requiredEffect: 'Make the consequence of ending the discussion perceptible without reopening it.', contentClass: 'consequence', scope: 'social', intensity: 'low', quantity: 'singular', relativePower: 'none', plotWeight: 'incidental', duration: 'beat' },
+                { when: 'The user redirects attention to a different active concern.', operation: 'follow the redirected concern while retaining relevant report pressure', requiredEffect: 'Advance the selected concern with one compatible connection to the report.', contentClass: 'reaction', scope: 'social', intensity: 'moderate', quantity: 'singular', relativePower: 'none', plotWeight: 'connective', duration: 'beat' },
             ],
-            contentClass: 'revelation', scope: 'social', intensity: 'moderate', quantity: 'singular', relativePower: 'peer', plotWeight: 'connective', duration: 'beat', resolutionCeiling: 'partial', preserve: ['user authority'], forbid: ['a predetermined incident'], basis: 'The information is already unstable.',
+            contentClass: 'revelation', scope: 'social', intensity: 'moderate', quantity: 'singular', relativePower: 'peer', plotWeight: 'connective', duration: 'beat', preserve: ['user authority'], forbid: ['a predetermined incident'], basis: 'The information is already unstable.',
         },
     };
     const prompt = buildPromptPayload(state, { guidanceUsable: true, regeneration: true });
@@ -156,11 +156,13 @@ test('provider-bound request receives binding movement, effect, and balanced tre
     assert.equal(chatHasCurrentGuidance(chat, prompt), true);
     assert.equal(chat.length, 1);
     assert.equal(chat.at(-1).role, 'user');
-    assert.match(chat.at(-1).content, /CONDITIONAL TALE FAIRY DIRECTION SET/i);
-    assert.match(chat.at(-1).content, /PRIMARY DIRECTION: Complicate, keeping the development revelation-led, social in scope, moderate in intensity/i);
-    assert.match(chat.at(-1).content, /PRIMARY REQUIRED EFFECT: Add a credible difficulty that changes how the current information is understood\./i);
-    assert.match(chat.at(-1).content, /BALANCED TREATMENT: Make the required effect clear and meaningful/i);
-    assert.match(chat.at(-1).content, /Use only the selected direction and required effect as abstract guidance/i);
+    assert.match(chat.at(-1).content, /TALE FAIRY USER-INTENT-FIRST GUIDE/i);
+    assert.match(chat.at(-1).content, /PRIMARY NEXT-STEP DIRECTION: Complicate\./i);
+    assert.match(chat.at(-1).content, /PRIMARY NEXT-STEP EFFECT: Add a credible difficulty that changes how the current information is understood\./i);
+    assert.match(chat.at(-1).content, /BALANCED TREATMENT: Give Tale Fairy's follow-through a clear, meaningful effect/i);
+    assert.match(chat.at(-1).content, /subordinate follow-through, never an outcome ceiling/i);
+    assert.match(chat.at(-1).content, /latest user action outranks this entire guide/i);
+    assert.doesNotMatch(chat.at(-1).content, /revelation-led|social in scope|moderate in intensity|partially resolvable/i);
     assert.doesNotMatch(chat.at(-1).content, /movement=|content=|scope=|intensity=|plot weight=/i);
     assert.doesNotMatch(chat.at(-1).content, /PRESERVE:|DO NOT:/);
     assert.doesNotMatch(chat.at(-1).content, /Infer every concrete action|Treat explicit user\/OOC|For this regeneration|Do not expose/i);
