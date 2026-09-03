@@ -4,26 +4,26 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.12.1';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.12.1';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.12.2';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.12.2';
 import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.11.101';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.12.1';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.12.1';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.12.1';
-import { normalizeModelListResponse } from './models.js?v=0.12.1';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.12.2';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.12.2';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.12.2';
+import { normalizeModelListResponse } from './models.js?v=0.12.2';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.108';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.12.1';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.12.1';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.12.1';
-import { estimateTokenCount } from './token-budget.js?v=0.12.1';
-import { completionText } from './completion-response.js?v=0.12.1';
-import { sampleDirectorSignals } from './director-sampling.js?v=0.12.1';
-import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.11.105';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.12.2';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.12.2';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.12.2';
+import { estimateTokenCount } from './token-budget.js?v=0.12.2';
+import { completionText } from './completion-response.js?v=0.12.2';
+import { sampleDirectorSignals } from './director-sampling.js?v=0.12.2';
+import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, plannerValidationRepairInstruction, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.12.2';
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
-import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.12.1';
+import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.12.2';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.12.1';
+const RUNTIME_VERSION = '0.12.2';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -1229,7 +1229,8 @@ function parseAnalysisResponse(value) {
             : extractJson(completionText(value));
         const validation = validateAnalysisResult(rawResult);
         if (!validation.valid) {
-            throw new AnalysisValidationError(`Planner violated its strict output contract: ${validation.errors.slice(0, 16).join('; ')}.`);
+            const validationErrors = validation.errors.slice(0, 16);
+            throw new AnalysisValidationError(`Planner violated its strict output contract: ${validationErrors.join('; ')}.`, validationErrors);
         }
         return rawResult;
     } catch (error) {
@@ -1523,6 +1524,20 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
         const requestedReasoningMode = requestSpec.reasoningMode || '';
         const requestLabel = requestSpec.label || 'planner';
         const cacheNamespace = requestSpec.cacheNamespace || 'analysis';
+        let repairInstruction = '';
+        let repairAttempted = false;
+        const withValidationRepair = async (run, label) => {
+            try {
+                return await run();
+            } catch (error) {
+                controller.signal.throwIfAborted();
+                if (!(error instanceof AnalysisValidationError) || repairAttempted) throw error;
+                repairAttempted = true;
+                repairInstruction = plannerValidationRepairInstruction(error);
+                console.warn(`[${EXTENSION_ID}] ${label} violated the planner contract; requesting one corrected replacement`, error);
+                return run();
+            }
+        };
         const detachedMarker = detachedPlannerEnabled && detachedMeta ? { _taleFairyPlanner: detachedMeta } : {};
         const model = analysisModelOptions();
         const temperature = requestSpec.temperature === undefined ? plannerTemperature() : normalizePlannerTemperature(requestSpec.temperature);
@@ -1541,7 +1556,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
             let samplingEnabled = !plannerModelRejectsTemperature(profile.model);
             const sendProfileRaw = mode => ConnectionManagerRequestService.sendRequest(
                 model.profileId,
-                plannerMessages(systemPrompt, prompt, schema, mode),
+                plannerMessages(systemPrompt, prompt, schema, mode, repairInstruction),
                 responseTokens,
                 { stream: false, extractData: false, includePreset: false, includeInstruct: false, signal: controller.signal },
                 {
@@ -1556,7 +1571,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
                 () => sendProfileRaw(mode),
                 () => { samplingEnabled = false; },
             );
-            const runProfileMode = async mode => {
+            const runProfileAttempt = async mode => {
                 try {
                     const response = await sendProfile(mode);
                     controller.signal.throwIfAborted();
@@ -1571,6 +1586,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
                     return parseResponse(response);
                 }
             };
+            const runProfileMode = mode => withValidationRepair(() => runProfileAttempt(mode), `${requestLabel} connection profile`);
             return negotiatePlannerOutput(
                 runProfileMode,
                 [PLANNER_OUTPUT_MODE.JSON_SCHEMA, PLANNER_OUTPUT_MODE.PROMPT_ONLY],
@@ -1597,7 +1613,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
                 };
                 eventSource.on(seedEvent, configurePlanner);
                 return waitForAbortable(generateRaw({
-                    prompt: plannerPrompt(prompt, schema, mode),
+                    prompt: plannerPrompt(prompt, schema, mode, repairInstruction),
                     // The planner must not inherit the user's text-completion
                     // instruct template or preset formatting.
                     instructOverride: true,
@@ -1611,7 +1627,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
                 () => runActive(mode),
                 () => { samplingEnabled = false; },
             );
-            const runActiveMode = async mode => {
+            const runActiveAttempt = async mode => {
                 try {
                     const raw = await runActiveCompatible(mode);
                     controller.signal.throwIfAborted();
@@ -1625,6 +1641,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
                     return parseResponse(raw);
                 }
             };
+            const runActiveMode = mode => withValidationRepair(() => runActiveAttempt(mode), `${requestLabel} active model`);
             return negotiatePlannerOutput(
                 runActiveMode,
                 [PLANNER_OUTPUT_MODE.JSON_SCHEMA, PLANNER_OUTPUT_MODE.PROMPT_ONLY],
@@ -1644,7 +1661,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
         let samplingEnabled = !plannerModelRejectsTemperature(model.model);
         const sendRaw = async mode => {
             const modePayload = model.provider === 'custom' ? customOutputPayload(reasoningPayload, mode) : reasoningPayload;
-            const body = { chat_completion_source: model.provider, model: model.model, messages: plannerMessages(systemPrompt, prompt, schema, mode), max_tokens: responseTokens, stream: false, ...plannerTemperaturePayload(temperature, samplingEnabled), ...modePayload, ...(mode === PLANNER_OUTPUT_MODE.JSON_SCHEMA ? { json_schema: schema } : {}), ...(model.provider === 'openrouter' ? { api_url: model.url.replace(/\/$/, '') } : { custom_url: model.url.replace(/\/$/, '') }), ...detachedMarker };
+            const body = { chat_completion_source: model.provider, model: model.model, messages: plannerMessages(systemPrompt, prompt, schema, mode, repairInstruction), max_tokens: responseTokens, stream: false, ...plannerTemperaturePayload(temperature, samplingEnabled), ...modePayload, ...(mode === PLANNER_OUTPUT_MODE.JSON_SCHEMA ? { json_schema: schema } : {}), ...(model.provider === 'openrouter' ? { api_url: model.url.replace(/\/$/, '') } : { custom_url: model.url.replace(/\/$/, '') }), ...detachedMarker };
             if (model.secretId) body.secret_id = model.secretId;
             const response = await fetch('/api/backends/chat-completions/generate', { method: 'POST', headers: currentContext().getRequestHeaders?.() || getRequestHeaders?.() || { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
             const payload = await response.json();
@@ -1656,7 +1673,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
             () => sendRaw(mode),
             () => { samplingEnabled = false; },
         );
-        const runDirectMode = async mode => {
+        const runDirectAttempt = async mode => {
             try {
                 return await send(mode);
             } catch (error) {
@@ -1667,7 +1684,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
                 return send(mode);
             }
         };
-        const glmTarget = model.provider === 'custom' && /^(?:.*\/)?glm[-_.]/i.test(model.model);
+        const runDirectMode = mode => withValidationRepair(() => runDirectAttempt(mode), `${requestLabel} direct model`);
         const modes = plannerOutputModes(model);
         return negotiatePlannerOutput(
             runDirectMode,
@@ -1675,7 +1692,6 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
             `${requestLabel} direct model`,
             controller.signal,
             `${cacheNamespace}:direct:${model.provider}:${model.model}:${model.url}`,
-            { retryInvalidOutput: !glmTarget },
         );
     } finally {
         externalSignal?.removeEventListener('abort', forwardAbort);

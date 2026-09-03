@@ -76,7 +76,15 @@ function schemaInstruction(schema) {
     return `JSON schema for the response:\n${JSON.stringify(schema.value, null, 2)}`;
 }
 
-export function plannerMessages(systemPrompt, prompt, schema, mode) {
+export function plannerValidationRepairInstruction(error) {
+    const details = (Array.isArray(error?.validationErrors) ? error.validationErrors : [])
+        .slice(0, 16)
+        .join('; ')
+        || String(error?.message || error || 'The response violated the required contract.');
+    return `Your previous response was rejected by deterministic validation. Return a complete replacement JSON object, not a patch or explanation. Correct every listed issue: ${details}`;
+}
+
+export function plannerMessages(systemPrompt, prompt, schema, mode, repairInstruction = '') {
     const messages = [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: prompt },
@@ -84,13 +92,15 @@ export function plannerMessages(systemPrompt, prompt, schema, mode) {
     if (mode !== PLANNER_OUTPUT_MODE.JSON_SCHEMA) {
         messages.push({ role: 'user', content: schemaInstruction(schema) });
     }
+    if (repairInstruction) messages.push({ role: 'user', content: repairInstruction });
     return messages;
 }
 
-export function plannerPrompt(prompt, schema, mode) {
-    return mode === PLANNER_OUTPUT_MODE.JSON_SCHEMA
+export function plannerPrompt(prompt, schema, mode, repairInstruction = '') {
+    const base = mode === PLANNER_OUTPUT_MODE.JSON_SCHEMA
         ? prompt
         : `${prompt}\n\n${schemaInstruction(schema)}`;
+    return repairInstruction ? `${base}\n\n${repairInstruction}` : base;
 }
 
 export function customOutputPayload(payload, mode) {

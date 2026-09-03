@@ -102,6 +102,7 @@ test('freeform movement phrases and every simulation scope validate', () => {
 
 test('provider-visible branches reject canon-specific names instead of injecting a miniature scene', () => {
     const leaky = result({
+        actor_updates: [{ name: 'Lucia' }, { name: 'Commander Vekk' }],
         beat: {
             ...result().beat,
             operation: 'Let Vekk offer a small personal reflection',
@@ -114,18 +115,38 @@ test('provider-visible branches reject canon-specific names instead of injecting
     assert.ok(check.errors.some(error => /beat\.required_effect.*Lucia/i.test(error)));
 });
 
-test('provider-visible branches accept Rest as an abstract direction', () => {
+test('provider-visible branches accept arbitrary abstract sentence openings without a word allowlist', () => {
+    for (const required_effect of [
+        'Rest remains available without erasing one observable consequence of the current activity.',
+        'Pause long enough for the established pressure to become perceptible.',
+        'Relief changes the texture of the current interaction without deciding the player response.',
+        'Silence acquires a small amount of meaning through an observable contextual change.',
+    ]) {
+        const abstract = result({
+            beat: {
+                ...result().beat,
+                alternatives: [
+                    result().beat.alternatives[0],
+                    { ...result().beat.alternatives[1], required_effect },
+                ],
+            },
+        });
+        assert.equal(validateAnalysisResult(abstract).valid, true, required_effect);
+    }
+});
+
+test('provider-visible canon terms are rejected even when the model lowercases them', () => {
+    const leaky = result({
+        actor_updates: [{ name: 'Commander Vekk' }],
+        beat: { ...result().beat, operation: 'let vekk redirect the current interaction' },
+    });
+    assert.ok(validateAnalysisResult(leaky).errors.some(error => /beat\.operation.*vekk/i.test(error)));
+});
+
+test('multiword setting names do not reserve each ordinary component word', () => {
     const abstract = result({
-        beat: {
-            ...result().beat,
-            alternatives: [
-                result().beat.alternatives[0],
-                {
-                    ...result().beat.alternatives[1],
-                    required_effect: 'Rest remains available without erasing one observable consequence of the current activity.',
-                },
-            ],
-        },
+        world: { ...result().world, identity: 'Star Wars' },
+        beat: { ...result().beat, operation: 'let one distant star alter the current environment' },
     });
     assert.equal(validateAnalysisResult(abstract).valid, true);
 });
