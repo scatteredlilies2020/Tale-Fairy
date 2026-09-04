@@ -184,8 +184,10 @@ test('analyzed injection governs only NPC and world follow-through', () => {
     assert.match(payload, /user action is outside Tale Fairy’s authority/i);
     assert.match(payload, /Do not use this guide to infer, reinterpret, expand, narrow, relocate, complete, substitute, or judge the user action/i);
     assert.match(payload, /Tale Fairy begins only with what NPCs or the surrounding world do in response/i);
-    assert.match(payload, /AVOID INTERROGATION/i);
-    assert.match(payload, /repeated question-and-answer cycle/i);
+    assert.match(payload, /SELF-PROPELLING MOVEMENT/i);
+    assert.match(payload, /exists independently of any player reply/i);
+    assert.match(payload, /dialogue-centered scenes/i);
+    assert.doesNotMatch(payload, /interrogat/i);
     assert.match(payload, /PRIMARY WHEN: The user continues the service interaction\./i);
     assert.match(payload, /PRIMARY NEXT-STEP DIRECTION: Introduce\./i);
     assert.match(payload, /PRIMARY NEXT-STEP EFFECT: Let the routine interaction produce a small but observable development that opens a fresh possibility\./i);
