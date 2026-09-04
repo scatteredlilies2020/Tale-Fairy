@@ -322,6 +322,20 @@ test('applying analysis saves the beat and private horizon radar while clearing 
     assert.deepEqual(next.narrativeEvents, []);
 });
 
+test('related original horizon seeds remain speculation instead of becoming durable trajectory', () => {
+    const speculative = result({
+        horizon: {
+            ...result().horizon,
+            seeds: [
+                { ...result().horizon.seeds[0], kind: 'original', present_relation: 'advance' },
+            ],
+        },
+    });
+    const next = applyAnalysis(defaultState(), speculative, messages);
+    assert.equal(next.horizonRadar.seeds[0].kind, 'original');
+    assert.equal(next.narrativeLayers.durableTrajectory, '');
+});
+
 test('private response audit informs later planning but never enters roleplay injection', () => {
     const next = applyAnalysis(defaultState(), result(), messages);
     const plannerState = JSON.stringify(next.responseAudit) + JSON.stringify(next.responsePatternMemory);

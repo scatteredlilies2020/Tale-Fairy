@@ -1640,8 +1640,7 @@ function applyBeatAnalysis(next, value, messages) {
         next.horizonRadar = proposed;
     }
     next.beatDirective = normalizeState({ beatDirective: beat }).beatDirective;
-    const horizonTrajectory = next.horizonRadar.seeds.find(seed => seed.presentRelation !== 'none')?.trajectory
-        || next.horizonRadar.seeds.find(seed => seed.kind === 'detected')?.trajectory || '';
+    const horizonTrajectory = next.horizonRadar.seeds.find(seed => seed.kind === 'detected' && seed.presentRelation !== 'none')?.trajectory || '';
     next.narrativeLayers = normalizeState({ narrativeLayers: {
         immediate_action: current.immediate_action, local_activity: current.activity, situation: current.situation,
         wider_world: world.baseline, durable_trajectory: horizonTrajectory, activity_role: current.activity_role, temporal_scope: current.temporal_scope,
