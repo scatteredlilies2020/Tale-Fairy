@@ -1,12 +1,12 @@
-import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.12.5';
+import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.12.6';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
 import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js';
-import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile } from './beat-director.js?v=0.12.5';
-import { normalizeDirectorSample } from './director-sampling.js?v=0.12.5';
+import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile } from './beat-director.js?v=0.12.6';
+import { normalizeDirectorSample } from './director-sampling.js?v=0.12.6';
 
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 54;
+export const STATE_VERSION = 55;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -20,6 +20,10 @@ const MAX_GUIDES = 4;
 const ROUTE_LANES = new Set(['immediate', 'character', 'relationship-institution', 'lore-world', 'original', 'long-range', 'extra']);
 const ROUTE_RELATIONS = new Set(['direct', 'independent', 'emergent']);
 const ROUTE_SCALES = new Set(['scene', 'days', 'arc', 'months-years', 'open-ended']);
+const HORIZON_KINDS = new Set(['detected', 'original']);
+const HORIZON_SCALES = new Set(['arc', 'months-years', 'open-ended']);
+const HORIZON_RELATIONS = new Set(['none', 'echo', 'seed', 'advance', 'converge']);
+const HORIZON_CHANGES = new Set(['keep', 'adjust', 'replace', 'retire']);
 
 export function defaultState() {
     return {
@@ -33,6 +37,7 @@ export function defaultState() {
         beatDirective: defaultBeatDirective(),
         responseAudit: { applicable: false, movementFit: 'not-applicable', repetition: 'none', unjustifiedEscalation: false, playerControl: false, continuityDrift: false, patterns: [], summary: '' },
         responsePatternMemory: [],
+        horizonRadar: { status: 'none', seeds: [], audit: '' },
         narrativeLayers: { immediateAction: '', localActivity: '', situation: '', widerWorld: '', durableTrajectory: '', activityRole: 'routine', temporalScope: 'action' },
         storyFrame: { frame: 'unknown', confidence: 'low', basis: '' },
         directorScore: { storyIdentity: '', sceneFunction: '', settingIdentity: '', settingForces: [], causalTempo: 'hold', arcDirection: '', futureSetup: { id: '', development: '', currentStep: '', conditions: [], earliestWindow: '', disclosure: 'hidden' }, meaningfulAim: '', change: 'replace', basis: '' },
@@ -96,6 +101,40 @@ function normalizeContinuityThread(value = {}) {
         state: clippedText(value.state, 240),
         status: ['active', 'dormant', 'due', 'blocked'].includes(status) ? status : 'dormant',
         basis: clippedText(value.basis, 160),
+    };
+}
+function normalizeHorizonSeed(value = {}) {
+    const kind = text(value.kind).toLowerCase();
+    const scale = text(value.scale).toLowerCase();
+    const presentRelation = text(value.presentRelation ?? value.present_relation, 'none').toLowerCase();
+    const change = text(value.change, 'replace').toLowerCase();
+    return {
+        id: clippedText(value.id, 80),
+        kind: HORIZON_KINDS.has(kind) ? kind : 'detected',
+        trajectory: clippedText(value.trajectory, 260),
+        engine: clippedText(value.engine, 140),
+        scale: HORIZON_SCALES.has(scale) ? scale : 'arc',
+        condition: clippedText(value.condition, 160),
+        basis: clippedText(value.basis, 220),
+        presentRelation: HORIZON_RELATIONS.has(presentRelation) ? presentRelation : 'none',
+        change: HORIZON_CHANGES.has(change) ? change : 'replace',
+    };
+}
+function normalizeHorizonRadar(value = {}) {
+    const status = text(value.status, 'none').toLowerCase();
+    const seen = new Set();
+    const seeds = cap(value.seeds, 4).map(normalizeHorizonSeed).filter(seed => {
+        const id = seed.id.toLocaleLowerCase();
+        if (!id || !seed.trajectory || !seed.engine || !seed.condition || !seed.basis || seen.has(id)) return false;
+        seen.add(id);
+        return seed.change !== 'retire';
+    });
+    return {
+        status: ['none', 'latent', 'developing', 'converging'].includes(status) && (seeds.length ? status !== 'none' : status === 'none')
+            ? status
+            : seeds.length ? 'latent' : 'none',
+        seeds,
+        audit: clippedText(value.audit, 360),
     };
 }
 function normalizeSelfChallenge(value = {}) {
@@ -475,7 +514,8 @@ export function normalizeState(input = {}) {
     // v53 makes every direction subordinate to the latest user's intended
     // action and removes planner-authored resolution ceilings. v54 removes
     // user-action interpretation from Tale Fairy entirely; older sets are
-    // cleared so no action-target inference survives the upgrade.
+    // cleared so no action-target inference survives the upgrade. v55 adds a
+    // private bounded horizon radar without reviving scheduled route debt.
     const unsafePlannerUpgrade = inputVersion > 0 && inputVersion < 18;
     const movementUpgrade = inputVersion > 0 && inputVersion < 42;
     const recoveryUpgrade = inputVersion > 0 && inputVersion < 26;
@@ -506,6 +546,7 @@ export function normalizeState(input = {}) {
         beatDirective: conditionalSetUpgrade ? base.beatDirective : normalizeBeatDirective(value.beatDirective ?? value.beat_directive),
         responseAudit: normalizeResponseAudit(value.responseAudit ?? value.response_audit),
         responsePatternMemory: cap(value.responsePatternMemory ?? value.response_pattern_memory, 12).map(item => clippedText(item, 140)).filter(Boolean),
+        horizonRadar: normalizeHorizonRadar(value.horizonRadar ?? value.horizon_radar),
         narrativeLayers: chronologyAuditUpgrade
             ? { ...base.narrativeLayers, widerWorld: normalizedLayers.widerWorld }
             : authorMapUpgrade ? { ...normalizedLayers, durableTrajectory: '' } : normalizedLayers,
@@ -590,6 +631,11 @@ export function stateForPrompt(state) {
         beatDirective: s.beatDirective,
         responseAudit: s.responseAudit,
         responsePatternMemory: s.responsePatternMemory.slice(-10),
+        horizonRadar: {
+            status: s.horizonRadar.status,
+            seeds: s.horizonRadar.seeds.map(seed => ({ ...seed })),
+            audit: s.horizonRadar.audit,
+        },
         narrativeLayers: { immediateAction: s.narrativeLayers.immediateAction, localActivity: s.narrativeLayers.localActivity, situation: s.narrativeLayers.situation, widerWorld: s.narrativeLayers.widerWorld, durableTrajectory: s.narrativeLayers.durableTrajectory, activityRole: s.narrativeLayers.activityRole, temporalScope: s.narrativeLayers.temporalScope },
         loreModel: { ...s.loreModel },
         continuityThreads: s.continuityThreads.map(item => ({ id: item.id, thread: item.thread, state: item.state, status: item.status, basis: item.basis })),
