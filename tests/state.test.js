@@ -184,6 +184,8 @@ test('analyzed injection governs only NPC and world follow-through', () => {
     assert.match(payload, /user action is outside Tale Fairy’s authority/i);
     assert.match(payload, /Do not use this guide to infer, reinterpret, expand, narrow, relocate, complete, substitute, or judge the user action/i);
     assert.match(payload, /Tale Fairy begins only with what NPCs or the surrounding world do in response/i);
+    assert.match(payload, /AVOID INTERROGATION/i);
+    assert.match(payload, /repeated question-and-answer cycle/i);
     assert.match(payload, /PRIMARY WHEN: The user continues the service interaction\./i);
     assert.match(payload, /PRIMARY NEXT-STEP DIRECTION: Introduce\./i);
     assert.match(payload, /PRIMARY NEXT-STEP EFFECT: Let the routine interaction produce a small but observable development that opens a fresh possibility\./i);
@@ -293,7 +295,7 @@ test('analyzed beat keeps AI invention open across context-native scene scales',
     const payload = formatBeatContract({}, { ...analyzedState().beatDirective, operation: 'introduce', requiredEffect: 'Introduce a compatible development grounded in the present setting.' });
     assert.match(payload, /PRIMARY NEXT-STEP DIRECTION: Introduce\./);
     assert.match(payload, /PRIMARY NEXT-STEP EFFECT: Introduce a compatible development grounded in the present setting\./i);
-    assert.equal(payload.split('\n').length, 14);
+    assert.equal(payload.split('\n').length, 15);
 });
 
 test('provider contract protects player agency without exposing planner evidence', () => {

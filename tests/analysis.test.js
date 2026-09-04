@@ -236,6 +236,8 @@ test('analysis prompt treats OOC and scenario authority as binding, not future s
     assert.match(prompt.authority, /OOC outcome commands bind the stated outcome/i);
     assert.match(prompt.authority, /user action is outside Tale Fairy’s authority/i);
     assert.match(prompt.authority, /Never use planning to deny, delay, weaken, cap, or modify the user action/i);
+    assert.match(prompt.contribution_rule, /Avoid interrogation/i);
+    assert.match(prompt.contribution_rule, /repeated follow-up questions/i);
     assert.match(prompt.evidence_rule, /Never predict or force a known canon event/i);
     assert.match(prompt.messages.at(-1).content, /I kill the dragon here/);
 });
