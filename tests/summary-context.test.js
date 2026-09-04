@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { collectSummarySources, compactSummarySources, summarySourceAudit, worldInfoActivationContext } from '../extension/summary-context.js';
+import { collectSummarySources, compactSummarySources, isStaleContinuitySnapshot, summarySourceAudit, worldInfoActivationContext } from '../extension/summary-context.js';
 import { estimateTokenCount } from '../extension/token-budget.js';
+
+test('portable Continuity snapshots are stale when their source range trails the transcript', () => {
+    const messages = Array.from({ length: 6 }, () => ({ mes: 'turn' }));
+    assert.equal(isStaleContinuitySnapshot({ world: { scene: { sources: [{ to: 3 }] } } }, messages), true);
+    assert.equal(isStaleContinuitySnapshot({ world: { scene: { sources: [{ to: 5 }] } } }, messages), false);
+});
 
 test('summary discovery integrates continuity, extension prompts, metadata, message memory, recaps, and World Info', async () => {
     const context = {
