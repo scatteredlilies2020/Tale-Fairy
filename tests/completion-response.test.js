@@ -22,11 +22,6 @@ test('reads a direct external-reaction v6 structured result', () => {
     assert.equal(completionText(result), JSON.stringify(result));
 });
 
-test('reads a direct horizon-aware v7 structured result', () => {
-    const result = { contract_version: 7, current: {}, beat: {}, response_audit: {}, horizon: {} };
-    assert.equal(completionText(result), JSON.stringify(result));
-});
-
 test('unwraps common proxy containers', () => {
     assert.equal(completionText({ data: { response: { choices: [{ message: { content: 'nested' } }] } } }), 'nested');
 });

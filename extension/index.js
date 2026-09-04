@@ -4,26 +4,26 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.12.6';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.12.6';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.12.5';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.12.5';
 import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.11.101';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.12.6';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.12.6';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.12.6';
-import { normalizeModelListResponse } from './models.js?v=0.12.6';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.12.5';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.12.5';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.12.5';
+import { normalizeModelListResponse } from './models.js?v=0.12.5';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.108';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.12.6';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.12.6';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.12.6';
-import { estimateTokenCount } from './token-budget.js?v=0.12.6';
-import { completionText } from './completion-response.js?v=0.12.6';
-import { sampleDirectorSignals } from './director-sampling.js?v=0.12.6';
-import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, plannerValidationRepairInstruction, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.12.6';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.12.5';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.12.5';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.12.5';
+import { estimateTokenCount } from './token-budget.js?v=0.12.5';
+import { completionText } from './completion-response.js?v=0.12.5';
+import { sampleDirectorSignals } from './director-sampling.js?v=0.12.5';
+import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, plannerValidationRepairInstruction, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.12.5';
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
-import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.12.6';
+import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.12.5';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.12.6';
+const RUNTIME_VERSION = '0.12.5';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -1224,7 +1224,7 @@ function plannerStorage() {
 
 function parseAnalysisResponse(value) {
     try {
-        const rawResult = value && typeof value === 'object' && !Array.isArray(value) && ([2, 6, 7].includes(value.contract_version) || value.scene)
+        const rawResult = value && typeof value === 'object' && !Array.isArray(value) && ([2, 6].includes(value.contract_version) || value.scene)
             ? value
             : extractJson(completionText(value));
         const validation = validateAnalysisResult(rawResult);

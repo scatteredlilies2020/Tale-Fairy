@@ -1,8 +1,8 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.12.6';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.12.5';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.11.96';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.12.6';
+import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.12.5';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
@@ -45,12 +45,6 @@ const CONDITIONAL_BRANCH_SCHEMA = { type: 'object', additionalProperties: false,
     plot_weight: { type: 'string', enum: ['none', 'incidental', 'connective', 'consequential'] },
     duration: { type: 'string', enum: ['moment', 'beat', 'scene', 'extended'] },
 }, required: ['when', 'operation', 'required_effect', 'content_class', 'scope', 'intensity', 'quantity', 'relative_power', 'plot_weight', 'duration'] };
-const HORIZON_SEED_SCHEMA = { type: 'object', additionalProperties: false, properties: {
-    id: text(80), kind: { type: 'string', enum: ['detected', 'original'] }, trajectory: text(260), engine: text(140),
-    scale: { type: 'string', enum: ['arc', 'months-years', 'open-ended'] }, condition: text(160), basis: text(220),
-    present_relation: { type: 'string', enum: ['none', 'echo', 'seed', 'advance', 'converge'] },
-    change: { type: 'string', enum: ['keep', 'adjust', 'replace', 'retire'] },
-}, required: ['id', 'kind', 'trajectory', 'engine', 'scale', 'condition', 'basis', 'present_relation', 'change'] };
 
 // The model returns observations plus deltas, not a duplicate of Tale Fairy's
 // entire persistent state. applyAnalysis expands this compact wire contract into
@@ -58,7 +52,7 @@ const HORIZON_SEED_SCHEMA = { type: 'object', additionalProperties: false, prope
 export const ANALYSIS_SCHEMA_VALUE = {
     type: 'object', additionalProperties: false,
     properties: {
-        contract_version: { type: 'integer', const: 7 },
+        contract_version: { type: 'integer', const: 6 },
         current: { type: 'object', additionalProperties: false, properties: {
             frame: { type: 'string', enum: ['grounded', 'heightened', 'surreal'] }, frame_basis: text(180),
             status: text(180), immediate_action: text(140), activity: text(180), situation: text(220),
@@ -92,10 +86,6 @@ export const ANALYSIS_SCHEMA_VALUE = {
             unjustified_escalation: { type: 'boolean' }, player_control: { type: 'boolean' }, continuity_drift: { type: 'boolean' },
             patterns: strings(5, 140), summary: text(400),
         }, required: ['applicable', 'movement_fit', 'repetition', 'unjustified_escalation', 'player_control', 'continuity_drift', 'patterns', 'summary'] },
-        horizon: { type: 'object', additionalProperties: false, properties: {
-            status: { type: 'string', enum: ['none', 'latent', 'developing', 'converging'] },
-            seeds: { type: 'array', maxItems: 4, items: HORIZON_SEED_SCHEMA }, audit: text(360),
-        }, required: ['status', 'seeds', 'audit'] },
         world: { type: 'object', additionalProperties: false, properties: {
             identity: text(140), baseline: text(300), variant_rules: strings(4, 220), rp_changes: strings(5, 240),
             signatures: strings(6, 220), forces: strings(4, 180), confidence: { type: 'string', enum: ['low', 'moderate', 'high'] },
@@ -107,10 +97,10 @@ export const ANALYSIS_SCHEMA_VALUE = {
         note_resolution: { anyOf: [{ type: 'object', additionalProperties: false, properties: { kind: { type: 'string', enum: ['suggest', 'correct', 'establish', 'forbid'] } }, required: ['kind'] }, { type: 'null' }] },
         audit: text(500),
     },
-    required: ['contract_version', 'current', 'beat', 'response_audit', 'horizon', 'world', 'thread_updates', 'actor_updates', 'canon_updates', 'ledger', 'note_resolution', 'audit'],
+    required: ['contract_version', 'current', 'beat', 'response_audit', 'world', 'thread_updates', 'actor_updates', 'canon_updates', 'ledger', 'note_resolution', 'audit'],
 };
 export const ANALYSIS_SCHEMA = Object.freeze({
-    name: 'tale_fairy_external_reaction_v7',
+    name: 'tale_fairy_external_reaction_v6',
     description: 'Compact Tale Fairy observations and state deltas.',
     strict: true,
     returnInvalid: true,
@@ -123,7 +113,7 @@ export const MODE_INSTRUCTIONS = Object.freeze({
     fun: 'FUN — Give NPC or world follow-through a prominent, lively expression. Randomness never touches the user action, its target, its manner, or the player’s intent.',
 });
 
-export const DIRECTOR_POLICY = 'Interpret the complete scene and choose one coherent primary NPC-or-world follow-through before applying random appetite, then provide two distinct redirect-safe alternatives. The user action is not Tale Fairy’s object: do not infer, reinterpret, expand, narrow, relocate, complete, substitute, evaluate, or otherwise define the user action, its target, its manner, or the player’s intent. The main roleplay instructions and context resolve the action. Tale Fairy begins with the external response after or around that fixed action. Every fresh set must contribute playable movement through an NPC reaction, world reaction, consequence, opportunity, or natural next causal step. A branch must never deny, delay, weaken, cap, or modify the user action or an outcome explicitly established by the user. Required effects must state positive external movement rather than an exclusion, withheld outcome, access restriction, or partial-resolution requirement. Quiet or routine situations still gain a perceptible external response without forced conflict. Active danger, competition, demanding tasks, and instability may exert credible pressure when established. Deepening, breathing room, relief, continuation, resolution, and transition are as legitimate as complication, interruption, escalation, or transformation. New causes used by the current beat require conversational or explicit-canon support; private original horizon seeds remain speculation until established in play. Provider-visible text states only abstract external function and effect and must remain portable to another scene with the same dramatic shape. Never name or repeat a character, location, faction, lore concept, concrete object, body part, source, exact activity, user action, dialogue, prop, detail, endpoint, event, actor, outcome, or player reaction. Use current interaction, current environment, established pressure, or established relationship instead. Explicit user/OOC instructions bind, and player decisions remain the player’s alone.';
+export const DIRECTOR_POLICY = 'Interpret the complete scene and choose one coherent primary NPC-or-world follow-through before applying random appetite, then provide two distinct redirect-safe alternatives. The user action is not Tale Fairy’s object: do not infer, reinterpret, expand, narrow, relocate, complete, substitute, evaluate, or otherwise define the user action, its target, its manner, or the player’s intent. The main roleplay instructions and context resolve the action. Tale Fairy begins with the external response after or around that fixed action. Every fresh set must contribute playable movement through an NPC reaction, world reaction, consequence, opportunity, or natural next causal step. A branch must never deny, delay, weaken, cap, or modify the user action or an outcome explicitly established by the user. Required effects must state positive external movement rather than an exclusion, withheld outcome, access restriction, or partial-resolution requirement. Quiet or routine situations still gain a perceptible external response without forced conflict. Active danger, competition, demanding tasks, and instability may exert credible pressure when established. Deepening, breathing room, relief, continuation, resolution, and transition are as legitimate as complication, interruption, escalation, or transformation. New causes require conversational or explicit-canon support. Provider-visible text states only abstract external function and effect and must remain portable to another scene with the same dramatic shape. Never name or repeat a character, location, faction, lore concept, concrete object, body part, source, exact activity, user action, dialogue, prop, detail, endpoint, event, actor, outcome, or player reaction. Use current interaction, current environment, established pressure, or established relationship instead. Explicit user/OOC instructions bind, and player decisions remain the player’s alone.';
 
 export const EXTREME_CANON_INSTRUCTION = 'Explicit user/OOC canon remains authoritative even when extreme or unprecedented. Preserve its magnitude and apply relevant strengths and limits causally; averages are not ceilings. Unspecified compatible details remain creative space.';
 
@@ -232,7 +222,7 @@ function canonSpecificTerms(result) {
     return terms;
 }
 
-function validateBeatAnalysisResult(result, { requireHorizon = true } = {}) {
+function validateBeatAnalysisResult(result) {
     const errors = [];
     const requiredStrings = (value, keys, label) => {
         if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -241,32 +231,10 @@ function validateBeatAnalysisResult(result, { requireHorizon = true } = {}) {
         }
         for (const key of keys) if (typeof value[key] !== 'string' || !value[key].trim()) errors.push(`${label}.${key} must be a non-empty string`);
     };
-    if (requireHorizon && result?.contract_version !== 7) errors.push('contract_version must be 7');
-    if (!requireHorizon && result?.contract_version !== 6) errors.push('contract_version must be 6');
+    if (result?.contract_version !== 6) errors.push('contract_version must be 6');
     requiredStrings(result?.current, ['frame', 'frame_basis', 'status', 'immediate_action', 'activity', 'situation', 'activity_role', 'temporal_scope', 'scene_promise', 'phase', 'emotional_direction', 'pressure', 'intrusion', 'novelty_ceiling'], 'current');
     requiredStrings(result?.beat, ['operation', 'primary_when', 'target', 'required_effect', 'inject_reason', 'content_class', 'scope', 'intensity', 'quantity', 'relative_power', 'plot_weight', 'duration', 'basis'], 'beat');
     requiredStrings(result?.response_audit, ['movement_fit', 'repetition', 'summary'], 'response_audit');
-    if (requireHorizon) {
-        requiredStrings(result?.horizon, ['status', 'audit'], 'horizon');
-        if (!Array.isArray(result?.horizon?.seeds)) errors.push('horizon.seeds must be an array');
-        const seeds = Array.isArray(result?.horizon?.seeds) ? result.horizon.seeds : [];
-        if (seeds.length > 4) errors.push('horizon.seeds must contain at most 4 long-range seeds');
-        for (const [index, seed] of seeds.entries()) {
-            requiredStrings(seed, ['id', 'kind', 'trajectory', 'engine', 'scale', 'condition', 'basis', 'present_relation', 'change'], `horizon.seeds[${index}]`);
-            if (!['detected', 'original'].includes(seed?.kind)) errors.push(`horizon.seeds[${index}].kind is invalid`);
-            if (!['arc', 'months-years', 'open-ended'].includes(seed?.scale)) errors.push(`horizon.seeds[${index}].scale must be genuinely long-range`);
-            if (!['none', 'echo', 'seed', 'advance', 'converge'].includes(seed?.present_relation)) errors.push(`horizon.seeds[${index}].present_relation is invalid`);
-            if (!['keep', 'adjust', 'replace', 'retire'].includes(seed?.change)) errors.push(`horizon.seeds[${index}].change is invalid`);
-        }
-        const liveSeeds = seeds.filter(seed => seed?.change !== 'retire');
-        const ids = liveSeeds.map(seed => String(seed?.id || '').trim().toLocaleLowerCase()).filter(Boolean);
-        const engines = liveSeeds.map(seed => String(seed?.engine || '').trim().toLocaleLowerCase()).filter(Boolean);
-        if (new Set(ids).size !== ids.length) errors.push('horizon seeds must use distinct ids');
-        if (new Set(engines).size !== engines.length) errors.push('horizon seeds must use distinct causal engines');
-        if (!['none', 'latent', 'developing', 'converging'].includes(result?.horizon?.status)) errors.push('horizon.status is invalid');
-        if (result?.horizon?.status === 'none' && liveSeeds.length) errors.push('horizon.status cannot be none while seeds remain');
-        if (result?.horizon?.status !== 'none' && !liveSeeds.length) errors.push('horizon.status must be none when no seeds remain');
-    }
     requiredStrings(result?.world, ['identity', 'baseline', 'confidence'], 'world');
     for (const key of ['thread_updates', 'actor_updates', 'canon_updates']) if (!Array.isArray(result?.[key])) errors.push(`${key} must be an array`);
     for (const key of ['preserve', 'forbid']) if (!Array.isArray(result?.beat?.[key])) errors.push(`beat.${key} must be an array`);
@@ -445,8 +413,7 @@ function validateCompactAnalysisResult(result) {
 }
 
 export function validateAnalysisResult(result) {
-    if (result?.contract_version === 7) return validateBeatAnalysisResult(result);
-    if (result?.contract_version === 6) return validateBeatAnalysisResult(result, { requireHorizon: false });
+    if (result?.contract_version === 6) return validateBeatAnalysisResult(result);
     if (result?.contract_version === 2) return validateCompactAnalysisResult(result);
     const errors = [];
     if (!result || typeof result !== 'object' || Array.isArray(result)) {
@@ -1495,10 +1462,9 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         authority: 'Explicit OOC/scenario commands and the latest user text outrank the entire Tale Fairy plan. The user action is outside Tale Fairy’s authority: do not infer, reinterpret, expand, narrow, relocate, complete, substitute, evaluate, or define it, its target, its manner, or the player’s intent. OOC outcome commands bind the stated outcome. Never use planning to deny, delay, weaken, cap, or modify the user action. Never invent player dialogue, thoughts, consent, choices, compliance, retreat, or unrelated extra actions.',
         direction_policy: DIRECTOR_POLICY,
         calibration: 'Choose movement from scene need first; apply the sampled appetite only within that compatible movement. A high or adverse sample never independently warrants complication, conflict, interruption, or escalation. It may instead make a breather, deepening, relief, resolution, or transition more vivid and consequential.',
-        invention: 'New causes or conditions used by the current beat require conversational or explicit-canon support. A private horizon seed may be labeled original and remain speculative. Provider-visible when, operation, and required_effect text must contain only portable abstractions. Never copy names or concrete nouns from the scene: no character, location, faction, lore concept, object, body part, source material, exact activity, action, dialogue, prop, detail, endpoint, event, actor, outcome, or player reaction. Refer only to the current activity, current interaction, current environment, established pressure, or established relationship. Private fields may remain scene-specific. The provider sees only abstract conditions, directions, and effects; all scale classifications, target, basis, preserve, forbid, horizon data, and retained evidence stay private.',
+        invention: 'New causes or conditions require conversational or explicit-canon support. Provider-visible when, operation, and required_effect text must contain only portable abstractions. Never copy names or concrete nouns from the scene: no character, location, faction, lore concept, object, body part, source material, exact activity, action, dialogue, prop, detail, endpoint, event, actor, outcome, or player reaction. Refer only to the current activity, current interaction, current environment, established pressure, or established relationship. Private fields may remain scene-specific. The provider sees only abstract conditions, directions, and effects; all scale classifications, target, basis, preserve, forbid, and retained evidence stay private.',
         simulation: 'Use the causal unit natural to the scope. Personal and life simulation may move through needs, relationships, work, routine, opportunity, or consequence. Organization and country simulation may move through decisions, institutions, resources, factions, policy effects, public reaction, trends, or systemic pressures. World simulation may move through broad forces. Do not translate every scale into a conventional adventure encounter.',
         movement: 'Write concise natural NPC-or-world follow-through operations, not generic bare verbs. primary_when and both alternative when conditions distinguish only which external response best follows the user text; they never assign meaning to that text. Include a broadly compatible external-response condition so exactly one branch normally fits. Required effects describe positive external movement; never encode a change to the user action, denial, delay, withheld answer, reduced access, or partial-resolution ceiling.',
-        horizon_rule: 'Privately scan beyond the current scene. horizon.seeds is a bounded radar of zero to four optional trajectories that could remain causally meaningful across an arc, months-years, or an open-ended future. detected means supported by conversation; original means a compatible invention and never a fact. Preserve stable ids with change=keep or adjust. Prefer independent causal engines, and omit a near-term matter merely renamed as distant. present_relation says whether this scene has no relation, echoes, seeds, advances, or converges with each trajectory. A relation may inform the current external response only when natural; never force setup, defer resolution, schedule a payoff, or turn a possibility into canon. Keep at least one genuinely original seed when compatible creative space exists.',
         contribution_rule: 'Always set beat.inject=true for a fresh analysis. Every branch must be self-propelling: produce an observable external development that exists independently of any player reply. Use completed NPC decisions, reactions, actions, disclosures, commitments, consequences, discoveries, opportunities, environmental changes, or task-native progress. In dialogue-centered scenes, contribute information, position, emotion, decision, or action that changes the situation and leaves the player free to react or continue. Add only a complementary, context-native NPC or world response, consequence, opportunity, or next causal step. If a branch would interpret or compete with the user action, the writing model must ignore it. Quiet listening, assignments, rest, travel, and other routine activity still receive something external to notice, exchange, discover, advance, or respond to. Keep it subtle when warranted; never manufacture conflict, interruption, pressure, urgency, or restriction merely to make something happen. Explain the private choice in inject_reason.',
         response_audit_rule: 'response_audit evaluates only the newest assistant reply after a prior conditional set. Check whether Tale Fairy stayed outside the user action and whether the NPC or world follow-through created forward motion. Then infer the closest-matching branch and evaluate its external effect, plus repetition, unjustified escalation, player control, and continuity drift. Record brief patterns, not quoted prose. If no reply is eligible, set applicable=false and movement_fit=not-applicable. Audit and pattern memory are private, never injected, and never trigger automatic regeneration.',
         scale_fields: 'content_class, scope, intensity, quantity, relative_power, plot_weight, and duration are private planning metadata. They describe only the proposed NPC or world follow-through and never characterize or limit the user action.',
@@ -1624,27 +1590,10 @@ function applyBeatAnalysis(next, value, messages) {
     } }).sceneProfile;
     next.responseAudit = normalizeState({ responseAudit: value.response_audit }).responseAudit;
     next.responsePatternMemory = [...next.responsePatternMemory, ...next.responseAudit.patterns].slice(-12);
-    if (value.contract_version === 7) {
-        const proposed = normalizeState({ horizonRadar: {
-            status: value.horizon?.status,
-            seeds: asArray(value.horizon?.seeds).map(seed => ({ ...seed, presentRelation: seed.present_relation })),
-            audit: value.horizon?.audit,
-        } }).horizonRadar;
-        const previousById = new Map(next.horizonRadar.seeds.map(seed => [seed.id.toLocaleLowerCase(), seed]));
-        proposed.seeds = proposed.seeds.map(seed => {
-            const previous = previousById.get(seed.id.toLocaleLowerCase());
-            return seed.change === 'keep' && previous
-                ? { ...previous, presentRelation: seed.presentRelation, basis: seed.basis, change: 'keep' }
-                : seed;
-        });
-        next.horizonRadar = proposed;
-    }
     next.beatDirective = normalizeState({ beatDirective: beat }).beatDirective;
-    const horizonTrajectory = next.horizonRadar.seeds.find(seed => seed.presentRelation !== 'none')?.trajectory
-        || next.horizonRadar.seeds.find(seed => seed.kind === 'detected')?.trajectory || '';
     next.narrativeLayers = normalizeState({ narrativeLayers: {
         immediate_action: current.immediate_action, local_activity: current.activity, situation: current.situation,
-        wider_world: world.baseline, durable_trajectory: horizonTrajectory, activity_role: current.activity_role, temporal_scope: current.temporal_scope,
+        wider_world: world.baseline, durable_trajectory: '', activity_role: current.activity_role, temporal_scope: current.temporal_scope,
     } }).narrativeLayers;
     next.loreModel = normalizeState({ loreModel: {
         world_identity: world.identity, baseline: world.baseline, variant_rules: world.variant_rules,
@@ -1670,9 +1619,8 @@ function applyBeatAnalysis(next, value, messages) {
     for (const claim of explicitCanonClaims(messages)) if (!canon.some(item => item.toLocaleLowerCase() === claim.toLocaleLowerCase())) canon.push(claim);
     next.canonConstraints = canon.slice(-12);
 
-    // v48+ deliberately has no prescriptive future route lifecycle. These
-    // legacy fields stay empty; v55 horizonRadar separately retains only
-    // optional private long-range hypotheses without scheduling delivery.
+    // v48+ deliberately has no future route lifecycle. These fields remain in
+    // saved-state shape for downgrade/migration safety but never drive output.
     next.objectives = [];
     next.possibilities = [];
     next.pathways = [];
@@ -1933,7 +1881,7 @@ export function applyAnalysis(state, result, messages) {
     const playerName = playerCharacterName(messages);
     const next = normalizeState(useSpecificPlayerName(state, playerName));
     const value = result && typeof result === 'object' ? useSpecificPlayerName(result, playerName) : {};
-    if ([6, 7].includes(value.contract_version)) return applyBeatAnalysis(next, value, messages);
+    if (value.contract_version === 6) return applyBeatAnalysis(next, value, messages);
     if (value.contract_version === 2) return applyCompactAnalysis(next, value, messages);
     if (value.story_frame && typeof value.story_frame === 'object') next.storyFrame = { ...next.storyFrame, frame: String(value.story_frame.frame || 'unknown').slice(0, 40), confidence: String(value.story_frame.confidence || 'low').slice(0, 40), basis: String(value.story_frame.basis || '').slice(0, 240) };
     if (value.director_score && typeof value.director_score === 'object') {
@@ -2016,7 +1964,7 @@ export function applyAnalysis(state, result, messages) {
 
 const PLANNER_SYSTEM = `You are Tale Fairy, an adaptive narrative director. Another model writes the actual roleplay or simulation. Return only JSON matching the schema.
 
-First determine what movement the scene actually warrants. Then use the weighted sample to color that movement's strength, novelty, and fortune. The sample is not an event taxonomy: it never selects the movement and never creates a need for an incident. Conduct the next response rather than prescribing a future route; separately maintain the private horizon radar described below.
+First determine what movement the scene actually warrants. Then use the weighted sample to color that movement's strength, novelty, and fortune. The sample is not an event taxonomy: it never selects the movement and never creates a need for an incident. Conduct the next response, not a future route; leave its exact realization to the writing model.
 
 AUTHORITY: Explicit user/OOC/scenario commands and the latest user text outrank this entire plan. The user action is outside Tale Fairy's authority. Do not infer, reinterpret, expand, narrow, relocate, complete, substitute, evaluate, or define the user action, its target, its manner, or the player's intent. The main roleplay instructions and context resolve it. A forced outcome binds that outcome. Never use planning to deny, delay, weaken, cap, or modify the user action. Never invent player dialogue, thoughts, feelings, consent, decisions, compliance, retreat, or unrelated extra actions.
 
@@ -2028,7 +1976,7 @@ CONDITIONAL MOVEMENT SET: When the newest message is an assistant response, the 
 
 MOVEMENT: Write every operation as a concise, natural, scene-aware direction for how the next response should move under that branch. Each must be general enough to leave the concrete realization open, but not a generic bare verb such as deepen, continue, complicate, or introduce. There is no fixed taxonomy, approved vocabulary, nearest label, or fallback bucket. Scene changes, pressure shifts, reversals, discoveries, good turns, bad turns, mixed consequences, new causes, stillness, and any other context-compatible movement are all available.
 
-INVENTION: The writing model chooses the realization. Visible branch text must be portable to any scene with the same dramatic shape and state only wanted external function or change. Never name or repeat a character, location, faction, lore concept, object, body part, source, exact activity, user action, dialogue, prop, detail, endpoint, event, actor, outcome, or player reaction. Use current interaction, current environment, established pressure, or established relationship. Valid: "Introduce a quiet, favorable discovery" and "Let the surrounding world provide a meaningful next step without adding pressure." Naming the discovery, source, actor, user action, or player feeling is invalid. Keep scene specifics and every scale classification in private fields. A fitting branch governs only NPC or world follow-through, never the user action. A new cause used by a current branch needs conversational or explicit-canon support. A private horizon seed may instead be a compatible original possibility because it is not injected or treated as fact.
+INVENTION: The writing model chooses the realization. Visible branch text must be portable to any scene with the same dramatic shape and state only wanted external function or change. Never name or repeat a character, location, faction, lore concept, object, body part, source, exact activity, user action, dialogue, prop, detail, endpoint, event, actor, outcome, or player reaction. Use current interaction, current environment, established pressure, or established relationship. Valid: "Introduce a quiet, favorable discovery" and "Let the surrounding world provide a meaningful next step without adding pressure." Naming the discovery, source, actor, user action, or player feeling is invalid. Keep scene specifics and every scale classification in private fields. A fitting branch governs only NPC or world follow-through, never the user action.
 
 ALWAYS CONTRIBUTE: Set beat.inject=true for every fresh analysis. Every branch must be self-propelling: produce an observable external development that exists independently of any player reply. Use completed NPC decisions, reactions, actions, disclosures, commitments, consequences, discoveries, opportunities, environmental changes, or task-native progress. In dialogue-centered scenes, contribute information, position, emotion, decision, or action that changes the situation and leaves the player free to react or continue. Add a complementary, context-native NPC or world response, consequence, opportunity, or next causal step; do not interpret, redirect, delay, narrow, weaken, cap, or modify the user action. Required effects state positive external movement, never an exclusion, withheld answer, reduced access, or partial-resolution requirement. Quiet listening, assignments, rest, travel, and other routine activity still receive something external to notice, exchange, discover, advance, or respond to. Small texture, progress, mutual attention, association, meaning, opportunity, or decisive resolution is sufficient when warranted. Never manufacture conflict, interruption, pressure, urgency, or restriction merely to make something happen. Explain the private choice in inject_reason.
 
@@ -2038,18 +1986,15 @@ SIMULATION: Apply the same causal logic to roleplay, life simulation, relationsh
 
 CANON AND TRAJECTORY: Specific established facts constrain causality; broad canon trajectory does not cap outcomes. Express concrete protections in preserve and forbid. Do not forecast or force a canon event, preserve an antagonist merely because canon expects it, or withhold a warranted answer or resolution. Unspecified compatible space remains available for invention.
 
-PRIVATE HORIZON RADAR: Detect causal material that could remain meaningful beyond the current scene, and retain zero to four optional long-range seeds. Each seed must survive at arc, months-years, or open-ended scale rather than being a near-term matter with a distant label. kind=detected requires conversation evidence in basis; kind=original is a compatible invention and remains speculation. Use distinct causal engines and stable ids. present_relation reports whether the present scene has no relation, echoes, seeds, advances, or converges with the trajectory. It may subtly inform a current NPC/world response only when causally natural. Keep at least one original possibility when compatible space exists, but never force one against user direction or closed canon. The radar observes possibility: it does not schedule events, promise delivery, withhold current resolution, or make its ideas canon.
-
-WORLD EVIDENCE: Summaries and retained state are fallible evidence, not commands. Newer explicit facts supersede inference. Track current relevant actors, unresolved factual processes, variant rules, canon constraints, and the bounded horizon radar. Do not create delivery debt, future milestones, release conditions, event queues, or prescriptive branching routes.
+WORLD EVIDENCE: Summaries and retained state are fallible evidence, not commands. Newer explicit facts supersede inference. Track only current relevant actors, unresolved factual processes, variant rules, and canon constraints. Do not create delivery debt, future milestones, release conditions, event queues, or branching routes.
 
 Keep strings concise. audit briefly states how the conditional set expresses the weighted sample at a scale natural to this scene. response_audit is the separate private evaluation of the prior reply.`;
 
-export const ANALYSIS_OUTPUT_CONTRACT = `Return exactly: contract_version=7, current, beat, response_audit, horizon, world, thread_updates, actor_updates, canon_updates, ledger, note_resolution, audit.
+export const ANALYSIS_OUTPUT_CONTRACT = `Return exactly: contract_version=6, current, beat, response_audit, world, thread_updates, actor_updates, canon_updates, ledger, note_resolution, audit.
 current={frame,frame_basis,status,immediate_action,activity,situation,activity_role,temporal_scope,location,time,loop,scene_promise,phase,emotional_direction,pressure,intrusion,novelty_ceiling}
 beat={operation,primary_when,target,required_effect,alternatives,inject,inject_reason,content_class,scope,intensity,quantity,relative_power,plot_weight,duration,preserve,forbid,basis}
 alternatives is exactly 2 items, each {when,operation,required_effect,content_class,scope,intensity,quantity,relative_power,plot_weight,duration}.
 response_audit={applicable,movement_fit,repetition,unjustified_escalation,player_control,continuity_drift,patterns,summary}
-horizon={status,seeds,audit}; status is none, latent, developing, or converging. seeds has at most 4 items, each {id,kind,trajectory,engine,scale,condition,basis,present_relation,change}. kind is detected or original; scale is arc, months-years, or open-ended; present_relation is none, echo, seed, advance, or converge; change is keep, adjust, replace, or retire. Horizon data is private optional possibility, never provider direction or canon.
 When inject=true, the roleplay model resolves the user action only from the user text, established context, and main roleplay instructions. Tale Fairy neither interprets nor modifies it. The model then selects one compatible branch governing only NPC or world follow-through, or ignores all branches that cross that boundary. Provider-visible when, operation, and required_effect strings contain only portable abstractions describing external function or possibility. They never name scene-specific characters, locations, lore, objects, activities, user actions, events, outcomes, or player reactions. All scale classifications, target, inject_reason, preserve, forbid, scene promise, basis, response_audit, pattern memory, and retained evidence remain private and are never injected.
 world={identity,baseline,variant_rules,rp_changes,signatures,forces,confidence}
 thread_updates and actor_updates contain factual changes only; canon_updates contains explicit durable additions/removals only. Empty arrays mean no change. audit is one concise string. No other keys.`;

@@ -31,28 +31,13 @@ function analyzedState(extra = {}) {
     return normalizeState({ ...beat, ...extra });
 }
 
-test('default and normalized state use the v55 horizon-aware external-reaction contract', () => {
+test('default and normalized state use the v54 external-reaction contract', () => {
     const state = normalizeState({ mode: 'invalid' });
-    assert.equal(STATE_VERSION, 55);
-    assert.equal(state.version, 55);
+    assert.equal(STATE_VERSION, 54);
+    assert.equal(state.version, 54);
     assert.equal(state.mode, 'balanced');
     assert.equal(state.sceneProfile.phase, 'developing');
     assert.equal(state.beatDirective.operation, '');
-    assert.deepEqual(state.horizonRadar, { status: 'none', seeds: [], audit: '' });
-});
-
-test('horizon radar normalizes bounded optional long-range hypotheses', () => {
-    const state = normalizeState({ horizonRadar: {
-        status: 'developing', audit: 'Independent long-range paths remain open.',
-        seeds: [
-            { id: 'career', kind: 'detected', trajectory: 'Present work could reshape a future vocation.', engine: 'accumulated professional commitments', scale: 'months-years', condition: 'The work continues to matter.', basis: 'Repeated work decisions are established.', present_relation: 'advance', change: 'keep' },
-            { id: 'community', kind: 'original', trajectory: 'A wider community role could emerge.', engine: 'institutional recognition', scale: 'open-ended', condition: 'Compatible public involvement develops.', basis: 'Private compatible speculation.', present_relation: 'none', change: 'replace' },
-        ],
-    } });
-    assert.equal(state.horizonRadar.status, 'developing');
-    assert.deepEqual(state.horizonRadar.seeds.map(seed => seed.scale), ['months-years', 'open-ended']);
-    assert.deepEqual(state.horizonRadar.seeds.map(seed => seed.presentRelation), ['advance', 'none']);
-    assert.equal(normalizeState({ horizonRadar: { status: 'developing', seeds: [] } }).horizonRadar.status, 'none');
 });
 
 test('scene and beat normalization constrain impact without choosing exact fiction', () => {
@@ -154,14 +139,10 @@ test('pre-v50 migration discards private-style required effects but preserves co
 });
 
 test('planner prompt state excludes obsolete future machinery', () => {
-    const compact = stateForPrompt(analyzedState({
-        objectives: [{ title: 'Old' }], pathways: [{ id: 'old' }], narrativeEvents: [{ id: 'old' }],
-        horizonRadar: { status: 'latent', audit: 'A genuine horizon remains optional.', seeds: [{ id: 'future', kind: 'original', trajectory: 'A distant institutional role remains possible.', engine: 'institutional invitation', scale: 'months-years', condition: 'A compatible invitation develops.', basis: 'Private speculation.', presentRelation: 'none', change: 'keep' }] },
-    }));
+    const compact = stateForPrompt(analyzedState({ objectives: [{ title: 'Old' }], pathways: [{ id: 'old' }], narrativeEvents: [{ id: 'old' }] }));
     assert.equal(compact.sceneProfile.promise, 'A grounded canteen interaction.');
     assert.equal(compact.beatDirective.operation, 'introduce');
     for (const key of ['objectives', 'possibilities', 'pathways', 'nextGuides', 'planHorizons', 'narrativeEvents', 'authorBoard', 'conductor']) assert.equal(Object.hasOwn(compact, key), false, key);
-    assert.equal(compact.horizonRadar.seeds[0].id, 'future');
 });
 
 test('analyzed guidance remains usable for the immediately appended user action', () => {

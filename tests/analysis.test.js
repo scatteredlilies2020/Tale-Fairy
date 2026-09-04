@@ -10,7 +10,7 @@ import { estimateTokenCount } from '../extension/token-budget.js';
 
 function result(overrides = {}) {
     const value = {
-        contract_version: 7,
+        contract_version: 6,
         current: {
             frame: 'grounded', frame_basis: 'A quiet work session is physically and socially ordinary.',
             status: 'The user is working alone on an assignment.', immediate_action: 'Continue the current attempt.',
@@ -37,14 +37,6 @@ function result(overrides = {}) {
             player_control: false, continuity_drift: false, patterns: ['task-native obstacle after quiet setup'],
             summary: 'The prior response moved the current activity without taking control from the player.',
         },
-        horizon: {
-            status: 'latent',
-            seeds: [
-                { id: 'education-path', kind: 'detected', trajectory: 'Repeated academic choices could reshape the user character’s longer educational direction.', engine: 'accumulated academic commitments', scale: 'arc', condition: 'Several meaningful choices continue to accumulate.', basis: 'The ongoing assignment establishes education as a recurring causal domain.', present_relation: 'echo', change: 'keep' },
-                { id: 'unexpected-mentor', kind: 'original', trajectory: 'A presently peripheral relationship could mature into an unexpected source of guidance or opposition.', engine: 'changing relationship expectations', scale: 'months-years', condition: 'A compatible recurring person gains independent reasons to remain involved.', basis: 'This is a compatible private possibility, not an established fact.', present_relation: 'none', change: 'replace' },
-            ],
-            audit: 'Both seeds can survive beyond the assignment scene and use independent causal engines.',
-        },
         world: {
             identity: 'A contemporary life simulation', baseline: 'Ordinary school and home constraints apply.',
             variant_rules: [], rp_changes: [], signatures: ['The user prefers grounded task detail.'], forces: ['time and incomplete materials'], confidence: 'high',
@@ -67,31 +59,15 @@ test('extractJson accepts fenced, wrapped, and locally repairable JSON', () => {
     assert.deepEqual(extractJson('{"current":{"activity":"reading"\n"phase":"developing"},}'), { current: { activity: 'reading', phase: 'developing' } });
 });
 
-test('structured output contract combines external reaction with a private v7 horizon radar', () => {
-    assert.equal(ANALYSIS_SCHEMA_VALUE.properties.contract_version.const, 7);
-    assert.deepEqual(ANALYSIS_SCHEMA_VALUE.required, ['contract_version', 'current', 'beat', 'response_audit', 'horizon', 'world', 'thread_updates', 'actor_updates', 'canon_updates', 'ledger', 'note_resolution', 'audit']);
+test('structured output contract is the external-reaction v6 shape', () => {
+    assert.equal(ANALYSIS_SCHEMA_VALUE.properties.contract_version.const, 6);
+    assert.deepEqual(ANALYSIS_SCHEMA_VALUE.required, ['contract_version', 'current', 'beat', 'response_audit', 'world', 'thread_updates', 'actor_updates', 'canon_updates', 'ledger', 'note_resolution', 'audit']);
     assert.equal(ANALYSIS_SCHEMA.strict, true);
     assert.equal(ANALYSIS_SCHEMA_VALUE.properties.beat.properties.alternatives.minItems, 2);
     assert.equal(ANALYSIS_SCHEMA_VALUE.properties.beat.properties.alternatives.maxItems, 2);
     assert.equal(ANALYSIS_SCHEMA_VALUE.properties.beat.properties.inject.const, true);
     assert.match(ANALYSIS_OUTPUT_CONTRACT, /No other keys/);
-    assert.doesNotMatch(JSON.stringify(ANALYSIS_SCHEMA_VALUE), /routes|guides|milestones|future_setup/i);
-});
-
-test('horizon radar accepts only independent genuinely long-range private seeds', () => {
-    assert.equal(validateAnalysisResult(result()).valid, true);
-    const near = result({ horizon: { ...result().horizon, seeds: [{ ...result().horizon.seeds[0], scale: 'scene' }] } });
-    assert.ok(validateAnalysisResult(near).errors.some(error => /genuinely long-range/i.test(error)));
-    const duplicateEngine = result({ horizon: { ...result().horizon, seeds: result().horizon.seeds.map(seed => ({ ...seed, engine: 'same engine' })) } });
-    assert.ok(validateAnalysisResult(duplicateEngine).errors.some(error => /distinct causal engines/i.test(error)));
-    const inconsistent = result({ horizon: { ...result().horizon, status: 'none' } });
-    assert.ok(validateAnalysisResult(inconsistent).errors.some(error => /cannot be none/i.test(error)));
-});
-
-test('legacy v6 beat results remain valid during in-flight upgrade', () => {
-    const legacy = { ...result(), contract_version: 6 };
-    delete legacy.horizon;
-    assert.deepEqual(validateAnalysisResult(legacy), { valid: true, errors: [] });
+    assert.doesNotMatch(JSON.stringify(ANALYSIS_SCHEMA_VALUE), /routes|guides|horizons|milestones|future_setup/i);
 });
 
 test('valid current-beat result passes validation', () => {
@@ -181,7 +157,7 @@ test('planner chooses scene-warranted movement before applying randomness', () =
     assert.match(SYSTEM, /Quietness is not stagnation/i);
     assert.match(SYSTEM, /playable movement through an NPC reaction, world reaction/i);
     assert.match(SYSTEM, /Active danger, competition, demanding tasks, and instability may exert credible pressure/i);
-    assert.match(SYSTEM, /new cause used by a current branch needs conversational or explicit-canon support/i);
+    assert.match(SYSTEM, /New causes require conversational or explicit-canon support/i);
     assert.match(SYSTEM, /not compulsory disruption/i);
     assert.match(SYSTEM, /cannot justify manufacturing difficulty/i);
     assert.match(SYSTEM, /Scene changes, pressure shifts, reversals, discoveries/i);
@@ -197,10 +173,7 @@ test('planner chooses scene-warranted movement before applying randomness', () =
 
 test('planner permits freeform AI invention and scale-native simulation', () => {
     assert.match(SYSTEM, /not an event taxonomy/i);
-    assert.match(SYSTEM, /new cause used by a current branch needs conversational or explicit-canon support/i);
-    assert.match(SYSTEM, /PRIVATE HORIZON RADAR/i);
-    assert.match(SYSTEM, /near-term matter with a distant label/i);
-    assert.match(SYSTEM, /kind=original is a compatible invention and remains speculation/i);
+    assert.match(SYSTEM, /New causes require conversational or explicit-canon support/i);
     assert.match(SYSTEM, /life simulation/i);
     assert.match(SYSTEM, /countries, societies, and worlds/i);
     assert.match(SYSTEM, /policy effect, public response, trend, or system pressure/i);
@@ -211,7 +184,7 @@ test('planner permits freeform AI invention and scale-native simulation', () => 
     assert.match(SYSTEM, /Introduce a quiet, favorable discovery/i);
     assert.match(SYSTEM, /Keep scene specifics.*private fields/i);
     assert.doesNotMatch(SYSTEM, /generate six to eight.*routes|schedule future milestones|maintain event queues/i);
-    assert.ok(estimateTokenCount(`${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}`) < 3200);
+    assert.ok(estimateTokenCount(`${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}`) < 2700);
 });
 
 test('all modes alter only external follow-through without touching the user action', () => {
@@ -232,10 +205,7 @@ test('analysis prompt carries current context, identity, variation, bootstrap, a
     assert.equal(prompt.variation_nonce, 731);
     assert.equal(prompt.bootstrap.scenario, 'A grounded school life simulation.');
     assert.equal(prompt.summary_sources[0].label, 'Continuity Memory');
-    assert.match(prompt.invention, /New causes or conditions used by the current beat require conversational or explicit-canon support/i);
-    assert.match(prompt.horizon_rule, /bounded radar of zero to four optional trajectories/i);
-    assert.match(prompt.horizon_rule, /near-term matter merely renamed as distant/i);
-    assert.match(prompt.horizon_rule, /genuinely original seed/i);
+    assert.match(prompt.invention, /New causes or conditions require conversational or explicit-canon support/i);
     assert.match(prompt.invention, /provider-visible when, operation, and required_effect text must contain only portable abstractions/i);
     assert.match(prompt.invention, /Never copy names or concrete nouns from the scene/i);
     assert.match(prompt.invention, /current activity, current interaction, current environment/i);
@@ -303,7 +273,7 @@ test('advertised high-budget settings can use more than the former internal clam
     assert.ok(summaryTokens > 3000, summaryTokens);
 });
 
-test('applying analysis saves the beat and private horizon radar while clearing retired route machinery', () => {
+test('applying analysis saves the beat and clears retired future machinery', () => {
     const prior = { ...defaultState(), objectives: [{ title: 'Future' }], possibilities: [{ description: 'Future' }], pathways: [{ id: 'route' }], nextGuides: [{ id: 'guide' }], narrativeEvents: [{ id: 'event' }] };
     const next = applyAnalysis(prior, result(), messages);
     assert.equal(next.sceneProfile.promise, result().current.scene_promise);
@@ -312,9 +282,6 @@ test('applying analysis saves the beat and private horizon radar while clearing 
     assert.equal(next.lastInject, true);
     assert.equal(next.responseAudit.movementFit, 'clear');
     assert.deepEqual(next.responsePatternMemory, ['task-native obstacle after quiet setup']);
-    assert.equal(next.horizonRadar.status, 'latent');
-    assert.deepEqual(next.horizonRadar.seeds.map(seed => seed.id), ['education-path', 'unexpected-mentor']);
-    assert.equal(next.narrativeLayers.durableTrajectory, result().horizon.seeds[0].trajectory);
     assert.deepEqual(next.objectives, []);
     assert.deepEqual(next.possibilities, []);
     assert.deepEqual(next.pathways, []);
@@ -329,7 +296,6 @@ test('private response audit informs later planning but never enters roleplay in
     const roleplayPayload = buildPromptPayload(next, { guidanceUsable: true });
     assert.match(providerPayload, /task-native obstacle after quiet setup/);
     assert.doesNotMatch(roleplayPayload, /movementFit|task-native obstacle|prior response/i);
-    assert.doesNotMatch(roleplayPayload, /education-path|unexpected-mentor|educational direction/i);
     assert.ok(plannerState.includes('task-native obstacle'));
 });
 
