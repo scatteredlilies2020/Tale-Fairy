@@ -10,6 +10,24 @@ function isContinuityProviderKey(key) {
     return String(key || '').replace(/[^a-z0-9]/giu, '').toLocaleLowerCase().includes('continuitymemory');
 }
 
+// Portable snapshots are useful only while their source ranges reach the
+// current transcript; old snapshots can resurrect a prior scene or location.
+export function isStaleContinuitySnapshot(value, messages = []) {
+    if (!value || typeof value !== 'object' || !Array.isArray(messages) || !messages.length) return false;
+    let latestSource = -1;
+    const visit = (node, depth = 0) => {
+        if (depth > 8 || node == null || typeof node !== 'object') return;
+        if (Array.isArray(node)) { for (const item of node) visit(item, depth + 1); return; }
+        if (Array.isArray(node.sources)) for (const source of node.sources) {
+            const endpoint = Number(source?.to);
+            if (Number.isFinite(endpoint)) latestSource = Math.max(latestSource, endpoint);
+        }
+        for (const child of Object.values(node)) visit(child, depth + 1);
+    };
+    visit(value);
+    return latestSource >= 0 && latestSource < messages.length - 1;
+}
+
 function cleanText(value) {
     return String(value || '')
         .replace(/\r\n?/gu, '\n')
@@ -193,6 +211,7 @@ function appendLeaves(target, value, base, { requireShape = false } = {}) {
 export async function collectSummarySources(context = {}, messages = [], options = {}) {
     const discovered = [];
     const ownPromptKey = String(options.ownPromptKey || 'living-world-guide_context');
+    const hostMessages = Array.isArray(context.chat) && context.chat.length ? context.chat : messages;
     let continuityOwner = '';
     if (options.continuityContext && options.includeContinuity !== false) {
         discovered.push({ label: 'Continuity Memory snapshot', kind: 'continuity-memory', priority: 0, text: options.continuityContext });
@@ -216,11 +235,14 @@ export async function collectSummarySources(context = {}, messages = [], options
         if (!SUMMARY_KEY.test(key) || REASONING_KEY.test(key)) continue;
         const continuityKey = isContinuityProviderKey(key);
         if (continuityKey && (options.includeContinuity === false || continuityOwner)) continue;
+        if (continuityKey && isStaleContinuitySnapshot(value, hostMessages)) {
+            options.onWarning?.('Ignored a stale portable Continuity snapshot while building planner context.');
+            continue;
+        }
         appendLeaves(discovered, value, { label: `Chat metadata: ${key}`, kind: continuityKey ? 'continuity-memory' : 'chat-summary', priority: continuityKey ? 0 : 1 });
         if (continuityKey) continuityOwner = 'chat-metadata';
     }
 
-    const hostMessages = Array.isArray(context.chat) && context.chat.length ? context.chat : messages;
     for (let index = hostMessages.length - 1; index >= 0; index--) {
         const message = hostMessages[index] || {};
         for (const [key, value] of Object.entries(message.extra || {})) {
