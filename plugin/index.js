@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 
 const PLUGIN = 'tale-fairy';
-const VERSION = '0.12.19';
+const VERSION = '0.12.20';
 const jobs = new Map();
 const MAX_FINISHED_JOBS = 40;
 const MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
@@ -70,7 +70,7 @@ function finalBlockText(value) {
     if (typeof value.text === 'string') return value.text;
     if (typeof value.text?.value === 'string') return value.text.value;
     if (typeof value.output_text === 'string') return value.output_text;
-    if ([2, 3, 4, 5, 6, 7].includes(value.contract_version) || value.scene) return JSON.stringify(value);
+    if ([2, 3, 4, 5, 6, 7, 8].includes(value.contract_version) || value.scene) return JSON.stringify(value);
     if (value.content !== undefined) return finalBlockText(value.content);
     return '';
 }
@@ -120,7 +120,7 @@ function completionText(payload) {
         addCandidate(candidates, root.content);
         addCandidate(candidates, root.text);
         for (const result of Array.isArray(root.results) ? root.results : []) addCandidate(candidates, result?.text);
-        if ([2, 3, 4, 5, 6, 7].includes(root.contract_version) || root.scene) addCandidate(candidates, root);
+        if ([2, 3, 4, 5, 6, 7, 8].includes(root.contract_version) || root.scene) addCandidate(candidates, root);
     }
     return candidates[0]?.trim() || '';
 }

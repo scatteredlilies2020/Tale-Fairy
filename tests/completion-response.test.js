@@ -27,6 +27,11 @@ test('reads a direct horizon-aware v7 structured result', () => {
     assert.equal(completionText(result), JSON.stringify(result));
 });
 
+test('reads a direct lightweight v8 structured result', () => {
+    const result = { contract_version: 8, current: {}, beat: {}, thread_updates: [] };
+    assert.equal(completionText(result), JSON.stringify(result));
+});
+
 test('unwraps common proxy containers', () => {
     assert.equal(completionText({ data: { response: { choices: [{ message: { content: 'nested' } }] } } }), 'nested');
 });

@@ -58,6 +58,37 @@ function result(overrides = {}) {
     return { ...value, ...overrides };
 }
 
+function incrementalResult(overrides = {}) {
+    const value = {
+        contract_version: 8,
+        current: {
+            frame: 'grounded', frame_basis: 'The latest exchange remains a quiet practical discussion.',
+            status: 'The group has clarified the private supporting option.', immediate_action: 'A companion waits for exact consent.',
+            activity: 'Discussing a possible private petition route.', situation: 'The option exists but nothing is attached or confirmed.',
+            location: 'refectory alcove', time: '01:10 PM', loop: false,
+            scene_promise: 'Preserve consent while letting the discussion move.', phase: 'developing', emotional_direction: 'preserve',
+            pressure: 'latent', intrusion: 'closed', novelty_ceiling: 'context-native',
+        },
+        beat: {
+            operation: 'clarify', primary_when: 'The current discussion continues.',
+            required_effect: 'Let the companion provide one useful clarification while preserving consent.',
+            alternatives: [
+                { when: 'The option is accepted.', operation: 'advance', required_effect: 'Let the surrounding response acknowledge the choice and move to its first practical consequence.' },
+                { when: 'The option is declined.', operation: 'release', required_effect: 'Let the surrounding response close that route cleanly and make another natural step available.' },
+            ],
+            inject: true, preserve: ['exact consent', 'unconfirmed status'], forbid: ['automatic attachment'],
+            basis: 'The newest exchange establishes an optional private route without authorization to use it.',
+        },
+        thread_updates: [
+            { op: 'upsert', id: 'private-case', thread: 'Optional private supporting case', state: 'Prepared but not attached without exact consent.', status: 'active', basis: 'The newest assistant reply states this explicitly.' },
+        ],
+        ledger: 'The user proposed petitioning the missing person’s sister. A companion prepared an optional private supporting case but will attach nothing without exact consent.',
+        note_resolution: null,
+        audit: 'Updates only the newest scene and immediate external response.',
+    };
+    return { ...value, ...overrides };
+}
+
 const messages = [
     { is_user: false, name: 'Narrator', mes: 'The room is quiet and the assignment lies open.' },
     { is_user: true, name: 'Ari', mes: 'I keep working on the next question.' },
@@ -268,15 +299,28 @@ test('analysis prompt carries current context, identity, variation, bootstrap, a
     assert.equal(Object.hasOwn(prompt, 'pacing'), false);
 });
 
-test('incremental contract is a smaller v6 current-scene pass', () => {
-    assert.equal(INCREMENTAL_ANALYSIS_SCHEMA_VALUE.properties.contract_version.const, 6);
+test('incremental contract is a minimal v8 scene-and-direction pass', () => {
+    assert.equal(INCREMENTAL_ANALYSIS_SCHEMA_VALUE.properties.contract_version.const, 8);
     assert.equal(INCREMENTAL_ANALYSIS_SCHEMA.strict, true);
-    assert.ok(!Object.hasOwn(INCREMENTAL_ANALYSIS_SCHEMA_VALUE.properties, 'horizon'));
-    assert.ok(!Object.hasOwn(INCREMENTAL_ANALYSIS_SCHEMA_VALUE.properties, 'hidden_motives'));
-    assert.ok(!INCREMENTAL_ANALYSIS_SCHEMA_VALUE.required.includes('horizon'));
-    assert.ok(!INCREMENTAL_ANALYSIS_SCHEMA_VALUE.required.includes('hidden_motives'));
-    assert.match(INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, /No horizon or hidden_motives key/);
+    for (const key of ['horizon', 'hidden_motives', 'world', 'response_audit', 'actor_updates', 'canon_updates']) {
+        assert.ok(!Object.hasOwn(INCREMENTAL_ANALYSIS_SCHEMA_VALUE.properties, key));
+        assert.ok(!INCREMENTAL_ANALYSIS_SCHEMA_VALUE.required.includes(key));
+    }
+    assert.match(INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, /No other keys/);
     assert.ok(JSON.stringify(INCREMENTAL_ANALYSIS_SCHEMA).length < JSON.stringify(ANALYSIS_SCHEMA).length);
+    assert.deepEqual(validateAnalysisResult(incrementalResult()), { valid: true, errors: [] });
+});
+
+test('incremental results refresh the scene and direction while retaining expensive long-range state', () => {
+    const initial = defaultState();
+    initial.horizonRadar = { status: 'latent', seeds: [{ id: 'long', kind: 'detected', trajectory: 'A long arc', engine: 'trust', scale: 'arc', condition: 'later', basis: 'prior evidence', presentRelation: 'none', change: 'keep' }], audit: 'retained' };
+    initial.hiddenMotives = { status: 'focused', items: [{ id: 'why', actor: 'Vekk', explanation: 'A prior hypothesis', likelihood: 'possible', evidence: [], counterevidence: [], mechanism: 'care', currentRelevance: 'background', disclosure: 'hidden', change: 'keep' }], audit: 'retained' };
+    const next = applyAnalysis(initial, incrementalResult(), messages);
+    assert.equal(next.scene.time, '01:10 PM');
+    assert.equal(next.beatDirective.requiredEffect, incrementalResult().beat.required_effect);
+    assert.equal(next.continuityThreads[0].state, 'Prepared but not attached without exact consent.');
+    assert.equal(next.horizonRadar.seeds[0].id, 'long');
+    assert.equal(next.hiddenMotives.items[0].id, 'why');
 });
 
 test('analysis prompt makes the newest assistant reply and status header authoritative over retained state', () => {

@@ -1,8 +1,8 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.12.19';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.12.20';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.11.96';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.12.19';
+import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.12.20';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
@@ -130,18 +130,43 @@ export const ANALYSIS_SCHEMA = Object.freeze({
     value: ANALYSIS_SCHEMA_VALUE,
 });
 
-const { horizon: _incrementalHorizon, hidden_motives: _incrementalMotives, ...incrementalProperties } = ANALYSIS_SCHEMA_VALUE.properties;
+const INCREMENTAL_BRANCH_SCHEMA = {
+    type: 'object', additionalProperties: false,
+    properties: { when: text(160), operation: text(80), required_effect: text(220) },
+    required: ['when', 'operation', 'required_effect'],
+};
 export const INCREMENTAL_ANALYSIS_SCHEMA_VALUE = {
-    ...ANALYSIS_SCHEMA_VALUE,
+    type: 'object', additionalProperties: false,
     properties: {
-        ...incrementalProperties,
-        contract_version: { type: 'integer', const: 6 },
+        contract_version: { type: 'integer', const: 8 },
+        current: { type: 'object', additionalProperties: false, properties: {
+            frame: { type: 'string', enum: ['grounded', 'heightened', 'surreal'] }, frame_basis: text(160),
+            status: text(180), immediate_action: text(140), activity: text(180), situation: text(220),
+            location: text(140), time: text(100), loop: { type: 'boolean' }, scene_promise: text(200),
+            phase: { type: 'string', enum: ['establishing', 'developing', 'turning', 'landing', 'aftermath', 'transition'] },
+            emotional_direction: { type: 'string', enum: ['preserve', 'brighten', 'darken', 'release', 'intensify'] },
+            pressure: { type: 'string', enum: ['none', 'latent', 'active', 'high', 'saturated'] },
+            intrusion: { type: 'string', enum: ['closed', 'incidental', 'socially-open', 'dramatically-open', 'primed'] },
+            novelty_ceiling: { type: 'string', enum: ['none', 'incidental', 'context-native', 'meaningful', 'major'] },
+        }, required: ['frame', 'frame_basis', 'status', 'immediate_action', 'activity', 'situation', 'location', 'time', 'loop', 'scene_promise', 'phase', 'emotional_direction', 'pressure', 'intrusion', 'novelty_ceiling'] },
+        beat: { type: 'object', additionalProperties: false, properties: {
+            operation: text(80), primary_when: text(160), required_effect: text(220),
+            alternatives: { type: 'array', minItems: 2, maxItems: 2, items: INCREMENTAL_BRANCH_SCHEMA },
+            inject: { type: 'boolean', const: true }, preserve: strings(4, 160), forbid: strings(4, 160), basis: text(200),
+        }, required: ['operation', 'primary_when', 'required_effect', 'alternatives', 'inject', 'preserve', 'forbid', 'basis'] },
+        thread_updates: { type: 'array', maxItems: 4, items: { type: 'object', additionalProperties: false, properties: {
+            op: { type: 'string', enum: ['upsert', 'retire'] }, id: text(100), thread: text(180), state: text(220),
+            status: { type: 'string', enum: ['active', 'dormant', 'due', 'blocked'] }, basis: text(150),
+        }, required: ['op', 'id', 'thread', 'state', 'status', 'basis'] } },
+        ledger: text(1200),
+        note_resolution: { anyOf: [{ type: 'object', additionalProperties: false, properties: { kind: { type: 'string', enum: ['suggest', 'correct', 'establish', 'forbid'] } }, required: ['kind'] }, { type: 'null' }] },
+        audit: text(320),
     },
-    required: ANALYSIS_SCHEMA_VALUE.required.filter(key => !['horizon', 'hidden_motives'].includes(key)),
+    required: ['contract_version', 'current', 'beat', 'thread_updates', 'ledger', 'note_resolution', 'audit'],
 };
 export const INCREMENTAL_ANALYSIS_SCHEMA = Object.freeze({
-    name: 'tale_fairy_external_reaction_v6_incremental',
-    description: 'Fast Tale Fairy current-scene observations and state deltas.',
+    name: 'tale_fairy_external_reaction_v8_incremental',
+    description: 'Fast Tale Fairy scene, next-response direction, and continuity deltas.',
     strict: true,
     returnInvalid: true,
     value: INCREMENTAL_ANALYSIS_SCHEMA_VALUE,
@@ -385,6 +410,56 @@ function validateBeatAnalysisResult(result, { requireHorizon = true } = {}) {
     return { valid: errors.length === 0, errors };
 }
 
+function validateIncrementalAnalysisResult(result) {
+    const errors = [];
+    const requiredStrings = (value, keys, label) => {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) {
+            errors.push(`${label} must be an object`);
+            return;
+        }
+        for (const key of keys) if (typeof value[key] !== 'string' || !value[key].trim()) errors.push(`${label}.${key} must be a non-empty string`);
+    };
+    if (result?.contract_version !== 8) errors.push('contract_version must be 8');
+    requiredStrings(result?.current, ['frame', 'frame_basis', 'status', 'immediate_action', 'activity', 'situation', 'scene_promise', 'phase', 'emotional_direction', 'pressure', 'intrusion', 'novelty_ceiling'], 'current');
+    requiredStrings(result?.beat, ['operation', 'primary_when', 'required_effect', 'basis'], 'beat');
+    if (typeof result?.current?.location !== 'string') errors.push('current.location must be a string');
+    if (typeof result?.current?.time !== 'string') errors.push('current.time must be a string');
+    if (typeof result?.current?.loop !== 'boolean') errors.push('current.loop must be a boolean');
+    if (result?.beat?.inject !== true) errors.push('beat.inject must be true');
+    for (const key of ['preserve', 'forbid']) if (!Array.isArray(result?.beat?.[key])) errors.push(`beat.${key} must be an array`);
+    const alternatives = Array.isArray(result?.beat?.alternatives) ? result.beat.alternatives : [];
+    if (alternatives.length !== 2) errors.push('beat.alternatives must contain exactly 2 branches');
+    for (const [index, branch] of alternatives.entries()) requiredStrings(branch, ['when', 'operation', 'required_effect'], `beat.alternatives[${index}]`);
+    if (!Array.isArray(result?.thread_updates)) errors.push('thread_updates must be an array');
+    for (const [index, update] of asArray(result?.thread_updates).entries()) {
+        requiredStrings(update, ['op', 'id', 'thread', 'state', 'status', 'basis'], `thread_updates[${index}]`);
+        if (!['upsert', 'retire'].includes(update?.op)) errors.push(`thread_updates[${index}].op is invalid`);
+        if (!['active', 'dormant', 'due', 'blocked'].includes(update?.status)) errors.push(`thread_updates[${index}].status is invalid`);
+    }
+    const allowed = {
+        frame: ['grounded', 'heightened', 'surreal'], phase: ['establishing', 'developing', 'turning', 'landing', 'aftermath', 'transition'],
+        emotional_direction: ['preserve', 'brighten', 'darken', 'release', 'intensify'], pressure: ['none', 'latent', 'active', 'high', 'saturated'],
+        intrusion: ['closed', 'incidental', 'socially-open', 'dramatically-open', 'primed'], novelty_ceiling: ['none', 'incidental', 'context-native', 'meaningful', 'major'],
+    };
+    for (const [key, values] of Object.entries(allowed)) if (!values.includes(result?.current?.[key])) errors.push(`current.${key} is invalid`);
+    const visibleText = [
+        ['beat.primary_when', result?.beat?.primary_when], ['beat.operation', result?.beat?.operation], ['beat.required_effect', result?.beat?.required_effect],
+        ...alternatives.flatMap((branch, index) => [
+            [`beat.alternatives[${index}].when`, branch?.when], [`beat.alternatives[${index}].operation`, branch?.operation], [`beat.alternatives[${index}].required_effect`, branch?.required_effect],
+        ]),
+    ];
+    const privateCanonTerms = canonSpecificTerms(result);
+    for (const [path, value] of visibleText) {
+        const normalizedVisible = ` ${normalizedPhrase(value)} `;
+        for (const term of privateCanonTerms) if (term && normalizedVisible.includes(` ${term} `)) errors.push(`${path} must stay abstract and must not name canon-specific proper nouns (${term})`);
+    }
+    if (typeof result?.ledger !== 'string') errors.push('ledger must be a string');
+    if (typeof result?.audit !== 'string') errors.push('audit must be a string');
+    if (!Object.hasOwn(result || {}, 'note_resolution')) errors.push('note_resolution must be present');
+    else if (result.note_resolution !== null && !['suggest', 'correct', 'establish', 'forbid'].includes(result.note_resolution?.kind)) errors.push('note_resolution.kind is invalid');
+    return { valid: errors.length === 0, errors };
+}
+
 function validateCompactAnalysisResult(result) {
     const errors = [];
     const object = (value, name) => {
@@ -493,6 +568,7 @@ function validateCompactAnalysisResult(result) {
 }
 
 export function validateAnalysisResult(result) {
+    if (result?.contract_version === 8) return validateIncrementalAnalysisResult(result);
     if (result?.contract_version === 7) return validateBeatAnalysisResult(result);
     if (result?.contract_version === 6) return validateBeatAnalysisResult(result, { requireHorizon: false });
     if (result?.contract_version === 2) return validateCompactAnalysisResult(result);
@@ -1778,8 +1854,8 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         })),
     };
     if (options.incremental) {
-        delete payload.horizon_rule;
-        delete payload.motive_rule;
+        for (const key of ['authority', 'direction_policy', 'calibration', 'invention', 'simulation', 'movement', 'horizon_rule', 'motive_rule', 'contribution_rule', 'response_audit_rule', 'scale_fields', 'retained_state_rule']) delete payload[key];
+        payload.fast_rules = 'Newest transcript facts win. Update only the current scene, one self-propelling NPC/world response with two alternatives, changed continuity threads, and the compact ledger. Never define or alter player action. Visible beat text stays abstract; private current, threads, and ledger stay exact. Empty thread_updates means no factual thread changed.';
     }
     const canonClaims = explicitCanonClaims(messages);
     if (canonClaims.length) payload.explicit_ooc_canon = canonClaims;
@@ -1892,6 +1968,66 @@ function upsertByKey(previous, updates, key) {
         else items.push(update);
     }
     return items;
+}
+
+function applyIncrementalAnalysis(next, value, messages) {
+    const current = value.current || {};
+    const beat = value.beat || {};
+    next.storyFrame = {
+        ...next.storyFrame,
+        frame: String(current.frame || next.storyFrame.frame || 'grounded').slice(0, 40),
+        basis: String(current.frame_basis || next.storyFrame.basis || '').slice(0, 240),
+    };
+    next.scene = {
+        ...next.scene,
+        status: String(current.status || '').slice(0, 300),
+        activity: String(current.activity || '').slice(0, 300),
+        pace: String(beat.operation || 'retain').slice(0, 80),
+        intent: String(beat.required_effect || '').slice(0, 300),
+        location: String(current.location || '').slice(0, 200),
+        time: String(current.time || '').slice(0, 160),
+        loop: current.loop === true,
+    };
+    next.sceneProfile = normalizeState({ sceneProfile: {
+        promise: current.scene_promise,
+        phase: current.phase,
+        emotional_direction: current.emotional_direction,
+        pressure: current.pressure,
+        intrusion: current.intrusion,
+        novelty_ceiling: current.novelty_ceiling,
+        basis: current.frame_basis,
+    } }).sceneProfile;
+    next.beatDirective = normalizeState({ beatDirective: beat }).beatDirective;
+    next.narrativeLayers = normalizeState({ narrativeLayers: {
+        ...next.narrativeLayers,
+        immediate_action: current.immediate_action,
+        local_activity: current.activity,
+        situation: current.situation,
+    } }).narrativeLayers;
+    const threadUpdates = asArray(value.thread_updates).map(update => ({ ...update }));
+    next.continuityThreads = normalizeState({ continuityThreads: upsertByKey(next.continuityThreads, threadUpdates, 'id') }).continuityThreads;
+    for (const claim of explicitCanonClaims(messages)) {
+        if (!next.canonConstraints.some(item => item.toLocaleLowerCase() === claim.toLocaleLowerCase())) next.canonConstraints.push(claim);
+    }
+    next.canonConstraints = next.canonConstraints.slice(-12);
+    next.objectives = [];
+    next.possibilities = [];
+    next.pathways = [];
+    next.nextGuides = [];
+    next.planHorizons = { items: [], deviation: { level: 'none', reason: '' } };
+    next.narrativeEvents = [];
+    next.guidance = '';
+    next.lastInject = next.beatDirective.inject;
+    next.lastReason = String(value.audit || beat.basis || '').trim().slice(0, 500);
+    if (typeof value.ledger === 'string' && value.ledger.trim()) next.contextLedger = value.ledger.trim().slice(0, 3000);
+    next.lastAnalysisFingerprint = fingerprintMessages(messages);
+    next.sourceMessageCount = messages.length;
+    next.ledgerMessageCount = messages.length;
+    next.ledgerUpdatedAt = Date.now();
+    next.lastAnalyzedAt = Date.now();
+    next.canonBootstrapPending = false;
+    next.turnCount += 1;
+    return next;
 }
 
 function applyBeatAnalysis(next, value, messages) {
@@ -2236,6 +2372,7 @@ export function applyAnalysis(state, result, messages) {
     const playerName = playerCharacterName(messages);
     const next = normalizeState(useSpecificPlayerName(state, playerName));
     const value = result && typeof result === 'object' ? useSpecificPlayerName(result, playerName) : {};
+    if (value.contract_version === 8) return applyIncrementalAnalysis(next, value, messages);
     if ([6, 7].includes(value.contract_version)) return applyBeatAnalysis(next, value, messages);
     if (value.contract_version === 2) return applyCompactAnalysis(next, value, messages);
     if (value.story_frame && typeof value.story_frame === 'object') next.storyFrame = { ...next.storyFrame, frame: String(value.story_frame.frame || 'unknown').slice(0, 40), confidence: String(value.story_frame.confidence || 'low').slice(0, 40), basis: String(value.story_frame.basis || '').slice(0, 240) };
@@ -2360,19 +2497,15 @@ When inject=true, the roleplay model resolves the user action only from the user
 world={identity,baseline,variant_rules,rp_changes,signatures,forces,confidence}
 thread_updates and actor_updates contain factual changes only; canon_updates contains explicit durable additions/removals only. Empty arrays mean no change. audit is one concise string. No other keys.`;
 
-export const INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT = `Return exactly: contract_version=6, current, beat, response_audit, world, thread_updates, actor_updates, canon_updates, ledger, note_resolution, audit.
-current={frame,frame_basis,status,immediate_action,activity,situation,activity_role,temporal_scope,location,time,loop,scene_promise,phase,emotional_direction,pressure,intrusion,novelty_ceiling}
-beat={operation,primary_when,target,required_effect,alternatives,inject,inject_reason,content_class,scope,intensity,quantity,relative_power,plot_weight,duration,preserve,forbid,basis}; alternatives is exactly 2 items matching the schema and inject is true.
-response_audit={applicable,movement_fit,repetition,unjustified_escalation,player_control,continuity_drift,patterns,summary}
-world={identity,baseline,variant_rules,rp_changes,signatures,forces,confidence}
-Provider-visible when, operation, and required_effect strings describe only portable NPC/world follow-through and never define or modify player action. Keep scene specifics in private fields. Updates contain factual changes only; empty arrays mean no change. No horizon or hidden_motives key. No other keys.`;
+export const INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT = `Return exactly contract_version=8 plus current, beat, thread_updates, ledger, note_resolution, and audit.
+current records the exact latest scene using the schema. beat has operation, primary_when, required_effect, exactly two {when,operation,required_effect} alternatives, inject=true, preserve, forbid, and basis. Provider-visible beat movement stays abstract and governs only NPC/world follow-through. thread_updates contains only factual changes; use [] when none. No other keys.`;
 
 export const INCREMENTAL_SYSTEM = `You are Tale Fairy, the private adaptive narrative director for another model that writes the roleplay. Return only JSON matching the schema.
 
-Read the newest assistant reply and any later user text as authoritative. The user action, its target, manner, intent, dialogue, thoughts, feelings, consent, and decisions are outside your authority. Never infer, redefine, narrate, deny, delay, weaken, cap, or modify them. Explicit user/OOC/scenario commands bind.
+The newest assistant reply and any later user text are authoritative; retained state and summaries are fallible. Preserve exact speaker, actor, possessor, target, consent, and proposal origin. The player action and inner state are outside your authority: never define, narrate, deny, delay, weaken, or modify them.
 
-Prepare one primary and exactly two conditional alternatives for the immediate NPC or world follow-through. Every branch must create one observable reaction, decision, disclosure, consequence, opportunity, discovery, environmental change, or natural causal step that exists without requiring a player reply. Quiet scenes may deepen, breathe, resolve, or transition; never manufacture conflict, urgency, interruption, or restriction merely to make something happen. If arrival or travel is complete, advance the settled interaction rather than repeating transit.
+Prepare one primary and exactly two conditional immediate NPC/world responses. Each must create an observable reaction, decision, disclosure, consequence, opportunity, discovery, environmental change, or natural causal step without requiring another player reply. Quiet scenes may deepen, resolve, or transition. Never manufacture conflict or repeat completed travel.
 
-Provider-visible when, operation, and required_effect text must be portable abstractions: do not name a character, place, faction, lore item, object, exact activity, user action, event, outcome, or player reaction. Private fields may be scene-specific. Summaries and retained state are fallible evidence; newer transcript facts win. Preserve exact speaker, actor, possessor, target, and proposal origin. Set beat.inject=true. Keep strings concise.`;
+Keep visible when, operation, and required_effect strings portable and abstract: no names, places, lore terms, objects, exact activities, user actions, outcomes, or player reactions. Private current, continuity, and ledger fields should be exact. Set inject=true and keep every string concise.`;
 
 export { PLANNER_SYSTEM as SYSTEM, extractJson };

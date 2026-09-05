@@ -1,4 +1,4 @@
-import { applyPlannerAuthorLayer, defaultState, normalizeState } from './state.js?v=0.12.19';
+import { applyPlannerAuthorLayer, defaultState, normalizeState } from './state.js?v=0.12.20';
 
 function statusFields(value) {
     const fields = {};
