@@ -166,13 +166,16 @@ test('transcript mutations cancel stale work and queue the newest snapshot', () 
     assert.match(source, /scheduleTranscriptRefresh\('The chat changed while Tale Fairy was analyzing\.'/);
 });
 
-test('roleplay injection exposes a conditional direction set but never private planner evidence', () => {
+test('roleplay injection exposes one selected direction while alternatives stay private to the scratchpad', () => {
     assert.doesNotMatch(stateSource, /<user-established-canon>|<tale-fairy-user-notes>/i);
     assert.doesNotMatch(directorSource, /PLANNER LEAN|WEIGHTED DIRECTOR SAMPLE|INTERVENTION_GUIDANCE|FORTUNE_GUIDANCE/i);
     assert.doesNotMatch(directorSource, /CURRENT TARGET|SCENE PROMISE TO HONOR/);
     assert.match(directorSource, /TALE FAIRY EXTERNAL-REACTION GUIDE/);
-    assert.match(directorSource, /PRIMARY WHEN/);
-    assert.match(directorSource, /ALTERNATIVE.*WHEN/);
+    assert.match(directorSource, /branchIndex === 0/);
+    assert.match(directorSource, /ALTERNATIVE \$\{branchIndex\}/);
+    assert.match(directorSource, /weighted random choice/i);
+    assert.match(directorSource, /extension has already selected the branch below/);
+    assert.doesNotMatch(directorSource, /\.\.\.beat\.alternatives\.flatMap/);
     assert.match(directorSource, /NEXT-STEP EFFECT/);
     assert.match(directorSource, /LIGHT TREATMENT/);
     assert.match(directorSource, /BALANCED TREATMENT/);

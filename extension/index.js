@@ -21,6 +21,7 @@ import { sampleDirectorSignals } from './director-sampling.js?v=0.12.6';
 import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, plannerValidationRepairInstruction, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.12.6';
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
 import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.12.6';
+import { selectBeatBranchIndex } from './beat-director.js?v=0.12.6';
 
 const EXTENSION_ID = 'living-world-guide';
 const RUNTIME_VERSION = '0.12.6';
@@ -628,6 +629,8 @@ function guideSelectionOptions(state, context = currentContext()) {
             regeneration: generationGuideSelection.regeneration,
             variationCue: generationGuideSelection.variationCue,
             directorSample: generationGuideSelection.directorSample,
+            branchIndex: generationGuideSelection.branchIndex,
+            branchSeed: generationGuideSelection.variationCue,
             canonConstraints: generationGuideSelection.canonConstraints,
             sceneProfile: generationGuideSelection.sceneProfile,
             beatDirective: generationGuideSelection.beatDirective,
@@ -664,6 +667,11 @@ function prepareGenerationGuide(state, type) {
     const directorSample = replacement && archived?.directorSample
         ? archived.directorSample
         : sampleDirectorSignals(state.mode, directorSeed);
+    const branchIndex = selectBeatBranchIndex(
+        (archivedUsable || archivedSkipped) ? archived.beatDirective : state.beatDirective,
+        directorSeed,
+        directorSample?.mode || state.mode,
+    );
     generationGuideSelection = {
         chatId,
         candidates: [], index: 0,
@@ -676,6 +684,7 @@ function prepareGenerationGuide(state, type) {
         replacement,
         variationCue: directorSeed,
         directorSample,
+        branchIndex,
         // A replacement must not receive canon inferred from the assistant
         // reply being discarded. Reuse the exact pre-response canon snapshot.
         canonConstraints: replacement ? ((archivedUsable || archivedSkipped) ? archived.canonConstraints : currentGuidanceUsable ? state.canonConstraints : []) : null,
@@ -799,6 +808,7 @@ function rememberVerifiedRequest(payload, { provider = '', model = '' } = {}) {
         guideCandidates: [],
         canonConstraints: state.canonConstraints,
         selectedGuideIndex: generationGuideSelection?.index || 0,
+        selectedBranchIndex: generationGuideSelection?.branchIndex ?? 0,
         replacementGeneration,
         sceneProfile: generationGuideSelection?.sceneProfile || state.sceneProfile,
         beatDirective: generationGuideSelection?.beatDirective || state.beatDirective,
@@ -829,6 +839,7 @@ function rememberSkippedRequest({ provider = '', model = '' } = {}) {
         sourceMessageCount: messages.length, sourceFingerprint: fingerprintMessages(sourceMessages), responseMessageCount: 0, chatId: String(context.getCurrentChatId?.() || ''),
         provider: String(provider || ''), model: String(model || ''), position: '', role: 'user', depth: 0,
         guideCandidates: [], canonConstraints: state.canonConstraints, selectedGuideIndex: 0,
+        selectedBranchIndex: generationGuideSelection?.branchIndex ?? 0,
         replacementGeneration,
         sceneProfile: generationGuideSelection?.sceneProfile || state.sceneProfile,
         beatDirective: generationGuideSelection?.beatDirective || state.beatDirective,
@@ -1901,9 +1912,14 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     scratchpadText(board, 'scratchpad-scene', analyzed ? scene : '', 'No generated scene read yet.');
 
     const beat = state.beatDirective || {};
+    const activeChatId = String(currentContext().getCurrentChatId?.() || '');
+    const activeSelection = generationGuideSelection?.chatId === activeChatId ? generationGuideSelection : null;
+    const selectedBranchIndex = activeSelection?.branchIndex ?? selectBeatBranchIndex(beat, state.plannerSeed, state.mode);
+    const selectedBranchLabel = selectedBranchIndex === 0 ? 'Primary' : `Alternative ${selectedBranchIndex}`;
     const envelope = [beat.contentClass, beat.scope && `${beat.scope} scope`, beat.intensity && beat.intensity !== 'none' && `${beat.intensity} intensity`, beat.quantity && beat.quantity !== 'none' && beat.quantity, beat.relativePower && beat.relativePower !== 'none' && `${beat.relativePower} power`, beat.plotWeight && beat.plotWeight !== 'none' && `${beat.plotWeight} weight`, beat.duration && `${beat.duration} duration`].filter(Boolean).join(' · ');
     const beatText = [
         beat.inject ? `Provider guidance: inject this conditional direction set${beat.injectReason ? ` — ${beat.injectReason}` : ''}` : `Provider guidance: no usable fresh direction${beat.injectReason ? ` — ${beat.injectReason}` : ''}`,
+        beat.inject && `Selected for provider: ${selectedBranchLabel} (weighted random)`,
         beat.primaryWhen && `Primary when: ${beat.primaryWhen}`,
         `${String(beat.operation).toUpperCase()} — ${beat.target}`,
         beat.requiredEffect,
@@ -1950,7 +1966,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
 
     const previewContext = currentContext();
     const chatId = String(previewContext.getCurrentChatId?.() || '');
-    const preparedSelection = generationGuideSelection?.chatId === chatId ? generationGuideSelection : null;
+    const preparedSelection = activeSelection;
     const previewOptions = guideSelectionOptions(state, previewContext);
     const previewPayload = buildPromptPayload(state, { enabled: getSettings().enabled, ...previewOptions });
     const previewKind = preparedSelection

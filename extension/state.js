@@ -2,7 +2,7 @@ import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy 
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
 import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js';
-import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile } from './beat-director.js?v=0.12.6';
+import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile, selectBeatBranchIndex } from './beat-director.js?v=0.12.6';
 import { normalizeDirectorSample } from './director-sampling.js?v=0.12.6';
 
 export const STATE_KEY = 'livingWorldGuide';
@@ -411,6 +411,7 @@ function normalizeRequestVerification(value) {
         guideCandidates: (Array.isArray(value.guideCandidates) ? value.guideCandidates.slice(0, MAX_GUIDES) : []).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen && item.causalRole && item.worldDelta && item.basis),
         canonConstraints: cap(value.canonConstraints).map(item => text(item).slice(0, 500)).filter(Boolean),
         selectedGuideIndex: Math.max(0, Math.min(MAX_GUIDES - 1, Number(value.selectedGuideIndex) || 0)),
+        selectedBranchIndex: Math.max(0, Math.min(2, Number(value.selectedBranchIndex) || 0)),
         replacementGeneration: value.replacementGeneration === true,
         sceneProfile: normalizeSceneProfile(value.sceneProfile),
         beatDirective: normalizeBeatDirective(value.beatDirective),
@@ -755,14 +756,20 @@ function normalizeLoreModel(value = {}) {
     };
 }
 
-export function buildPromptPayload(state, { enabled = true, guidanceUsable = false, regeneration = false, sceneProfile = null, beatDirective = null, directorSample = null, mode = null } = {}) {
+export function buildPromptPayload(state, { enabled = true, guidanceUsable = false, regeneration = false, sceneProfile = null, beatDirective = null, directorSample = null, mode = null, branchIndex = null, branchSeed = null } = {}) {
     if (!enabled || !guidanceUsable) return '';
     const s = normalizeState(state);
     const selectedBeat = normalizeBeatDirective(beatDirective || s.beatDirective);
     if (!hasUsableBeatDirective(selectedBeat)) return '';
+    const selectedMode = directorSample?.mode || mode || s.mode;
+    const selectedBranchIndex = Number.isInteger(Number(branchIndex))
+        ? Number(branchIndex)
+        : selectBeatBranchIndex(selectedBeat, branchSeed ?? s.plannerSeed, selectedMode);
     const routePrompt = formatBeatContract(sceneProfile || s.sceneProfile, selectedBeat, {
         regeneration,
-        mode: directorSample?.mode || mode || s.mode,
+        mode: selectedMode,
+        branchIndex: selectedBranchIndex,
+        branchSeed: branchSeed ?? s.plannerSeed,
     });
     const guidancePrompt = `\n<living-world-guide>\n${routePrompt}\n</living-world-guide>`;
     return `<tale-fairy-context>${guidancePrompt}\n</tale-fairy-context>`;

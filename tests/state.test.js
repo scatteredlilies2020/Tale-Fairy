@@ -5,7 +5,7 @@ import {
     generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned,
     loadState, normalizeState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION, stateForPrompt,
 } from '../extension/state.js';
-import { formatBeatContract, normalizeBeatDirective, normalizeSceneProfile } from '../extension/beat-director.js';
+import { formatBeatContract, normalizeBeatDirective, normalizeSceneProfile, selectBeatBranchIndex } from '../extension/beat-director.js';
 
 const messages = [
     { is_user: false, mes: 'The canteen is busy but orderly.' },
@@ -210,8 +210,8 @@ test('analyzed injection governs only NPC and world follow-through', () => {
     assert.match(payload, /PRIMARY WHEN: The user continues the service interaction\./i);
     assert.match(payload, /PRIMARY NEXT-STEP DIRECTION: Introduce\./i);
     assert.match(payload, /PRIMARY NEXT-STEP EFFECT: Let the routine interaction produce a small but observable development that opens a fresh possibility\./i);
-    assert.match(payload, /ALTERNATIVE 1 WHEN: The user leaves or declines the interaction\./i);
     assert.match(payload, /select exactly one closest-fitting branch for external forward motion/i);
+    assert.doesNotMatch(payload, /ALTERNATIVE 1 WHEN:|ALTERNATIVE 2 WHEN:/i);
     assert.match(payload, /ignore them and let the main roleplay instructions govern the response/i);
     assert.match(payload, /FUN TREATMENT:.*prominent, lively expression.*without touching the user action/i);
     assert.doesNotMatch(payload, /movement=|content=|scope=|intensity=|plot weight=/i);
@@ -219,8 +219,7 @@ test('analyzed injection governs only NPC and world follow-through', () => {
     assert.doesNotMatch(payload, /A grounded canteen interaction/);
     assert.doesNotMatch(payload, /Infer every concrete action|Treat explicit user\/OOC|Do not expose/i);
     assert.doesNotMatch(payload, /SUGGESTED ROUTE|future horizon|delivery debt/i);
-    assert.equal(payload.match(/PRIMARY NEXT-STEP DIRECTION:/g)?.length, 1);
-    assert.equal(payload.match(/ALTERNATIVE \d NEXT-STEP DIRECTION:/g)?.length, 2);
+    assert.equal(payload.match(/(?:PRIMARY|ALTERNATIVE \d) NEXT-STEP DIRECTION:/g)?.length, 1);
     assert.match(payload, /govern only NPC or world follow-through/i);
     assert.doesNotMatch(payload, /infer the natural target|minimal implied positioning/i);
     assert.doesNotMatch(payload, /only partially resolvable|resolution ceiling|institutional in scope|low in intensity/i);
@@ -316,7 +315,7 @@ test('analyzed beat keeps AI invention open across context-native scene scales',
     const payload = formatBeatContract({}, { ...analyzedState().beatDirective, operation: 'introduce', requiredEffect: 'Introduce a compatible development grounded in the present setting.' });
     assert.match(payload, /PRIMARY NEXT-STEP DIRECTION: Introduce\./);
     assert.match(payload, /PRIMARY NEXT-STEP EFFECT: Introduce a compatible development grounded in the present setting\./i);
-    assert.equal(payload.split('\n').length, 15);
+    assert.equal(payload.split('\n').length, 9);
 });
 
 test('provider contract protects player agency without exposing planner evidence', () => {
@@ -329,8 +328,22 @@ test('regeneration reuses the same conditional set without rotating branches', (
     const payload = buildPromptPayload(analyzedState(), { guidanceUsable: true, regeneration: true });
     assert.doesNotMatch(payload, /For this regeneration|different realization|context-compatible development/i);
     assert.match(payload, /PRIMARY NEXT-STEP EFFECT: Let the routine interaction produce/i);
-    assert.match(payload, /ALTERNATIVE 2 WHEN:/i);
+    assert.doesNotMatch(payload, /ALTERNATIVE 1 WHEN:|ALTERNATIVE 2 WHEN:/i);
     assert.doesNotMatch(payload, /rotate|next route/i);
+});
+
+test('provider injection selects one deterministic weighted branch while alternatives remain available to callers', () => {
+    const beat = analyzedState().beatDirective;
+    const first = selectBeatBranchIndex(beat, 11, 'balanced');
+    assert.equal(first, selectBeatBranchIndex(beat, 11, 'balanced'));
+    assert.ok(first >= 0 && first <= 2);
+    const counts = [0, 0, 0];
+    for (let seed = 0; seed < 1000; seed += 1) counts[selectBeatBranchIndex(beat, seed, 'balanced')] += 1;
+    assert.ok(counts[0] > counts[1] && counts[0] > counts[2], counts);
+    const payload = formatBeatContract({}, beat, { branchIndex: 2 });
+    assert.match(payload, /ALTERNATIVE 2 NEXT-STEP DIRECTION:/i);
+    assert.match(payload, /ALTERNATIVE 2 NEXT-STEP EFFECT:/i);
+    assert.doesNotMatch(payload, /PRIMARY NEXT-STEP DIRECTION:|ALTERNATIVE 1 NEXT-STEP DIRECTION:/i);
 });
 
 test('missing or stale planner state injects nothing and does not block generation', () => {

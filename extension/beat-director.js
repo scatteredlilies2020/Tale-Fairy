@@ -12,6 +12,12 @@ const DURATION = new Set(['moment', 'beat', 'scene', 'extended']);
 const SCOPES = new Set(['personal', 'social', 'institutional', 'societal', 'world']);
 const MODES = new Set(['light', 'balanced', 'fun']);
 
+const BRANCH_WEIGHTS = Object.freeze({
+    light: [0.70, 0.15, 0.15],
+    balanced: [0.50, 0.25, 0.25],
+    fun: [0.35, 0.325, 0.325],
+});
+
 const MODE_TREATMENT = Object.freeze({
     light: 'LIGHT TREATMENT: Keep the NPC or world follow-through understated but perceptible.',
     balanced: 'BALANCED TREATMENT: Give the NPC or world follow-through a clear, meaningful effect.',
@@ -31,6 +37,27 @@ function choice(value, allowed, fallback) {
 }
 function list(value, limit = 5) {
     return (Array.isArray(value) ? value : []).slice(0, limit).map(item => text(item, 180)).filter(Boolean);
+}
+
+function branchUnit(seed) {
+    let value = (Number(seed) >>> 0) ^ 0x6d2b79f5;
+    value = Math.imul(value ^ (value >>> 15), 1 | value);
+    value ^= value + Math.imul(value ^ (value >>> 7), 61 | value);
+    return ((value ^ (value >>> 14)) >>> 0) / 0x100000000;
+}
+
+export function selectBeatBranchIndex(value, seed = 0, mode = 'balanced') {
+    const beat = normalizeBeatDirective(value);
+    const count = Math.min(3, 1 + beat.alternatives.length);
+    if (count <= 1) return 0;
+    const weights = BRANCH_WEIGHTS[MODES.has(String(mode).toLowerCase()) ? String(mode).toLowerCase() : 'balanced'];
+    const roll = branchUnit(seed);
+    let cumulative = 0;
+    for (let index = 0; index < count; index += 1) {
+        cumulative += weights[index] || 0;
+        if (roll < cumulative) return index;
+    }
+    return count - 1;
 }
 
 export function defaultSceneProfile() {
@@ -115,17 +142,18 @@ export function formatBeatContract(_sceneValue, beatValue, options = {}) {
     if (!hasUsableBeatDirective(beat)) return '';
     const requestedMode = String(options.mode ?? options.directorSample?.mode ?? '').trim().toLowerCase();
     const mode = MODES.has(requestedMode) ? requestedMode : 'balanced';
+    const requestedIndex = Number.isInteger(Number(options.branchIndex)) ? Number(options.branchIndex) : selectBeatBranchIndex(beat, options.branchSeed ?? options.seed ?? 0, mode);
+    const branchIndex = Math.max(0, Math.min(beat.alternatives.length, requestedIndex));
+    const selected = branchIndex === 0
+        ? { when: beat.primaryWhen, operation: beat.operation, requiredEffect: beat.requiredEffect }
+        : beat.alternatives[branchIndex - 1];
     return [
         'TALE FAIRY EXTERNAL-REACTION GUIDE: The user action is outside Tale Fairy’s authority. Resolve it only from the user text, established context, and the main roleplay instructions. Do not use this guide to infer, reinterpret, expand, narrow, relocate, complete, substitute, or judge the user action, its target, its manner, or the player’s intent.',
         'Tale Fairy begins only with what NPCs or the surrounding world do in response. It may add an external reaction, consequence, opportunity, or natural next causal step. It may not deny, delay, weaken, cap, or otherwise modify the user action or an outcome explicitly established by the user.',
         'SELF-PROPELLING MOVEMENT: The selected branch must produce observable external development that exists independently of any player reply, including same-scene progress. Use completed NPC decisions, reactions, actions, disclosures, commitments, consequences, discoveries, opportunities, environmental or task progress. If travel or arrival is complete, start at the settled destination rather than repeating transit. In dialogue-centered scenes, let NPCs change the situation; never narrate the player character.',
-        'Select exactly one closest-fitting branch for external forward motion and never combine branches. If every branch would affect the user action instead of only the NPC or world response, ignore them and let the main roleplay instructions govern the response.',
-        `PRIMARY WHEN: ${effectSentence(beat.primaryWhen)}.`,
-        branchDirection('PRIMARY', beat),
-        ...beat.alternatives.flatMap((branch, index) => [
-            `ALTERNATIVE ${index + 1} WHEN: ${effectSentence(branch.when)}.`,
-            branchDirection(`ALTERNATIVE ${index + 1}`, branch),
-        ]),
+        'Select exactly one closest-fitting branch for external forward motion and never combine branches. The extension has already selected the branch below with a weighted random choice. If every branch would affect the user action instead of only the NPC or world response, ignore them and let the main roleplay instructions govern the response.',
+        `${branchIndex === 0 ? 'PRIMARY' : `ALTERNATIVE ${branchIndex}`} WHEN: ${effectSentence(selected.when)}.`,
+        branchDirection(branchIndex === 0 ? 'PRIMARY' : `ALTERNATIVE ${branchIndex}`, selected),
         MODE_TREATMENT[mode],
         'The selected next-step direction and effect govern only NPC or world follow-through. They never define the user action and never control the player character.',
     ].join('\n');
