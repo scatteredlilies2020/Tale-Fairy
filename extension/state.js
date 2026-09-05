@@ -6,7 +6,7 @@ import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, hasUsabl
 import { normalizeDirectorSample } from './director-sampling.js?v=0.12.6';
 
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 55;
+export const STATE_VERSION = 56;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -24,6 +24,10 @@ const HORIZON_KINDS = new Set(['detected', 'original']);
 const HORIZON_SCALES = new Set(['arc', 'months-years', 'open-ended']);
 const HORIZON_RELATIONS = new Set(['none', 'echo', 'seed', 'advance', 'converge']);
 const HORIZON_CHANGES = new Set(['keep', 'adjust', 'replace', 'retire']);
+const MOTIVE_LIKELIHOODS = new Set(['established', 'most-likely', 'likely', 'possible', 'wild-card', 'contradicted']);
+const MOTIVE_RELEVANCE = new Set(['none', 'background', 'supports-beat', 'drives-beat']);
+const MOTIVE_DISCLOSURES = new Set(['hidden', 'signaled', 'revealed']);
+const MOTIVE_CHANGES = new Set(['keep', 'adjust', 'replace', 'retire']);
 
 export function defaultState() {
     return {
@@ -38,6 +42,7 @@ export function defaultState() {
         responseAudit: { applicable: false, movementFit: 'not-applicable', repetition: 'none', unjustifiedEscalation: false, playerControl: false, continuityDrift: false, patterns: [], summary: '' },
         responsePatternMemory: [],
         horizonRadar: { status: 'none', seeds: [], audit: '' },
+        hiddenMotives: { status: 'none', items: [], audit: '' },
         narrativeLayers: { immediateAction: '', localActivity: '', situation: '', widerWorld: '', durableTrajectory: '', activityRole: 'routine', temporalScope: 'action' },
         storyFrame: { frame: 'unknown', confidence: 'low', basis: '' },
         directorScore: { storyIdentity: '', sceneFunction: '', settingIdentity: '', settingForces: [], causalTempo: 'hold', arcDirection: '', futureSetup: { id: '', development: '', currentStep: '', conditions: [], earliestWindow: '', disclosure: 'hidden' }, meaningfulAim: '', change: 'replace', basis: '' },
@@ -134,6 +139,43 @@ function normalizeHorizonRadar(value = {}) {
             ? status
             : seeds.length ? 'latent' : 'none',
         seeds,
+        audit: clippedText(value.audit, 360),
+    };
+}
+function normalizeHiddenMotive(value = {}) {
+    value = value && typeof value === 'object' ? value : {};
+    const likelihood = text(value.likelihood, 'possible').toLowerCase();
+    const relevance = text(value.currentRelevance ?? value.current_relevance, 'background').toLowerCase();
+    const disclosure = text(value.disclosure, 'hidden').toLowerCase();
+    const change = text(value.change, 'replace').toLowerCase();
+    return {
+        id: clippedText(value.id, 80),
+        actor: clippedText(value.actor, 120),
+        explanation: clippedText(value.explanation, 300),
+        likelihood: MOTIVE_LIKELIHOODS.has(likelihood) ? likelihood : 'possible',
+        evidence: cap(value.evidence, 4).map(item => clippedText(item, 180)).filter(Boolean),
+        counterevidence: cap(value.counterevidence ?? value.counter_evidence, 3).map(item => clippedText(item, 180)).filter(Boolean),
+        mechanism: clippedText(value.mechanism, 220),
+        currentRelevance: MOTIVE_RELEVANCE.has(relevance) ? relevance : 'background',
+        disclosure: MOTIVE_DISCLOSURES.has(disclosure) ? disclosure : 'hidden',
+        change: MOTIVE_CHANGES.has(change) ? change : 'replace',
+    };
+}
+function normalizeHiddenMotives(value = {}) {
+    value = value && typeof value === 'object' ? value : {};
+    const status = text(value.status, 'none').toLowerCase();
+    const seen = new Set();
+    const items = cap(value.items, 6).map(normalizeHiddenMotive).filter(item => {
+        const id = item.id.toLocaleLowerCase();
+        if (!id || !item.actor || !item.explanation || !item.mechanism || seen.has(id)) return false;
+        seen.add(id);
+        return item.change !== 'retire';
+    });
+    return {
+        status: ['none', 'open', 'focused'].includes(status) && (items.length ? status !== 'none' : status === 'none')
+            ? status
+            : items.length ? 'open' : 'none',
+        items,
         audit: clippedText(value.audit, 360),
     };
 }
@@ -516,7 +558,8 @@ export function normalizeState(input = {}) {
     // action and removes planner-authored resolution ceilings. v54 removes
     // user-action interpretation from Tale Fairy entirely; older sets are
     // cleared so no action-target inference survives the upgrade. v55 adds a
-    // private bounded horizon radar without reviving scheduled route debt.
+    // private bounded horizon radar without reviving scheduled route debt. v56
+    // adds the private open hidden-motive board.
     const unsafePlannerUpgrade = inputVersion > 0 && inputVersion < 18;
     const movementUpgrade = inputVersion > 0 && inputVersion < 42;
     const recoveryUpgrade = inputVersion > 0 && inputVersion < 26;
@@ -548,6 +591,7 @@ export function normalizeState(input = {}) {
         responseAudit: normalizeResponseAudit(value.responseAudit ?? value.response_audit),
         responsePatternMemory: cap(value.responsePatternMemory ?? value.response_pattern_memory, 12).map(item => clippedText(item, 140)).filter(Boolean),
         horizonRadar: normalizeHorizonRadar(value.horizonRadar ?? value.horizon_radar),
+        hiddenMotives: normalizeHiddenMotives(value.hiddenMotives ?? value.hidden_motives),
         narrativeLayers: chronologyAuditUpgrade
             ? { ...base.narrativeLayers, widerWorld: normalizedLayers.widerWorld }
             : authorMapUpgrade ? { ...normalizedLayers, durableTrajectory: '' } : normalizedLayers,
@@ -636,6 +680,11 @@ export function stateForPrompt(state) {
             status: s.horizonRadar.status,
             seeds: s.horizonRadar.seeds.map(seed => ({ ...seed })),
             audit: s.horizonRadar.audit,
+        },
+        hiddenMotives: {
+            status: s.hiddenMotives.status,
+            items: s.hiddenMotives.items.map(item => ({ ...item, evidence: [...item.evidence], counterevidence: [...item.counterevidence] })),
+            audit: s.hiddenMotives.audit,
         },
         narrativeLayers: { immediateAction: s.narrativeLayers.immediateAction, localActivity: s.narrativeLayers.localActivity, situation: s.narrativeLayers.situation, widerWorld: s.narrativeLayers.widerWorld, durableTrajectory: s.narrativeLayers.durableTrajectory, activityRole: s.narrativeLayers.activityRole, temporalScope: s.narrativeLayers.temporalScope },
         loreModel: { ...s.loreModel },

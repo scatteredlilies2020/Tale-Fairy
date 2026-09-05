@@ -31,14 +31,33 @@ function analyzedState(extra = {}) {
     return normalizeState({ ...beat, ...extra });
 }
 
-test('default and normalized state use the v55 horizon-aware external-reaction contract', () => {
+test('default and normalized state use the v56 horizon-aware external-reaction contract', () => {
     const state = normalizeState({ mode: 'invalid' });
-    assert.equal(STATE_VERSION, 55);
-    assert.equal(state.version, 55);
+    assert.equal(STATE_VERSION, 56);
+    assert.equal(state.version, 56);
     assert.equal(state.mode, 'balanced');
     assert.equal(state.sceneProfile.phase, 'developing');
     assert.equal(state.beatDirective.operation, '');
     assert.deepEqual(state.horizonRadar, { status: 'none', seeds: [], audit: '' });
+    assert.deepEqual(state.hiddenMotives, { status: 'none', items: [], audit: '' });
+});
+
+test('hidden motives remain open, ranked, and private across normalization and prompt payloads', () => {
+    const state = normalizeState({ hidden_motives: {
+        status: 'open',
+        audit: 'The strongest causal explanation is listed first.',
+        items: [
+            { id: 'trait-recognition', actor: 'Supreme Chancellor', explanation: 'The office recognized an exceptional latent trait and expedited access before rivals could react.', likelihood: 'most-likely', evidence: ['The meeting was expedited.', 'The subject has an unusually high established trait.'], counterevidence: ['No direct confirmation yet.'], mechanism: 'The office can reorder its schedule and prioritize strategically valuable subjects.', current_relevance: 'drives-beat', disclosure: 'hidden', change: 'keep' },
+            { id: 'novelty-only', actor: 'An unknown outside force', explanation: 'A dramatic but unsupported coincidence caused the appointment.', likelihood: 'wild-card', evidence: [], counterevidence: ['No scene clue points to this cause.'], mechanism: 'An unobserved intervention changes the schedule without visible preparation.', current_relevance: 'none', disclosure: 'hidden', change: 'keep' },
+        ],
+    } });
+    assert.equal(state.hiddenMotives.status, 'open');
+    assert.equal(state.hiddenMotives.items[0].likelihood, 'most-likely');
+    assert.equal(state.hiddenMotives.items[1].likelihood, 'wild-card');
+    const plannerState = stateForPrompt(state);
+    assert.equal(plannerState.hiddenMotives.items[0].actor, 'Supreme Chancellor');
+    const payload = buildPromptPayload({ ...state, lastInject: true }, { guidanceUsable: true });
+    assert.doesNotMatch(payload, /Supreme Chancellor|trait-recognition|outside force|wild-card/i);
 });
 
 test('horizon radar normalizes bounded optional long-range hypotheses', () => {

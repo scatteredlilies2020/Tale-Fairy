@@ -104,7 +104,7 @@ test('adaptive analysis uses freeform direction rather than an event taxonomy', 
     assert.match(analysisSource, /every scale classification in private fields/i);
     assert.match(analysisSource, /governs only NPC or world follow-through, never the user action/i);
     assert.match(analysisSource, /Keep scene specifics.*private fields/i);
-    assert.match(stateSource, /export const STATE_VERSION = 55/);
+    assert.match(stateSource, /export const STATE_VERSION = 56/);
     assert.match(stateSource, /beatContractUpgrade/);
 });
 
@@ -236,6 +236,9 @@ test('scratchpad shows only fresh upcoming guidance and rejects stale fallback',
     assert.match(source, /state\.sceneProfile/);
     assert.match(source, /state\.beatDirective/);
     assert.match(source, /state\.responseAudit/);
+    assert.match(template, /Hidden motives and explanations \(private\)/);
+    assert.match(source, /scratchpad-hidden-motives-section/);
+    assert.match(analysisSource, /never add a novelty-only wild-card just to make the list entertaining/i);
 });
 
 test('SillyTavern-compatible registration and detached planner transport remain intact', () => {

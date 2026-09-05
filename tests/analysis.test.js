@@ -5,7 +5,7 @@ import {
     ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, MODE_INSTRUCTIONS,
     applyAnalysis, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult,
 } from '../extension/analysis.js';
-import { buildPromptPayload, defaultState } from '../extension/state.js';
+import { buildPromptPayload, defaultState, stateForPrompt } from '../extension/state.js';
 import { estimateTokenCount } from '../extension/token-budget.js';
 
 function result(overrides = {}) {
@@ -45,6 +45,7 @@ function result(overrides = {}) {
             ],
             audit: 'Both seeds can survive beyond the assignment scene and use independent causal engines.',
         },
+        hidden_motives: { status: 'none', items: [], audit: 'No notable unexplained motive is required by this quiet scene.' },
         world: {
             identity: 'A contemporary life simulation', baseline: 'Ordinary school and home constraints apply.',
             variant_rules: [], rp_changes: [], signatures: ['The user prefers grounded task detail.'], forces: ['time and incomplete materials'], confidence: 'high',
@@ -69,7 +70,7 @@ test('extractJson accepts fenced, wrapped, and locally repairable JSON', () => {
 
 test('structured output contract combines external reaction with a private v7 horizon radar', () => {
     assert.equal(ANALYSIS_SCHEMA_VALUE.properties.contract_version.const, 7);
-    assert.deepEqual(ANALYSIS_SCHEMA_VALUE.required, ['contract_version', 'current', 'beat', 'response_audit', 'horizon', 'world', 'thread_updates', 'actor_updates', 'canon_updates', 'ledger', 'note_resolution', 'audit']);
+    assert.deepEqual(ANALYSIS_SCHEMA_VALUE.required, ['contract_version', 'current', 'beat', 'response_audit', 'horizon', 'hidden_motives', 'world', 'thread_updates', 'actor_updates', 'canon_updates', 'ledger', 'note_resolution', 'audit']);
     assert.equal(ANALYSIS_SCHEMA.strict, true);
     assert.equal(ANALYSIS_SCHEMA_VALUE.properties.beat.properties.alternatives.minItems, 2);
     assert.equal(ANALYSIS_SCHEMA_VALUE.properties.beat.properties.alternatives.maxItems, 2);
@@ -211,7 +212,7 @@ test('planner permits freeform AI invention and scale-native simulation', () => 
     assert.match(SYSTEM, /Introduce a quiet, favorable discovery/i);
     assert.match(SYSTEM, /Keep scene specifics.*private fields/i);
     assert.doesNotMatch(SYSTEM, /generate six to eight.*routes|schedule future milestones|maintain event queues/i);
-    assert.ok(estimateTokenCount(`${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}`) < 3200);
+    assert.ok(estimateTokenCount(`${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}`) < 3900);
 });
 
 test('all modes alter only external follow-through without touching the user action', () => {
@@ -232,7 +233,8 @@ test('analysis prompt carries current context, identity, variation, bootstrap, a
     assert.equal(prompt.variation_nonce, 731);
     assert.equal(prompt.bootstrap.scenario, 'A grounded school life simulation.');
     assert.equal(prompt.summary_sources[0].label, 'Continuity Memory');
-    assert.match(prompt.invention, /New causes or conditions used by the current beat require conversational or explicit-canon support/i);
+    assert.match(prompt.invention, /strong, scene-supported inference about an incentive, capability, relationship, or hidden motive/i);
+    assert.match(prompt.invention, /weak guess as fact/i);
     assert.match(prompt.horizon_rule, /bounded radar of zero to four optional trajectories/i);
     assert.match(prompt.horizon_rule, /near-term matter merely renamed as distant/i);
     assert.match(prompt.horizon_rule, /genuinely original seed/i);
@@ -255,6 +257,7 @@ test('analysis prompt carries current context, identity, variation, bootstrap, a
     assert.equal(Object.hasOwn(prompt, 'director_policy'), false);
     assert.match(prompt.director_sample, /WEIGHTED DIRECTOR SAMPLE/);
     assert.match(prompt.director_sample, /Choose movement from scene need before applying these signals/i);
+    assert.match(prompt.mode_instruction, /strongly implied motives and capabilities may shape/i);
     assert.equal(Object.hasOwn(prompt, 'pacing'), false);
 });
 
@@ -320,6 +323,17 @@ test('applying analysis saves the beat and private horizon radar while clearing 
     assert.deepEqual(next.pathways, []);
     assert.deepEqual(next.nextGuides, []);
     assert.deepEqual(next.narrativeEvents, []);
+});
+
+test('applying analysis retains ranked hidden motives for the Scratchpad only', () => {
+    const analyzed = result({ hidden_motives: {
+        status: 'focused', audit: 'The first explanation best fits the observed timing.',
+        items: [{ id: 'trait-recognition', actor: 'Supreme Chancellor', explanation: 'The office recognized an unusually important latent trait and expedited the meeting before rivals could react.', likelihood: 'most-likely', evidence: ['The meeting was expedited.', 'The subject has an unusually high established trait.'], counterevidence: ['The office has not stated its reason.'], mechanism: 'The Chancellor can reorder appointments and prioritize strategically valuable subjects.', current_relevance: 'drives-beat', disclosure: 'hidden', change: 'keep' }],
+    } });
+    const next = applyAnalysis(defaultState(), analyzed, messages);
+    assert.equal(next.hiddenMotives.items[0].likelihood, 'most-likely');
+    assert.equal(stateForPrompt(next).hiddenMotives.items[0].actor, 'Supreme Chancellor');
+    assert.doesNotMatch(buildPromptPayload(next, { guidanceUsable: true }), /Supreme Chancellor|latent trait|expedited the meeting/i);
 });
 
 test('related original horizon seeds remain speculation instead of becoming durable trajectory', () => {
