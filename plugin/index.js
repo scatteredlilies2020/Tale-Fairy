@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 
 const PLUGIN = 'tale-fairy';
-const VERSION = '0.12.14';
+const VERSION = '0.12.15';
 const jobs = new Map();
 const MAX_FINISHED_JOBS = 40;
 const MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
@@ -320,12 +320,14 @@ export async function init(router, { fetchImpl = fetch } = {}) {
                 fingerprint: String(suppliedMeta.fingerprint || ''),
                 messageCount: Math.max(0, Number(suppliedMeta.messageCount) || 0),
                 allowOneUserAppend: Boolean(suppliedMeta.allowOneUserAppend),
+                allowOneAssistantAppend: Boolean(suppliedMeta.allowOneAssistantAppend),
                 rebuild: Boolean(suppliedMeta.rebuild),
                 mode: String(suppliedMeta.mode || 'balanced'),
                 plannerSeed: Math.max(0, Number(suppliedMeta.plannerSeed) || 0),
                 analysisSelection: suppliedMeta.analysisSelection && typeof suppliedMeta.analysisSelection === 'object' ? suppliedMeta.analysisSelection : {},
                 userNote: suppliedMeta.userNote && typeof suppliedMeta.userNote === 'object' ? suppliedMeta.userNote : null,
                 summaryEvidence: suppliedMeta.summaryEvidence && typeof suppliedMeta.summaryEvidence === 'object' ? suppliedMeta.summaryEvidence : {},
+                transcriptHead: suppliedMeta.transcriptHead && typeof suppliedMeta.transcriptHead === 'object' && !Array.isArray(suppliedMeta.transcriptHead) ? suppliedMeta.transcriptHead : null,
             };
             const job = {
                 id: crypto.randomUUID(),

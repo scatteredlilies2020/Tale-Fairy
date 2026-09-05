@@ -12,7 +12,8 @@ export function isPlannerTimeoutError(error) {
 }
 
 export function shouldRetryPlannerError(error, locallyAborted = false) {
-    if (locallyAborted || error?.name === 'AnalysisValidationError' || error?.name === 'PlannerBusyInAnotherTabError' || isPlannerTimeoutError(error)) return false;
+    if (locallyAborted || error?.name === 'PlannerBusyInAnotherTabError' || isPlannerTimeoutError(error)) return false;
+    if (error?.name === 'AnalysisValidationError') return true;
     const message = String(error?.message || error || '');
     return !PERMANENT_ERROR.test(message) && !EMPTY_COMPLETION_ERROR.test(message);
 }

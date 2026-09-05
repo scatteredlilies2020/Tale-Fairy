@@ -47,7 +47,9 @@ function plannerBody(runKey = 'run-1') {
             fingerprint: 'abc',
             messageCount: 3,
             allowOneUserAppend: true,
+            allowOneAssistantAppend: true,
             plannerSeed: 42,
+            transcriptHead: { authoritative_assistant_status: 'Time = 01:10 PM' },
             analysisSelection: { source: 'profile', model: 'gemini-test' },
         },
     };
@@ -73,6 +75,8 @@ test('planner finishes on the server and remains recoverable after the browser d
     assert.equal(listed.payload.jobs.length, 1);
     assert.equal(listed.payload.jobs[0].status, 'complete');
     assert.equal(listed.payload.jobs[0].text, '{"contract_version":2}');
+    assert.equal(listed.payload.jobs[0].meta.allowOneAssistantAppend, true);
+    assert.equal(listed.payload.jobs[0].meta.transcriptHead.authoritative_assistant_status, 'Time = 01:10 PM');
 });
 
 test('successful live response is unchanged and can be acknowledged after metadata is saved', async () => {
