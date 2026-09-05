@@ -4,28 +4,28 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.12.10';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.12.10';
-import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.11.101';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.12.10';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.12.10';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.12.10';
-import { normalizeModelListResponse } from './models.js?v=0.12.10';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.12.11';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.12.11';
+import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.12.11';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.12.11';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.12.11';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.12.11';
+import { normalizeModelListResponse } from './models.js?v=0.12.11';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.108';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.12.10';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.12.10';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.12.10';
-import { estimateTokenCount } from './token-budget.js?v=0.12.10';
-import { completionText } from './completion-response.js?v=0.12.10';
-import { sampleDirectorSignals } from './director-sampling.js?v=0.12.10';
-import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, plannerValidationRepairInstruction, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.12.10';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.12.11';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.12.11';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.12.11';
+import { estimateTokenCount } from './token-budget.js?v=0.12.11';
+import { completionText } from './completion-response.js?v=0.12.11';
+import { sampleDirectorSignals } from './director-sampling.js?v=0.12.11';
+import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, plannerValidationRepairInstruction, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.12.11';
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
-import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.12.10';
-import { selectBeatBranchIndex } from './beat-director.js?v=0.12.10';
-import { formatHiddenMotives } from './scratchpad-format.js?v=0.12.10';
+import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.12.11';
+import { selectBeatBranchIndex } from './beat-director.js?v=0.12.11';
+import { formatHiddenMotives } from './scratchpad-format.js?v=0.12.11';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.12.10';
+const RUNTIME_VERSION = '0.12.11';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -2355,7 +2355,21 @@ eventSource.on(event_types.CHAT_COMPLETION_PROMPT_READY, ensureChatCompletionReq
 eventSource.on(event_types.CHAT_COMPLETION_SETTINGS_READY, ensureProviderChatRequestGuidance);
 eventSource.on(event_types.GENERATE_AFTER_COMBINE_PROMPTS, ensureTextCompletionRequestGuidance);
 eventSource.on(event_types.GENERATION_STARTED, type => recordRuntimeStage('generation-started', { generationType: String(type || '') }));
-eventSource.on(event_types.GENERATION_ENDED, () => recordRuntimeStage('generation-ended'));
+eventSource.on(event_types.GENERATION_ENDED, () => {
+    recordRuntimeStage('generation-ended');
+    // MESSAGE_RECEIVED is the primary successor trigger, but some stopped or
+    // empty generations do not emit it consistently. Recheck after the host
+    // finishes committing the result so Tale Fairy cannot remain stranded
+    // with only a used/stale direction.
+    setTimeout(() => {
+        const context = currentContext();
+        const chatId = String(context.getCurrentChatId?.() || '');
+        const messages = messagesFromChat(context.chat || []);
+        const state = loadState(context.chatMetadata);
+        if (!getSettings().enabled || !chatId || !messages.length || isDirectionCurrent(state, messages, chatId)) return;
+        void queueLatestAnalysis({ chatId, allowStaleContinuity: true });
+    }, 0);
+});
 
 if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPED, () => {
     recordRuntimeStage('generation-stopped');

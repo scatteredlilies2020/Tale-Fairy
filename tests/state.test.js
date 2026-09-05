@@ -205,11 +205,16 @@ test('planner prompt state excludes obsolete future machinery', () => {
     assert.equal(compact.horizonRadar.seeds[0].id, 'future');
 });
 
-test('analyzed guidance expires when a new user message changes the transcript', () => {
+test('analyzed guidance remains ready for one user action and expires afterward', () => {
     const state = analyzedState();
     assert.equal(isStateAligned(state, messages, 'chat-a'), true);
     assert.equal(isGuidanceUsable(state, messages, 'chat-a'), true);
-    assert.equal(isGuidanceUsable(state, [...messages, { is_user: true, mes: 'Actually, I leave.' }], 'chat-a'), false);
+    const oneUserAction = [...messages, { is_user: true, mes: 'Actually, I leave.' }];
+    assert.equal(isStateAligned(state, oneUserAction, 'chat-a'), false);
+    assert.equal(isDirectionCurrent(state, oneUserAction, 'chat-a'), true);
+    assert.equal(isGuidanceUsable(state, oneUserAction, 'chat-a'), true);
+    assert.equal(isGuidanceUsable(state, [...oneUserAction, { is_user: false, mes: 'The room responds.' }], 'chat-a'), false);
+    assert.equal(isGuidanceUsable(state, [...oneUserAction, { is_user: true, mes: 'A second unmatched action.' }], 'chat-a'), false);
     assert.equal(isGuidanceUsable(state, messages, 'chat-b'), false);
     assert.equal(isGuidanceUsable({ ...state, lastInject: false }, messages, 'chat-a'), false);
 });
