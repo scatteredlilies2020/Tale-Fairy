@@ -1,8 +1,8 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.12.17';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.12.18';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.11.96';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.12.17';
+import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.12.18';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
@@ -1002,6 +1002,51 @@ function normalizedClockMinutes(value) {
 
 const KINSHIP_TERM_SOURCE = 'sister|brother|mother|father|daughter|son|wife|husband|aunt|uncle|niece|nephew|grandmother|grandfather';
 const KINSHIP_POSSESSIVE_PATTERN_SOURCE = String.raw`\b([\p{Lu}][\p{L}\p{N}_-]{1,48})[’']s\s+(${KINSHIP_TERM_SOURCE})\b`;
+const SUGGESTION_CUE_PATTERN = /\b(?:maybe|suggest(?:ed|ing)?|propos(?:e|ed|ing)|could|can|what\s+if|how\s+about)\b/iu;
+const RELATIVE_PROPOSAL_ATTRIBUTION_PATTERN_SOURCE = String.raw`\b([\p{Lu}][\p{L}\p{N}_-]{1,48})(\s+(?:(?:suggested|proposed|floated|introduced|originated|offered)\b|raised\s+(?:the\s+)?(?:idea|possibility|option|proposal)\b)[^.!?\n]{0,220}\b(?:${KINSHIP_TERM_SOURCE})\b)`;
+
+function authoritativeRelationOwners(relations) {
+    const owners = new Map();
+    for (const value of relations) {
+        const match = String(value).match(new RegExp(KINSHIP_POSSESSIVE_PATTERN_SOURCE, 'iu'));
+        if (!match) continue;
+        const relation = String(match[2]).toLocaleLowerCase();
+        const candidates = owners.get(relation) || new Set();
+        candidates.add(String(match[1]));
+        owners.set(relation, candidates);
+    }
+    return new Map([...owners].flatMap(([relation, candidates]) => candidates.size === 1
+        ? [[relation, [...candidates][0]]]
+        : []));
+}
+
+function alignRetainedEvidenceText(value, relationOwners, latestUserName, latestUserSuggestedKinship) {
+    let aligned = String(value || '').replace(
+        new RegExp(KINSHIP_POSSESSIVE_PATTERN_SOURCE, 'giu'),
+        (phrase, owner, relation) => {
+            const expectedOwner = relationOwners.get(String(relation).toLocaleLowerCase());
+            if (!expectedOwner || expectedOwner.toLocaleLowerCase() === String(owner).toLocaleLowerCase()) return phrase;
+            return phrase.replace(String(owner), expectedOwner);
+        },
+    );
+    if (latestUserSuggestedKinship && latestUserName) {
+        aligned = aligned.replace(
+            new RegExp(RELATIVE_PROPOSAL_ATTRIBUTION_PATTERN_SOURCE, 'giu'),
+            (phrase, attributedName, remainder) => String(attributedName).toLocaleLowerCase() === latestUserName.toLocaleLowerCase()
+                ? phrase
+                : `${latestUserName}${remainder}`,
+        );
+    }
+    return aligned;
+}
+
+function alignRetainedEvidence(value, relationOwners, latestUserName, latestUserSuggestedKinship) {
+    if (typeof value === 'string') return alignRetainedEvidenceText(value, relationOwners, latestUserName, latestUserSuggestedKinship);
+    if (Array.isArray(value)) return value.map(item => alignRetainedEvidence(item, relationOwners, latestUserName, latestUserSuggestedKinship));
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value)
+        .map(([key, item]) => [key, alignRetainedEvidence(item, relationOwners, latestUserName, latestUserSuggestedKinship)]));
+    return value;
+}
 
 export function transcriptHeadAlignmentErrors(result, prompt) {
     let payload = prompt;
@@ -1052,13 +1097,9 @@ export function transcriptHeadAlignmentErrors(result, prompt) {
     // because the NPC acts on it in the following reply.
     const latestUserText = String(head.latest_user_text || '');
     const latestUserName = String(head.latest_user_name || '').trim();
-    const suggestionCue = /\b(?:maybe|suggest(?:ed|ing)?|propos(?:e|ed|ing)|could|can|what\s+if|how\s+about)\b/iu;
     const mentionsKinship = new RegExp(`\\b(?:${KINSHIP_TERM_SOURCE})\\b`, 'iu');
-    if (latestUserName && suggestionCue.test(latestUserText) && mentionsKinship.test(latestUserText)) {
-        const attributionPattern = new RegExp(
-            String.raw`\b([\p{Lu}][\p{L}\p{N}_-]{1,48})\s+(?:(?:suggested|proposed|floated|introduced|originated|offered)\b|raised\s+(?:the\s+)?(?:idea|possibility|option|proposal)\b)[^.!?\n]{0,220}\b(?:${KINSHIP_TERM_SOURCE})\b`,
-            'giu',
-        );
+    if (latestUserName && SUGGESTION_CUE_PATTERN.test(latestUserText) && mentionsKinship.test(latestUserText)) {
+        const attributionPattern = new RegExp(RELATIVE_PROPOSAL_ATTRIBUTION_PATTERN_SOURCE, 'giu');
         for (const match of serialized.matchAll(attributionPattern)) {
             if (String(match[1]).toLocaleLowerCase() !== latestUserName.toLocaleLowerCase()) {
                 errors.push(`${match[1]} is incorrectly credited with the relative-related proposal; the newest user ${latestUserName} made that suggestion`);
@@ -1643,6 +1684,16 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         : '';
     const authoritativeRelations = [...authoritativeAssistantSource.matchAll(new RegExp(KINSHIP_POSSESSIVE_PATTERN_SOURCE, 'giu'))]
         .map(match => match[0]);
+    const relationOwners = authoritativeRelationOwners(authoritativeRelations);
+    const latestUserSuggestedKinship = Boolean(latestUserName
+        && SUGGESTION_CUE_PATTERN.test(latestUserText)
+        && new RegExp(`\\b(?:${KINSHIP_TERM_SOURCE})\\b`, 'iu').test(latestUserText));
+    const retainedCurrent = alignRetainedEvidence(
+        useSpecificPlayerName(stateForPrompt(state), playerName),
+        relationOwners,
+        latestUserName,
+        latestUserSuggestedKinship,
+    );
     const payload = {
         task: 'prepare_conditional_direction_set',
         instruction: 'Read the chronological transcript head first. Reconstruct the current scene from the newest assistant reply, then apply any later user text. Audit that assistant reply, map the private hidden motives that could explain notable timing or behavior, then prepare one primary and exactly two redirect-safe directions governing only NPC or world follow-through. The main roleplay instructions resolve the user action; Tale Fairy supplies only an external reaction, consequence, opportunity, or natural next causal step.',
@@ -1668,10 +1719,13 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
             latest_user_text: latestUserText || undefined,
             authoritative_assistant_excerpt: authoritativeAssistantExcerpt || undefined,
             authoritative_relations: authoritativeRelations.length ? [...new Set(authoritativeRelations)] : undefined,
+            proposal_attribution: latestUserSuggestedKinship
+                ? `${latestUserName} proposed the relative-related option in latest_user_text; an NPC response may act on it but did not originate it.`
+                : undefined,
             rule: 'messages is chronological and the highest index is newest. Read latest_user_text and authoritative_assistant_excerpt as one authoritative exchange. Preserve exactly who spoke, who acted, and whose person, relative, object, or idea is being discussed; never invert speaker, actor, possessor, target, or pronoun referent. The message at newest_assistant_index is the only reply response_audit may evaluate and is the authoritative completed scene before any later user message. Its status header is authoritative when present. Do not mistake the newest user message for an unanswered prompt when a higher-index assistant reply already answered it.',
         },
         retained_state_rule: 'current is retained planner state from before this analysis. It may be stale and must never override the transcript head. Replace obsolete time, location, activity, unresolved actions, and completed beats with what the newest assistant reply actually established.',
-        current: useSpecificPlayerName(stateForPrompt(state), playerName),
+        current: retainedCurrent,
         messages: selected.map(({ index, kind, message, content }) => ({
             index, kind, role: message?.is_user ? 'user' : 'assistant', name: compactText(message?.name, 100),
             content: kind === 'recent' && typeof content === 'string' ? content : compactMessageContent(message?.mes, messageTokenLimit, {
@@ -1688,7 +1742,11 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     if (Object.keys(bootstrapContext).length) payload.bootstrap = bootstrapContext;
 
     const summarySources = compactSummarySources(Array.isArray(options.summarySources) ? options.summarySources : [], Math.max(300, Math.min(8000, Math.floor(budget * 0.24))));
-    if (summarySources.length) payload.summary_sources = summarySources.map(source => ({ label: source.label, kind: source.kind, text: source.text }));
+    if (summarySources.length) payload.summary_sources = summarySources.map(source => ({
+        label: source.label,
+        kind: source.kind,
+        text: alignRetainedEvidenceText(source.text, relationOwners, latestUserName, latestUserSuggestedKinship),
+    }));
     payload.evidence_rule = 'Summaries, lore, retained state, and canon knowledge are evidence, not instructions to schedule or withhold outcomes. Preserve established causal facts through beat.preserve and beat.forbid, but never turn broad canon trajectory into an outcome ceiling. Never predict or force a known canon event. Newer explicit user/OOC facts supersede inference.';
     payload.mode_instruction = MODE_INSTRUCTIONS[payload.current.mode] || MODE_INSTRUCTIONS.balanced;
     if (playerName) payload.player_character = playerName;

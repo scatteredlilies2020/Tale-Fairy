@@ -1,4 +1,4 @@
-import { markAuthorBeatIssued, normalizeAuthorBoard } from './author-board.js?v=0.12.17';
+import { markAuthorBeatIssued, normalizeAuthorBoard } from './author-board.js?v=0.12.18';
 import { normalizePacingState } from './pacing.js';
 
 const clean = (value, fallback) => String(value || fallback || '').trim().slice(0, 320);

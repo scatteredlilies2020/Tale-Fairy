@@ -338,6 +338,8 @@ test('planner validation rejects an omitted clock when the newest assistant stat
 });
 
 test('planner validation rejects a kinship owner inverted by stale retained context', () => {
+    const staleState = defaultState();
+    staleState.contextLedger = "Vekk raised the idea of petitioning Lucia's sister and prepared a private draft.";
     const prompt = buildAnalysisPrompt([
         { is_user: true, name: 'Lucia', mes: 'Maybe we can petition your sister, Nim.' },
         {
@@ -345,7 +347,13 @@ test('planner validation rejects a kinship owner inverted by stale retained cont
             name: 'Narrator',
             mes: `Time = 01:10 PM\nLocation = South alcove table\nCurrent Beat = Nim approves a private supporting case for his missing sister\n\n${'Routine lunch detail continues. '.repeat(400)} Vekk explains that Nim’s sister remains listed as missing and creates a private draft with Nim’s consent. ${'The meal continues without another procedural change. '.repeat(1200)}`,
         },
-    ], defaultState());
+    ], staleState, '', {}, {
+        summarySources: [{
+            label: 'Stale continuity memory',
+            kind: 'summary',
+            text: "Vekk proposed filing a supporting case for Lucia's sister.",
+        }],
+    });
     const inverted = result({
         current: { ...result().current, time: '01:10 PM', location: 'South alcove table' },
         continuity_threads: [{ id: 'relative', thread: "Lucia's sister", state: 'A petition may be filed.' }],
@@ -360,8 +368,13 @@ test('planner validation rejects a kinship owner inverted by stale retained cont
     });
     const parsedPrompt = JSON.parse(prompt);
     assert.equal(parsedPrompt.transcript_head.latest_user_name, 'Lucia');
+    assert.match(parsedPrompt.transcript_head.proposal_attribution, /Lucia proposed/i);
     assert.doesNotMatch(parsedPrompt.transcript_head.authoritative_assistant_excerpt, /Nim[’']s sister/iu);
     assert.ok(parsedPrompt.transcript_head.authoritative_relations.includes('Nim’s sister'));
+    assert.match(parsedPrompt.current.contextLedger, /Lucia raised the idea of petitioning Nim's sister/i);
+    assert.doesNotMatch(parsedPrompt.current.contextLedger, /Vekk raised|Lucia's sister/i);
+    assert.match(parsedPrompt.summary_sources[0].text, /Lucia proposed filing a supporting case for Nim's sister/i);
+    assert.doesNotMatch(parsedPrompt.summary_sources[0].text, /Vekk proposed|Lucia's sister/i);
     assert.match(transcriptHeadAlignmentErrors(inverted, prompt).join('\n'), /identifies Nim's sister/i);
     assert.match(transcriptHeadAlignmentErrors(misattributed, prompt).join('\n'), /newest user Lucia made that suggestion/i);
     assert.deepEqual(transcriptHeadAlignmentErrors(aligned, prompt), []);
