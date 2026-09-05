@@ -4,28 +4,28 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.12.11';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.12.11';
-import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.12.11';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.12.11';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.12.11';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.12.11';
-import { normalizeModelListResponse } from './models.js?v=0.12.11';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.12.13';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.12.13';
+import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.12.13';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.12.13';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.12.13';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.12.13';
+import { normalizeModelListResponse } from './models.js?v=0.12.13';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.108';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.12.11';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.12.11';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.12.11';
-import { estimateTokenCount } from './token-budget.js?v=0.12.11';
-import { completionText } from './completion-response.js?v=0.12.11';
-import { sampleDirectorSignals } from './director-sampling.js?v=0.12.11';
-import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, plannerValidationRepairInstruction, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.12.11';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.12.13';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.12.13';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.12.13';
+import { estimateTokenCount } from './token-budget.js?v=0.12.13';
+import { completionText } from './completion-response.js?v=0.12.13';
+import { sampleDirectorSignals } from './director-sampling.js?v=0.12.13';
+import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, plannerValidationRepairInstruction, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.12.13';
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
-import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.12.11';
-import { selectBeatBranchIndex } from './beat-director.js?v=0.12.11';
-import { formatHiddenMotives } from './scratchpad-format.js?v=0.12.11';
+import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.12.13';
+import { selectBeatBranchIndex } from './beat-director.js?v=0.12.13';
+import { formatHiddenMotives } from './scratchpad-format.js?v=0.12.13';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.12.12';
+const RUNTIME_VERSION = '0.12.13';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -1234,7 +1234,7 @@ function plannerStorage() {
     }
 }
 
-function parseAnalysisResponse(value) {
+function parseAnalysisResponse(value, prompt = '') {
     try {
         const rawResult = value && typeof value === 'object' && !Array.isArray(value) && ([2, 6, 7].includes(value.contract_version) || value.scene)
             ? value
@@ -1243,6 +1243,10 @@ function parseAnalysisResponse(value) {
         if (!validation.valid) {
             const validationErrors = validation.errors.slice(0, 16);
             throw new AnalysisValidationError(`Planner violated its strict output contract: ${validationErrors.join('; ')}.`, validationErrors);
+        }
+        const alignmentErrors = transcriptHeadAlignmentErrors(rawResult, prompt);
+        if (alignmentErrors.length) {
+            throw new AnalysisValidationError(`Planner analyzed stale transcript state: ${alignmentErrors.join('; ')}.`, alignmentErrors);
         }
         return rawResult;
     } catch (error) {
@@ -1532,7 +1536,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
         const systemPrompt = requestSpec.systemPrompt || PLANNER_SYSTEM_PROMPT;
         const schema = requestSpec.schema || ANALYSIS_SCHEMA;
         const responseTokens = Math.max(128, Number(requestSpec.responseTokens) || PLANNER_RESPONSE_TOKENS);
-        const parseResponse = requestSpec.parseResponse || parseAnalysisResponse;
+        const parseResponse = requestSpec.parseResponse || (value => parseAnalysisResponse(value, prompt));
         const requestedReasoningMode = requestSpec.reasoningMode || '';
         const requestLabel = requestSpec.label || 'planner';
         const cacheNamespace = requestSpec.cacheNamespace || 'analysis';

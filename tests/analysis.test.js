@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
     ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, MODE_INSTRUCTIONS,
-    applyAnalysis, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult,
+    applyAnalysis, buildAnalysisPrompt, extractJson, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult,
 } from '../extension/analysis.js';
 import { buildPromptPayload, defaultState, stateForPrompt } from '../extension/state.js';
 import { estimateTokenCount } from '../extension/token-budget.js';
@@ -265,6 +265,45 @@ test('analysis prompt carries current context, identity, variation, bootstrap, a
     assert.match(prompt.director_sample, /Choose movement from scene need before applying these signals/i);
     assert.match(prompt.mode_instruction, /strongly implied motives and capabilities may shape/i);
     assert.equal(Object.hasOwn(prompt, 'pacing'), false);
+});
+
+test('analysis prompt makes the newest assistant reply and status header authoritative over retained state', () => {
+    const prompt = JSON.parse(buildAnalysisPrompt([
+        { is_user: true, name: 'Ari', mes: 'Could we file the petition for her?' },
+        {
+            is_user: false,
+            name: 'Narrator',
+            mes: 'Time = 01:10 PM\nLocation = East Refectory — reserved south alcove table\nCurrent Beat = The private supporting case is accepted\n\nThe clerk records the missing relative as a private supporting case, and lunch is now underway.',
+        },
+        { is_user: true, name: 'Ari', mes: 'Good. Keep her fate unconfirmed.' },
+    ], {
+        ...defaultState(),
+        scene: { ...defaultState().scene, time: '01:01 PM', location: 'between the serving line and the alcove' },
+    }));
+
+    assert.equal(prompt.transcript_head.latest_message_index, 2);
+    assert.equal(prompt.transcript_head.latest_message_role, 'user');
+    assert.equal(prompt.transcript_head.newest_assistant_index, 1);
+    assert.equal(prompt.transcript_head.newest_user_index, 2);
+    assert.match(prompt.transcript_head.authoritative_assistant_status, /01:10 PM/);
+    assert.match(prompt.transcript_head.authoritative_assistant_status, /reserved south alcove table/);
+    assert.match(prompt.transcript_head.rule, /only reply response_audit may evaluate/i);
+    assert.match(prompt.retained_state_rule, /may be stale/i);
+    assert.match(prompt.retained_state_rule, /must never override the transcript head/i);
+    assert.match(prompt.messages.find(message => message.index === 1).content, /Time = 01:10 PM/);
+    assert.match(prompt.messages.find(message => message.index === 1).content, /private supporting case/i);
+    assert.match(prompt.messages.at(-1).content, /Keep her fate unconfirmed/);
+});
+
+test('planner validation detects a stale clock against the newest assistant status', () => {
+    const prompt = buildAnalysisPrompt([
+        { is_user: true, name: 'Ari', mes: 'Let us sit down.' },
+        { is_user: false, name: 'Narrator', mes: 'Time = 01:10 PM\nLocation = South alcove table\nCurrent Beat = Lunch has begun\n\nEveryone settles at the table.' },
+    ], defaultState());
+    const stale = result({ current: { ...result().current, time: '01:01 PM', location: 'Serving line' } });
+    const current = result({ current: { ...result().current, time: '13:10', location: 'South alcove table' } });
+    assert.match(transcriptHeadAlignmentErrors(stale, prompt)[0], /authoritative newest-assistant status is 01:10 PM/i);
+    assert.deepEqual(transcriptHeadAlignmentErrors(current, prompt), []);
 });
 
 test('analysis prompt treats OOC and scenario authority as binding, not future suggestions', () => {

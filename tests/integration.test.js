@@ -13,22 +13,22 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest and detached plugin identify the adaptive-director release', () => {
-    assert.equal(manifest.version, '0.12.12');
-    assert.equal(manifest.js, 'extension/index.js?v=0.12.12');
-    assert.equal(manifest.css, 'extension/style.css?v=0.12.12');
+    assert.equal(manifest.version, '0.12.13');
+    assert.equal(manifest.js, 'extension/index.js?v=0.12.13');
+    assert.equal(manifest.css, 'extension/style.css?v=0.12.13');
     assert.match(manifest.description, /always-on adaptive story director/i);
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.12\.12'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.12\.12'/);
+    assert.match(pluginSource, /const VERSION = '0\.12\.13'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.12\.13'/);
 });
 
 test('extension loads the background-only direction modules', () => {
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.12\.11'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.12\.11'/);
-    assert.match(source, /from '\.\/request-injection\.js\?v=0\.12\.11'/);
-    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.12\.11'/);
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.12\.13'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.12\.13'/);
+    assert.match(source, /from '\.\/request-injection\.js\?v=0\.12\.13'/);
+    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.12\.13'/);
     assert.doesNotMatch(source, /action-gate/);
-    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.12\.11'/);
+    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.12\.13'/);
 });
 
 test('long-form defaults reserve room for current turns, summaries, and thinking', () => {

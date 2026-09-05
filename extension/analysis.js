@@ -1,8 +1,8 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.12.11';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.12.13';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.11.96';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.12.11';
+import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.12.13';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
@@ -787,13 +787,14 @@ function explicitCanonClaims(messages = []) {
 
 function selectMessages(messages, recentTokenBudget, messageTokenLimit, latestLimit, bootstrapScan = false) {
     const source = Array.isArray(messages) ? messages : [];
+    const newestAssistantIndex = source.findLastIndex(message => !message?.is_user);
     const recent = [];
     let remainingTokens = Math.max(200, Number(recentTokenBudget) || 4000);
     for (let index = source.length - 1; index >= 0; index--) {
         const message = source[index];
-        const latest = index === source.length - 1;
-        const maximum = latest ? latestLimit : messageTokenLimit;
-        let content = compactMessageContent(message?.mes, maximum, { latest });
+        const headMessage = index === source.length - 1 || index === newestAssistantIndex;
+        const maximum = headMessage ? latestLimit : messageTokenLimit;
+        let content = compactMessageContent(message?.mes, maximum, { latest: headMessage, preserveLeadingStatus: index === newestAssistantIndex });
         let cost = estimateTokenCount(content) + 24;
         if (cost > remainingTokens) {
             const availableContentTokens = remainingTokens - 24;
@@ -801,7 +802,7 @@ function selectMessages(messages, recentTokenBudget, messageTokenLimit, latestLi
             // preceding turn when useful space remains so a reply is not
             // interpreted without the action or request that caused it.
             if (!recent.length || (recent.length === 1 && availableContentTokens >= 160)) {
-                content = compactMessageContent(message?.mes, Math.max(160, Math.min(maximum, availableContentTokens)), { latest });
+                content = compactMessageContent(message?.mes, Math.max(160, Math.min(maximum, availableContentTokens)), { latest: headMessage, preserveLeadingStatus: index === newestAssistantIndex });
                 cost = estimateTokenCount(content) + 24;
                 if (cost <= remainingTokens + 8) recent.push({ index, content });
             }
@@ -959,14 +960,59 @@ function compactPromptStateForBudget(current = {}) {
     };
 }
 
-function stripLeadingGeneratedStatusSummary(value) {
+function leadingGeneratedStatusSummary(value) {
     const source = String(value || '').replace(/^\uFEFF/u, '');
     const sections = source.split(/\r?\n\s*\r?\n/u);
     const lines = String(sections[0] || '').split(/\r?\n/u).map(line => line.trim()).filter(Boolean);
     const statusLine = /^(?:time(?:\s*&\s*weather)?|date|day|weather|location|current\s+beat|positions?|inventory(?:\s*&\s*objects)?|objects?|physical\s+state|emotions?|psyche|characters?|active\s+threads?)\s*=\s*\S/iu;
     const contentLines = lines.filter(line => !/^```(?:[\p{L}\p{N}_-]+)?$/u.test(line));
-    if (contentLines.length < 3 || !contentLines.every(line => statusLine.test(line))) return source;
-    return sections.slice(1).join('\n\n');
+    if (contentLines.length < 3 || !contentLines.every(line => statusLine.test(line))) return { source, status: '', body: source };
+    return { source, status: contentLines.join('\n'), body: sections.slice(1).join('\n\n') };
+}
+
+function stripLeadingGeneratedStatusSummary(value) {
+    return leadingGeneratedStatusSummary(value).body;
+}
+
+function extractLeadingGeneratedStatusSummary(value) {
+    return leadingGeneratedStatusSummary(value).status;
+}
+
+function statusSummaryValue(summary, label) {
+    const escaped = String(label || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return String(summary || '').match(new RegExp(`^${escaped}\\s*=\\s*(.+)$`, 'imu'))?.[1]?.trim() || '';
+}
+
+function normalizedClockMinutes(value) {
+    const match = String(value || '').match(/\b(\d{1,2}):(\d{2})\s*([ap]m)?\b/iu);
+    if (!match) return null;
+    let hour = Number(match[1]);
+    const minute = Number(match[2]);
+    if (hour > 23 || minute > 59) return null;
+    const meridiem = String(match[3] || '').toLocaleLowerCase();
+    if (meridiem && hour <= 12) {
+        if (hour === 12) hour = 0;
+        if (meridiem === 'pm') hour += 12;
+    }
+    return hour * 60 + minute;
+}
+
+export function transcriptHeadAlignmentErrors(result, prompt) {
+    let payload = prompt;
+    try {
+        if (typeof payload === 'string') payload = JSON.parse(payload);
+    } catch {
+        return [];
+    }
+    const status = payload?.transcript_head?.authoritative_assistant_status;
+    if (!status || !result?.current) return [];
+    const expectedTime = statusSummaryValue(status, 'Time') || statusSummaryValue(status, 'Time & Weather');
+    const expectedClock = normalizedClockMinutes(expectedTime);
+    const actualClock = normalizedClockMinutes(result.current.time);
+    if (expectedClock !== null && actualClock !== null && expectedClock !== actualClock) {
+        return [`current.time describes ${String(result.current.time).trim()} but the authoritative newest-assistant status is ${expectedTime}`];
+    }
+    return [];
 }
 
 function stripStructuredEvidence(value) {
@@ -982,8 +1028,9 @@ function stripStructuredEvidence(value) {
     return cleaned.replace(/<[A-Za-z_][\w:.-]*(?:\s[^<>]*?)?\s*\/>/gu, ' ');
 }
 
-function cleanMessageContent(value) {
-    return stripStructuredEvidence(stripLeadingGeneratedStatusSummary(value))
+function cleanMessageContent(value, { preserveLeadingStatus = false } = {}) {
+    const source = preserveLeadingStatus ? String(value || '') : stripLeadingGeneratedStatusSummary(value);
+    return stripStructuredEvidence(source)
         .replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/giu, ' ')
         .replace(/<stat>[\s\S]*?<\/stat>/giu, ' ')
         .replace(/<background_updates>[\s\S]*?<\/background_updates>/giu, ' ')
@@ -992,8 +1039,8 @@ function cleanMessageContent(value) {
         .trim();
 }
 
-function compactMessageContent(value, tokenLimit, { latest = false } = {}) {
-    const cleaned = cleanMessageContent(value);
+function compactMessageContent(value, tokenLimit, { latest = false, preserveLeadingStatus = false } = {}) {
+    const cleaned = cleanMessageContent(value, { preserveLeadingStatus });
     const cap = latest ? Math.max(tokenLimit, 1400) : tokenLimit;
     if (estimateTokenCount(cleaned) <= cap) return cleaned;
     const separator = ' … ';
@@ -1520,9 +1567,15 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     const recentTokens = Math.max(900, Math.min(12000, Number(options.recentContextTokens) || Math.floor(budget * 0.42)));
     const selected = selectMessages(messages, recentTokens, messageTokenLimit, Math.min(3000, recentTokens), Boolean(options.bootstrapScan));
     const playerName = playerCharacterName(messages);
+    const latestMessageIndex = messages.length - 1;
+    const newestAssistantIndex = messages.findLastIndex(message => !message?.is_user);
+    const newestUserIndex = messages.findLastIndex(message => message?.is_user);
+    const authoritativeAssistantStatus = newestAssistantIndex >= 0
+        ? compactText(extractLeadingGeneratedStatusSummary(messages[newestAssistantIndex]?.mes), 1200)
+        : '';
     const payload = {
         task: 'prepare_conditional_direction_set',
-        instruction: 'Audit the newest eligible assistant reply, map the private hidden motives that could explain notable timing or behavior, then prepare one primary and exactly two redirect-safe directions governing only NPC or world follow-through. The main roleplay instructions resolve the user action; Tale Fairy supplies only an external reaction, consequence, opportunity, or natural next causal step.',
+        instruction: 'Read the chronological transcript head first. Reconstruct the current scene from the newest assistant reply, then apply any later user text. Audit that assistant reply, map the private hidden motives that could explain notable timing or behavior, then prepare one primary and exactly two redirect-safe directions governing only NPC or world follow-through. The main roleplay instructions resolve the user action; Tale Fairy supplies only an external reaction, consequence, opportunity, or natural next causal step.',
         authority: 'Explicit OOC/scenario commands and the latest user text outrank the entire Tale Fairy plan. The user action is outside Tale Fairy’s authority: do not infer, reinterpret, expand, narrow, relocate, complete, substitute, evaluate, or define it, its target, its manner, or the player’s intent. OOC outcome commands bind the stated outcome. Never use planning to deny, delay, weaken, cap, or modify the user action. Never invent player movement or inner state; never invent player dialogue, thoughts, feelings, consent, decisions, compliance, retreat, or unrelated extra actions.',
         direction_policy: DIRECTOR_POLICY,
         calibration: 'Choose movement from scene need first; apply the sampled appetite only within that compatible movement. A high or adverse sample never independently warrants complication, conflict, interruption, or escalation. It may instead make a breather, deepening, relief, resolution, or transition more vivid and consequential.',
@@ -1534,10 +1587,23 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         contribution_rule: 'Always set beat.inject=true for a fresh analysis. Every branch must be self-propelling: produce an observable external development that exists independently of any player reply. Use completed NPC decisions, reactions, actions, disclosures, commitments, consequences, discoveries, opportunities, environmental changes, or task-native progress. In dialogue-centered scenes, contribute information, position, emotion, decision, or action that changes the situation and leaves the player free to react or continue. Add only a complementary, context-native NPC or world response, consequence, opportunity, or next causal step. If a branch would interpret or compete with the user action, the writing model must ignore it. Quiet listening, assignments, rest, travel, and other routine activity still receive something external to notice, exchange, discover, advance, or respond to; when arrival is complete, do not repeat transit, and do not narrate the player character. Keep it subtle when warranted, but in fun mode let a strong causal inference land boldly instead of collapsing into a safe placeholder. Never manufacture conflict, interruption, pressure, urgency, or restriction merely to make something happen. Explain the private choice in inject_reason.',
         response_audit_rule: 'response_audit evaluates only the newest assistant reply after a prior conditional set. Check whether Tale Fairy stayed outside the user action and whether the NPC or world follow-through created forward motion. Then infer the closest-matching branch and evaluate its external effect, plus repetition, unjustified escalation, player control, and continuity drift. Record brief patterns, not quoted prose. If repetition is clear, the next conditional set must change the local scene focus or causal engine rather than restating the same process. If no reply is eligible, set applicable=false and movement_fit=not-applicable. Audit and pattern memory are private, never injected, and never trigger automatic regeneration.',
         scale_fields: 'content_class, scope, intensity, quantity, relative_power, plot_weight, and duration are private planning metadata. They describe only the proposed NPC or world follow-through and never characterize or limit the user action.',
+        transcript_head: {
+            message_count: messages.length,
+            latest_message_index: latestMessageIndex,
+            latest_message_role: latestMessageIndex < 0 ? 'none' : messages[latestMessageIndex]?.is_user ? 'user' : 'assistant',
+            newest_assistant_index: newestAssistantIndex,
+            newest_user_index: newestUserIndex,
+            authoritative_assistant_status: authoritativeAssistantStatus || undefined,
+            rule: 'messages is chronological and the highest index is newest. The message at newest_assistant_index is the only reply response_audit may evaluate and is the authoritative completed scene before any later user message. Its status header is authoritative when present. Do not mistake the newest user message for an unanswered prompt when a higher-index assistant reply already answered it.',
+        },
+        retained_state_rule: 'current is retained planner state from before this analysis. It may be stale and must never override the transcript head. Replace obsolete time, location, activity, unresolved actions, and completed beats with what the newest assistant reply actually established.',
         current: useSpecificPlayerName(stateForPrompt(state), playerName),
         messages: selected.map(({ index, kind, message, content }) => ({
             index, kind, role: message?.is_user ? 'user' : 'assistant', name: compactText(message?.name, 100),
-            content: kind === 'recent' && typeof content === 'string' ? content : compactMessageContent(message?.mes, messageTokenLimit, { latest: index === messages.length - 1 }),
+            content: kind === 'recent' && typeof content === 'string' ? content : compactMessageContent(message?.mes, messageTokenLimit, {
+                latest: index === latestMessageIndex || index === newestAssistantIndex,
+                preserveLeadingStatus: index === newestAssistantIndex,
+            }),
         })),
     };
     const canonClaims = explicitCanonClaims(messages);
@@ -1560,7 +1626,9 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         serialized = JSON.stringify(payload);
     }
     while (estimateTokenCount(serialized) > budget && payload.messages.length > 1) {
-        payload.messages.splice(0, 1);
+        const removableIndex = payload.messages.findIndex(message => message.index !== latestMessageIndex && message.index !== newestAssistantIndex);
+        if (removableIndex < 0) break;
+        payload.messages.splice(removableIndex, 1);
         serialized = JSON.stringify(payload);
     }
     if (estimateTokenCount(serialized) > budget) {
@@ -1575,7 +1643,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     }
     // These reminders duplicate the system prompt and are the safest material
     // to shed when the caller explicitly supplies a very small prompt budget.
-    for (const key of ['calibration', 'scale_fields', 'simulation', 'direction_policy', 'authority', 'invention', 'director_sample']) {
+    for (const key of ['calibration', 'scale_fields', 'simulation', 'direction_policy', 'authority', 'invention', 'director_sample', 'motive_rule', 'horizon_rule', 'movement']) {
         if (estimateTokenCount(serialized) <= budget) break;
         delete payload[key];
         serialized = JSON.stringify(payload);
