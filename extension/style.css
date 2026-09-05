@@ -148,6 +148,10 @@
 }
 
 .living-world-guide-board section {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
     margin: 7px 0;
     padding: 7px 8px;
     border: 1px solid var(--SmartThemeBorderColor);
@@ -158,6 +162,19 @@
 .living-world-guide-board section h5 {
     margin: 0 0 4px;
     font-size: 1em;
+}
+
+/* Scratchpad text must use the drawer width; do not inherit SillyTavern's
+   narrow diagnostic/text-field wrapping rules. */
+.living-world-guide-board section [data-role] {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: normal !important;
+    word-break: keep-all !important;
+    white-space: pre-wrap !important;
 }
 
 .living-world-guide-panel small {
