@@ -13,31 +13,31 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest and detached plugin identify the adaptive-director release', () => {
-    assert.equal(manifest.version, '0.12.18');
-    assert.equal(manifest.js, 'extension/index.js?v=0.12.18');
-    assert.equal(manifest.css, 'extension/style.css?v=0.12.18');
+    assert.equal(manifest.version, '0.12.19');
+    assert.equal(manifest.js, 'extension/index.js?v=0.12.19');
+    assert.equal(manifest.css, 'extension/style.css?v=0.12.19');
     assert.match(manifest.description, /always-on adaptive story director/i);
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.12\.18'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.12\.18'/);
+    assert.match(pluginSource, /const VERSION = '0\.12\.19'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.12\.19'/);
 });
 
 test('extension loads the background-only direction modules', () => {
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.12\.18'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.12\.18'/);
-    assert.match(source, /from '\.\/request-injection\.js\?v=0\.12\.18'/);
-    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.12\.18'/);
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.12\.19'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.12\.19'/);
+    assert.match(source, /from '\.\/request-injection\.js\?v=0\.12\.19'/);
+    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.12\.19'/);
     assert.doesNotMatch(source, /action-gate/);
-    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.12\.18'/);
+    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.12\.19'/);
 });
 
-test('long-form defaults reserve room for current turns, summaries, and thinking', () => {
+test('full rebuild keeps long-form capacity while incremental refresh stays compact', () => {
     assert.match(source, /recentContextTokens: 6000/);
     assert.match(source, /maxPromptTokens: 16000/);
-    assert.match(source, /const INCREMENTAL_MAX_PROMPT_TOKENS = 9000/);
-    assert.match(source, /const INCREMENTAL_RECENT_CONTEXT_TOKENS = 3000/);
-    assert.match(source, /const INCREMENTAL_SUMMARY_CONTEXT_TOKENS = 2000/);
-    assert.match(source, /const INCREMENTAL_RESPONSE_TOKENS = 4096/);
+    assert.match(source, /const INCREMENTAL_MAX_PROMPT_TOKENS = 7000/);
+    assert.match(source, /const INCREMENTAL_RECENT_CONTEXT_TOKENS = 2200/);
+    assert.match(source, /const INCREMENTAL_SUMMARY_CONTEXT_TOKENS = 1200/);
+    assert.match(source, /const INCREMENTAL_RESPONSE_TOKENS = 3072/);
     assert.match(source, /const REBUILD_RESPONSE_TOKENS = 16384/);
     assert.match(source, /fullContextPass \? REBUILD_RESPONSE_TOKENS : INCREMENTAL_RESPONSE_TOKENS/);
     assert.match(source, /summaryContextTokens: 4000/);
@@ -47,7 +47,8 @@ test('long-form defaults reserve room for current turns, summaries, and thinking
     assert.match(analysisSource, /DEFAULT_PROMPT_TOKEN_BUDGET = 16000/);
     assert.match(analysisSource, /Math\.min\(30000, Number\(options\.maxPromptTokens\)/);
     assert.match(template, /Summary retrieval pool \(tokens\)/);
-    assert.match(template, /separately reserves up to 4,096 output\/thinking tokens/i);
+    assert.match(template, /fast refresh reserves up to 3,072 output\/thinking tokens/i);
+    assert.match(template, /full rebuild can reserve up to 16,384/i);
 });
 
 test('depth one is the default and injection proof cannot block roleplay generation', () => {

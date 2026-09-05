@@ -1,8 +1,8 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.12.18';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.12.19';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.11.96';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.12.18';
+import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.12.19';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
@@ -128,6 +128,23 @@ export const ANALYSIS_SCHEMA = Object.freeze({
     strict: true,
     returnInvalid: true,
     value: ANALYSIS_SCHEMA_VALUE,
+});
+
+const { horizon: _incrementalHorizon, hidden_motives: _incrementalMotives, ...incrementalProperties } = ANALYSIS_SCHEMA_VALUE.properties;
+export const INCREMENTAL_ANALYSIS_SCHEMA_VALUE = {
+    ...ANALYSIS_SCHEMA_VALUE,
+    properties: {
+        ...incrementalProperties,
+        contract_version: { type: 'integer', const: 6 },
+    },
+    required: ANALYSIS_SCHEMA_VALUE.required.filter(key => !['horizon', 'hidden_motives'].includes(key)),
+};
+export const INCREMENTAL_ANALYSIS_SCHEMA = Object.freeze({
+    name: 'tale_fairy_external_reaction_v6_incremental',
+    description: 'Fast Tale Fairy current-scene observations and state deltas.',
+    strict: true,
+    returnInvalid: true,
+    value: INCREMENTAL_ANALYSIS_SCHEMA_VALUE,
 });
 
 export const MODE_INSTRUCTIONS = Object.freeze({
@@ -1048,6 +1065,29 @@ function alignRetainedEvidence(value, relationOwners, latestUserName, latestUser
     return value;
 }
 
+export function alignRetainedStateToTranscript(state, messages = []) {
+    const source = Array.isArray(messages) ? messages : [];
+    const newestAssistantIndex = source.findLastIndex(message => !message?.is_user);
+    const newestUserIndex = source.findLastIndex(message => message?.is_user);
+    const assistantText = newestAssistantIndex >= 0
+        ? cleanMessageContent(source[newestAssistantIndex]?.mes, { preserveLeadingStatus: true })
+        : '';
+    const relations = [...assistantText.matchAll(new RegExp(KINSHIP_POSSESSIVE_PATTERN_SOURCE, 'giu'))]
+        .map(match => match[0]);
+    const relationOwners = authoritativeRelationOwners(relations);
+    const latestUserText = newestUserIndex >= 0 ? cleanMessageContent(source[newestUserIndex]?.mes) : '';
+    const latestUserName = newestUserIndex >= 0 ? compactText(source[newestUserIndex]?.name, 120) : '';
+    const latestUserSuggestedKinship = Boolean(latestUserName
+        && SUGGESTION_CUE_PATTERN.test(latestUserText)
+        && new RegExp(`\\b(?:${KINSHIP_TERM_SOURCE})\\b`, 'iu').test(latestUserText));
+    return normalizeState(alignRetainedEvidence(
+        normalizeState(state),
+        relationOwners,
+        latestUserName,
+        latestUserSuggestedKinship,
+    ));
+}
+
 export function transcriptHeadAlignmentErrors(result, prompt) {
     let payload = prompt;
     try {
@@ -1688,15 +1728,18 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     const latestUserSuggestedKinship = Boolean(latestUserName
         && SUGGESTION_CUE_PATTERN.test(latestUserText)
         && new RegExp(`\\b(?:${KINSHIP_TERM_SOURCE})\\b`, 'iu').test(latestUserText));
+    const retainedState = stateForPrompt(state);
     const retainedCurrent = alignRetainedEvidence(
-        useSpecificPlayerName(stateForPrompt(state), playerName),
+        useSpecificPlayerName(options.incremental ? compactPromptStateForBudget(retainedState) : retainedState, playerName),
         relationOwners,
         latestUserName,
         latestUserSuggestedKinship,
     );
     const payload = {
         task: 'prepare_conditional_direction_set',
-        instruction: 'Read the chronological transcript head first. Reconstruct the current scene from the newest assistant reply, then apply any later user text. Audit that assistant reply, map the private hidden motives that could explain notable timing or behavior, then prepare one primary and exactly two redirect-safe directions governing only NPC or world follow-through. The main roleplay instructions resolve the user action; Tale Fairy supplies only an external reaction, consequence, opportunity, or natural next causal step.',
+        instruction: options.incremental
+            ? 'Read the chronological transcript head first. Reconstruct the current scene from the newest assistant reply, apply any later user text, audit that reply, and prepare one primary and exactly two redirect-safe directions governing only NPC or world follow-through. Preserve long-range private boards; this fast pass updates the immediate scene and factual deltas only.'
+            : 'Read the chronological transcript head first. Reconstruct the current scene from the newest assistant reply, then apply any later user text. Audit that assistant reply, map the private hidden motives that could explain notable timing or behavior, then prepare one primary and exactly two redirect-safe directions governing only NPC or world follow-through. The main roleplay instructions resolve the user action; Tale Fairy supplies only an external reaction, consequence, opportunity, or natural next causal step.',
         authority: 'Explicit OOC/scenario commands and the latest user text outrank the entire Tale Fairy plan. The user action is outside Tale Fairy’s authority: do not infer, reinterpret, expand, narrow, relocate, complete, substitute, evaluate, or define it, its target, its manner, or the player’s intent. OOC outcome commands bind the stated outcome. Never use planning to deny, delay, weaken, cap, or modify the user action. Never invent player movement or inner state; never invent player dialogue, thoughts, feelings, consent, decisions, compliance, retreat, or unrelated extra actions.',
         direction_policy: DIRECTOR_POLICY,
         calibration: 'Choose movement from scene need first; apply the sampled appetite only within that compatible movement. A high or adverse sample never independently warrants complication, conflict, interruption, or escalation. It may instead make a breather, deepening, relief, resolution, or transition more vivid and consequential.',
@@ -1734,6 +1777,10 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
             }),
         })),
     };
+    if (options.incremental) {
+        delete payload.horizon_rule;
+        delete payload.motive_rule;
+    }
     const canonClaims = explicitCanonClaims(messages);
     if (canonClaims.length) payload.explicit_ooc_canon = canonClaims;
     const userInstruction = compactText(note, 800);
@@ -2312,5 +2359,20 @@ hidden_motives={status,items,audit}; status is none, open, or focused. items has
 When inject=true, the roleplay model resolves the user action only from the user text, established context, and main roleplay instructions. Tale Fairy neither interprets nor modifies it. The model then selects one compatible branch governing only NPC or world follow-through, or ignores all branches that cross that boundary. Provider-visible when, operation, and required_effect strings contain only portable abstractions describing external function or possibility. They never name scene-specific characters, locations, lore, objects, activities, user actions, events, outcomes, or player reactions. All scale classifications, target, inject_reason, preserve, forbid, scene promise, basis, response_audit, pattern memory, and retained evidence remain private and are never injected.
 world={identity,baseline,variant_rules,rp_changes,signatures,forces,confidence}
 thread_updates and actor_updates contain factual changes only; canon_updates contains explicit durable additions/removals only. Empty arrays mean no change. audit is one concise string. No other keys.`;
+
+export const INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT = `Return exactly: contract_version=6, current, beat, response_audit, world, thread_updates, actor_updates, canon_updates, ledger, note_resolution, audit.
+current={frame,frame_basis,status,immediate_action,activity,situation,activity_role,temporal_scope,location,time,loop,scene_promise,phase,emotional_direction,pressure,intrusion,novelty_ceiling}
+beat={operation,primary_when,target,required_effect,alternatives,inject,inject_reason,content_class,scope,intensity,quantity,relative_power,plot_weight,duration,preserve,forbid,basis}; alternatives is exactly 2 items matching the schema and inject is true.
+response_audit={applicable,movement_fit,repetition,unjustified_escalation,player_control,continuity_drift,patterns,summary}
+world={identity,baseline,variant_rules,rp_changes,signatures,forces,confidence}
+Provider-visible when, operation, and required_effect strings describe only portable NPC/world follow-through and never define or modify player action. Keep scene specifics in private fields. Updates contain factual changes only; empty arrays mean no change. No horizon or hidden_motives key. No other keys.`;
+
+export const INCREMENTAL_SYSTEM = `You are Tale Fairy, the private adaptive narrative director for another model that writes the roleplay. Return only JSON matching the schema.
+
+Read the newest assistant reply and any later user text as authoritative. The user action, its target, manner, intent, dialogue, thoughts, feelings, consent, and decisions are outside your authority. Never infer, redefine, narrate, deny, delay, weaken, cap, or modify them. Explicit user/OOC/scenario commands bind.
+
+Prepare one primary and exactly two conditional alternatives for the immediate NPC or world follow-through. Every branch must create one observable reaction, decision, disclosure, consequence, opportunity, discovery, environmental change, or natural causal step that exists without requiring a player reply. Quiet scenes may deepen, breathe, resolve, or transition; never manufacture conflict, urgency, interruption, or restriction merely to make something happen. If arrival or travel is complete, advance the settled interaction rather than repeating transit.
+
+Provider-visible when, operation, and required_effect text must be portable abstractions: do not name a character, place, faction, lore item, object, exact activity, user action, event, outcome, or player reaction. Private fields may be scene-specific. Summaries and retained state are fallible evidence; newer transcript facts win. Preserve exact speaker, actor, possessor, target, and proposal origin. Set beat.inject=true. Keep strings concise.`;
 
 export { PLANNER_SYSTEM as SYSTEM, extractJson };

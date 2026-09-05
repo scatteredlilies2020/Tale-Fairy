@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-    ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, MODE_INSTRUCTIONS,
-    applyAnalysis, buildAnalysisPrompt, extractJson, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult,
+    ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT,
+    INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_ANALYSIS_SCHEMA_VALUE, MODE_INSTRUCTIONS,
+    alignRetainedStateToTranscript, applyAnalysis, buildAnalysisPrompt, extractJson, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult,
 } from '../extension/analysis.js';
 import { buildPromptPayload, defaultState, stateForPrompt } from '../extension/state.js';
 import { estimateTokenCount } from '../extension/token-budget.js';
@@ -267,6 +268,17 @@ test('analysis prompt carries current context, identity, variation, bootstrap, a
     assert.equal(Object.hasOwn(prompt, 'pacing'), false);
 });
 
+test('incremental contract is a smaller v6 current-scene pass', () => {
+    assert.equal(INCREMENTAL_ANALYSIS_SCHEMA_VALUE.properties.contract_version.const, 6);
+    assert.equal(INCREMENTAL_ANALYSIS_SCHEMA.strict, true);
+    assert.ok(!Object.hasOwn(INCREMENTAL_ANALYSIS_SCHEMA_VALUE.properties, 'horizon'));
+    assert.ok(!Object.hasOwn(INCREMENTAL_ANALYSIS_SCHEMA_VALUE.properties, 'hidden_motives'));
+    assert.ok(!INCREMENTAL_ANALYSIS_SCHEMA_VALUE.required.includes('horizon'));
+    assert.ok(!INCREMENTAL_ANALYSIS_SCHEMA_VALUE.required.includes('hidden_motives'));
+    assert.match(INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, /No horizon or hidden_motives key/);
+    assert.ok(JSON.stringify(INCREMENTAL_ANALYSIS_SCHEMA).length < JSON.stringify(ANALYSIS_SCHEMA).length);
+});
+
 test('analysis prompt makes the newest assistant reply and status header authoritative over retained state', () => {
     const prompt = JSON.parse(buildAnalysisPrompt([
         { is_user: true, name: 'Ari', mes: 'Could we file the petition for her?' },
@@ -413,6 +425,37 @@ test('analysis prompt remains inside its configured budget with long rapid-fire 
     const prompt = buildAnalysisPrompt(history, defaultState(), '', {}, { maxPromptTokens: 3200, effectivePromptTokens: 2400, recentContextTokens: 1600, messageTokenLimit: 220 });
     assert.ok(estimateTokenCount(prompt) <= 2400, estimateTokenCount(prompt));
     assert.match(JSON.parse(prompt).messages.at(-1).content, /^179:/);
+});
+
+test('incremental prompt omits long-range regeneration instructions and compacts retained state', () => {
+    const state = defaultState();
+    state.hiddenMotives = { status: 'focused', items: [{ id: 'secret', actor: 'Someone', explanation: 'A private theory.' }], audit: 'private' };
+    state.horizonRadar = { status: 'latent', seeds: [{ id: 'future', trajectory: 'A distant possibility.' }], audit: 'private' };
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, state, '', {}, {
+        incremental: true, maxPromptTokens: 7000, effectivePromptTokens: 4200, recentContextTokens: 2200,
+    }));
+    assert.doesNotMatch(prompt.instruction, /map the private hidden motives/i);
+    assert.ok(!Object.hasOwn(prompt, 'horizon_rule'));
+    assert.ok(!Object.hasOwn(prompt, 'motive_rule'));
+    assert.ok(!Object.hasOwn(prompt.current, 'hiddenMotives'));
+    assert.ok(!Object.hasOwn(prompt.current, 'horizonRadar'));
+});
+
+test('retained private boards are corrected to the authoritative transcript before reuse', () => {
+    const state = defaultState();
+    state.contextLedger = "Vekk proposed petitioning Lucia's sister.";
+    state.hiddenMotives = {
+        status: 'focused',
+        items: [{ id: 'petition', actor: 'Vekk', explanation: "Vekk raised the idea of a case for Lucia's sister.", likelihood: 'likely', evidence: [], counterevidence: [], mechanism: 'draft', currentRelevance: 'background', disclosure: 'hidden', change: 'keep' }],
+        audit: "Lucia's sister remains an optional route.",
+    };
+    const aligned = alignRetainedStateToTranscript(state, [
+        { is_user: true, name: 'Lucia', mes: 'Maybe we can petition your sister, hopefully she can be found.' },
+        { is_user: false, name: 'Vekk', mes: "Vekk quietly prepares an optional supporting draft for Nim's sister without assuming her fate or consent." },
+    ]);
+    assert.match(aligned.contextLedger, /Lucia proposed petitioning Nim's sister/i);
+    assert.doesNotMatch(JSON.stringify(aligned.hiddenMotives), /Lucia's sister|Vekk raised/iu);
+    assert.match(JSON.stringify(aligned.hiddenMotives), /Nim's sister/iu);
 });
 
 test('advertised high-budget settings can use more than the former internal clamps', () => {
