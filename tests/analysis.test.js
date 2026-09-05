@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import {
     ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT,
     INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_ANALYSIS_SCHEMA_VALUE, MODE_INSTRUCTIONS,
-    alignRetainedStateToTranscript, applyAnalysis, buildAnalysisPrompt, extractJson, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult,
+    abstractIncrementalVisibleBranches, alignRetainedStateToTranscript, applyAnalysis, buildAnalysisPrompt, extractJson, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult,
 } from '../extension/analysis.js';
 import { buildPromptPayload, defaultState, stateForPrompt } from '../extension/state.js';
 import { estimateTokenCount } from '../extension/token-budget.js';
@@ -309,6 +309,32 @@ test('incremental contract is a minimal v8 scene-and-direction pass', () => {
     assert.match(INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, /No other keys/);
     assert.ok(JSON.stringify(INCREMENTAL_ANALYSIS_SCHEMA).length < JSON.stringify(ANALYSIS_SCHEMA).length);
     assert.deepEqual(validateAnalysisResult(incrementalResult()), { valid: true, errors: [] });
+});
+
+test('incremental refresh locally abstracts private names without discarding an otherwise usable result', () => {
+    const leaky = incrementalResult({
+        current: { ...incrementalResult().current, location: 'East Refectory alcove' },
+        beat: {
+            ...incrementalResult().beat,
+            primary_when: "Nim's consent is discussed in the Refectory.",
+            operation: 'Let Vekk clarify the private option for Nim.',
+            required_effect: 'Vekk provides one observable answer without deciding the player response.',
+            alternatives: [
+                { when: 'Nim accepts.', operation: 'Let Vekk acknowledge it.', required_effect: 'Nim receives a concrete external response.' },
+                { when: 'The Refectory changes around them.', operation: 'Let the Refectory supply a natural transition.', required_effect: 'Move the Refectory interaction forward.' },
+            ],
+        },
+        ledger: "Lucia proposed petitioning Nim's sister, and Vekk prepared an optional private case.",
+    });
+    assert.equal(validateAnalysisResult(leaky).valid, false);
+    const abstract = abstractIncrementalVisibleBranches(leaky);
+    assert.deepEqual(validateAnalysisResult(abstract), { valid: true, errors: [] });
+    assert.doesNotMatch(JSON.stringify(abstract.beat), /Nim|Vekk|Refectory/iu);
+    assert.match(abstract.beat.operation, /established participant/i);
+    assert.match(abstract.beat.alternatives[1].operation, /current environment/i);
+    assert.equal(abstract.ledger, leaky.ledger);
+    assert.equal(abstract.current.location, leaky.current.location);
+    assert.match(leaky.beat.operation, /Vekk/);
 });
 
 test('incremental results refresh the scene and direction while retaining expensive long-range state', () => {

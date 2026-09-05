@@ -1,8 +1,8 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.12.20';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.12.22';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.11.96';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.12.20';
+import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.12.22';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
@@ -285,7 +285,72 @@ function canonSpecificTerms(result) {
     addEmbeddedNames(result?.beat?.forbid);
     addEmbeddedNames(result?.beat?.basis);
     addEmbeddedNames(result?.ledger);
+    for (const term of [...terms]) {
+        const owner = term.replace(/(?:'s|’s)$/iu, '');
+        if (owner !== term && owner) terms.add(owner);
+    }
     return terms;
+}
+
+function escapedPattern(value) {
+    return String(value || '').replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+}
+
+function replacePrivateTerm(value, term, replacement) {
+    if (typeof value !== 'string' || !term) return value;
+    const pieces = words(term).map(match => escapedPattern(match[0]));
+    if (!pieces.length) return value;
+    const pattern = pieces.join('[\\s\\p{Pd}]+');
+    return value.replace(new RegExp(`(?<!\\p{L})${pattern}(?!\\p{L})`, 'giu'), replacement);
+}
+
+/**
+ * Incremental refresh must never pay for a second model call merely because
+ * otherwise useful provider guidance repeated a private proper noun. Keep the
+ * exact scene, ledger, basis, preservation rules, and thread updates private,
+ * and abstract only the three fields that can be injected into the RP model.
+ */
+export function abstractIncrementalVisibleBranches(result) {
+    if (result?.contract_version !== 8 || !result.beat || typeof result.beat !== 'object') return result;
+    const privateTerms = [...canonSpecificTerms(result)].filter(Boolean).sort((left, right) => right.length - left.length);
+    if (!privateTerms.length) return result;
+
+    const locationPhrase = normalizedPhrase(result.current?.location);
+    const locationTerms = new Set([locationPhrase]);
+    for (const match of capitalizedWords(result.current?.location)) locationTerms.add(normalizedPhrase(match[0]));
+
+    const abstract = value => {
+        let output = value;
+        for (const term of privateTerms) {
+            const possessive = /(?:'s|’s)$/iu.test(term);
+            const replacement = locationTerms.has(term)
+                ? 'the current environment'
+                : possessive ? "an established participant's" : 'an established participant';
+            output = replacePrivateTerm(output, term, replacement);
+        }
+        return String(output || '')
+            .replace(/\bthe\s+an established participant\b/giu, 'the established participant')
+            .replace(/\ban\s+an established participant\b/giu, 'an established participant')
+            .replace(/\bthe\s+the current environment\b/giu, 'the current environment')
+            .replace(/\s{2,}/gu, ' ')
+            .trim();
+    };
+    const branch = value => value && typeof value === 'object' ? {
+        ...value,
+        when: abstract(value.when),
+        operation: abstract(value.operation),
+        required_effect: abstract(value.required_effect),
+    } : value;
+    return {
+        ...result,
+        beat: {
+            ...result.beat,
+            primary_when: abstract(result.beat.primary_when),
+            operation: abstract(result.beat.operation),
+            required_effect: abstract(result.beat.required_effect),
+            alternatives: Array.isArray(result.beat.alternatives) ? result.beat.alternatives.map(branch) : result.beat.alternatives,
+        },
+    };
 }
 
 function validateBeatAnalysisResult(result, { requireHorizon = true } = {}) {

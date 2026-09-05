@@ -4,30 +4,30 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.12.20';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.12.20';
-import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.12.20';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.12.20';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.12.20';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.12.20';
-import { normalizeModelListResponse } from './models.js?v=0.12.20';
-import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.108';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.12.20';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.12.20';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.12.20';
-import { estimateTokenCount } from './token-budget.js?v=0.12.20';
-import { completionText } from './completion-response.js?v=0.12.20';
-import { sampleDirectorSignals } from './director-sampling.js?v=0.12.20';
-import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, plannerValidationRepairInstruction, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.12.20';
+import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.12.22';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.12.22';
+import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.12.22';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.12.22';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.12.22';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.12.22';
+import { normalizeModelListResponse } from './models.js?v=0.12.22';
+import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.12.22';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.12.22';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.12.22';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.12.22';
+import { estimateTokenCount } from './token-budget.js?v=0.12.22';
+import { completionText } from './completion-response.js?v=0.12.22';
+import { sampleDirectorSignals } from './director-sampling.js?v=0.12.22';
+import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, plannerValidationRepairInstruction, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.12.22';
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
-import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.12.20';
-import { selectBeatBranchIndex } from './beat-director.js?v=0.12.20';
-import { formatHiddenMotives } from './scratchpad-format.js?v=0.12.20';
-import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.12.20';
-import { createSafetyFallbackState } from './fallback-direction.js?v=0.12.20';
+import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.12.22';
+import { selectBeatBranchIndex } from './beat-director.js?v=0.12.22';
+import { formatHiddenMotives } from './scratchpad-format.js?v=0.12.22';
+import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.12.22';
+import { createSafetyFallbackState } from './fallback-direction.js?v=0.12.22';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.12.20';
+const RUNTIME_VERSION = '0.12.22';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -1247,16 +1247,17 @@ function parseAnalysisResponse(value, prompt = '') {
         const rawResult = value && typeof value === 'object' && !Array.isArray(value) && ([2, 6, 7, 8].includes(value.contract_version) || value.scene)
             ? value
             : extractJson(completionText(value));
-        const validation = validateAnalysisResult(rawResult);
+        const result = abstractIncrementalVisibleBranches(rawResult);
+        const validation = validateAnalysisResult(result);
         if (!validation.valid) {
             const validationErrors = validation.errors.slice(0, 16);
             throw new AnalysisValidationError(`Planner violated its strict output contract: ${validationErrors.join('; ')}.`, validationErrors);
         }
-        const alignmentErrors = transcriptHeadAlignmentErrors(rawResult, prompt);
+        const alignmentErrors = transcriptHeadAlignmentErrors(result, prompt);
         if (alignmentErrors.length) {
             throw new AnalysisValidationError(`Planner analyzed stale transcript state: ${alignmentErrors.join('; ')}.`, alignmentErrors);
         }
-        return rawResult;
+        return result;
     } catch (error) {
         if (error instanceof AnalysisValidationError) throw error;
         throw new AnalysisValidationError(`Planner did not return valid JSON: ${error?.message || error}.`);
@@ -1744,7 +1745,11 @@ async function requestAnalysis(prompt, externalSignal, detachedMeta) {
         ...(fullContextPass ? {} : {
             systemPrompt: INCREMENTAL_SYSTEM_PROMPT,
             schema: INCREMENTAL_ANALYSIS_SCHEMA,
-            reasoningMode: 'minimum',
+            // Routine refresh is latency-sensitive and needs visible JSON, not
+            // a hidden chain of thought that can consume the entire response
+            // budget before the provider emits an answer. Full Rebuild still
+            // honors the configured/inherited reasoning level.
+            reasoningMode: 'off',
             allowValidationRepair: false,
             label: 'incremental planner',
             cacheNamespace: 'analysis-incremental-v8',
