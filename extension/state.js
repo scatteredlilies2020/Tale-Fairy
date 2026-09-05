@@ -1,9 +1,9 @@
-import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.12.6';
+import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.12.7';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
 import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js';
-import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile, selectBeatBranchIndex } from './beat-director.js?v=0.12.6';
-import { normalizeDirectorSample } from './director-sampling.js?v=0.12.6';
+import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile, selectBeatBranchIndex } from './beat-director.js?v=0.12.7';
+import { normalizeDirectorSample } from './director-sampling.js?v=0.12.7';
 
 export const STATE_KEY = 'livingWorldGuide';
 export const STATE_VERSION = 56;
@@ -723,9 +723,11 @@ export function isDirectionCurrent(state, messages = [], chatId = '') {
     const s = normalizeState(state);
     if (!s.beatDirective.operation || !s.beatDirective.primaryWhen || !s.beatDirective.requiredEffect || s.beatDirective.alternatives.length !== 2) return false;
     if (isStateAligned(s, messages, chatId)) return true;
-    if (s.sourceChatId && chatId && s.sourceChatId !== String(chatId)) return false;
-    if (!messages.at(-1)?.is_user || s.sourceMessageCount !== messages.length - 1) return false;
-    return s.lastAnalysisFingerprint === fingerprintMessages(messages.slice(0, -1));
+    // A conditional set is a one-response lease. Reusing it after a new user
+    // message lets an old topic keep steering an unrelated turn while the
+    // detached planner is still catching up. Fail closed until the fresh
+    // transcript has been analyzed instead.
+    return false;
 }
 
 // If a generation has no archived routes yet, a plan made from the discarded

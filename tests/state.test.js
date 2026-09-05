@@ -183,11 +183,11 @@ test('planner prompt state excludes obsolete future machinery', () => {
     assert.equal(compact.horizonRadar.seeds[0].id, 'future');
 });
 
-test('analyzed guidance remains usable for the immediately appended user action', () => {
+test('analyzed guidance expires when a new user message changes the transcript', () => {
     const state = analyzedState();
     assert.equal(isStateAligned(state, messages, 'chat-a'), true);
     assert.equal(isGuidanceUsable(state, messages, 'chat-a'), true);
-    assert.equal(isGuidanceUsable(state, [...messages, { is_user: true, mes: 'Actually, I leave.' }], 'chat-a'), true);
+    assert.equal(isGuidanceUsable(state, [...messages, { is_user: true, mes: 'Actually, I leave.' }], 'chat-a'), false);
     assert.equal(isGuidanceUsable(state, messages, 'chat-b'), false);
     assert.equal(isGuidanceUsable({ ...state, lastInject: false }, messages, 'chat-a'), false);
 });

@@ -1,6 +1,6 @@
 {
   "name": "tale-fairy",
-  "version": "0.12.6",
+  "version": "0.12.7",
   "description": "Browser-independent Tale Fairy planner jobs for SillyTavern.",
   "type": "module",
   "main": "index.js",
