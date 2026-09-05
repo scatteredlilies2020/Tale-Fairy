@@ -1,8 +1,8 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.12.13';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.12.14';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.11.96';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.12.13';
+import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.12.14';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
@@ -962,12 +962,15 @@ function compactPromptStateForBudget(current = {}) {
 
 function leadingGeneratedStatusSummary(value) {
     const source = String(value || '').replace(/^\uFEFF/u, '');
+    const wrapped = source.match(/^\s*<stat(?:\s[^<>]*?)?>([\s\S]*?)<\/stat\s*>/iu);
     const sections = source.split(/\r?\n\s*\r?\n/u);
-    const lines = String(sections[0] || '').split(/\r?\n/u).map(line => line.trim()).filter(Boolean);
+    const candidate = wrapped ? wrapped[1] : String(sections[0] || '');
+    const lines = candidate.split(/\r?\n/u).map(line => line.trim()).filter(Boolean);
     const statusLine = /^(?:time(?:\s*&\s*weather)?|date|day|weather|location|current\s+beat|positions?|inventory(?:\s*&\s*objects)?|objects?|physical\s+state|emotions?|psyche|characters?|active\s+threads?)\s*=\s*\S/iu;
     const contentLines = lines.filter(line => !/^```(?:[\p{L}\p{N}_-]+)?$/u.test(line));
     if (contentLines.length < 3 || !contentLines.every(line => statusLine.test(line))) return { source, status: '', body: source };
-    return { source, status: contentLines.join('\n'), body: sections.slice(1).join('\n\n') };
+    const body = wrapped ? source.slice(wrapped[0].length).trimStart() : sections.slice(1).join('\n\n');
+    return { source, status: contentLines.join('\n'), body };
 }
 
 function stripLeadingGeneratedStatusSummary(value) {
@@ -1009,7 +1012,10 @@ export function transcriptHeadAlignmentErrors(result, prompt) {
     const expectedTime = statusSummaryValue(status, 'Time') || statusSummaryValue(status, 'Time & Weather');
     const expectedClock = normalizedClockMinutes(expectedTime);
     const actualClock = normalizedClockMinutes(result.current.time);
-    if (expectedClock !== null && actualClock !== null && expectedClock !== actualClock) {
+    if (expectedClock !== null && actualClock === null) {
+        return [`current.time omits the authoritative newest-assistant clock ${expectedTime}`];
+    }
+    if (expectedClock !== null && expectedClock !== actualClock) {
         return [`current.time describes ${String(result.current.time).trim()} but the authoritative newest-assistant status is ${expectedTime}`];
     }
     return [];
@@ -1029,7 +1035,10 @@ function stripStructuredEvidence(value) {
 }
 
 function cleanMessageContent(value, { preserveLeadingStatus = false } = {}) {
-    const source = preserveLeadingStatus ? String(value || '') : stripLeadingGeneratedStatusSummary(value);
+    const leading = leadingGeneratedStatusSummary(value);
+    const source = preserveLeadingStatus && leading.status
+        ? `${leading.status}\n\n${leading.body}`
+        : leading.body;
     return stripStructuredEvidence(source)
         .replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/giu, ' ')
         .replace(/<stat>[\s\S]*?<\/stat>/giu, ' ')

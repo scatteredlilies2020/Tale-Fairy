@@ -295,6 +295,26 @@ test('analysis prompt makes the newest assistant reply and status header authori
     assert.match(prompt.messages.at(-1).content, /Keep her fate unconfirmed/);
 });
 
+test('analysis prompt preserves a SillyTavern stat block on the newest assistant reply', () => {
+    const prompt = JSON.parse(buildAnalysisPrompt([
+        { is_user: true, name: 'Lucia', mes: 'We eat.' },
+        {
+            is_user: false,
+            name: 'Narrator',
+            mes: '<stat>\n```\nTime & Weather = Date: 05.15.0021 BBY | Time: 01:10 PM; midday\nLocation = Coruscant | Jedi Temple, East Refectory south alcove\nCurrent Beat = The group eats while a private supporting case is accepted\n```\n</stat>\n\nThe commander records the missing relative as a private supporting case. Lunch continues at the table.',
+        },
+    ], {
+        ...defaultState(),
+        scene: { ...defaultState().scene, time: '01:01 PM', location: 'serving line' },
+    }));
+
+    assert.match(prompt.transcript_head.authoritative_assistant_status, /01:10 PM/);
+    assert.match(prompt.transcript_head.authoritative_assistant_status, /south alcove/);
+    assert.match(prompt.messages.at(-1).content, /^Time & Weather =/);
+    assert.match(prompt.messages.at(-1).content, /private supporting case/);
+    assert.doesNotMatch(prompt.messages.at(-1).content, /<stat>/);
+});
+
 test('planner validation detects a stale clock against the newest assistant status', () => {
     const prompt = buildAnalysisPrompt([
         { is_user: true, name: 'Ari', mes: 'Let us sit down.' },
@@ -304,6 +324,14 @@ test('planner validation detects a stale clock against the newest assistant stat
     const current = result({ current: { ...result().current, time: '13:10', location: 'South alcove table' } });
     assert.match(transcriptHeadAlignmentErrors(stale, prompt)[0], /authoritative newest-assistant status is 01:10 PM/i);
     assert.deepEqual(transcriptHeadAlignmentErrors(current, prompt), []);
+});
+
+test('planner validation rejects an omitted clock when the newest assistant stat block supplies one', () => {
+    const prompt = buildAnalysisPrompt([
+        { is_user: false, name: 'Narrator', mes: '<stat>\n```\nTime = 01:10 PM\nLocation = South alcove table\nCurrent Beat = Lunch has begun\n```\n</stat>\n\nEveryone settles at the table.' },
+    ], defaultState());
+    const missing = result({ current: { ...result().current, time: 'current midday', location: 'South alcove table' } });
+    assert.match(transcriptHeadAlignmentErrors(missing, prompt)[0], /omits the authoritative newest-assistant clock/i);
 });
 
 test('analysis prompt treats OOC and scenario authority as binding, not future suggestions', () => {
