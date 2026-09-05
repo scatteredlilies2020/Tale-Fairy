@@ -235,6 +235,9 @@ test('analysis prompt carries current context, identity, variation, bootstrap, a
     assert.equal(prompt.summary_sources[0].label, 'Continuity Memory');
     assert.match(prompt.invention, /strong, scene-supported inference about an incentive, capability, relationship, or hidden motive/i);
     assert.match(prompt.invention, /weak guess as fact/i);
+    assert.match(prompt.motive_rule, /specific intervention the clearest causal explanation/i);
+    assert.match(prompt.motive_rule, /personally summoning an unusually exceptional subject/i);
+    assert.match(prompt.motive_rule, /rank it most-likely/i);
     assert.match(prompt.horizon_rule, /bounded radar of zero to four optional trajectories/i);
     assert.match(prompt.horizon_rule, /near-term matter merely renamed as distant/i);
     assert.match(prompt.horizon_rule, /genuinely original seed/i);
@@ -334,6 +337,18 @@ test('applying analysis retains ranked hidden motives for the Scratchpad only', 
     assert.equal(next.hiddenMotives.items[0].likelihood, 'most-likely');
     assert.equal(stateForPrompt(next).hiddenMotives.items[0].actor, 'Supreme Chancellor');
     assert.doesNotMatch(buildPromptPayload(next, { guidanceUsable: true }), /Supreme Chancellor|latent trait|expedited the meeting/i);
+});
+
+test('specific lore-supported personal intervention stays private while ranking most-likely', () => {
+    const analyzed = result({ hidden_motives: {
+        status: 'focused', audit: 'The established power relationship and exceptional trait make the personal summons the strongest explanation.',
+        items: [{ id: 'personal-summons', actor: 'Supreme Chancellor Palpatine', explanation: 'Palpatine personally summoned Lucia after recognizing that her unmatched Midichlorian count made the meeting strategically urgent.', likelihood: 'most-likely', evidence: ['The meeting was expedited.', 'Palpatine controls access to the office.', 'Lucia has the highest established Midichlorian count.'], counterevidence: ['No direct confirmation of a personal summons appears yet.'], mechanism: 'The Chancellor can personally reorder the schedule and call in a strategically important subject.', current_relevance: 'drives-beat', disclosure: 'hidden', change: 'keep' }],
+    } });
+    const next = applyAnalysis(defaultState(), analyzed, messages);
+    assert.equal(next.hiddenMotives.items[0].likelihood, 'most-likely');
+    assert.match(next.hiddenMotives.items[0].explanation, /personally summoned Lucia/i);
+    const payload = buildPromptPayload(next, { guidanceUsable: true });
+    assert.doesNotMatch(payload, /Palpatine|personally summoned Lucia|Midichlorian/i);
 });
 
 test('related original horizon seeds remain speculation instead of becoming durable trajectory', () => {
