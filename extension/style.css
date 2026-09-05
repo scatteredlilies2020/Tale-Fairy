@@ -109,6 +109,9 @@
 
 .living-world-guide-board {
     display: none;
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
     margin-top: 8px;
     padding: 8px;
     border: 1px solid var(--SmartThemeBorderColor);
@@ -122,8 +125,11 @@
 }
 
 .living-world-guide-board [data-role] {
+    box-sizing: border-box;
+    min-width: 0;
     margin: 4px 0;
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
+    word-break: normal;
     white-space: pre-wrap;
 }
 
