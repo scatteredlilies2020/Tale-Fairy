@@ -238,6 +238,9 @@ test('analysis prompt carries current context, identity, variation, bootstrap, a
     assert.match(prompt.motive_rule, /specific intervention the clearest causal explanation/i);
     assert.match(prompt.motive_rule, /personally summoning an unusually exceptional subject/i);
     assert.match(prompt.motive_rule, /rank it most-likely/i);
+    assert.match(prompt.motive_rule, /ordered established, most-likely, likely, possible, wild-card, then contradicted/i);
+    assert.match(prompt.motive_rule, /Preserve stable ids across analyses/i);
+    assert.match(prompt.motive_rule, /retire when evidence resolves or defeats it/i);
     assert.match(prompt.horizon_rule, /bounded radar of zero to four optional trajectories/i);
     assert.match(prompt.horizon_rule, /near-term matter merely renamed as distant/i);
     assert.match(prompt.horizon_rule, /genuinely original seed/i);

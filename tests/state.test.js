@@ -60,6 +60,28 @@ test('hidden motives remain open, ranked, and private across normalization and p
     assert.doesNotMatch(payload, /Supreme Chancellor|trait-recognition|outside force|wild-card/i);
 });
 
+test('hidden motive normalization enforces likelihood rank while preserving order within a tier', () => {
+    const motive = (id, likelihood) => ({
+        id, actor: `Actor ${id}`, explanation: `Explanation ${id}.`, likelihood,
+        evidence: [], counterevidence: [], mechanism: `Mechanism ${id}.`,
+        current_relevance: 'background', disclosure: 'hidden', change: 'keep',
+    });
+    const state = normalizeState({ hiddenMotives: {
+        status: 'open',
+        items: [
+            motive('possible-first', 'possible'),
+            motive('likely-first', 'likely'),
+            motive('established', 'established'),
+            motive('wild-card', 'wild-card'),
+            motive('likely-second', 'likely'),
+            motive('contradicted', 'contradicted'),
+        ],
+    } });
+    assert.deepEqual(state.hiddenMotives.items.map(item => item.id), [
+        'established', 'likely-first', 'likely-second', 'possible-first', 'wild-card', 'contradicted',
+    ]);
+});
+
 test('horizon radar normalizes bounded optional long-range hypotheses', () => {
     const state = normalizeState({ horizonRadar: {
         status: 'developing', audit: 'Independent long-range paths remain open.',

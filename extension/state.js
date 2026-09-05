@@ -1,9 +1,9 @@
-import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.12.8';
+import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.12.9';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
 import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js';
-import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile, selectBeatBranchIndex } from './beat-director.js?v=0.12.8';
-import { normalizeDirectorSample } from './director-sampling.js?v=0.12.8';
+import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile, selectBeatBranchIndex } from './beat-director.js?v=0.12.9';
+import { normalizeDirectorSample } from './director-sampling.js?v=0.12.9';
 
 export const STATE_KEY = 'livingWorldGuide';
 export const STATE_VERSION = 56;
@@ -25,6 +25,7 @@ const HORIZON_SCALES = new Set(['arc', 'months-years', 'open-ended']);
 const HORIZON_RELATIONS = new Set(['none', 'echo', 'seed', 'advance', 'converge']);
 const HORIZON_CHANGES = new Set(['keep', 'adjust', 'replace', 'retire']);
 const MOTIVE_LIKELIHOODS = new Set(['established', 'most-likely', 'likely', 'possible', 'wild-card', 'contradicted']);
+const MOTIVE_LIKELIHOOD_RANK = Object.freeze({ established: 0, 'most-likely': 1, likely: 2, possible: 3, 'wild-card': 4, contradicted: 5 });
 const MOTIVE_RELEVANCE = new Set(['none', 'background', 'supports-beat', 'drives-beat']);
 const MOTIVE_DISCLOSURES = new Set(['hidden', 'signaled', 'revealed']);
 const MOTIVE_CHANGES = new Set(['keep', 'adjust', 'replace', 'retire']);
@@ -170,7 +171,7 @@ function normalizeHiddenMotives(value = {}) {
         if (!id || !item.actor || !item.explanation || !item.mechanism || seen.has(id)) return false;
         seen.add(id);
         return item.change !== 'retire';
-    });
+    }).sort((left, right) => MOTIVE_LIKELIHOOD_RANK[left.likelihood] - MOTIVE_LIKELIHOOD_RANK[right.likelihood]);
     return {
         status: ['none', 'open', 'focused'].includes(status) && (items.length ? status !== 'none' : status === 'none')
             ? status
