@@ -343,7 +343,7 @@ test('planner validation rejects a kinship owner inverted by stale retained cont
         {
             is_user: false,
             name: 'Narrator',
-            mes: 'Time = 01:10 PM\nLocation = South alcove table\nCurrent Beat = Nim approves a private supporting case for his missing sister\n\nVekk explains that Nim’s sister remains listed as missing and creates a private draft with Nim’s consent.',
+            mes: `Time = 01:10 PM\nLocation = South alcove table\nCurrent Beat = Nim approves a private supporting case for his missing sister\n\n${'Routine lunch detail continues. '.repeat(400)} Vekk explains that Nim’s sister remains listed as missing and creates a private draft with Nim’s consent. ${'The meal continues without another procedural change. '.repeat(1200)}`,
         },
     ], defaultState());
     const inverted = result({
@@ -354,9 +354,18 @@ test('planner validation rejects a kinship owner inverted by stale retained cont
         current: { ...result().current, time: '01:10 PM', location: 'South alcove table' },
         continuity_threads: [{ id: 'relative', thread: "Nim's sister", state: 'A private supporting case exists.' }],
     });
+    const misattributed = result({
+        current: { ...result().current, time: '01:10 PM', location: 'South alcove table' },
+        ledger: 'Vekk raised the idea of petitioning the sister and prepared a private draft.',
+    });
+    const parsedPrompt = JSON.parse(prompt);
+    assert.equal(parsedPrompt.transcript_head.latest_user_name, 'Lucia');
+    assert.doesNotMatch(parsedPrompt.transcript_head.authoritative_assistant_excerpt, /Nim[’']s sister/iu);
+    assert.ok(parsedPrompt.transcript_head.authoritative_relations.includes('Nim’s sister'));
     assert.match(transcriptHeadAlignmentErrors(inverted, prompt).join('\n'), /identifies Nim's sister/i);
+    assert.match(transcriptHeadAlignmentErrors(misattributed, prompt).join('\n'), /newest user Lucia made that suggestion/i);
     assert.deepEqual(transcriptHeadAlignmentErrors(aligned, prompt), []);
-    const compactPrompt = JSON.parse(prompt);
+    const compactPrompt = parsedPrompt;
     delete compactPrompt.transcript_head.latest_user_text;
     delete compactPrompt.transcript_head.authoritative_assistant_excerpt;
     assert.match(transcriptHeadAlignmentErrors(inverted, JSON.stringify(compactPrompt)).join('\n'), /identifies Nim's sister/i);

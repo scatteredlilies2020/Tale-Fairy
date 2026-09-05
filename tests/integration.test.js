@@ -13,27 +13,33 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest and detached plugin identify the adaptive-director release', () => {
-    assert.equal(manifest.version, '0.12.16');
-    assert.equal(manifest.js, 'extension/index.js?v=0.12.16');
-    assert.equal(manifest.css, 'extension/style.css?v=0.12.16');
+    assert.equal(manifest.version, '0.12.17');
+    assert.equal(manifest.js, 'extension/index.js?v=0.12.17');
+    assert.equal(manifest.css, 'extension/style.css?v=0.12.17');
     assert.match(manifest.description, /always-on adaptive story director/i);
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.12\.16'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.12\.16'/);
+    assert.match(pluginSource, /const VERSION = '0\.12\.17'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.12\.17'/);
 });
 
 test('extension loads the background-only direction modules', () => {
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.12\.16'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.12\.16'/);
-    assert.match(source, /from '\.\/request-injection\.js\?v=0\.12\.16'/);
-    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.12\.16'/);
+    assert.match(source, /from '\.\/analysis\.js\?v=0\.12\.17'/);
+    assert.match(source, /from '\.\/state\.js\?v=0\.12\.17'/);
+    assert.match(source, /from '\.\/request-injection\.js\?v=0\.12\.17'/);
+    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.12\.17'/);
     assert.doesNotMatch(source, /action-gate/);
-    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.12\.16'/);
+    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.12\.17'/);
 });
 
 test('long-form defaults reserve room for current turns, summaries, and thinking', () => {
     assert.match(source, /recentContextTokens: 6000/);
     assert.match(source, /maxPromptTokens: 16000/);
+    assert.match(source, /const INCREMENTAL_MAX_PROMPT_TOKENS = 9000/);
+    assert.match(source, /const INCREMENTAL_RECENT_CONTEXT_TOKENS = 3000/);
+    assert.match(source, /const INCREMENTAL_SUMMARY_CONTEXT_TOKENS = 2000/);
+    assert.match(source, /const INCREMENTAL_RESPONSE_TOKENS = 4096/);
+    assert.match(source, /const REBUILD_RESPONSE_TOKENS = 16384/);
+    assert.match(source, /fullContextPass \? REBUILD_RESPONSE_TOKENS : INCREMENTAL_RESPONSE_TOKENS/);
     assert.match(source, /summaryContextTokens: 4000/);
     assert.match(source, /contextSettingsVersion: 11/);
     assert.match(source, /recentContextTokens\) === 4000.*recentContextTokens = 6000/);
@@ -196,7 +202,7 @@ test('roleplay injection exposes one selected direction while alternatives stay 
 });
 
 test('planner output is lightweight while retaining structured-output negotiation', () => {
-    assert.match(source, /const PLANNER_RESPONSE_TOKENS = 16384/);
+    assert.doesNotMatch(source, /const PLANNER_RESPONSE_TOKENS = 16384/);
     assert.match(source, /mode === PLANNER_OUTPUT_MODE\.JSON_SCHEMA \? \{ json_schema: schema \} : \{\}/);
     assert.match(source, /plannerMessages\(systemPrompt, prompt, schema, mode, repairInstruction\)/);
     assert.match(source, /withValidationRepair\(\(\) => runProfileAttempt\(mode\)/);

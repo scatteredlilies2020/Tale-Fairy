@@ -4,30 +4,30 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.12.16';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.12.16';
-import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.12.16';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.12.16';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.12.16';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.12.16';
-import { normalizeModelListResponse } from './models.js?v=0.12.16';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.12.17';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.12.17';
+import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.12.17';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.12.17';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.12.17';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.12.17';
+import { normalizeModelListResponse } from './models.js?v=0.12.17';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.108';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.12.16';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.12.16';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.12.16';
-import { estimateTokenCount } from './token-budget.js?v=0.12.16';
-import { completionText } from './completion-response.js?v=0.12.16';
-import { sampleDirectorSignals } from './director-sampling.js?v=0.12.16';
-import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, plannerValidationRepairInstruction, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.12.16';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.12.17';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.12.17';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.12.17';
+import { estimateTokenCount } from './token-budget.js?v=0.12.17';
+import { completionText } from './completion-response.js?v=0.12.17';
+import { sampleDirectorSignals } from './director-sampling.js?v=0.12.17';
+import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, plannerValidationRepairInstruction, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.12.17';
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
-import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.12.16';
-import { selectBeatBranchIndex } from './beat-director.js?v=0.12.16';
-import { formatHiddenMotives } from './scratchpad-format.js?v=0.12.16';
-import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.12.16';
-import { createSafetyFallbackState } from './fallback-direction.js?v=0.12.16';
+import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.12.17';
+import { selectBeatBranchIndex } from './beat-director.js?v=0.12.17';
+import { formatHiddenMotives } from './scratchpad-format.js?v=0.12.17';
+import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.12.17';
+import { createSafetyFallbackState } from './fallback-direction.js?v=0.12.17';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.12.16';
+const RUNTIME_VERSION = '0.12.17';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -71,7 +71,11 @@ let detachedPlannerEnabled = false;
 let detachedPlannerRecovering = false;
 // Reasoning providers may count hidden thinking against this ceiling. The
 // planner prompt and schema separately target a concise visible JSON result.
-const PLANNER_RESPONSE_TOKENS = 16384;
+const INCREMENTAL_MAX_PROMPT_TOKENS = 9000;
+const INCREMENTAL_RECENT_CONTEXT_TOKENS = 3000;
+const INCREMENTAL_SUMMARY_CONTEXT_TOKENS = 2000;
+const INCREMENTAL_RESPONSE_TOKENS = 4096;
+const REBUILD_RESPONSE_TOKENS = 16384;
 const PLANNER_MAX_AUTO_RETRIES = 2;
 const UI_MOUNT_TIMEOUT_MS = 30000;
 const LEGACY_UPGRADE_MAX_ATTEMPTS = 1;
@@ -1436,7 +1440,7 @@ function plannerModelRejectsTemperature(model) {
     return /(?:^|\/)(?:gpt-5(?:[.\-]|$)|o[134](?:[.\-]|$))/i.test(id);
 }
 
-function isolatePlannerGenerationData(generateData, reasoningMode, temperature = plannerTemperature(), samplingEnabled = true, outputMode = PLANNER_OUTPUT_MODE.JSON_SCHEMA, responseTokens = PLANNER_RESPONSE_TOKENS) {
+function isolatePlannerGenerationData(generateData, reasoningMode, temperature = plannerTemperature(), samplingEnabled = true, outputMode = PLANNER_OUTPUT_MODE.JSON_SCHEMA, responseTokens = INCREMENTAL_RESPONSE_TOKENS) {
     if (!generateData || typeof generateData !== 'object') return;
     generateData.stream = false;
     generateData.n = 1;
@@ -1552,7 +1556,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
         controller.signal.throwIfAborted();
         const systemPrompt = requestSpec.systemPrompt || PLANNER_SYSTEM_PROMPT;
         const schema = requestSpec.schema || ANALYSIS_SCHEMA;
-        const responseTokens = Math.max(128, Number(requestSpec.responseTokens) || PLANNER_RESPONSE_TOKENS);
+        const responseTokens = Math.max(128, Number(requestSpec.responseTokens) || INCREMENTAL_RESPONSE_TOKENS);
         const parseResponse = requestSpec.parseResponse || (value => parseAnalysisResponse(value, prompt));
         const requestedReasoningMode = requestSpec.reasoningMode || '';
         const requestLabel = requestSpec.label || 'planner';
@@ -1732,7 +1736,9 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
 }
 
 async function requestAnalysis(prompt, externalSignal, detachedMeta) {
-    return requestAnalysisOnce(prompt, externalSignal, detachedMeta);
+    return requestAnalysisOnce(prompt, externalSignal, detachedMeta, {
+        responseTokens: detachedMeta?.fullContextPass ? REBUILD_RESPONSE_TOKENS : INCREMENTAL_RESPONSE_TOKENS,
+    });
 }
 
 export async function analyzeNow({ note = null, force = false, messages = null, rebuild = false, allowOneUserAppend = false, allowOneAssistantAppend = false, allowStaleContinuity = false, waitForContinuity = false, retryAttempt = 0 } = {}) {
@@ -1779,6 +1785,10 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         const latestSaved = loadState(context.chatMetadata);
         const current = rebuild ? rebuildState(latestSaved) : latestSaved;
         current.mode = s.mode;
+        const fullContextPass = rebuild || current.canonBootstrapPending || current.scene.status === 'uninitialized' || !current.contextLedger;
+        const plannerMaxPromptTokens = fullContextPass ? s.maxPromptTokens : Math.min(s.maxPromptTokens, INCREMENTAL_MAX_PROMPT_TOKENS);
+        const plannerRecentContextTokens = fullContextPass ? s.recentContextTokens : Math.min(s.recentContextTokens, INCREMENTAL_RECENT_CONTEXT_TOKENS);
+        const plannerSummaryContextTokens = fullContextPass ? s.summaryContextTokens : Math.min(s.summaryContextTokens, INCREMENTAL_SUMMARY_CONTEXT_TOKENS);
         const analysisSelection = {
             source: s.analysisSource,
             profileId: s.analysisProfileId,
@@ -1795,14 +1805,14 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
             continuityContext,
             includeContinuity: s.continuityIntegration,
             ownPromptKey: PROMPT_KEY,
-            tokenBudget: s.summaryContextTokens,
-            worldInfoActivationTokens: s.maxPromptTokens,
+            tokenBudget: plannerSummaryContextTokens,
+            worldInfoActivationTokens: plannerMaxPromptTokens,
             onWarning: (message, error) => console.warn(`[${EXTENSION_ID}] ${message}`, error),
         });
         lastSummaryAudit = summarySourceAudit(summarySources);
         controller.signal.throwIfAborted();
-        showAnalysisPhase(`Building ${Number(s.maxPromptTokens).toLocaleString()}-token total planner input`, runId, startedAt);
-        const plannerPrompt = await buildTokenBudgetedAnalysisPrompt(chat, current, noteInstruction(userNote), bootstrapContext(context), { recentContextTokens: s.recentContextTokens, messageTokenLimit: s.messageTokenLimit, summaryContextTokens: s.summaryContextTokens, summarySources, bootstrapScan: rebuild || current.canonBootstrapPending || current.scene.status === 'uninitialized' || !current.contextLedger, fullRebuild: rebuild, maxPromptTokens: s.maxPromptTokens, variationNonce });
+        showAnalysisPhase(`Building ${Number(plannerMaxPromptTokens).toLocaleString()}-token ${fullContextPass ? 'full' : 'incremental'} planner input`, runId, startedAt);
+        const plannerPrompt = await buildTokenBudgetedAnalysisPrompt(chat, current, noteInstruction(userNote), bootstrapContext(context), { recentContextTokens: plannerRecentContextTokens, messageTokenLimit: s.messageTokenLimit, summaryContextTokens: plannerSummaryContextTokens, summarySources, bootstrapScan: fullContextPass, fullRebuild: rebuild, maxPromptTokens: plannerMaxPromptTokens, variationNonce });
         plannerTranscriptHead = transcriptHeadFromPrompt(plannerPrompt);
         showAnalysisPhase('Waiting for planner model', runId, startedAt);
         const result = await requestAnalysis(plannerPrompt, controller.signal, {
@@ -1813,6 +1823,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
             allowOneUserAppend,
             allowOneAssistantAppend,
             rebuild,
+            fullContextPass,
             mode: current.mode,
             plannerSeed: variationNonce,
             analysisSelection,

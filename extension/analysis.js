@@ -1,8 +1,8 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.12.16';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.12.17';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.11.96';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.12.16';
+import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.12.17';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
@@ -1000,6 +1000,9 @@ function normalizedClockMinutes(value) {
     return hour * 60 + minute;
 }
 
+const KINSHIP_TERM_SOURCE = 'sister|brother|mother|father|daughter|son|wife|husband|aunt|uncle|niece|nephew|grandmother|grandfather';
+const KINSHIP_POSSESSIVE_PATTERN_SOURCE = String.raw`\b([\p{Lu}][\p{L}\p{N}_-]{1,48})[’']s\s+(${KINSHIP_TERM_SOURCE})\b`;
+
 export function transcriptHeadAlignmentErrors(result, prompt) {
     let payload = prompt;
     try {
@@ -1025,11 +1028,10 @@ export function transcriptHeadAlignmentErrors(result, prompt) {
     // silently reassign a missing relative to the player. The newest completed
     // reply is authoritative, so reject a result that gives an explicitly named
     // relative to a different named person.
-    const relationPatternSource = String.raw`\b([\p{Lu}][\p{L}\p{N}_-]{1,48})[’']s\s+(sister|brother|mother|father|daughter|son|wife|husband|aunt|uncle|niece|nephew|grandmother|grandfather)\b`;
-    const relationPattern = new RegExp(relationPatternSource, 'giu');
+    const relationPattern = new RegExp(KINSHIP_POSSESSIVE_PATTERN_SOURCE, 'giu');
     const authoritativeRelations = new Map();
     for (const value of Array.isArray(head.authoritative_relations) ? head.authoritative_relations : []) {
-        const match = String(value).match(new RegExp(relationPatternSource, 'iu'));
+        const match = String(value).match(new RegExp(KINSHIP_POSSESSIVE_PATTERN_SOURCE, 'iu'));
         if (match) authoritativeRelations.set(String(match[2]).toLocaleLowerCase(), String(match[1]));
     }
     const exchange = `${String(head.latest_user_text || '')}\n${String(head.authoritative_assistant_excerpt || '')}`;
@@ -1042,6 +1044,25 @@ export function transcriptHeadAlignmentErrors(result, prompt) {
         const expectedOwner = authoritativeRelations.get(relation);
         if (expectedOwner && expectedOwner.toLocaleLowerCase() !== String(match[1]).toLocaleLowerCase()) {
             errors.push(`${match[1]}'s ${relation} contradicts the authoritative newest exchange, which identifies ${expectedOwner}'s ${relation}`);
+        }
+    }
+
+    // When the newest user explicitly proposes doing something about a
+    // relative, do not let the planner credit that proposal to an NPC merely
+    // because the NPC acts on it in the following reply.
+    const latestUserText = String(head.latest_user_text || '');
+    const latestUserName = String(head.latest_user_name || '').trim();
+    const suggestionCue = /\b(?:maybe|suggest(?:ed|ing)?|propos(?:e|ed|ing)|could|can|what\s+if|how\s+about)\b/iu;
+    const mentionsKinship = new RegExp(`\\b(?:${KINSHIP_TERM_SOURCE})\\b`, 'iu');
+    if (latestUserName && suggestionCue.test(latestUserText) && mentionsKinship.test(latestUserText)) {
+        const attributionPattern = new RegExp(
+            String.raw`\b([\p{Lu}][\p{L}\p{N}_-]{1,48})\s+(?:(?:suggested|proposed|floated|introduced|originated|offered)\b|raised\s+(?:the\s+)?(?:idea|possibility|option|proposal)\b)[^.!?\n]{0,220}\b(?:${KINSHIP_TERM_SOURCE})\b`,
+            'giu',
+        );
+        for (const match of serialized.matchAll(attributionPattern)) {
+            if (String(match[1]).toLocaleLowerCase() !== latestUserName.toLocaleLowerCase()) {
+                errors.push(`${match[1]} is incorrectly credited with the relative-related proposal; the newest user ${latestUserName} made that suggestion`);
+            }
         }
     }
     return [...new Set(errors)];
@@ -1611,10 +1632,16 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     const latestUserText = newestUserIndex >= 0
         ? compactMessageContent(messages[newestUserIndex]?.mes, 800)
         : '';
+    const latestUserName = newestUserIndex >= 0
+        ? compactText(messages[newestUserIndex]?.name, 120)
+        : '';
     const authoritativeAssistantExcerpt = newestAssistantIndex >= 0
         ? compactMessageContent(messages[newestAssistantIndex]?.mes, 2200)
         : '';
-    const authoritativeRelations = [...authoritativeAssistantExcerpt.matchAll(/\b([\p{Lu}][\p{L}\p{N}_-]{1,48})[’']s\s+(?:sister|brother|mother|father|daughter|son|wife|husband|aunt|uncle|niece|nephew|grandmother|grandfather)\b/giu)]
+    const authoritativeAssistantSource = newestAssistantIndex >= 0
+        ? cleanMessageContent(messages[newestAssistantIndex]?.mes, { preserveLeadingStatus: true })
+        : '';
+    const authoritativeRelations = [...authoritativeAssistantSource.matchAll(new RegExp(KINSHIP_POSSESSIVE_PATTERN_SOURCE, 'giu'))]
         .map(match => match[0]);
     const payload = {
         task: 'prepare_conditional_direction_set',
@@ -1637,6 +1664,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
             newest_assistant_index: newestAssistantIndex,
             newest_user_index: newestUserIndex,
             authoritative_assistant_status: authoritativeAssistantStatus || undefined,
+            latest_user_name: latestUserName || undefined,
             latest_user_text: latestUserText || undefined,
             authoritative_assistant_excerpt: authoritativeAssistantExcerpt || undefined,
             authoritative_relations: authoritativeRelations.length ? [...new Set(authoritativeRelations)] : undefined,
