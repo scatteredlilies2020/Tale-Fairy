@@ -25,7 +25,7 @@ import { selectBeatBranchIndex } from './beat-director.js?v=0.12.11';
 import { formatHiddenMotives } from './scratchpad-format.js?v=0.12.11';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.12.11';
+const RUNTIME_VERSION = '0.12.12';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -2137,8 +2137,11 @@ async function refreshCurrentPlanIfNeeded() {
         renderAnalysisActivity('Planner paused after unusable output · waiting for a new turn or Guide now', false);
         return state;
     }
+    const directionMissing = !isDirectionCurrent(state, messages, chatId);
     const decision = interrupted
         ? { shouldRun: true, code: 'interrupted', reason: 'A previously interrupted planner run must be recovered.' }
+        : directionMissing
+            ? { shouldRun: true, code: 'missing-direction', reason: 'No fresh direction is ready for the next generation.' }
         : plannerRefreshDecision({ state, messages, event: 'load' });
     state.plannerSchedule = withRefreshReason(state.plannerSchedule, decision);
     context.updateChatMetadata(saveState(context.chatMetadata, state));
@@ -2377,6 +2380,17 @@ if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPE
     pendingRequestVerification = null;
     generationGuideSelection = null;
     renderBoard();
+    // Some host paths emit GENERATION_STOPPED without MESSAGE_RECEIVED or a
+    // reliable trailing GENERATION_ENDED. Recover the successor directly so
+    // the board cannot remain stranded on a consumed direction.
+    setTimeout(() => {
+        const context = currentContext();
+        const chatId = String(context.getCurrentChatId?.() || '');
+        const messages = messagesFromChat(context.chat || []);
+        const state = loadState(context.chatMetadata);
+        if (!getSettings().enabled || !chatId || !messages.length || isDirectionCurrent(state, messages, chatId)) return;
+        void queueLatestAnalysis({ chatId, allowStaleContinuity: true });
+    }, 0);
 });
 eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
     const receivedChatId = String(currentContext().getCurrentChatId?.() || '');

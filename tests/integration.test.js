@@ -13,13 +13,13 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest and detached plugin identify the adaptive-director release', () => {
-    assert.equal(manifest.version, '0.12.11');
-    assert.equal(manifest.js, 'extension/index.js?v=0.12.11');
-    assert.equal(manifest.css, 'extension/style.css?v=0.12.11');
+    assert.equal(manifest.version, '0.12.12');
+    assert.equal(manifest.js, 'extension/index.js?v=0.12.12');
+    assert.equal(manifest.css, 'extension/style.css?v=0.12.12');
     assert.match(manifest.description, /always-on adaptive story director/i);
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.12\.11'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.12\.11'/);
+    assert.match(pluginSource, /const VERSION = '0\.12\.12'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.12\.12'/);
 });
 
 test('extension loads the background-only direction modules', () => {
@@ -154,6 +154,9 @@ test('rapid-fire turns consume guidance once and coalesce planner catch-up', () 
     assert.doesNotMatch(source, /freshDirectionNeeded = !replacement/);
     assert.match(source, /decision\.shouldRun \|\| supersededIntent \|\| freshDirectionNeeded/);
     assert.match(source, /GENERATION_ENDED[\s\S]{0,900}isDirectionCurrent\(state, messages, chatId\)[\s\S]{0,300}queueLatestAnalysis/);
+    assert.match(source, /GENERATION_STOPPED[\s\S]{0,1200}isDirectionCurrent\(state, messages, chatId\)[\s\S]{0,300}queueLatestAnalysis/);
+    assert.match(source, /const directionMissing = !isDirectionCurrent\(state, messages, chatId\)/);
+    assert.match(source, /code: 'missing-direction'/);
     assert.match(source, /revision !== generationRevision[\s\S]{0,160}acknowledgeDetachedPlannerRun/);
     assert.doesNotMatch(source, /MESSAGE_RECEIVED[\s\S]{0,180}cancelRunningAnalysis/);
     assert.doesNotMatch(directorSource, /delivery debt|release condition|event queue/i);
