@@ -4,27 +4,28 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.12.9';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.12.9';
+import { AnalysisValidationError, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, SYSTEM, validateAnalysisResult } from './analysis.js?v=0.12.10';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.12.10';
 import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.11.101';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.12.9';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.12.9';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.12.9';
-import { normalizeModelListResponse } from './models.js?v=0.12.9';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.12.10';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.12.10';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.12.10';
+import { normalizeModelListResponse } from './models.js?v=0.12.10';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.11.108';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.12.9';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.12.9';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.12.9';
-import { estimateTokenCount } from './token-budget.js?v=0.12.9';
-import { completionText } from './completion-response.js?v=0.12.9';
-import { sampleDirectorSignals } from './director-sampling.js?v=0.12.9';
-import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, plannerValidationRepairInstruction, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.12.9';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.12.10';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.12.10';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.12.10';
+import { estimateTokenCount } from './token-budget.js?v=0.12.10';
+import { completionText } from './completion-response.js?v=0.12.10';
+import { sampleDirectorSignals } from './director-sampling.js?v=0.12.10';
+import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, plannerValidationRepairInstruction, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.12.10';
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
-import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.12.9';
-import { selectBeatBranchIndex } from './beat-director.js?v=0.12.9';
+import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.12.10';
+import { selectBeatBranchIndex } from './beat-director.js?v=0.12.10';
+import { formatHiddenMotives } from './scratchpad-format.js?v=0.12.10';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.12.9';
+const RUNTIME_VERSION = '0.12.10';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -1964,17 +1965,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     ].filter(Boolean).join('\n');
     scratchpadText(board, 'scratchpad-lore', analyzed ? loreText : '', 'No generated lore model yet.');
 
-    const hiddenMotives = state.hiddenMotives || {};
-    const motiveText = (analyzed && hiddenMotives.items?.length) ? [
-        `Board status: ${hiddenMotives.status || 'open'}${hiddenMotives.audit ? ` · ${hiddenMotives.audit}` : ''}`,
-        ...hiddenMotives.items.map((motive, index) => [
-            `${index + 1}. ${motive.explanation} [${motive.likelihood}]`,
-            `Actor: ${motive.actor} · Relevance: ${motive.currentRelevance} · Disclosure: ${motive.disclosure}`,
-            `Mechanism: ${motive.mechanism}`,
-            motive.evidence?.length ? `Evidence: ${motive.evidence.join('; ')}` : '',
-            motive.counterevidence?.length ? `Counterevidence: ${motive.counterevidence.join('; ')}` : '',
-        ].filter(Boolean).join('\n')).join('\n\n'),
-    ].join('\n') : '';
+    const motiveText = formatHiddenMotives(state.hiddenMotives, analyzed);
     scratchpadOptionalText(board, 'scratchpad-hidden-motives-section', 'scratchpad-hidden-motives', motiveText);
 
     const previewContext = currentContext();
