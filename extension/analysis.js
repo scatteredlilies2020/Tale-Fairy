@@ -1,8 +1,8 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.12.15';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.12.16';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.11.96';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.12.15';
+import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.12.16';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
@@ -1007,18 +1007,44 @@ export function transcriptHeadAlignmentErrors(result, prompt) {
     } catch {
         return [];
     }
-    const status = payload?.transcript_head?.authoritative_assistant_status;
-    if (!status || !result?.current) return [];
+    const head = payload?.transcript_head;
+    const status = head?.authoritative_assistant_status;
+    if (!head || !result?.current) return [];
+    const errors = [];
     const expectedTime = statusSummaryValue(status, 'Time') || statusSummaryValue(status, 'Time & Weather');
     const expectedClock = normalizedClockMinutes(expectedTime);
     const actualClock = normalizedClockMinutes(result.current.time);
     if (expectedClock !== null && actualClock === null) {
-        return [`current.time omits the authoritative newest-assistant clock ${expectedTime}`];
+        errors.push(`current.time omits the authoritative newest-assistant clock ${expectedTime}`);
     }
     if (expectedClock !== null && expectedClock !== actualClock) {
-        return [`current.time describes ${String(result.current.time).trim()} but the authoritative newest-assistant status is ${expectedTime}`];
+        errors.push(`current.time describes ${String(result.current.time).trim()} but the authoritative newest-assistant status is ${expectedTime}`);
     }
-    return [];
+
+    // Kinship inversions are especially destructive because stale summaries can
+    // silently reassign a missing relative to the player. The newest completed
+    // reply is authoritative, so reject a result that gives an explicitly named
+    // relative to a different named person.
+    const relationPatternSource = String.raw`\b([\p{Lu}][\p{L}\p{N}_-]{1,48})[’']s\s+(sister|brother|mother|father|daughter|son|wife|husband|aunt|uncle|niece|nephew|grandmother|grandfather)\b`;
+    const relationPattern = new RegExp(relationPatternSource, 'giu');
+    const authoritativeRelations = new Map();
+    for (const value of Array.isArray(head.authoritative_relations) ? head.authoritative_relations : []) {
+        const match = String(value).match(new RegExp(relationPatternSource, 'iu'));
+        if (match) authoritativeRelations.set(String(match[2]).toLocaleLowerCase(), String(match[1]));
+    }
+    const exchange = `${String(head.latest_user_text || '')}\n${String(head.authoritative_assistant_excerpt || '')}`;
+    for (const match of exchange.matchAll(relationPattern)) {
+        authoritativeRelations.set(String(match[2]).toLocaleLowerCase(), String(match[1]));
+    }
+    const serialized = JSON.stringify(result);
+    for (const match of serialized.matchAll(relationPattern)) {
+        const relation = String(match[2]).toLocaleLowerCase();
+        const expectedOwner = authoritativeRelations.get(relation);
+        if (expectedOwner && expectedOwner.toLocaleLowerCase() !== String(match[1]).toLocaleLowerCase()) {
+            errors.push(`${match[1]}'s ${relation} contradicts the authoritative newest exchange, which identifies ${expectedOwner}'s ${relation}`);
+        }
+    }
+    return [...new Set(errors)];
 }
 
 function stripStructuredEvidence(value) {
@@ -1582,6 +1608,14 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     const authoritativeAssistantStatus = newestAssistantIndex >= 0
         ? compactText(extractLeadingGeneratedStatusSummary(messages[newestAssistantIndex]?.mes), 1200)
         : '';
+    const latestUserText = newestUserIndex >= 0
+        ? compactMessageContent(messages[newestUserIndex]?.mes, 800)
+        : '';
+    const authoritativeAssistantExcerpt = newestAssistantIndex >= 0
+        ? compactMessageContent(messages[newestAssistantIndex]?.mes, 2200)
+        : '';
+    const authoritativeRelations = [...authoritativeAssistantExcerpt.matchAll(/\b([\p{Lu}][\p{L}\p{N}_-]{1,48})[’']s\s+(?:sister|brother|mother|father|daughter|son|wife|husband|aunt|uncle|niece|nephew|grandmother|grandfather)\b/giu)]
+        .map(match => match[0]);
     const payload = {
         task: 'prepare_conditional_direction_set',
         instruction: 'Read the chronological transcript head first. Reconstruct the current scene from the newest assistant reply, then apply any later user text. Audit that assistant reply, map the private hidden motives that could explain notable timing or behavior, then prepare one primary and exactly two redirect-safe directions governing only NPC or world follow-through. The main roleplay instructions resolve the user action; Tale Fairy supplies only an external reaction, consequence, opportunity, or natural next causal step.',
@@ -1603,7 +1637,10 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
             newest_assistant_index: newestAssistantIndex,
             newest_user_index: newestUserIndex,
             authoritative_assistant_status: authoritativeAssistantStatus || undefined,
-            rule: 'messages is chronological and the highest index is newest. The message at newest_assistant_index is the only reply response_audit may evaluate and is the authoritative completed scene before any later user message. Its status header is authoritative when present. Do not mistake the newest user message for an unanswered prompt when a higher-index assistant reply already answered it.',
+            latest_user_text: latestUserText || undefined,
+            authoritative_assistant_excerpt: authoritativeAssistantExcerpt || undefined,
+            authoritative_relations: authoritativeRelations.length ? [...new Set(authoritativeRelations)] : undefined,
+            rule: 'messages is chronological and the highest index is newest. Read latest_user_text and authoritative_assistant_excerpt as one authoritative exchange. Preserve exactly who spoke, who acted, and whose person, relative, object, or idea is being discussed; never invert speaker, actor, possessor, target, or pronoun referent. The message at newest_assistant_index is the only reply response_audit may evaluate and is the authoritative completed scene before any later user message. Its status header is authoritative when present. Do not mistake the newest user message for an unanswered prompt when a higher-index assistant reply already answered it.',
         },
         retained_state_rule: 'current is retained planner state from before this analysis. It may be stale and must never override the transcript head. Replace obsolete time, location, activity, unresolved actions, and completed beats with what the newest assistant reply actually established.',
         current: useSpecificPlayerName(stateForPrompt(state), playerName),
@@ -1648,6 +1685,14 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     }
     if (estimateTokenCount(serialized) > budget && payload.messages.length) {
         payload.messages[0].content = truncateToTokenBudget(payload.messages[0].content, Math.max(16, estimateTokenCount(payload.messages[0].content) - (estimateTokenCount(serialized) - budget) - 8));
+        serialized = JSON.stringify(payload);
+    }
+    // The same newest exchange also remains in messages. On deliberately tiny
+    // budgets, retain only its compact relationship assertions in the head so
+    // validation still catches ownership inversions without duplicating prose.
+    if (estimateTokenCount(serialized) > budget) {
+        delete payload.transcript_head.latest_user_text;
+        delete payload.transcript_head.authoritative_assistant_excerpt;
         serialized = JSON.stringify(payload);
     }
     // These reminders duplicate the system prompt and are the safest material

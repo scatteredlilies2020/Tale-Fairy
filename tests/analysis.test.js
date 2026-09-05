@@ -287,6 +287,9 @@ test('analysis prompt makes the newest assistant reply and status header authori
     assert.equal(prompt.transcript_head.newest_user_index, 2);
     assert.match(prompt.transcript_head.authoritative_assistant_status, /01:10 PM/);
     assert.match(prompt.transcript_head.authoritative_assistant_status, /reserved south alcove table/);
+    assert.match(prompt.transcript_head.latest_user_text, /Keep her fate unconfirmed/);
+    assert.match(prompt.transcript_head.authoritative_assistant_excerpt, /private supporting case/);
+    assert.match(prompt.transcript_head.rule, /never invert speaker, actor, possessor, target, or pronoun referent/i);
     assert.match(prompt.transcript_head.rule, /only reply response_audit may evaluate/i);
     assert.match(prompt.retained_state_rule, /may be stale/i);
     assert.match(prompt.retained_state_rule, /must never override the transcript head/i);
@@ -332,6 +335,31 @@ test('planner validation rejects an omitted clock when the newest assistant stat
     ], defaultState());
     const missing = result({ current: { ...result().current, time: 'current midday', location: 'South alcove table' } });
     assert.match(transcriptHeadAlignmentErrors(missing, prompt)[0], /omits the authoritative newest-assistant clock/i);
+});
+
+test('planner validation rejects a kinship owner inverted by stale retained context', () => {
+    const prompt = buildAnalysisPrompt([
+        { is_user: true, name: 'Lucia', mes: 'Maybe we can petition your sister, Nim.' },
+        {
+            is_user: false,
+            name: 'Narrator',
+            mes: 'Time = 01:10 PM\nLocation = South alcove table\nCurrent Beat = Nim approves a private supporting case for his missing sister\n\nVekk explains that Nim’s sister remains listed as missing and creates a private draft with Nim’s consent.',
+        },
+    ], defaultState());
+    const inverted = result({
+        current: { ...result().current, time: '01:10 PM', location: 'South alcove table' },
+        continuity_threads: [{ id: 'relative', thread: "Lucia's sister", state: 'A petition may be filed.' }],
+    });
+    const aligned = result({
+        current: { ...result().current, time: '01:10 PM', location: 'South alcove table' },
+        continuity_threads: [{ id: 'relative', thread: "Nim's sister", state: 'A private supporting case exists.' }],
+    });
+    assert.match(transcriptHeadAlignmentErrors(inverted, prompt).join('\n'), /identifies Nim's sister/i);
+    assert.deepEqual(transcriptHeadAlignmentErrors(aligned, prompt), []);
+    const compactPrompt = JSON.parse(prompt);
+    delete compactPrompt.transcript_head.latest_user_text;
+    delete compactPrompt.transcript_head.authoritative_assistant_excerpt;
+    assert.match(transcriptHeadAlignmentErrors(inverted, JSON.stringify(compactPrompt)).join('\n'), /identifies Nim's sister/i);
 });
 
 test('analysis prompt treats OOC and scenario authority as binding, not future suggestions', () => {
