@@ -60,7 +60,7 @@ function result(overrides = {}) {
 
 function incrementalResult(overrides = {}) {
     const value = {
-        contract_version: 8,
+        contract_version: 9,
         current: {
             frame: 'grounded', frame_basis: 'The latest exchange remains a quiet practical discussion.',
             status: 'The group has clarified the private supporting option.', immediate_action: 'A companion waits for exact consent.',
@@ -82,6 +82,12 @@ function incrementalResult(overrides = {}) {
         thread_updates: [
             { op: 'upsert', id: 'private-case', thread: 'Optional private supporting case', state: 'Prepared but not attached without exact consent.', status: 'active', basis: 'The newest assistant reply states this explicitly.' },
         ],
+        hidden_motives: {
+            status: 'focused',
+            items: [{ id: 'protect-consent', actor: 'Mara', explanation: 'The companion is protecting the user’s control over the petition.', likelihood: 'most-likely', evidence: ['They explicitly wait for consent.'], counterevidence: [], mechanism: 'Waiting prevents an unauthorized commitment.', current_relevance: 'drives-beat', disclosure: 'signaled', change: 'adjust' }],
+            audit: 'The newest exchange strengthens the consent-protection explanation.',
+        },
+        actor_updates: [{ op: 'upsert', name: 'Mara', state: 'Waiting for a decision.', location: 'refectory alcove', perspective: 'The option must remain voluntary.', motivation: 'Protect the user’s control over the petition.', knowledge: 'The case is prepared but unattached.', constraints: 'Cannot proceed without consent.', agenda: 'Clarify the option and wait.', window: 'current scene' }],
         ledger: 'The user proposed petitioning the missing person’s sister. A companion prepared an optional private supporting case but will attach nothing without exact consent.',
         note_resolution: null,
         audit: 'Updates only the newest scene and immediate external response.',
@@ -300,12 +306,16 @@ test('analysis prompt carries current context, identity, variation, bootstrap, a
     assert.equal(Object.hasOwn(prompt, 'pacing'), false);
 });
 
-test('incremental contract is a minimal v8 scene-and-direction pass', () => {
-    assert.equal(INCREMENTAL_ANALYSIS_SCHEMA_VALUE.properties.contract_version.const, 8);
+test('incremental contract is a compact v9 pass that still evaluates motives and actors', () => {
+    assert.equal(INCREMENTAL_ANALYSIS_SCHEMA_VALUE.properties.contract_version.const, 9);
     assert.equal(INCREMENTAL_ANALYSIS_SCHEMA.strict, true);
-    for (const key of ['horizon', 'hidden_motives', 'world', 'response_audit', 'actor_updates', 'canon_updates']) {
+    for (const key of ['horizon', 'world', 'response_audit', 'canon_updates']) {
         assert.ok(!Object.hasOwn(INCREMENTAL_ANALYSIS_SCHEMA_VALUE.properties, key));
         assert.ok(!INCREMENTAL_ANALYSIS_SCHEMA_VALUE.required.includes(key));
+    }
+    for (const key of ['hidden_motives', 'actor_updates']) {
+        assert.ok(Object.hasOwn(INCREMENTAL_ANALYSIS_SCHEMA_VALUE.properties, key));
+        assert.ok(INCREMENTAL_ANALYSIS_SCHEMA_VALUE.required.includes(key));
     }
     assert.match(INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, /No other keys/);
     assert.ok(JSON.stringify(INCREMENTAL_ANALYSIS_SCHEMA).length < JSON.stringify(ANALYSIS_SCHEMA).length);
@@ -338,7 +348,7 @@ test('incremental refresh locally abstracts private names without discarding an 
     assert.match(leaky.beat.operation, /Vekk/);
 });
 
-test('incremental results refresh the scene and direction while retaining expensive long-range state', () => {
+test('incremental results refresh scene, direction, actors, and motives while retaining expensive long-range state', () => {
     const initial = defaultState();
     initial.horizonRadar = { status: 'latent', seeds: [{ id: 'long', kind: 'detected', trajectory: 'A long arc', engine: 'trust', scale: 'arc', condition: 'later', basis: 'prior evidence', presentRelation: 'none', change: 'keep' }], audit: 'retained' };
     initial.hiddenMotives = { status: 'focused', items: [{ id: 'why', actor: 'Vekk', explanation: 'A prior hypothesis', likelihood: 'possible', evidence: [], counterevidence: [], mechanism: 'care', currentRelevance: 'background', disclosure: 'hidden', change: 'keep' }], audit: 'retained' };
@@ -347,7 +357,8 @@ test('incremental results refresh the scene and direction while retaining expens
     assert.equal(next.beatDirective.requiredEffect, incrementalResult().beat.required_effect);
     assert.equal(next.continuityThreads[0].state, 'Prepared but not attached without exact consent.');
     assert.equal(next.horizonRadar.seeds[0].id, 'long');
-    assert.equal(next.hiddenMotives.items[0].id, 'why');
+    assert.equal(next.hiddenMotives.items[0].id, 'protect-consent');
+    assert.equal(next.entities[0].motivation, 'Protect the user’s control over the petition.');
 });
 
 test('analysis prompt makes the newest assistant reply and status header authoritative over retained state', () => {
@@ -498,17 +509,17 @@ test('analysis prompt remains inside its configured budget with long rapid-fire 
     assert.match(JSON.parse(prompt).messages.at(-1).content, /^179:/);
 });
 
-test('incremental prompt omits long-range regeneration instructions and compacts retained state', () => {
+test('incremental prompt omits horizon regeneration but retains compact motives for re-evaluation', () => {
     const state = defaultState();
     state.hiddenMotives = { status: 'focused', items: [{ id: 'secret', actor: 'Someone', explanation: 'A private theory.' }], audit: 'private' };
     state.horizonRadar = { status: 'latent', seeds: [{ id: 'future', trajectory: 'A distant possibility.' }], audit: 'private' };
     const prompt = JSON.parse(buildAnalysisPrompt(messages, state, '', {}, {
         incremental: true, maxPromptTokens: 7000, effectivePromptTokens: 4200, recentContextTokens: 2200,
     }));
-    assert.doesNotMatch(prompt.instruction, /map the private hidden motives/i);
+    assert.match(prompt.instruction, /re-evaluate actor motivations and the private hidden motives/i);
     assert.ok(!Object.hasOwn(prompt, 'horizon_rule'));
     assert.ok(!Object.hasOwn(prompt, 'motive_rule'));
-    assert.ok(!Object.hasOwn(prompt.current, 'hiddenMotives'));
+    assert.ok(Object.hasOwn(prompt.current, 'hiddenMotives'));
     assert.ok(!Object.hasOwn(prompt.current, 'horizonRadar'));
 });
 

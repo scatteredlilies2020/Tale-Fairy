@@ -74,7 +74,7 @@ let detachedPlannerRecovering = false;
 const INCREMENTAL_MAX_PROMPT_TOKENS = 4200;
 const INCREMENTAL_RECENT_CONTEXT_TOKENS = 1800;
 const INCREMENTAL_SUMMARY_CONTEXT_TOKENS = 600;
-const INCREMENTAL_RESPONSE_TOKENS = 1536;
+const INCREMENTAL_RESPONSE_TOKENS = 2304;
 const REBUILD_RESPONSE_TOKENS = 16384;
 const PLANNER_MAX_AUTO_RETRIES = 2;
 const UI_MOUNT_TIMEOUT_MS = 30000;
@@ -1752,7 +1752,7 @@ async function requestAnalysis(prompt, externalSignal, detachedMeta) {
             reasoningMode: 'off',
             allowValidationRepair: false,
             label: 'incremental planner',
-            cacheNamespace: 'analysis-incremental-v8',
+            cacheNamespace: 'analysis-incremental-v9',
         }),
     });
 }

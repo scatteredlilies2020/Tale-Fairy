@@ -27,8 +27,8 @@ test('reads a direct horizon-aware v7 structured result', () => {
     assert.equal(completionText(result), JSON.stringify(result));
 });
 
-test('reads a direct lightweight v8 structured result', () => {
-    const result = { contract_version: 8, current: {}, beat: {}, thread_updates: [] };
+test('reads a direct compact v9 structured result', () => {
+    const result = { contract_version: 9, current: {}, beat: {}, thread_updates: [], hidden_motives: {}, actor_updates: [] };
     assert.equal(completionText(result), JSON.stringify(result));
 });
 

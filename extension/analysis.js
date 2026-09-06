@@ -138,7 +138,7 @@ const INCREMENTAL_BRANCH_SCHEMA = {
 export const INCREMENTAL_ANALYSIS_SCHEMA_VALUE = {
     type: 'object', additionalProperties: false,
     properties: {
-        contract_version: { type: 'integer', const: 8 },
+        contract_version: { type: 'integer', const: 9 },
         current: { type: 'object', additionalProperties: false, properties: {
             frame: { type: 'string', enum: ['grounded', 'heightened', 'surreal'] }, frame_basis: text(160),
             status: text(180), immediate_action: text(140), activity: text(180), situation: text(220),
@@ -158,15 +158,24 @@ export const INCREMENTAL_ANALYSIS_SCHEMA_VALUE = {
             op: { type: 'string', enum: ['upsert', 'retire'] }, id: text(100), thread: text(180), state: text(220),
             status: { type: 'string', enum: ['active', 'dormant', 'due', 'blocked'] }, basis: text(150),
         }, required: ['op', 'id', 'thread', 'state', 'status', 'basis'] } },
+        hidden_motives: { type: 'object', additionalProperties: false, properties: {
+            status: { type: 'string', enum: ['none', 'open', 'focused'] },
+            items: { type: 'array', maxItems: 6, items: HIDDEN_MOTIVE_SCHEMA },
+            audit: text(300),
+        }, required: ['status', 'items', 'audit'] },
+        actor_updates: { type: 'array', maxItems: 4, items: { type: 'object', additionalProperties: false, properties: {
+            op: { type: 'string', enum: ['upsert', 'retire'] }, name: text(100), state: text(180), location: text(120),
+            perspective: text(150), motivation: text(160), knowledge: text(150), constraints: text(140), agenda: text(160), window: text(90),
+        }, required: ['op', 'name', 'state', 'location', 'perspective', 'motivation', 'knowledge', 'constraints', 'agenda', 'window'] } },
         ledger: text(1200),
         note_resolution: { anyOf: [{ type: 'object', additionalProperties: false, properties: { kind: { type: 'string', enum: ['suggest', 'correct', 'establish', 'forbid'] } }, required: ['kind'] }, { type: 'null' }] },
         audit: text(320),
     },
-    required: ['contract_version', 'current', 'beat', 'thread_updates', 'ledger', 'note_resolution', 'audit'],
+    required: ['contract_version', 'current', 'beat', 'thread_updates', 'hidden_motives', 'actor_updates', 'ledger', 'note_resolution', 'audit'],
 };
 export const INCREMENTAL_ANALYSIS_SCHEMA = Object.freeze({
-    name: 'tale_fairy_external_reaction_v8_incremental',
-    description: 'Fast Tale Fairy scene, next-response direction, and continuity deltas.',
+    name: 'tale_fairy_external_reaction_v9_incremental',
+    description: 'Compact complete Tale Fairy scene, motive, actor, direction, and continuity pass.',
     strict: true,
     returnInvalid: true,
     value: INCREMENTAL_ANALYSIS_SCHEMA_VALUE,
@@ -311,7 +320,7 @@ function replacePrivateTerm(value, term, replacement) {
  * and abstract only the three fields that can be injected into the RP model.
  */
 export function abstractIncrementalVisibleBranches(result) {
-    if (result?.contract_version !== 8 || !result.beat || typeof result.beat !== 'object') return result;
+    if (result?.contract_version !== 9 || !result.beat || typeof result.beat !== 'object') return result;
     const privateTerms = [...canonSpecificTerms(result)].filter(Boolean).sort((left, right) => right.length - left.length);
     if (!privateTerms.length) return result;
 
@@ -484,7 +493,7 @@ function validateIncrementalAnalysisResult(result) {
         }
         for (const key of keys) if (typeof value[key] !== 'string' || !value[key].trim()) errors.push(`${label}.${key} must be a non-empty string`);
     };
-    if (result?.contract_version !== 8) errors.push('contract_version must be 8');
+    if (result?.contract_version !== 9) errors.push('contract_version must be 9');
     requiredStrings(result?.current, ['frame', 'frame_basis', 'status', 'immediate_action', 'activity', 'situation', 'scene_promise', 'phase', 'emotional_direction', 'pressure', 'intrusion', 'novelty_ceiling'], 'current');
     requiredStrings(result?.beat, ['operation', 'primary_when', 'required_effect', 'basis'], 'beat');
     if (typeof result?.current?.location !== 'string') errors.push('current.location must be a string');
@@ -500,6 +509,32 @@ function validateIncrementalAnalysisResult(result) {
         requiredStrings(update, ['op', 'id', 'thread', 'state', 'status', 'basis'], `thread_updates[${index}]`);
         if (!['upsert', 'retire'].includes(update?.op)) errors.push(`thread_updates[${index}].op is invalid`);
         if (!['active', 'dormant', 'due', 'blocked'].includes(update?.status)) errors.push(`thread_updates[${index}].status is invalid`);
+    }
+    requiredStrings(result?.hidden_motives, ['status', 'audit'], 'hidden_motives');
+    if (!Array.isArray(result?.hidden_motives?.items)) errors.push('hidden_motives.items must be an array');
+    const motives = asArray(result?.hidden_motives?.items);
+    if (motives.length > 6) errors.push('hidden_motives.items must contain at most 6 hypotheses');
+    for (const [index, motive] of motives.entries()) {
+        requiredStrings(motive, ['id', 'actor', 'explanation', 'likelihood', 'mechanism', 'current_relevance', 'disclosure', 'change'], `hidden_motives.items[${index}]`);
+        for (const key of ['evidence', 'counterevidence']) if (!Array.isArray(motive?.[key])) errors.push(`hidden_motives.items[${index}].${key} must be an array`);
+        if (!['established', 'most-likely', 'likely', 'possible', 'wild-card', 'contradicted'].includes(motive?.likelihood)) errors.push(`hidden_motives.items[${index}].likelihood is invalid`);
+        if (!['none', 'background', 'supports-beat', 'drives-beat'].includes(motive?.current_relevance)) errors.push(`hidden_motives.items[${index}].current_relevance is invalid`);
+        if (!['hidden', 'signaled', 'revealed'].includes(motive?.disclosure)) errors.push(`hidden_motives.items[${index}].disclosure is invalid`);
+        if (!['keep', 'adjust', 'replace', 'retire'].includes(motive?.change)) errors.push(`hidden_motives.items[${index}].change is invalid`);
+    }
+    const liveMotives = motives.filter(motive => motive?.change !== 'retire');
+    const motiveIds = liveMotives.map(motive => String(motive?.id || '').trim().toLocaleLowerCase()).filter(Boolean);
+    if (new Set(motiveIds).size !== motiveIds.length) errors.push('hidden motives must use distinct ids');
+    if (result?.hidden_motives?.status === 'none' && liveMotives.length) errors.push('hidden_motives.status cannot be none while hypotheses remain');
+    if (result?.hidden_motives?.status !== 'none' && !liveMotives.length) errors.push('hidden_motives.status must be none when no hypotheses remain');
+    if (!Array.isArray(result?.actor_updates)) errors.push('actor_updates must be an array');
+    for (const [index, actor] of asArray(result?.actor_updates).entries()) {
+        for (const key of ['op', 'name', 'state', 'location', 'perspective', 'motivation', 'knowledge', 'constraints', 'agenda', 'window']) {
+            if (typeof actor?.[key] !== 'string') errors.push(`actor_updates[${index}].${key} must be a string`);
+        }
+        if (!['upsert', 'retire'].includes(actor?.op)) errors.push(`actor_updates[${index}].op is invalid`);
+        if (!actor?.name?.trim()) errors.push(`actor_updates[${index}].name must be non-empty`);
+        if (actor?.op !== 'retire' && (!actor?.motivation?.trim() || !actor?.agenda?.trim())) errors.push(`actor_updates[${index}] must include motivation and agenda`);
     }
     const allowed = {
         frame: ['grounded', 'heightened', 'surreal'], phase: ['establishing', 'developing', 'turning', 'landing', 'aftermath', 'transition'],
@@ -633,7 +668,7 @@ function validateCompactAnalysisResult(result) {
 }
 
 export function validateAnalysisResult(result) {
-    if (result?.contract_version === 8) return validateIncrementalAnalysisResult(result);
+    if (result?.contract_version === 9) return validateIncrementalAnalysisResult(result);
     if (result?.contract_version === 7) return validateBeatAnalysisResult(result);
     if (result?.contract_version === 6) return validateBeatAnalysisResult(result, { requireHorizon: false });
     if (result?.contract_version === 2) return validateCompactAnalysisResult(result);
@@ -1101,6 +1136,10 @@ function compactPromptStateForBudget(current = {}) {
         continuityThreads: (current.continuityThreads || []).slice(0, 5).map(item => ({ id: compactText(item.id, 40), thread: compactText(item.thread, 70), state: compactText(item.state, 80), status: item.status })),
         selfChallenge: current.selfChallenge ? { weakness: compactText(current.selfChallenge.weakness, 90), counterRoute: compactText(current.selfChallenge.counterRoute, 90), mechanismCheck: compactText(current.selfChallenge.mechanismCheck, 90), decision: compactText(current.selfChallenge.decision, 110) } : undefined,
         entities: (current.entities || []).slice(-2).map(item => ({ name: compactText(item.name, 70), state: compactText(item.state, 70), perspective: compactText(item.perspective, 70), motivation: compactText(item.motivation, 80), knowledge: compactText(item.knowledge, 65), constraints: compactText(item.constraints, 65), agenda: compactText(item.agenda, 80) })),
+        hiddenMotives: current.hiddenMotives ? {
+            status: current.hiddenMotives.status,
+            items: (current.hiddenMotives.items || []).slice(0, 6).map(item => ({ id: compactText(item.id, 50), actor: compactText(item.actor, 60), explanation: compactText(item.explanation, 110), likelihood: item.likelihood, evidence: (item.evidence || []).slice(0, 2).map(value => compactText(value, 75)), counterevidence: (item.counterevidence || []).slice(0, 1).map(value => compactText(value, 75)), mechanism: compactText(item.mechanism, 80), currentRelevance: item.currentRelevance, disclosure: item.disclosure })),
+        } : undefined,
         possibilities: (current.possibilities || []).slice(-2).map(item => compactText(item, 80)),
         pathways: (current.pathways || []).slice(0, 6).map(item => ({ id: compactText(item.id, 50), lane: item.lane, agent: compactText(item.agent, 40), engine: compactText(item.engine, 45), relation: item.relation, scale: item.scale, origin: item.origin, evidenceRefs: (item.evidenceRefs || []).slice(0, 2), unresolvedBasis: compactText(item.unresolvedBasis, 75), completionCheck: item.completionCheck, mechanismStatus: item.mechanismStatus, mechanismBasis: compactText(item.mechanismBasis, 75), direction: compactText(item.direction, 90), when: compactText(item.when, 70), horizon: compactText(item.horizon, 30), status: item.status })),
         nextGuides: (current.nextGuides || []).slice(0, 2).map(item => ({ id: compactText(item.id, 50), routeLane: item.routeLane, causalAgent: compactText(item.causalAgent, 40), causalEngine: compactText(item.causalEngine, 45), scale: item.scale, direction: compactText(item.direction, 100), useWhen: compactText(item.useWhen, 70), dropWhen: compactText(item.dropWhen, 70), worldDelta: compactText(item.worldDelta, 80), origin: item.origin, mechanismStatus: item.mechanismStatus, mechanismBasis: compactText(item.mechanismBasis, 75), basis: compactText(item.basis, 80), strength: item.strength, causalEventIds: (item.causalEventIds || []).slice(0, 1), disclosure: item.disclosure })),
@@ -1879,7 +1918,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     const payload = {
         task: 'prepare_conditional_direction_set',
         instruction: options.incremental
-            ? 'Read the chronological transcript head first. Reconstruct the current scene from the newest assistant reply, apply any later user text, audit that reply, and prepare one primary and exactly two redirect-safe directions governing only NPC or world follow-through. Preserve long-range private boards; this fast pass updates the immediate scene and factual deltas only.'
+            ? 'Read the chronological transcript head first. Reconstruct the current scene from the newest assistant reply, apply any later user text, re-evaluate actor motivations and the private hidden motives behind notable behavior or timing, and prepare one primary and exactly two redirect-safe directions governing only NPC or world follow-through. Preserve the long-range horizon; this compact pass still completes current scene, motive, actor, and factual continuity reasoning.'
             : 'Read the chronological transcript head first. Reconstruct the current scene from the newest assistant reply, then apply any later user text. Audit that assistant reply, map the private hidden motives that could explain notable timing or behavior, then prepare one primary and exactly two redirect-safe directions governing only NPC or world follow-through. The main roleplay instructions resolve the user action; Tale Fairy supplies only an external reaction, consequence, opportunity, or natural next causal step.',
         authority: 'Explicit OOC/scenario commands and the latest user text outrank the entire Tale Fairy plan. The user action is outside Tale Fairy’s authority, and so is the player’s resulting response: do not infer, reinterpret, expand, narrow, relocate, complete, substitute, evaluate, or define the action, its target, its manner, the player’s intent, response, consent, inner state, or an uncertain result. OOC outcome commands bind the stated outcome. Never use planning to deny, delay, weaken, cap, or modify the user action. Never invent player-initiated movement or inner state; never invent player dialogue, thoughts, feelings, consent, decisions, compliance, retreat, or unrelated extra actions. An NPC or event may target or affect the player when established or unmistakable, but contested results remain open.',
         direction_policy: DIRECTOR_POLICY,
@@ -1920,7 +1959,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     };
     if (options.incremental) {
         for (const key of ['authority', 'direction_policy', 'calibration', 'invention', 'simulation', 'movement', 'horizon_rule', 'motive_rule', 'contribution_rule', 'response_audit_rule', 'scale_fields', 'retained_state_rule']) delete payload[key];
-        payload.fast_rules = 'Newest transcript facts win. Update only the current scene, one self-propelling NPC/world response with two alternatives, changed continuity threads, and the compact ledger. Never define or alter player action. Visible beat text stays abstract; private current, threads, and ledger stay exact. Empty thread_updates means no factual thread changed.';
+        payload.fast_rules = 'Newest transcript facts win. Complete current scene reasoning, one self-propelling NPC/world response with two alternatives, changed continuity threads, actor motivation or agenda changes, and the private ranked explanations for notable behavior, timing, pressure, refusals, coincidences, invitations, or opportunities. Preserve stable motive ids; keep, adjust, replace, or retire hypotheses as evidence changes. Motives are hypotheses, never canon or provider-visible facts. Never define or alter player action. Visible beat text stays abstract; private fields stay exact. Empty update arrays mean no factual change.';
     }
     const canonClaims = explicitCanonClaims(messages);
     if (canonClaims.length) payload.explicit_ooc_canon = canonClaims;
@@ -2071,6 +2110,34 @@ function applyIncrementalAnalysis(next, value, messages) {
     } }).narrativeLayers;
     const threadUpdates = asArray(value.thread_updates).map(update => ({ ...update }));
     next.continuityThreads = normalizeState({ continuityThreads: upsertByKey(next.continuityThreads, threadUpdates, 'id') }).continuityThreads;
+    const proposedMotives = normalizeState({ hiddenMotives: {
+        status: value.hidden_motives?.status,
+        items: asArray(value.hidden_motives?.items).map(motive => ({
+            ...motive,
+            currentRelevance: motive.current_relevance,
+            counterevidence: motive.counterevidence,
+        })),
+        audit: value.hidden_motives?.audit,
+    } }).hiddenMotives;
+    const previousMotivesById = new Map(next.hiddenMotives.items.map(motive => [motive.id.toLocaleLowerCase(), motive]));
+    proposedMotives.items = proposedMotives.items.map(motive => {
+        const previous = previousMotivesById.get(motive.id.toLocaleLowerCase());
+        return motive.change === 'keep' && previous
+            ? { ...previous, ...motive, evidence: motive.evidence.length ? motive.evidence : previous.evidence, counterevidence: motive.counterevidence.length ? motive.counterevidence : previous.counterevidence, change: 'keep' }
+            : motive;
+    });
+    next.hiddenMotives = proposedMotives;
+    const actorUpdates = asArray(value.actor_updates).map(update => {
+        const existing = next.entities.find(item => item.name.toLocaleLowerCase() === String(update?.name || '').trim().toLocaleLowerCase()) || {};
+        return {
+            ...existing,
+            ...update,
+            location: update.location || existing.location || '',
+            relevance: existing.relevance || 'current causal actor',
+            confidence: existing.confidence || next.storyFrame.confidence || 'low',
+        };
+    });
+    next.entities = normalizeState({ entities: upsertByKey(next.entities, actorUpdates, 'name') }).entities;
     for (const claim of explicitCanonClaims(messages)) {
         if (!next.canonConstraints.some(item => item.toLocaleLowerCase() === claim.toLocaleLowerCase())) next.canonConstraints.push(claim);
     }
@@ -2437,7 +2504,7 @@ export function applyAnalysis(state, result, messages) {
     const playerName = playerCharacterName(messages);
     const next = normalizeState(useSpecificPlayerName(state, playerName));
     const value = result && typeof result === 'object' ? useSpecificPlayerName(result, playerName) : {};
-    if (value.contract_version === 8) return applyIncrementalAnalysis(next, value, messages);
+    if (value.contract_version === 9) return applyIncrementalAnalysis(next, value, messages);
     if ([6, 7].includes(value.contract_version)) return applyBeatAnalysis(next, value, messages);
     if (value.contract_version === 2) return applyCompactAnalysis(next, value, messages);
     if (value.story_frame && typeof value.story_frame === 'object') next.storyFrame = { ...next.storyFrame, frame: String(value.story_frame.frame || 'unknown').slice(0, 40), confidence: String(value.story_frame.confidence || 'low').slice(0, 40), basis: String(value.story_frame.basis || '').slice(0, 240) };
@@ -2562,14 +2629,16 @@ When inject=true, the roleplay model resolves the user action only from the user
 world={identity,baseline,variant_rules,rp_changes,signatures,forces,confidence}
 thread_updates and actor_updates contain factual changes only; canon_updates contains explicit durable additions/removals only. Empty arrays mean no change. audit is one concise string. No other keys.`;
 
-export const INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT = `Return exactly contract_version=8 plus current, beat, thread_updates, ledger, note_resolution, and audit.
-current records the exact latest scene using the schema. beat has operation, primary_when, required_effect, exactly two {when,operation,required_effect} alternatives, inject=true, preserve, forbid, and basis. Provider-visible beat movement stays abstract and governs only NPC/world follow-through. thread_updates contains only factual changes; use [] when none. No other keys.`;
+export const INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT = `Return exactly contract_version=9 plus current, beat, thread_updates, hidden_motives, actor_updates, ledger, note_resolution, and audit.
+current records the exact latest scene using the schema. beat has operation, primary_when, required_effect, exactly two {when,operation,required_effect} alternatives, inject=true, preserve, forbid, and basis. Provider-visible beat movement stays abstract and governs only NPC/world follow-through. thread_updates and actor_updates contain only factual changes; use [] when none. hidden_motives always re-evaluates the notable why using zero to six ranked private hypotheses with stable ids, evidence, counterevidence, mechanism, relevance, disclosure, and keep/adjust/replace/retire change. Motives may cover a person, institution, faction, force, or system; they remain private hypotheses and never become canon merely by ranking. No other keys.`;
 
 export const INCREMENTAL_SYSTEM = `You are Tale Fairy, the private adaptive narrative director for another model that writes the roleplay. Return only JSON matching the schema.
 
 The newest assistant reply and any later user text are authoritative; retained state and summaries are fallible. Preserve exact speaker, actor, possessor, target, consent, and proposal origin. The player action and inner state are outside your authority: never define, narrate, deny, delay, weaken, or modify them.
 
 Prepare one primary and exactly two conditional immediate NPC/world responses. Each must create an observable reaction, decision, disclosure, consequence, opportunity, discovery, environmental change, or natural causal step without requiring another player reply. Quiet scenes may deepen, resolve, or transition. Never manufacture conflict or repeat completed travel.
+
+Privately ask why each notable behavior, event, acceleration, delay, silence, refusal, coincidence, invitation, pressure, or unusual opportunity is happening. Re-rank retained hidden motives against the newest evidence and retire resolved, defeated, or irrelevant hypotheses. Record factual actor motivation and agenda changes separately in actor_updates. A likely motive is not canon; never force or expose it.
 
 Keep visible when, operation, and required_effect strings portable and abstract: no names, places, lore terms, objects, exact activities, user actions, outcomes, or player reactions. Private current, continuity, and ledger fields should be exact. Set inject=true and keep every string concise.`;
 
