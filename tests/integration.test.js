@@ -37,7 +37,7 @@ test('full rebuild keeps long-form capacity while incremental refresh stays comp
     assert.match(source, /const INCREMENTAL_MAX_PROMPT_TOKENS = 4200/);
     assert.match(source, /const INCREMENTAL_RECENT_CONTEXT_TOKENS = 1800/);
     assert.match(source, /const INCREMENTAL_SUMMARY_CONTEXT_TOKENS = 600/);
-    assert.match(source, /const INCREMENTAL_RESPONSE_TOKENS = 1536/);
+    assert.match(source, /const INCREMENTAL_RESPONSE_TOKENS = 2304/);
     assert.match(source, /const REBUILD_RESPONSE_TOKENS = 16384/);
     assert.match(source, /fullContextPass \? REBUILD_RESPONSE_TOKENS : INCREMENTAL_RESPONSE_TOKENS/);
     assert.match(source, /reasoningMode: 'off'/);
