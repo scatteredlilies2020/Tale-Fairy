@@ -97,7 +97,7 @@ test('obsolete pacing selector and static provider boilerplate are absent', () =
     assert.match(directorSource, /never control the player character/i);
     assert.match(directorSource, /EXTERNAL-REACTION GUIDE/i);
     assert.doesNotMatch(directorSource, /fatigue, sleepiness, pain, fear, readiness/i);
-    assert.doesNotMatch(directorSource, /dialogue, thoughts, feelings, consent, choices, or reactions/i);
+    assert.match(directorSource, /contested results remain open for the player to answer/i);
     assert.match(analysisSource, /Never invent player dialogue, thoughts, feelings, consent, decisions/i);
 });
 
@@ -110,7 +110,7 @@ test('adaptive analysis uses freeform direction rather than an event taxonomy', 
     assert.match(analysisSource, /operation: text\(80\)/);
     assert.doesNotMatch(analysisSource, /beat\.operation': \[/);
     assert.match(analysisSource, /every scale classification in private fields/i);
-    assert.match(analysisSource, /governs only NPC or world follow-through, never the user action/i);
+    assert.match(analysisSource, /NPCs and events may target or affect the player when established or unmistakable/i);
     assert.match(analysisSource, /Keep scene specifics.*private fields/i);
     assert.match(stateSource, /export const STATE_VERSION = 56/);
     assert.match(stateSource, /beatContractUpgrade/);

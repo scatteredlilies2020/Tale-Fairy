@@ -726,7 +726,8 @@ export function isDirectionCurrent(state, messages = [], chatId = '') {
     if (isStateAligned(s, messages, chatId)) return true;
     // The completed assistant turn is when the next conditional set is
     // prepared. It must remain eligible through exactly one appended user
-    // action so that it can govern the NPC/world response to that action.
+    // action so that it can govern the NPC/world response, including an
+    // established or unmistakable action directed at the player.
     // Anything beyond that single append is stale and fails closed.
     if (s.sourceChatId && chatId && s.sourceChatId !== String(chatId)) return false;
     if (s.sourceMessageCount + 1 !== messages.length || !messages.at(-1)?.is_user) return false;
@@ -794,7 +795,7 @@ function narrativeConductor(score, layers, continuityThreads = [], latestUserAct
     const actionLabel = latestUserAction ? 'LATEST USER ACTION' : 'IMMEDIATE CONTEXT';
     const openThreads = continuityThreads.slice(0, 5).map(item => `${item.status}: ${clippedText(item.thread, 62)} — ${clippedText(item.state, 78)}`).join(' | ');
     const threadLine = openThreads ? `\nESTABLISHED OPEN THREADS (continuity only; do not force onscreen): ${openThreads}` : '';
-    return `TALE FAIRY AUTHORIAL FRAME:\nSELECTED FUTURE CAUSE: ${clippedText(presentPressure, 90)}\nCURRENT SITUATION: ${clippedText(situation, 100)}\nLOCAL ACTIVITY: ${clippedText(layers.localActivity || 'Use the latest established activity.', 90)} [${layers.activityRole.toUpperCase()}]\n${actionLabel}: ${currentAction}\nCAUSAL RANGE: ${layers.temporalScope.toUpperCase()}\nWIDER WORLD: ${clippedText(widerWorld, 65)}${threadLine}\nACTIVE CAUSAL FORCES: ${forces}\nSTORY OPERATION: ${score.causalTempo.toUpperCase()}\nTale Fairy may influence only NPC or world response and the natural next causal step. It does not interpret or define the user action; realize exact events, NPC actions, dialogue, outcomes, and prose from context.`;
+    return `TALE FAIRY AUTHORIAL FRAME:\nSELECTED FUTURE CAUSE: ${clippedText(presentPressure, 90)}\nCURRENT SITUATION: ${clippedText(situation, 100)}\nLOCAL ACTIVITY: ${clippedText(layers.localActivity || 'Use the latest established activity.', 90)} [${layers.activityRole.toUpperCase()}]\n${actionLabel}: ${currentAction}\nCAUSAL RANGE: ${layers.temporalScope.toUpperCase()}\nWIDER WORLD: ${clippedText(widerWorld, 65)}${threadLine}\nACTIVE CAUSAL FORCES: ${forces}\nSTORY OPERATION: ${score.causalTempo.toUpperCase()}\nTale Fairy may shape NPC or world response and the natural next causal step, including an established or unmistakable action toward the player. It does not interpret or define the user action, the player’s response, or an uncertain result; realize exact events, NPC actions, dialogue, outcomes, and prose from context.`;
 }
 function normalizeLoreModel(value = {}) {
     const confidence = text(value.confidence, 'low').toLowerCase();

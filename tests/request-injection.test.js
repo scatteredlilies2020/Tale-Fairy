@@ -159,7 +159,7 @@ test('provider-bound request receives subordinate follow-through and balanced tr
     assert.match(chat.at(-1).content, /TALE FAIRY EXTERNAL-REACTION GUIDE/i);
     assert.match(chat.at(-1).content, /PRIMARY NEXT-STEP DIRECTION: Complicate\./i);
     assert.match(chat.at(-1).content, /PRIMARY NEXT-STEP EFFECT: Add a credible difficulty that changes how the current information is understood\./i);
-    assert.match(chat.at(-1).content, /BALANCED TREATMENT: Give the NPC or world follow-through a clear, meaningful effect/i);
+    assert.match(chat.at(-1).content, /BALANCED TREATMENT: Give the NPC or world follow-through a clear, meaningful effect while preserving contested player outcomes/i);
     assert.match(chat.at(-1).content, /govern only NPC or world follow-through/i);
     assert.match(chat.at(-1).content, /user action is outside Tale Fairy’s authority/i);
     assert.doesNotMatch(chat.at(-1).content, /revelation-led|social in scope|moderate in intensity|partially resolvable/i);

@@ -259,7 +259,7 @@ test('analyzed injection governs only NPC and world follow-through', () => {
     assert.match(payload, /select exactly one closest-fitting branch for external forward motion/i);
     assert.doesNotMatch(payload, /ALTERNATIVE 1 WHEN:|ALTERNATIVE 2 WHEN:/i);
     assert.match(payload, /ignore them and let the main roleplay instructions govern the response/i);
-    assert.match(payload, /FUN TREATMENT:.*prominent, lively expression.*without touching the user action/i);
+    assert.match(payload, /FUN TREATMENT:.*prominent, lively expression.*without deciding the player’s contested response or result/i);
     assert.doesNotMatch(payload, /movement=|content=|scope=|intensity=|plot weight=/i);
     assert.doesNotMatch(payload, /PRESERVE:|DO NOT:/);
     assert.doesNotMatch(payload, /A grounded canteen interaction/);
@@ -292,7 +292,8 @@ test('terse-action contract leaves every part of the user action to the main rol
     assert.match(payload, /user action is outside Tale Fairy’s authority/i);
     assert.match(payload, /Do not use this guide to infer, reinterpret, expand, narrow, relocate, complete, substitute, or judge/i);
     assert.match(payload, /begins only with what NPCs or the surrounding world do in response/i);
-    assert.match(payload, /If every branch would affect the user action.*ignore them/is);
+    assert.match(payload, /If every branch would author the player’s choice.*ignore them/is);
+    assert.match(payload, /contested results remain open for the player to answer/i);
     assert.doesNotMatch(payload, /infer the natural target|minimal implied positioning/i);
 });
 
@@ -304,7 +305,7 @@ test('sparse compiler omits default scale fields but retains a balanced required
     });
     assert.match(payload, /PRIMARY NEXT-STEP DIRECTION: Let the ordinary answer open an unforeseen possibility\./);
     assert.match(payload, /PRIMARY NEXT-STEP EFFECT: Make a compatible change observable without prescribing how\./);
-    assert.match(payload, /BALANCED TREATMENT: Give the NPC or world follow-through a clear, meaningful effect/);
+    assert.match(payload, /BALANCED TREATMENT: Give the NPC or world follow-through a clear, meaningful effect while preserving contested player outcomes/);
     assert.match(payload, /govern only NPC or world follow-through/);
 });
 
@@ -418,12 +419,13 @@ test('canon and user notes remain private planner evidence instead of leaking in
 });
 
 test('large private canon and note collections do not enlarge roleplay injection', () => {
+    const baseline = buildPromptPayload(analyzedState(), { guidanceUsable: true });
     const state = analyzedState({
         canonConstraints: Array.from({ length: 100 }, (_, index) => `${index} ${'canon '.repeat(100)}`),
         userNotes: Array.from({ length: 100 }, (_, index) => ({ kind: 'suggest', text: `${index} ${'note '.repeat(100)}` })),
     });
     const payload = buildPromptPayload(state, { guidanceUsable: true });
-    assert.ok(payload.length < 2500, payload.length);
+    assert.equal(payload.length, baseline.length);
     assert.doesNotMatch(payload, /canon canon|note note/i);
 });
 
