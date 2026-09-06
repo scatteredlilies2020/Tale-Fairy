@@ -46,7 +46,7 @@ export function createSafetyFallbackState(state, {
         operation: 'let an established NPC or the current environment complete one natural observable follow-through',
         primaryWhen: 'When an established NPC or the current environment can naturally answer the latest turn.',
         target: 'the latest established interaction',
-        requiredEffect: 'Create one concrete external response, change, or discovery while leaving the player action and intent untouched.',
+        requiredEffect: 'Create one concrete external response, change, or discovery while leaving the player action and intent untouched; an established or unmistakable action toward the player may remain contested.',
         alternatives: [
             {
                 when: 'When the interaction is quiet or conversational.',
@@ -57,7 +57,7 @@ export function createSafetyFallbackState(state, {
             {
                 when: 'When environmental movement fits better than an NPC response.',
                 operation: 'let the current environment produce one context native observable development',
-                requiredEffect: 'Advance the immediate situation without invented conflict urgency or control of the player character.',
+                requiredEffect: 'Advance the immediate situation without invented conflict or urgency; leave any contested player response or result open.',
                 contentClass: 'opportunity', scope: 'social', intensity: 'low', quantity: 'singular', relativePower: 'none', plotWeight: 'connective', duration: 'beat',
             },
         ],

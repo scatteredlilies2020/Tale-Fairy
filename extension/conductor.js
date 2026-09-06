@@ -55,7 +55,7 @@ export function runConductor({ authorBoard, pacing, previous, turnCount = 0 } = 
         : pace.effective === 'linger'
             ? 'Deepen the present activity through concrete progress, substance, NPC response, sensory detail, or immediate consequence.'
             : 'Move only as far as the latest user action authorizes while delivering the required development.';
-    const agencyBoundary = 'Do not author the player character\'s dialogue, thoughts, feelings, decisions, compliance, or movement beyond the latest user action.';
+    const agencyBoundary = 'Do not author the player character\'s dialogue, thoughts, feelings, decisions, consent, compliance, or uncertain result. NPCs and events may act toward or affect the player when established or unmistakable, but contested responses remain open.';
     const antiObstruction = 'Do not invent a new obstacle, access or escort requirement, delay, interruption, or unrelated task merely to manufacture development or prevent the user\'s stated direction; only use one when it is already established or the selected required development explicitly demands it.';
     const forbidden = board.scene.forbiddenMovement.length
         ? `${board.scene.forbiddenMovement.join('; ')}; ${agencyBoundary} ${antiObstruction}`

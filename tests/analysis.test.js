@@ -238,13 +238,13 @@ test('planner permits freeform AI invention and scale-native simulation', () => 
     assert.match(SYSTEM, /countries, societies, and worlds/i);
     assert.match(SYSTEM, /policy effect, public response, trend, or system pressure/i);
     assert.match(SYSTEM, /every scale classification in private fields/i);
-    assert.match(SYSTEM, /governs only NPC or world follow-through, never the user action/i);
+    assert.match(SYSTEM, /contested hit, defense, injury, restraint, compliance, and other player results remain open/i);
     assert.match(SYSTEM, /portable to any scene with the same dramatic shape/i);
     assert.match(SYSTEM, /Never name or repeat a character, location, faction, lore concept/i);
     assert.match(SYSTEM, /Introduce a quiet, favorable discovery/i);
     assert.match(SYSTEM, /Keep scene specifics.*private fields/i);
     assert.doesNotMatch(SYSTEM, /generate six to eight.*routes|schedule future milestones|maintain event queues/i);
-    assert.ok(estimateTokenCount(`${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}`) < 3900);
+    assert.ok(estimateTokenCount(`${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}`) < 4100);
 });
 
 test('all modes alter only external follow-through without touching the user action', () => {
@@ -252,7 +252,8 @@ test('all modes alter only external follow-through without touching the user act
     assert.match(MODE_INSTRUCTIONS.light, /follow-through, expressed subtly but perceptibly/i);
     assert.match(MODE_INSTRUCTIONS.balanced, /clear, meaningful next step/i);
     assert.match(MODE_INSTRUCTIONS.fun, /prominent, lively expression/i);
-    assert.match(MODE_INSTRUCTIONS.fun, /Randomness never touches the user action/i);
+    assert.match(MODE_INSTRUCTIONS.fun, /Randomness never decides the user action/i);
+    assert.match(MODE_INSTRUCTIONS.balanced, /preserve a meaningful chance to answer contested actions/i);
     for (const mode of Object.values(MODE_INSTRUCTIONS)) assert.doesNotMatch(mode, /control the player|force the player/i);
 });
 
