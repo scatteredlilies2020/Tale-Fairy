@@ -14,17 +14,17 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest, browser runtime, and detached plugin share the release version', () => {
-    assert.equal(manifest.version, '0.13.0');
-    assert.equal(manifest.js, 'extension/index.js?v=0.13.0');
-    assert.equal(manifest.css, 'extension/style.css?v=0.13.0');
+    assert.equal(manifest.version, '0.13.1');
+    assert.equal(manifest.js, 'extension/index.js?v=0.13.1');
+    assert.equal(manifest.css, 'extension/style.css?v=0.13.1');
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.13\.0'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.13\.0'/);
+    assert.match(pluginSource, /const VERSION = '0\.13\.1'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.13\.1'/);
 });
 
 test('runtime uses causal context and has no prescriptive beat-director dependency', () => {
-    assert.match(source, /from '\.\/causal-context\.js\?v=0\.13\.0'/);
-    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.13\.0'/);
+    assert.match(source, /from '\.\/causal-context\.js\?v=0\.13\.1'/);
+    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.13\.1'/);
     assert.doesNotMatch(source, /beat-director/);
     assert.doesNotMatch(stateSource, /beat-director/);
     assert.match(stateSource, /export const STATE_VERSION = 57/);
@@ -56,6 +56,11 @@ test('generation archives and reuses the same causal slice for regeneration', ()
     assert.doesNotMatch(source, /branchIndex|selectBeatBranchIndex/);
     const interceptor = source.slice(source.indexOf('export async function livingWorldGuideGenerateInterceptor'), source.indexOf('globalThis.livingWorldGuideGenerateInterceptor'));
     assert.doesNotMatch(interceptor, /await |analyzeNow\(/);
+});
+
+test('scratchpad rendering derives its request preview from defined live state', () => {
+    assert.match(source, /const preparedSelection = generationGuideSelection\?\.chatId === chatId \? generationGuideSelection : null/);
+    assert.doesNotMatch(source, /\bactiveSelection\b/);
 });
 
 test('missing or failed planning never invents provider facts', () => {
