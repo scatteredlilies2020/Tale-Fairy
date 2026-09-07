@@ -11,7 +11,7 @@ test('detached metadata retains the authoritative transcript head for recovery v
     assert.deepEqual(JSON.parse(alignmentPromptFromMeta({ transcriptHead: head })).transcript_head, head);
 });
 
-test('planner failure produces a current one-response safety direction', () => {
+test('planner failure retains transcript context but injects no invented causal facts', () => {
     const messages = [{ mes: 'latest assistant', is_user: false }];
     const fingerprint = fingerprintMessages(messages);
     const head = { authoritative_assistant_status: 'Time & Weather = Time: 01:10 PM\nLocation = East Refectory south alcove\nCurrent Beat = Nim approves the private supporting-case draft.' };
@@ -21,7 +21,7 @@ test('planner failure produces a current one-response safety direction', () => {
     assert.equal(state.scene.time, 'Time: 01:10 PM');
     assert.equal(state.scene.location, 'East Refectory south alcove');
     assert.match(state.scene.activity, /supporting-case draft/i);
-    assert.equal(state.beatDirective.alternatives.length, 2);
-    assert.equal(state.lastInject, true);
-    assert.equal(isGuidanceUsable(state, messages, 'chat-1'), true);
+    assert.equal(state.causalContext.conditions.length, 0);
+    assert.equal(state.lastInject, false);
+    assert.equal(isGuidanceUsable(state, messages, 'chat-1'), false);
 });

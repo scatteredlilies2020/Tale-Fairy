@@ -4,30 +4,30 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.12.22';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.12.22';
-import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.12.22';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.12.22';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.12.22';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.12.22';
-import { normalizeModelListResponse } from './models.js?v=0.12.22';
-import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.12.22';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.12.22';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.12.22';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.12.22';
-import { estimateTokenCount } from './token-budget.js?v=0.12.22';
-import { completionText } from './completion-response.js?v=0.12.22';
-import { sampleDirectorSignals } from './director-sampling.js?v=0.12.22';
-import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, plannerValidationRepairInstruction, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.12.22';
+import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.13.0';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.13.0';
+import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.13.0';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.13.0';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.13.0';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.13.0';
+import { normalizeModelListResponse } from './models.js?v=0.13.0';
+import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.13.0';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.13.0';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.13.0';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.13.0';
+import { estimateTokenCount } from './token-budget.js?v=0.13.0';
+import { completionText } from './completion-response.js?v=0.13.0';
+import { sampleDirectorSignals } from './director-sampling.js?v=0.13.0';
+import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, plannerValidationRepairInstruction, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.13.0';
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
-import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.12.22';
-import { selectBeatBranchIndex } from './beat-director.js?v=0.12.22';
-import { formatHiddenMotives } from './scratchpad-format.js?v=0.12.22';
-import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.12.22';
-import { createSafetyFallbackState } from './fallback-direction.js?v=0.12.22';
+import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.13.0';
+import { hasUsableCausalContext } from './causal-context.js?v=0.13.0';
+import { formatHiddenMotives } from './scratchpad-format.js?v=0.13.0';
+import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.0';
+import { createSafetyFallbackState } from './fallback-direction.js?v=0.13.0';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.12.22';
+const RUNTIME_VERSION = '0.13.0';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -299,7 +299,7 @@ function installDetachedPlannerTransport() {
                         model: request.model,
                     });
                     recordRuntimeStage('provider-bound-skip-saved', { generationType: String(request?.type || '') });
-                    renderAnalysisActivity('No fresh usable direction · no injection', false);
+                    renderAnalysisActivity('No fresh usable causal context · no injection', false);
                 }
             } catch (error) {
                 recordRuntimeStage('provider-bound-proof-error', {
@@ -640,11 +640,9 @@ function guideSelectionOptions(state, context = currentContext()) {
             regeneration: generationGuideSelection.regeneration,
             variationCue: generationGuideSelection.variationCue,
             directorSample: generationGuideSelection.directorSample,
-            branchIndex: generationGuideSelection.branchIndex,
-            branchSeed: generationGuideSelection.variationCue,
             canonConstraints: generationGuideSelection.canonConstraints,
             sceneProfile: generationGuideSelection.sceneProfile,
-            beatDirective: generationGuideSelection.beatDirective,
+            causalContext: generationGuideSelection.causalContext,
             latestUserAction,
         };
     }
@@ -668,7 +666,7 @@ function prepareGenerationGuide(state, type) {
     const archived = replacement ? state.lastRequestVerification : null;
     const archivedUsable = isReplacementVerificationCurrent(archived, messages, chatId)
         && archived?.injectionDecision !== 'skip'
-        && Boolean(String(archived?.beatDirective?.requiredEffect || '').trim());
+        && hasUsableCausalContext(archived?.causalContext);
     const archivedSkipped = isReplacementVerificationCurrent(archived, messages, chatId)
         && archived?.injectionDecision === 'skip';
     const currentDirectionReady = isDirectionCurrent(state, replacementMessages, chatId);
@@ -678,29 +676,23 @@ function prepareGenerationGuide(state, type) {
     const directorSample = replacement && archived?.directorSample
         ? archived.directorSample
         : sampleDirectorSignals(state.mode, directorSeed);
-    const branchIndex = selectBeatBranchIndex(
-        (archivedUsable || archivedSkipped) ? archived.beatDirective : state.beatDirective,
-        directorSeed,
-        directorSample?.mode || state.mode,
-    );
     generationGuideSelection = {
         chatId,
         candidates: [], index: 0,
         // Normal guidance is valid for one response only. Replacements reuse
         // the exact provider-bound archive for the discarded response; if no
-        // such proof exists, fail closed instead of reviving a stale beat.
+        // such proof exists, fail closed instead of reviving stale context.
         usable: archivedUsable || currentGuidanceUsable,
         skipped: archivedSkipped || (!replacement && currentDirectionReady && !state.lastInject),
         regeneration: replacement,
         replacement,
         variationCue: directorSeed,
         directorSample,
-        branchIndex,
         // A replacement must not receive canon inferred from the assistant
         // reply being discarded. Reuse the exact pre-response canon snapshot.
         canonConstraints: replacement ? ((archivedUsable || archivedSkipped) ? archived.canonConstraints : currentGuidanceUsable ? state.canonConstraints : []) : null,
         sceneProfile: (archivedUsable || archivedSkipped) ? archived.sceneProfile : state.sceneProfile,
-        beatDirective: (archivedUsable || archivedSkipped) ? archived.beatDirective : state.beatDirective,
+        causalContext: (archivedUsable || archivedSkipped) ? archived.causalContext : state.causalContext,
     };
 }
 
@@ -826,10 +818,9 @@ function rememberVerifiedRequest(payload, { provider = '', model = '' } = {}) {
         guideCandidates: [],
         canonConstraints: state.canonConstraints,
         selectedGuideIndex: generationGuideSelection?.index || 0,
-        selectedBranchIndex: generationGuideSelection?.branchIndex ?? 0,
         replacementGeneration,
         sceneProfile: generationGuideSelection?.sceneProfile || state.sceneProfile,
-        beatDirective: generationGuideSelection?.beatDirective || state.beatDirective,
+        causalContext: generationGuideSelection?.causalContext || state.causalContext,
         directorSample: generationGuideSelection?.directorSample || sampleDirectorSignals(state.mode, state.plannerSeed),
         directorSeed: generationGuideSelection?.variationCue ?? state.plannerSeed,
         conductorDevelopmentId: '', conductorContract: null,
@@ -857,10 +848,9 @@ function rememberSkippedRequest({ provider = '', model = '' } = {}) {
         sourceMessageCount: messages.length, sourceFingerprint: fingerprintMessages(sourceMessages), responseMessageCount: 0, chatId: String(context.getCurrentChatId?.() || ''),
         provider: String(provider || ''), model: String(model || ''), position: '', role: 'user', depth: 0,
         guideCandidates: [], canonConstraints: state.canonConstraints, selectedGuideIndex: 0,
-        selectedBranchIndex: generationGuideSelection?.branchIndex ?? 0,
         replacementGeneration,
         sceneProfile: generationGuideSelection?.sceneProfile || state.sceneProfile,
-        beatDirective: generationGuideSelection?.beatDirective || state.beatDirective,
+        causalContext: generationGuideSelection?.causalContext || state.causalContext,
         directorSample: generationGuideSelection?.directorSample || sampleDirectorSignals(state.mode, state.plannerSeed),
         directorSeed: generationGuideSelection?.variationCue ?? state.plannerSeed,
         conductorDevelopmentId: '', conductorContract: null,
@@ -960,7 +950,7 @@ async function confirmReturnedReplyUsedGuidance() {
         }
     }
     renderBoard(state);
-    renderAnalysisActivity(pending.injectionDecision === 'skip' ? 'No fresh usable direction confirmed in returned reply' : 'Guidance confirmed in returned reply', false);
+    renderAnalysisActivity(pending.injectionDecision === 'skip' ? 'No fresh causal context was used for the returned reply' : 'Causal context confirmed in returned reply', false);
     return true;
 }
 
@@ -1253,7 +1243,7 @@ function plannerStorage() {
 
 function parseAnalysisResponse(value, prompt = '') {
     try {
-        const rawResult = value && typeof value === 'object' && !Array.isArray(value) && ([2, 6, 7, 8].includes(value.contract_version) || value.scene)
+        const rawResult = value && typeof value === 'object' && !Array.isArray(value) && ([2, 8, 10].includes(value.contract_version) || value.scene)
             ? value
             : extractJson(completionText(value));
         const result = abstractIncrementalVisibleBranches(rawResult);
@@ -1895,7 +1885,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         lastAnalysisError = '';
         finalStatus = userNote && !resolvedNote
             ? 'Note not applied · try again'
-            : `Adaptive direction ready · ${elapsedLabel(Date.now() - startedAt)}`;
+            : `Active world context ready · ${elapsedLabel(Date.now() - startedAt)}`;
         renderBoard(next);
         return next;
     };
@@ -1991,13 +1981,13 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const guideButton = settingsRoot?.querySelector('[data-action="guide"]');
     const guideLabel = guideButton?.querySelector('[data-role="guide-label"]');
     if (guideLabel) guideLabel.textContent = analyzed ? 'Re-evaluate' : 'Guide now';
-    if (guideButton) guideButton.title = analyzed ? 'Re-analyze the current scene and beat' : 'Analyze the current chat and context';
+    if (guideButton) guideButton.title = analyzed ? 'Re-analyze the current scene and active world context' : 'Analyze the current chat and context';
 
     const analyzedAt = state.lastAnalyzedAt ? new Date(state.lastAnalyzedAt).toLocaleString() : '';
     const meta = state.canonBootstrapPending
         ? 'Full rebuild pending · retained guidance is not injected'
-        : analyzed ? `Tale Fairy v${RUNTIME_VERSION} · ${state.mode} mode · adaptive direction updated ${analyzedAt || 'recently'}` : '';
-    scratchpadText(board, 'scratchpad-meta', meta, 'No direction analysis yet. Run Guide now or Full rebuild.');
+        : analyzed ? `Tale Fairy v${RUNTIME_VERSION} · ${state.mode} mode · world context updated ${analyzedAt || 'recently'}` : '';
+    scratchpadText(board, 'scratchpad-meta', meta, 'No world analysis yet. Run Guide now or Full rebuild.');
     const continuityStatus = analyzed ? continuityContextState(currentContext()).status : 'unavailable';
     const summaryAudit = state.summaryEvidence?.scannedAt ? state.summaryEvidence : lastSummaryAudit;
     const summaryStatus = summaryAudit.scannedAt || summaryAudit.count
@@ -2017,28 +2007,13 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     ].filter(Boolean).join('\n');
     scratchpadText(board, 'scratchpad-scene', analyzed ? scene : '', 'No generated scene read yet.');
 
-    const beat = state.beatDirective || {};
-    const activeChatId = String(currentContext().getCurrentChatId?.() || '');
-    const activeSelection = generationGuideSelection?.chatId === activeChatId ? generationGuideSelection : null;
-    const selectedBranchIndex = activeSelection?.branchIndex ?? selectBeatBranchIndex(beat, state.plannerSeed, state.mode);
-    const selectedBranchLabel = selectedBranchIndex === 0 ? 'Primary' : `Alternative ${selectedBranchIndex}`;
-    const envelope = [beat.contentClass, beat.scope && `${beat.scope} scope`, beat.intensity && beat.intensity !== 'none' && `${beat.intensity} intensity`, beat.quantity && beat.quantity !== 'none' && beat.quantity, beat.relativePower && beat.relativePower !== 'none' && `${beat.relativePower} power`, beat.plotWeight && beat.plotWeight !== 'none' && `${beat.plotWeight} weight`, beat.duration && `${beat.duration} duration`].filter(Boolean).join(' · ');
-    const beatText = [
-        beat.inject ? `Provider guidance: inject this conditional direction set${beat.injectReason ? ` — ${beat.injectReason}` : ''}` : `Provider guidance: no usable fresh direction${beat.injectReason ? ` — ${beat.injectReason}` : ''}`,
-        beat.inject && `Selected for provider: ${selectedBranchLabel} (weighted random)`,
-        beat.primaryWhen && `Primary when: ${beat.primaryWhen}`,
-        `${String(beat.operation).toUpperCase()} — ${beat.target}`,
-        beat.requiredEffect,
-        ...(beat.alternatives || []).flatMap((branch, index) => [
-            `Alternative ${index + 1} when: ${branch.when}`,
-            `${String(branch.operation).toUpperCase()} — ${branch.requiredEffect}`,
-        ]),
-        envelope && `Envelope: ${envelope}`,
-        beat.preserve?.length && `Preserve: ${beat.preserve.join('; ')}`,
-        beat.forbid?.length && `Do not: ${beat.forbid.join('; ')}`,
-        beat.basis && `Basis: ${beat.basis}`,
+    const causal = state.causalContext || {};
+    const conditionText = [
+        causal.inject ? `Provider causal context: ${causal.injectReason || 'current relevant conditions'}` : 'Provider causal context: unavailable',
+        ...(causal.conditions || []).map(item => `${item.confidence === 'tentative' ? '[Scratchpad only · tentative]' : `[${item.confidence} · ${item.disclosure} · ${item.kind}]`} ${item.subject} — ${item.condition}${item.relevance ? `\n  Relevance: ${item.relevance}` : ''}`),
+        causal.basis && `Selection basis: ${causal.basis}`,
     ].filter(Boolean).join('\n');
-    scratchpadText(board, 'scratchpad-next-guides', analyzed ? beatText : '', 'No generated adaptive direction yet.');
+    scratchpadText(board, 'scratchpad-next-guides', analyzed ? conditionText : '', 'No generated causal context yet.');
 
     const audit = state.responseAudit || {};
     const auditFlags = [
@@ -2088,11 +2063,11 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const previewText = previewPayload
         ? `${previewKind} — Tale Fairy plans to inject this exact context.\nPlacement: ${previewPlacement}\n\n${previewPayload}`
         : isDirectionCurrent(state, messagesFromChat(previewContext.chat || []), chatId) && !state.lastInject
-            ? 'INVALID OR LEGACY NON-INJECTION DIRECTION — waiting for a fresh plan that always contributes.'
+            ? 'INVALID OR LEGACY NON-INJECTION CONTEXT — waiting for fresh causal analysis.'
             : analysisPromise
-                ? 'PREPARING FRESH DIRECTION IN BACKGROUND — roleplay generation will not wait for it.'
-                : 'NO FRESH DIRECTION READY — used or stale direction is audit history only and will not be reused.';
-    scratchpadText(board, 'scratchpad-request-verification', previewText, 'No fresh Tale Fairy direction is ready.');
+                ? 'PREPARING FRESH CAUSAL CONTEXT IN BACKGROUND — roleplay generation will not wait for it.'
+                : 'NO FRESH CAUSAL CONTEXT READY — used or stale context is audit history only and will not be reused.';
+    scratchpadText(board, 'scratchpad-request-verification', previewText, 'No fresh Tale Fairy causal context is ready.');
 
     scratchpadOptionalText(board, 'scratchpad-continuity-section', 'scratchpad-continuity-processes', analyzed ? scratchpadList(state.continuityThreads, item => item?.thread ? `${item.thread} — ${item.state}` : '', '') : '');
     scratchpadOptionalText(board, 'scratchpad-entities-section', 'scratchpad-entities', analyzed ? scratchpadList(state.entities, item => item?.name ? `${item.name}${item.state ? ` — ${item.state}` : ''}${item.agenda ? ` · Agenda: ${item.agenda}` : ''}` : '', '') : '');
@@ -2246,7 +2221,7 @@ async function refreshCurrentPlanIfNeeded() {
     const decision = interrupted
         ? { shouldRun: true, code: 'interrupted', reason: 'A previously interrupted planner run must be recovered.' }
         : directionMissing
-            ? { shouldRun: true, code: 'missing-direction', reason: 'No fresh direction is ready for the next generation.' }
+            ? { shouldRun: true, code: 'missing-direction', reason: 'No fresh causal context is ready for the next generation.' }
         : plannerRefreshDecision({ state, messages, event: 'load' });
     state.plannerSchedule = withRefreshReason(state.plannerSchedule, decision);
     context.updateChatMetadata(saveState(context.chatMetadata, state));
@@ -2608,7 +2583,7 @@ eventSource.on(event_types.CHAT_CHANGED, () => {
     generationRevision++;
     cancelRunningAnalysis('The active chat changed while Tale Fairy was analyzing.', 'Ready');
     updatePrompt(loadState(currentContext().chatMetadata));
-    // Refresh a stale current beat as well as migrating legacy state. The
+    // Refresh stale causal context as well as migrating legacy state. The
     // planner remains non-blocking and identical in-flight work is reused.
     setTimeout(() => {
         renderBoard();

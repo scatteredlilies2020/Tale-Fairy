@@ -1,12 +1,12 @@
-import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.12.22';
+import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.13.0';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
 import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js';
-import { defaultBeatDirective, defaultSceneProfile, formatBeatContract, hasUsableBeatDirective, normalizeBeatDirective, normalizeSceneProfile, selectBeatBranchIndex } from './beat-director.js?v=0.12.22';
-import { normalizeDirectorSample } from './director-sampling.js?v=0.12.22';
+import { defaultCausalContext, defaultSceneProfile, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, normalizeSceneProfile } from './causal-context.js?v=0.13.0';
+import { normalizeDirectorSample } from './director-sampling.js?v=0.13.0';
 
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 56;
+export const STATE_VERSION = 57;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -39,7 +39,7 @@ export function defaultState() {
         summaryEvidence: { count: 0, includedTokens: 0, originalTokens: 0, labels: [], scannedAt: 0 },
         scene: { status: 'uninitialized', activity: '', pace: '', intent: '', location: '', time: '', loop: false },
         sceneProfile: defaultSceneProfile(),
-        beatDirective: defaultBeatDirective(),
+        causalContext: defaultCausalContext(),
         responseAudit: { applicable: false, movementFit: 'not-applicable', repetition: 'none', unjustifiedEscalation: false, playerControl: false, continuityDrift: false, patterns: [], summary: '' },
         responsePatternMemory: [],
         horizonRadar: { status: 'none', seeds: [], audit: '' },
@@ -493,10 +493,9 @@ function normalizeRequestVerification(value) {
         guideCandidates: (Array.isArray(value.guideCandidates) ? value.guideCandidates.slice(0, MAX_GUIDES) : []).map(normalizeNextGuide).filter(item => item.id && item.direction && item.useWhen && item.dropWhen && item.causalRole && item.worldDelta && item.basis),
         canonConstraints: cap(value.canonConstraints).map(item => text(item).slice(0, 500)).filter(Boolean),
         selectedGuideIndex: Math.max(0, Math.min(MAX_GUIDES - 1, Number(value.selectedGuideIndex) || 0)),
-        selectedBranchIndex: Math.max(0, Math.min(2, Number(value.selectedBranchIndex) || 0)),
         replacementGeneration: value.replacementGeneration === true,
         sceneProfile: normalizeSceneProfile(value.sceneProfile),
-        beatDirective: normalizeBeatDirective(value.beatDirective),
+        causalContext: normalizeCausalContext(value.causalContext),
         directorSample: value.directorSample && typeof value.directorSample === 'object'
             ? normalizeDirectorSample(value.directorSample)
             : null,
@@ -599,7 +598,9 @@ export function normalizeState(input = {}) {
     // user-action interpretation from Tale Fairy entirely; older sets are
     // cleared so no action-target inference survives the upgrade. v55 adds a
     // private bounded horizon radar without reviving scheduled route debt. v56
-    // adds the private open hidden-motive board.
+    // adds the private open hidden-motive board. v57 replaces conditional
+    // future reactions with a relevant causal-state slice; old beats are not
+    // migrated because they describe prescribed developments, not world state.
     const unsafePlannerUpgrade = inputVersion > 0 && inputVersion < 18;
     const movementUpgrade = inputVersion > 0 && inputVersion < 42;
     const recoveryUpgrade = inputVersion > 0 && inputVersion < 26;
@@ -607,6 +608,7 @@ export function normalizeState(input = {}) {
     const authorMapUpgrade = inputVersion > 0 && inputVersion < 45;
     const beatContractUpgrade = inputVersion > 0 && inputVersion < 48;
     const conditionalSetUpgrade = inputVersion > 0 && inputVersion < 54;
+    const causalContextUpgrade = inputVersion > 0 && inputVersion < 57;
     const normalizedLayers = normalizeNarrativeLayers(value.narrativeLayers);
     const normalizedDirector = normalizeDirectorScore(value.directorScore);
     const state = {
@@ -627,7 +629,7 @@ export function normalizeState(input = {}) {
         },
         scene: chronologyAuditUpgrade ? base.scene : { ...base.scene, ...(value.scene || {}) },
         sceneProfile: beatContractUpgrade ? base.sceneProfile : normalizeSceneProfile(value.sceneProfile ?? value.scene_profile),
-        beatDirective: conditionalSetUpgrade ? base.beatDirective : normalizeBeatDirective(value.beatDirective ?? value.beat_directive),
+        causalContext: causalContextUpgrade ? base.causalContext : normalizeCausalContext(value.causalContext ?? value.causal_context),
         responseAudit: normalizeResponseAudit(value.responseAudit ?? value.response_audit),
         responsePatternMemory: cap(value.responsePatternMemory ?? value.response_pattern_memory, 12).map(item => clippedText(item, 140)).filter(Boolean),
         horizonRadar: normalizeHorizonRadar(value.horizonRadar ?? value.horizon_radar),
@@ -657,7 +659,7 @@ export function normalizeState(input = {}) {
         canonBootstrapPending: value.canonBootstrapPending === true || plannerUpgradePending,
         userNotes: cap(value.userNotes).map(normalizeNote).filter(note => note.text),
         guidance: beatContractUpgrade || recoveryUpgrade ? '' : text(value.guidance).slice(0, 700),
-        lastInject: conditionalSetUpgrade || recoveryUpgrade ? false : value.lastInject === true,
+        lastInject: causalContextUpgrade || recoveryUpgrade ? false : value.lastInject === true,
         lastReason: text(value.lastReason).slice(0, 500),
         contextLedger: inputVersion > 0 && inputVersion < 44 ? '' : (chronologyAuditUpgrade ? '' : text(value.contextLedger).slice(0, 3000)),
         ledgerMessageCount: Math.max(0, Number(value.ledgerMessageCount) || 0),
@@ -670,7 +672,7 @@ export function normalizeState(input = {}) {
         lastAnalyzedAt: Number(value.lastAnalyzedAt) || 0,
         turnCount: Math.max(0, Number(value.turnCount) || 0),
         plannerSeed: Number.isInteger(value.plannerSeed) ? value.plannerSeed : 0,
-        lastRequestVerification: conditionalSetUpgrade ? null : normalizeRequestVerification(value.lastRequestVerification),
+        lastRequestVerification: causalContextUpgrade ? null : normalizeRequestVerification(value.lastRequestVerification),
     };
     state.authorBoard = beatContractUpgrade ? defaultAuthorBoard() : normalizeAuthorBoard(authorMapUpgrade ? {
         ...(value.authorBoard || {}),
@@ -687,6 +689,11 @@ export function normalizeState(input = {}) {
         const timeframe = state.planHorizons.items[index]?.timeframe;
         return timeframe ? { ...objective, title: `Open direction · ${timeframe}`.slice(0, 120) } : objective;
     });
+    // Retire the old prescriptive branch payload completely rather than leaving
+    // it in chat metadata where it can consume context or be mistaken for live
+    // guidance by an older integration surface.
+    delete state.beatDirective;
+    delete state.beat_directive;
     return state;
 }
 
@@ -716,7 +723,7 @@ export function stateForPrompt(state) {
         mode: s.mode,
         scene: Object.fromEntries(Object.entries(s.scene).map(([key, value]) => [key, typeof value === 'string' ? value.slice(0, 100) : value])),
         sceneProfile: s.sceneProfile,
-        beatDirective: s.beatDirective,
+        causalContext: s.causalContext,
         responseAudit: s.responseAudit,
         responsePatternMemory: s.responsePatternMemory.slice(-10),
         horizonRadar: {
@@ -761,13 +768,13 @@ export function isStateAligned(state, messages = [], chatId = '') {
 // without waiting for another planner request.
 export function isGuidanceUsable(state, messages = [], chatId = '') {
     const s = normalizeState(state);
-    if (!s.lastInject || !hasUsableBeatDirective(s.beatDirective)) return false;
+    if (!s.lastInject || !hasUsableCausalContext(s.causalContext)) return false;
     return isDirectionCurrent(s, messages, chatId);
 }
 
 export function isDirectionCurrent(state, messages = [], chatId = '') {
     const s = normalizeState(state);
-    if (!s.beatDirective.operation || !s.beatDirective.primaryWhen || !s.beatDirective.requiredEffect || s.beatDirective.alternatives.length !== 2) return false;
+    if (!hasUsableCausalContext(s.causalContext)) return false;
     if (isStateAligned(s, messages, chatId)) return true;
     // The completed assistant turn is when the next conditional set is
     // prepared. It must remain eligible through exactly one appended user
@@ -856,22 +863,14 @@ function normalizeLoreModel(value = {}) {
     };
 }
 
-export function buildPromptPayload(state, { enabled = true, guidanceUsable = false, regeneration = false, sceneProfile = null, beatDirective = null, directorSample = null, mode = null, branchIndex = null, branchSeed = null } = {}) {
+export function buildPromptPayload(state, { enabled = true, guidanceUsable = false, causalContext = null, directorSample = null, mode = null } = {}) {
     if (!enabled || !guidanceUsable) return '';
     const s = normalizeState(state);
-    const selectedBeat = normalizeBeatDirective(beatDirective || s.beatDirective);
-    if (!hasUsableBeatDirective(selectedBeat)) return '';
+    const selectedContext = normalizeCausalContext(causalContext || s.causalContext);
+    if (!hasUsableCausalContext(selectedContext)) return '';
     const selectedMode = directorSample?.mode || mode || s.mode;
-    const selectedBranchIndex = Number.isInteger(Number(branchIndex))
-        ? Number(branchIndex)
-        : selectBeatBranchIndex(selectedBeat, branchSeed ?? s.plannerSeed, selectedMode);
-    const routePrompt = formatBeatContract(sceneProfile || s.sceneProfile, selectedBeat, {
-        regeneration,
-        mode: selectedMode,
-        branchIndex: selectedBranchIndex,
-        branchSeed: branchSeed ?? s.plannerSeed,
-    });
-    const guidancePrompt = `\n<living-world-guide>\n${routePrompt}\n</living-world-guide>`;
+    const statePrompt = formatCausalContext(selectedContext, { mode: selectedMode });
+    const guidancePrompt = `\n<living-world-guide>\n${statePrompt}\n</living-world-guide>`;
     return `<tale-fairy-context>${guidancePrompt}\n</tale-fairy-context>`;
 }
 

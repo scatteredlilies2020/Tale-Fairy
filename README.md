@@ -1,28 +1,24 @@
 # Tale Fairy
 
-Tale Fairy is a standalone SillyTavern extension that acts as an **adaptive authorial story controller**, not a prose writer. It maintains story direction and causal depth across different layers and timeframes, while the roleplay model realizes each scene from the full conversation.
+Tale Fairy is a standalone SillyTavern extension that runs a **private active-world simulation**, not a prose writer or plot script. It tracks causal state across actors, relationships, institutions, systems, resources, and environments while the roleplay model creatively realizes each scene from the full conversation.
 
 ## What it does
 
-- Injects an adaptive forward-motion block into every normal roleplay request. The main roleplay instructions and context—not Tale Fairy—interpret the user action. Tale Fairy contributes only a compatible NPC/world response, consequence, opportunity, or next causal step.
-- Uses real local weighted sampling for intervention size, novelty, and fortune after the AI chooses what movement the scene warrants. **Light** makes the required effect subtle but perceptible, **Balanced** makes it a clear meaningful change, and **Fun** gives fitting movement a bold or surprising expression, including strong scene-supported hidden motives, without manufacturing conflict or escalation.
-- Treats deepen, interrupt, challenge, opportunity, escalation, relief, resolution, redirection, and scene transition as examples rather than a closed event menu. A planner can return an entirely different fitting function through freeform direction.
-- Calibrates stakes to the setting instead of equating movement with combat: a school scene might produce a difficult exam or severe reviewer, while an established battlefield or fantasy crisis can produce lethal danger.
-- Does not interpret or control the user action or the player's response. It cannot infer or alter the action's intent, target, manner, positioning, or user-chosen success, nor author the player's dialogue, thoughts, feelings, consent, decisions, compliance, or uncertain reaction/result. NPCs and events may act toward or affect the player when established or unmistakable; contested exchanges remain open so the player can answer.
-- Sends a general, observable NPC/world next-step effect. It is external follow-through, not an outcome restriction: if it crosses into defining or modifying the user action, the writing model ignores it. All scale classifications, targets, evidence, and preserve/forbid constraints remain private planner context.
-- Injects only fresh analyzed scene direction. If the planner result is missing or stale, Tale Fairy injects nothing and the roleplay request continues normally.
-- Reuses the same analyzed follow-through and mode treatment for regenerations/swipes while leaving a different compatible realization open. Discarded prose never becomes canon.
-- Runs its AI planner for initialization, explicit scene/time pivots, corrections, manual reevaluation, and immediately after every accepted assistant response. This successor planning is background-only: roleplay generation never waits for it, and an unavailable fresh direction means no Tale Fairy injection for that request.
-- Prepares a conditional external-reaction set one turn ahead: one primary movement and two materially distinct redirect-safe alternatives. For each provider request, Tale Fairy makes one deterministic weighted-random branch choice and injects only that selected external direction; the full set remains visible in the Planner Scratchpad for inspection. The roleplay model resolves the user action without Tale Fairy and realizes only the selected compatible NPC/world follow-through. It ignores the selected direction if it would interpret, redirect, delay, narrow, weaken, or cap the action. Quiet listening, assignments, rest, and other routine scenes still receive context-native external movement rather than forced conflict or interruption. If planning is unavailable or stale, Tale Fairy safely contributes nothing, and a used or older set is never revived as a fallback.
-- Keeps continuity threads, actors, lore, summaries, and causal state as evidence. They are not dormant triggers, delivery promises, or a scheduled event queue, and a new context-compatible cause is always available.
-- Maintains a private **horizon radar** of up to four genuinely long-range trajectories. It distinguishes evidence-backed developments from original compatible speculation, checks that their causal engines differ, and records whether the present scene merely echoes, seeds, advances, or converges with them. These possibilities never enter the roleplay prompt as plot orders or become canon until play establishes them.
-- Maintains a private, open **hidden-motive board** for the likely explanations behind unusual timing, pressure, invitations, refusals, coincidences, and opportunities. The strongest evidence-backed explanation is ranked first; alternatives can be franchise-specific or original, while wild-card labels are optional and reserved for genuinely unsupported or contradictory possibilities. Motives remain Scratchpad-only and never enter provider injection or canon.
-- Supports personal, slice-of-life, academic, workplace, political, institutional, national, historical, grand-strategy, battlefield, fantastical, and world-scale play using the causal unit natural to each scene.
-- Treats explicit user text and OOC corrections as higher priority than canon, summaries, retained state, or planner inference. Familiar canon is a constraint and source of texture, never a forced future outcome.
-- Places the dynamic block inside the provider-bound latest user content before the actual turn. The saved chat is not modified, and the Planner Scratchpad records the exact block found in the final provider payload.
-- Stores compact state in chat metadata, supports active/profile/custom/OpenRouter planner connections, and can continue server-backed planner jobs through a browser reload when the bundled plugin is installed.
-- Includes **Guide now / Re-evaluate**, **Full rebuild**, **Delete guide state**, and an AI-assisted note field for suggestions, corrections, canon details, and hard exclusions.
-- Uses a bounded token-aware context layer built from recent raw turns, summaries, World Info, character/scenario fields, its narrative ledger, and an optional read-only Continuity snapshot. Continuity is supporting evidence, never a dependency or authority.
+- Maintains broad world state privately, but injects only **1–6 currently relevant underlying conditions**—normally 3–6 when supported. Each clean line describes what a subject wants, believes, knows, can do, is constrained by, or is under pressure from.
+- Leaves concrete actions, events, dialogue, revelations, consequences, scene routes, and outcomes to the main roleplay model. Tale Fairy supplies causes, not a predetermined next beat.
+- Withholds internal IDs, confidence, relevance reasoning, evidence, rankings, and future plans from the roleplay prompt. Tentative reconstructions stay Scratchpad-only instead of being presented as facts.
+- Distinguishes open, limited, and private knowledge. Private motivations may shape believable behavior without forcing the roleplay model to reveal them.
+- Keeps hundreds of dormant characters or systems out of active context. Compact descriptions, lore, summaries, continuity evidence, and factual records allow relevant ones to be retrieved and reconstructed later.
+- Does not treat a mentioned condition as resolved or an unmentioned pressure as escalated. Salience changes only through new evidence, elapsed time, changed dependencies, or a real causal-state change.
+- Stays one step ahead through a private **horizon radar** and **hidden-motive board**. These remain optional hypotheses—not event queues, promises, canon, or provider instructions.
+- Runs planning after accepted assistant responses and on initialization, scene/time pivots, corrections, and manual reevaluation. Planning is background-only: roleplay generation never waits, and missing or stale analysis simply means no Tale Fairy injection.
+- Reuses the same causal slice for regenerations/swipes, allowing the writing model to produce a different realization without changing the underlying world state. Discarded prose never becomes canon.
+- Applies generically to life sims, country sims, political or institutional play, slice of life, fantasy, battlefield scenes, and other scales by tracking the causal unit natural to the current context.
+- Preserves player agency: it never authors the player's dialogue, choices, thoughts, feelings, consent, or uncertain result.
+- Treats explicit user text and OOC corrections as higher authority than summaries, lore, retained state, or inference.
+- Places the dynamic block inside the provider-bound latest user content without modifying saved chat, and records the exact verified block in the Planner Scratchpad.
+- Stores compact chat-local state, supports active/profile/custom/OpenRouter planner connections, and can continue server-backed planner jobs through a browser reload when the bundled plugin is installed.
+- Uses bounded recent turns, summaries, World Info, character/scenario fields, a narrative ledger, and optional read-only Continuity evidence. Continuity is supporting evidence, never a dependency or authority.
 
 ## Install
 
@@ -48,7 +44,7 @@ Before the provider request is sent, Tale Fairy atomically replaces stale Tale F
 
 ## Scope
 
-This is a lightweight, chat-local planning and causal world-direction layer with enough retained working continuity to function independently. It consumes available summaries and context regardless of their source. The optional Continuity bridge is merely one-way input compatibility, not a dependency or division of responsibility.
+This is a lightweight, chat-local active-world simulation and causal-context layer with enough retained working continuity to function independently. It consumes available summaries and context regardless of their source. The optional Continuity bridge is merely one-way input compatibility, not a dependency or division of responsibility.
 
 ## License
 

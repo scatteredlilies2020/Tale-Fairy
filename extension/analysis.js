@@ -1,8 +1,7 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.12.22';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.13.0';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.11.96';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { formatDirectorSample, sampleDirectorSignals } from './director-sampling.js?v=0.12.22';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
@@ -35,16 +34,14 @@ const PORTFOLIO_LANES = Object.freeze({ immediate: 'immediate', character: 'char
 const AUTHOR_ARC_SCHEMA = { type: 'object', additionalProperties: false, properties: { id: text(80), title: text(120), phase: text(60), purpose: text(260), pressure: text(220) }, required: ['id', 'title', 'phase', 'purpose', 'pressure'] };
 const AUTHOR_SETUP_SCHEMA = { type: 'object', additionalProperties: false, properties: { id: text(80), kind: { type: 'string', enum: ['setup', 'promise', 'payoff'] }, description: text(260), status: { type: 'string', enum: ['open', 'ready', 'resolved', 'retired'] }, payoff: text(240), conditions: strings(4, 140) }, required: ['id', 'kind', 'description', 'status', 'payoff', 'conditions'] };
 const AUTHOR_MILESTONE_SCHEMA = { type: 'object', additionalProperties: false, properties: { id: text(80), development: text(280), horizon: text(80), conditions: strings(4, 140), status: { type: 'string', enum: ['queued', 'available', 'active', 'resolved', 'retired'] } }, required: ['id', 'development', 'horizon', 'conditions', 'status'] };
-const CONDITIONAL_BRANCH_SCHEMA = { type: 'object', additionalProperties: false, properties: {
-    when: text(180), operation: text(80), required_effect: text(260),
-    content_class: { type: 'string', enum: ['none', 'texture', 'reaction', 'obstacle', 'conflict', 'character', 'opposition', 'event', 'opportunity', 'revelation', 'consequence', 'other'] },
-    scope: { type: 'string', enum: ['personal', 'social', 'institutional', 'societal', 'world'] },
-    intensity: { type: 'string', enum: ['none', 'low', 'moderate', 'high', 'severe'] },
-    quantity: { type: 'string', enum: ['none', 'singular', 'pair', 'group', 'numerous', 'swarm'] },
-    relative_power: { type: 'string', enum: ['none', 'fodder', 'inferior', 'peer', 'elite', 'overwhelming', 'established'] },
-    plot_weight: { type: 'string', enum: ['none', 'incidental', 'connective', 'consequential'] },
-    duration: { type: 'string', enum: ['moment', 'beat', 'scene', 'extended'] },
-}, required: ['when', 'operation', 'required_effect', 'content_class', 'scope', 'intensity', 'quantity', 'relative_power', 'plot_weight', 'duration'] };
+const CAUSAL_CONDITION_SCHEMA = { type: 'object', additionalProperties: false, properties: {
+    id: text(80),
+    kind: { type: 'string', enum: ['actor', 'relationship', 'group', 'institution', 'system', 'environment'] },
+    subject: text(120), condition: text(280),
+    disclosure: { type: 'string', enum: ['open', 'limited', 'private'] },
+    confidence: { type: 'string', enum: ['established', 'strong', 'tentative'] },
+    relevance: text(180),
+}, required: ['id', 'kind', 'subject', 'condition', 'disclosure', 'confidence', 'relevance'] };
 const HORIZON_SEED_SCHEMA = { type: 'object', additionalProperties: false, properties: {
     id: text(80), kind: { type: 'string', enum: ['detected', 'original'] }, trajectory: text(260), engine: text(140),
     scale: { type: 'string', enum: ['arc', 'months-years', 'open-ended'] }, condition: text(160), basis: text(220),
@@ -66,7 +63,7 @@ const HIDDEN_MOTIVE_SCHEMA = { type: 'object', additionalProperties: false, prop
 export const ANALYSIS_SCHEMA_VALUE = {
     type: 'object', additionalProperties: false,
     properties: {
-        contract_version: { type: 'integer', const: 7 },
+        contract_version: { type: 'integer', const: 8 },
         current: { type: 'object', additionalProperties: false, properties: {
             frame: { type: 'string', enum: ['grounded', 'heightened', 'surreal'] }, frame_basis: text(180),
             status: text(180), immediate_action: text(140), activity: text(180), situation: text(220),
@@ -79,20 +76,10 @@ export const ANALYSIS_SCHEMA_VALUE = {
             intrusion: { type: 'string', enum: ['closed', 'incidental', 'socially-open', 'dramatically-open', 'primed'] },
             novelty_ceiling: { type: 'string', enum: ['none', 'incidental', 'context-native', 'meaningful', 'major'] },
         }, required: ['frame', 'frame_basis', 'status', 'immediate_action', 'activity', 'situation', 'activity_role', 'temporal_scope', 'location', 'time', 'loop', 'scene_promise', 'phase', 'emotional_direction', 'pressure', 'intrusion', 'novelty_ceiling'] },
-        beat: { type: 'object', additionalProperties: false, properties: {
-            operation: text(80),
-            primary_when: text(180), target: text(160), required_effect: text(260),
-            alternatives: { type: 'array', minItems: 2, maxItems: 2, items: CONDITIONAL_BRANCH_SCHEMA },
-            inject: { type: 'boolean', const: true }, inject_reason: text(220),
-            content_class: { type: 'string', enum: ['none', 'texture', 'reaction', 'obstacle', 'conflict', 'character', 'opposition', 'event', 'opportunity', 'revelation', 'consequence', 'other'] },
-            scope: { type: 'string', enum: ['personal', 'social', 'institutional', 'societal', 'world'] },
-            intensity: { type: 'string', enum: ['none', 'low', 'moderate', 'high', 'severe'] },
-            quantity: { type: 'string', enum: ['none', 'singular', 'pair', 'group', 'numerous', 'swarm'] },
-            relative_power: { type: 'string', enum: ['none', 'fodder', 'inferior', 'peer', 'elite', 'overwhelming', 'established'] },
-            plot_weight: { type: 'string', enum: ['none', 'incidental', 'connective', 'consequential'] },
-            duration: { type: 'string', enum: ['moment', 'beat', 'scene', 'extended'] },
-            preserve: strings(5, 180), forbid: strings(5, 180), basis: text(220),
-        }, required: ['operation', 'primary_when', 'target', 'required_effect', 'alternatives', 'inject', 'inject_reason', 'content_class', 'scope', 'intensity', 'quantity', 'relative_power', 'plot_weight', 'duration', 'preserve', 'forbid', 'basis'] },
+        context: { type: 'object', additionalProperties: false, properties: {
+            conditions: { type: 'array', minItems: 1, maxItems: 6, items: CAUSAL_CONDITION_SCHEMA },
+            inject: { type: 'boolean', const: true }, inject_reason: text(220), basis: text(240),
+        }, required: ['conditions', 'inject', 'inject_reason', 'basis'] },
         response_audit: { type: 'object', additionalProperties: false, properties: {
             applicable: { type: 'boolean' },
             movement_fit: { type: 'string', enum: ['not-applicable', 'missed', 'partial', 'clear'] },
@@ -120,25 +107,20 @@ export const ANALYSIS_SCHEMA_VALUE = {
         note_resolution: { anyOf: [{ type: 'object', additionalProperties: false, properties: { kind: { type: 'string', enum: ['suggest', 'correct', 'establish', 'forbid'] } }, required: ['kind'] }, { type: 'null' }] },
         audit: text(500),
     },
-    required: ['contract_version', 'current', 'beat', 'response_audit', 'horizon', 'hidden_motives', 'world', 'thread_updates', 'actor_updates', 'canon_updates', 'ledger', 'note_resolution', 'audit'],
+    required: ['contract_version', 'current', 'context', 'response_audit', 'horizon', 'hidden_motives', 'world', 'thread_updates', 'actor_updates', 'canon_updates', 'ledger', 'note_resolution', 'audit'],
 };
 export const ANALYSIS_SCHEMA = Object.freeze({
-    name: 'tale_fairy_external_reaction_v7',
+    name: 'tale_fairy_causal_context_v8',
     description: 'Compact Tale Fairy observations and state deltas.',
     strict: true,
     returnInvalid: true,
     value: ANALYSIS_SCHEMA_VALUE,
 });
 
-const INCREMENTAL_BRANCH_SCHEMA = {
-    type: 'object', additionalProperties: false,
-    properties: { when: text(160), operation: text(80), required_effect: text(220) },
-    required: ['when', 'operation', 'required_effect'],
-};
 export const INCREMENTAL_ANALYSIS_SCHEMA_VALUE = {
     type: 'object', additionalProperties: false,
     properties: {
-        contract_version: { type: 'integer', const: 9 },
+        contract_version: { type: 'integer', const: 10 },
         current: { type: 'object', additionalProperties: false, properties: {
             frame: { type: 'string', enum: ['grounded', 'heightened', 'surreal'] }, frame_basis: text(160),
             status: text(180), immediate_action: text(140), activity: text(180), situation: text(220),
@@ -149,11 +131,10 @@ export const INCREMENTAL_ANALYSIS_SCHEMA_VALUE = {
             intrusion: { type: 'string', enum: ['closed', 'incidental', 'socially-open', 'dramatically-open', 'primed'] },
             novelty_ceiling: { type: 'string', enum: ['none', 'incidental', 'context-native', 'meaningful', 'major'] },
         }, required: ['frame', 'frame_basis', 'status', 'immediate_action', 'activity', 'situation', 'location', 'time', 'loop', 'scene_promise', 'phase', 'emotional_direction', 'pressure', 'intrusion', 'novelty_ceiling'] },
-        beat: { type: 'object', additionalProperties: false, properties: {
-            operation: text(80), primary_when: text(160), required_effect: text(220),
-            alternatives: { type: 'array', minItems: 2, maxItems: 2, items: INCREMENTAL_BRANCH_SCHEMA },
-            inject: { type: 'boolean', const: true }, preserve: strings(4, 160), forbid: strings(4, 160), basis: text(200),
-        }, required: ['operation', 'primary_when', 'required_effect', 'alternatives', 'inject', 'preserve', 'forbid', 'basis'] },
+        context: { type: 'object', additionalProperties: false, properties: {
+            conditions: { type: 'array', minItems: 1, maxItems: 6, items: CAUSAL_CONDITION_SCHEMA },
+            inject: { type: 'boolean', const: true }, inject_reason: text(200), basis: text(220),
+        }, required: ['conditions', 'inject', 'inject_reason', 'basis'] },
         thread_updates: { type: 'array', maxItems: 4, items: { type: 'object', additionalProperties: false, properties: {
             op: { type: 'string', enum: ['upsert', 'retire'] }, id: text(100), thread: text(180), state: text(220),
             status: { type: 'string', enum: ['active', 'dormant', 'due', 'blocked'] }, basis: text(150),
@@ -171,23 +152,23 @@ export const INCREMENTAL_ANALYSIS_SCHEMA_VALUE = {
         note_resolution: { anyOf: [{ type: 'object', additionalProperties: false, properties: { kind: { type: 'string', enum: ['suggest', 'correct', 'establish', 'forbid'] } }, required: ['kind'] }, { type: 'null' }] },
         audit: text(320),
     },
-    required: ['contract_version', 'current', 'beat', 'thread_updates', 'hidden_motives', 'actor_updates', 'ledger', 'note_resolution', 'audit'],
+    required: ['contract_version', 'current', 'context', 'thread_updates', 'hidden_motives', 'actor_updates', 'ledger', 'note_resolution', 'audit'],
 };
 export const INCREMENTAL_ANALYSIS_SCHEMA = Object.freeze({
-    name: 'tale_fairy_external_reaction_v9_incremental',
-    description: 'Compact complete Tale Fairy scene, motive, actor, direction, and continuity pass.',
+    name: 'tale_fairy_causal_context_v10_incremental',
+    description: 'Compact complete Tale Fairy scene, motive, actor, causal-context, and continuity pass.',
     strict: true,
     returnInvalid: true,
     value: INCREMENTAL_ANALYSIS_SCHEMA_VALUE,
 });
 
 export const MODE_INSTRUCTIONS = Object.freeze({
-    light: 'LIGHT — Apply the sampled appetite only to NPC or world follow-through, expressed subtly but perceptibly. Never author the player’s response, consent, inner state, or an unsupported result; contested outcomes remain open.',
-    balanced: 'BALANCED — Give the NPC or world response a clear, meaningful next step. Do not decide the player’s response or an uncertain effect; preserve a meaningful chance to answer contested actions.',
-    fun: 'FUN — Give NPC or world follow-through a prominent, lively expression with bold or surprising realization when supported. Strongly implied motives and capabilities may shape it; unsupported speculation stays private. Randomness never decides the user action, player response, consent, inner state, or unsupported result; contested outcomes remain open.',
+    light: 'LIGHT — Select only the few strongest immediately useful conditions. Favor quiet motives, relationships, and ordinary constraints.',
+    balanced: 'BALANCED — Select a compact mix of actors and wider-world causes that gives the writing model useful creative leverage.',
+    fun: 'FUN — Include a bolder strongly supported pressure or capability when relevant, while keeping tentative inventions private.',
 });
 
-export const DIRECTOR_POLICY = 'Interpret the complete scene and choose one coherent primary NPC-or-world follow-through before applying random appetite, then provide two distinct redirect-safe alternatives. The user action is outside Tale Fairy’s authority, and so is the player’s resulting response: do not infer, reinterpret, expand, narrow, relocate, complete, substitute, evaluate, or define the action, its target, its manner, the player’s intent, response, consent, inner state, or an uncertain result. The main roleplay instructions and context resolve the action and player response. Tale Fairy begins with the external response after or around that fixed action. Every fresh set must contribute playable movement through an NPC reaction, world reaction, consequence, opportunity, or natural next causal step, including same-scene advancement. If travel or arrival is complete, advance the settled interaction rather than repeating transit. NPCs and events may act toward, address, help, hinder, touch, threaten, or otherwise affect the player when established or unmistakable. For contested actions, show the external attempt but leave hit, defense, injury, restraint, compliance, and other player results open. A branch must never deny, delay, weaken, cap, or modify the user action or an outcome explicitly established by the user. Required effects must state positive external movement rather than an exclusion, withheld outcome, access restriction, or partial-resolution requirement. Quiet or routine situations still gain a perceptible external response without forced conflict. Active danger, competition, demanding tasks, and instability may exert credible pressure when established. Deepening, breathing room, relief, continuation, resolution, and transition are as legitimate as complication, interruption, escalation, or transformation. A current beat may use a strong scene-supported inference about an incentive, capability, relationship, or hidden motive; unsupported or novelty-seeking causes remain Scratchpad-only. Provider-visible text states only abstract external function and effect and must remain portable to another scene with the same dramatic shape. Never name or repeat a character, location, faction, lore concept, concrete object, body part, source, exact activity, user action, dialogue, prop, detail, endpoint, event, actor, outcome, or player reaction. Use current interaction, current environment, established pressure, or established relationship instead. Explicit user/OOC instructions bind, and player decisions remain the player’s alone.';
+export const DIRECTOR_POLICY = 'Simulate the world privately, then select only the currently relevant underlying conditions. A condition describes a present motivation, stance, relationship, capability, constraint, resource pressure, institutional tendency, or environmental state. It never prescribes the next action, event, dialogue, discovery, consequence, reveal, or outcome. The writing model interprets the conditions and decides how the story moves. Explicit user/OOC facts outrank inference, and the player character remains entirely outside Tale Fairy’s control.';
 
 export const EXTREME_CANON_INSTRUCTION = 'Explicit user/OOC canon remains authoritative even when extreme or unprecedented. Preserve its magnitude and apply relevant strengths and limits causally; averages are not ceilings. Unspecified compatible details remain creative space.';
 
@@ -313,53 +294,37 @@ function replacePrivateTerm(value, term, replacement) {
     return value.replace(new RegExp(`(?<!\\p{L})${pattern}(?!\\p{L})`, 'giu'), replacement);
 }
 
-/**
- * Incremental refresh must never pay for a second model call merely because
- * otherwise useful provider guidance repeated a private proper noun. Keep the
- * exact scene, ledger, basis, preservation rules, and thread updates private,
- * and abstract only the three fields that can be injected into the RP model.
- */
+/** Causal conditions intentionally retain their real subjects. The formatter
+ * exposes only subject + durable condition and keeps confidence, relevance,
+ * provenance, and tentative reconstructions private. */
 export function abstractIncrementalVisibleBranches(result) {
-    if (result?.contract_version !== 9 || !result.beat || typeof result.beat !== 'object') return result;
-    const privateTerms = [...canonSpecificTerms(result)].filter(Boolean).sort((left, right) => right.length - left.length);
-    if (!privateTerms.length) return result;
+    return result;
+}
 
-    const locationPhrase = normalizedPhrase(result.current?.location);
-    const locationTerms = new Set([locationPhrase]);
-    for (const match of capitalizedWords(result.current?.location)) locationTerms.add(normalizedPhrase(match[0]));
-
-    const abstract = value => {
-        let output = value;
-        for (const term of privateTerms) {
-            const possessive = /(?:'s|’s)$/iu.test(term);
-            const replacement = locationTerms.has(term)
-                ? 'the current environment'
-                : possessive ? "an established participant's" : 'an established participant';
-            output = replacePrivateTerm(output, term, replacement);
+function validateCausalContext(value, errors, label = 'context') {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        errors.push(`${label} must be an object`);
+        return;
+    }
+    if (value.inject !== true) errors.push(`${label}.inject must be true`);
+    for (const key of ['inject_reason', 'basis']) if (typeof value[key] !== 'string' || !value[key].trim()) errors.push(`${label}.${key} must be a non-empty string`);
+    const conditions = Array.isArray(value.conditions) ? value.conditions : [];
+    if (!Array.isArray(value.conditions) || conditions.length < 1 || conditions.length > 6) errors.push(`${label}.conditions must contain 1 to 6 conditions`);
+    const ids = [];
+    let providerEligible = 0;
+    for (const [index, condition] of conditions.entries()) {
+        const path = `${label}.conditions[${index}]`;
+        for (const key of ['id', 'kind', 'subject', 'condition', 'disclosure', 'confidence', 'relevance']) {
+            if (typeof condition?.[key] !== 'string' || !condition[key].trim()) errors.push(`${path}.${key} must be a non-empty string`);
         }
-        return String(output || '')
-            .replace(/\bthe\s+an established participant\b/giu, 'the established participant')
-            .replace(/\ban\s+an established participant\b/giu, 'an established participant')
-            .replace(/\bthe\s+the current environment\b/giu, 'the current environment')
-            .replace(/\s{2,}/gu, ' ')
-            .trim();
-    };
-    const branch = value => value && typeof value === 'object' ? {
-        ...value,
-        when: abstract(value.when),
-        operation: abstract(value.operation),
-        required_effect: abstract(value.required_effect),
-    } : value;
-    return {
-        ...result,
-        beat: {
-            ...result.beat,
-            primary_when: abstract(result.beat.primary_when),
-            operation: abstract(result.beat.operation),
-            required_effect: abstract(result.beat.required_effect),
-            alternatives: Array.isArray(result.beat.alternatives) ? result.beat.alternatives.map(branch) : result.beat.alternatives,
-        },
-    };
+        if (!['actor', 'relationship', 'group', 'institution', 'system', 'environment'].includes(condition?.kind)) errors.push(`${path}.kind is invalid`);
+        if (!['open', 'limited', 'private'].includes(condition?.disclosure)) errors.push(`${path}.disclosure is invalid`);
+        if (!['established', 'strong', 'tentative'].includes(condition?.confidence)) errors.push(`${path}.confidence is invalid`);
+        if (condition?.confidence !== 'tentative') providerEligible += 1;
+        if (condition?.id) ids.push(String(condition.id).trim().toLocaleLowerCase());
+    }
+    if (new Set(ids).size !== ids.length) errors.push(`${label}.conditions must use distinct ids`);
+    if (!providerEligible) errors.push(`${label}.conditions must include at least one non-tentative (established or strongly supported) condition`);
 }
 
 function validateBeatAnalysisResult(result, { requireHorizon = true } = {}) {
@@ -371,10 +336,10 @@ function validateBeatAnalysisResult(result, { requireHorizon = true } = {}) {
         }
         for (const key of keys) if (typeof value[key] !== 'string' || !value[key].trim()) errors.push(`${label}.${key} must be a non-empty string`);
     };
-    if (requireHorizon && result?.contract_version !== 7) errors.push('contract_version must be 7');
+    if (requireHorizon && result?.contract_version !== 8) errors.push('contract_version must be 8');
     if (!requireHorizon && result?.contract_version !== 6) errors.push('contract_version must be 6');
     requiredStrings(result?.current, ['frame', 'frame_basis', 'status', 'immediate_action', 'activity', 'situation', 'activity_role', 'temporal_scope', 'scene_promise', 'phase', 'emotional_direction', 'pressure', 'intrusion', 'novelty_ceiling'], 'current');
-    requiredStrings(result?.beat, ['operation', 'primary_when', 'target', 'required_effect', 'inject_reason', 'content_class', 'scope', 'intensity', 'quantity', 'relative_power', 'plot_weight', 'duration', 'basis'], 'beat');
+    validateCausalContext(result?.context, errors);
     requiredStrings(result?.response_audit, ['movement_fit', 'repetition', 'summary'], 'response_audit');
     if (requireHorizon) {
         requiredStrings(result?.horizon, ['status', 'audit'], 'horizon');
@@ -416,41 +381,6 @@ function validateBeatAnalysisResult(result, { requireHorizon = true } = {}) {
     }
     requiredStrings(result?.world, ['identity', 'baseline', 'confidence'], 'world');
     for (const key of ['thread_updates', 'actor_updates', 'canon_updates']) if (!Array.isArray(result?.[key])) errors.push(`${key} must be an array`);
-    for (const key of ['preserve', 'forbid']) if (!Array.isArray(result?.beat?.[key])) errors.push(`beat.${key} must be an array`);
-    if (!Array.isArray(result?.beat?.alternatives) || result.beat.alternatives.length !== 2) errors.push('beat.alternatives must contain exactly 2 branches');
-    for (const [index, branch] of (Array.isArray(result?.beat?.alternatives) ? result.beat.alternatives : []).entries()) {
-        requiredStrings(branch, ['when', 'operation', 'required_effect', 'content_class', 'scope', 'intensity', 'quantity', 'relative_power', 'plot_weight', 'duration'], `beat.alternatives[${index}]`);
-    }
-    const visibleText = [
-        ['beat.primary_when', result?.beat?.primary_when],
-        ['beat.operation', result?.beat?.operation],
-        ['beat.required_effect', result?.beat?.required_effect],
-        ...(Array.isArray(result?.beat?.alternatives) ? result.beat.alternatives.flatMap((branch, index) => [
-            [`beat.alternatives[${index}].when`, branch?.when],
-            [`beat.alternatives[${index}].operation`, branch?.operation],
-            [`beat.alternatives[${index}].required_effect`, branch?.required_effect],
-        ]) : []),
-    ];
-    const privateCanonTerms = canonSpecificTerms(result);
-    for (const [path, value] of visibleText) {
-        if (typeof value !== 'string') continue;
-        const normalizedVisible = ` ${normalizedPhrase(value)} `;
-        const reported = new Set();
-        for (const term of privateCanonTerms) {
-            if (!term || !normalizedVisible.includes(` ${term} `)) continue;
-            errors.push(`${path} must stay abstract and must not name canon-specific proper nouns (${term})`);
-            reported.add(term);
-        }
-        for (const match of words(value)) {
-            const term = match[0].toLocaleLowerCase();
-            const knownCanonWord = reported.has(term);
-            const unexpectedlyCapitalized = /^\p{Lu}/u.test(match[0]) && !startsSentence(value, match.index);
-            if (!knownCanonWord && !unexpectedlyCapitalized) continue;
-            if (knownCanonWord) continue;
-            errors.push(`${path} must stay abstract and must not name canon-specific proper nouns (${match[0]})`);
-        }
-    }
-    if (result?.beat?.inject !== true) errors.push('beat.inject must be true');
     for (const key of ['applicable', 'unjustified_escalation', 'player_control', 'continuity_drift']) if (typeof result?.response_audit?.[key] !== 'boolean') errors.push(`response_audit.${key} must be a boolean`);
     if (!Array.isArray(result?.response_audit?.patterns)) errors.push('response_audit.patterns must be an array');
     if (typeof result?.current?.loop !== 'boolean') errors.push('current.loop must be a boolean');
@@ -460,21 +390,12 @@ function validateBeatAnalysisResult(result, { requireHorizon = true } = {}) {
         'current.temporal_scope': ['moment', 'action', 'activity', 'scene', 'extended'], 'current.phase': ['establishing', 'developing', 'turning', 'landing', 'aftermath', 'transition'],
         'current.emotional_direction': ['preserve', 'brighten', 'darken', 'release', 'intensify'], 'current.pressure': ['none', 'latent', 'active', 'high', 'saturated'],
         'current.intrusion': ['closed', 'incidental', 'socially-open', 'dramatically-open', 'primed'], 'current.novelty_ceiling': ['none', 'incidental', 'context-native', 'meaningful', 'major'],
-        'beat.content_class': ['none', 'texture', 'reaction', 'obstacle', 'conflict', 'character', 'opposition', 'event', 'opportunity', 'revelation', 'consequence', 'other'],
-        'beat.scope': ['personal', 'social', 'institutional', 'societal', 'world'], 'beat.intensity': ['none', 'low', 'moderate', 'high', 'severe'],
-        'beat.quantity': ['none', 'singular', 'pair', 'group', 'numerous', 'swarm'], 'beat.relative_power': ['none', 'fodder', 'inferior', 'peer', 'elite', 'overwhelming', 'established'],
-        'beat.plot_weight': ['none', 'incidental', 'connective', 'consequential'], 'beat.duration': ['moment', 'beat', 'scene', 'extended'],
         'world.confidence': ['low', 'moderate', 'high'],
         'response_audit.movement_fit': ['not-applicable', 'missed', 'partial', 'clear'], 'response_audit.repetition': ['none', 'possible', 'clear'],
     };
     for (const [path, values] of Object.entries(allowed)) {
         const [group, key] = path.split('.');
         if (!values.includes(result?.[group]?.[key])) errors.push(`${path} is invalid`);
-    }
-    for (const [index, branch] of (Array.isArray(result?.beat?.alternatives) ? result.beat.alternatives : []).entries()) {
-        for (const key of ['content_class', 'scope', 'intensity', 'quantity', 'relative_power', 'plot_weight', 'duration']) {
-            if (!allowed[`beat.${key}`].includes(branch?.[key])) errors.push(`beat.alternatives[${index}].${key} is invalid`);
-        }
     }
     for (const key of ['variant_rules', 'rp_changes', 'signatures', 'forces']) if (!Array.isArray(result?.world?.[key])) errors.push(`world.${key} must be an array`);
     if (typeof result?.ledger !== 'string') errors.push('ledger must be a string');
@@ -493,17 +414,12 @@ function validateIncrementalAnalysisResult(result) {
         }
         for (const key of keys) if (typeof value[key] !== 'string' || !value[key].trim()) errors.push(`${label}.${key} must be a non-empty string`);
     };
-    if (result?.contract_version !== 9) errors.push('contract_version must be 9');
+    if (result?.contract_version !== 10) errors.push('contract_version must be 10');
     requiredStrings(result?.current, ['frame', 'frame_basis', 'status', 'immediate_action', 'activity', 'situation', 'scene_promise', 'phase', 'emotional_direction', 'pressure', 'intrusion', 'novelty_ceiling'], 'current');
-    requiredStrings(result?.beat, ['operation', 'primary_when', 'required_effect', 'basis'], 'beat');
+    validateCausalContext(result?.context, errors);
     if (typeof result?.current?.location !== 'string') errors.push('current.location must be a string');
     if (typeof result?.current?.time !== 'string') errors.push('current.time must be a string');
     if (typeof result?.current?.loop !== 'boolean') errors.push('current.loop must be a boolean');
-    if (result?.beat?.inject !== true) errors.push('beat.inject must be true');
-    for (const key of ['preserve', 'forbid']) if (!Array.isArray(result?.beat?.[key])) errors.push(`beat.${key} must be an array`);
-    const alternatives = Array.isArray(result?.beat?.alternatives) ? result.beat.alternatives : [];
-    if (alternatives.length !== 2) errors.push('beat.alternatives must contain exactly 2 branches');
-    for (const [index, branch] of alternatives.entries()) requiredStrings(branch, ['when', 'operation', 'required_effect'], `beat.alternatives[${index}]`);
     if (!Array.isArray(result?.thread_updates)) errors.push('thread_updates must be an array');
     for (const [index, update] of asArray(result?.thread_updates).entries()) {
         requiredStrings(update, ['op', 'id', 'thread', 'state', 'status', 'basis'], `thread_updates[${index}]`);
@@ -542,17 +458,6 @@ function validateIncrementalAnalysisResult(result) {
         intrusion: ['closed', 'incidental', 'socially-open', 'dramatically-open', 'primed'], novelty_ceiling: ['none', 'incidental', 'context-native', 'meaningful', 'major'],
     };
     for (const [key, values] of Object.entries(allowed)) if (!values.includes(result?.current?.[key])) errors.push(`current.${key} is invalid`);
-    const visibleText = [
-        ['beat.primary_when', result?.beat?.primary_when], ['beat.operation', result?.beat?.operation], ['beat.required_effect', result?.beat?.required_effect],
-        ...alternatives.flatMap((branch, index) => [
-            [`beat.alternatives[${index}].when`, branch?.when], [`beat.alternatives[${index}].operation`, branch?.operation], [`beat.alternatives[${index}].required_effect`, branch?.required_effect],
-        ]),
-    ];
-    const privateCanonTerms = canonSpecificTerms(result);
-    for (const [path, value] of visibleText) {
-        const normalizedVisible = ` ${normalizedPhrase(value)} `;
-        for (const term of privateCanonTerms) if (term && normalizedVisible.includes(` ${term} `)) errors.push(`${path} must stay abstract and must not name canon-specific proper nouns (${term})`);
-    }
     if (typeof result?.ledger !== 'string') errors.push('ledger must be a string');
     if (typeof result?.audit !== 'string') errors.push('audit must be a string');
     if (!Object.hasOwn(result || {}, 'note_resolution')) errors.push('note_resolution must be present');
@@ -668,9 +573,8 @@ function validateCompactAnalysisResult(result) {
 }
 
 export function validateAnalysisResult(result) {
-    if (result?.contract_version === 9) return validateIncrementalAnalysisResult(result);
-    if (result?.contract_version === 7) return validateBeatAnalysisResult(result);
-    if (result?.contract_version === 6) return validateBeatAnalysisResult(result, { requireHorizon: false });
+    if (result?.contract_version === 10) return validateIncrementalAnalysisResult(result);
+    if (result?.contract_version === 8) return validateBeatAnalysisResult(result);
     if (result?.contract_version === 2) return validateCompactAnalysisResult(result);
     const errors = [];
     if (!result || typeof result !== 'object' || Array.isArray(result)) {
@@ -1916,21 +1820,21 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         latestUserSuggestedKinship,
     );
     const payload = {
-        task: 'prepare_conditional_direction_set',
+        task: 'refresh_active_world_simulation',
         instruction: options.incremental
-            ? 'Read the chronological transcript head first. Reconstruct the current scene from the newest assistant reply, apply any later user text, re-evaluate actor motivations and the private hidden motives behind notable behavior or timing, and prepare one primary and exactly two redirect-safe directions governing only NPC or world follow-through. Preserve the long-range horizon; this compact pass still completes current scene, motive, actor, and factual continuity reasoning.'
-            : 'Read the chronological transcript head first. Reconstruct the current scene from the newest assistant reply, then apply any later user text. Audit that assistant reply, map the private hidden motives that could explain notable timing or behavior, then prepare one primary and exactly two redirect-safe directions governing only NPC or world follow-through. The main roleplay instructions resolve the user action; Tale Fairy supplies only an external reaction, consequence, opportunity, or natural next causal step.',
-        authority: 'Explicit OOC/scenario commands and the latest user text outrank the entire Tale Fairy plan. The user action is outside Tale Fairy’s authority, and so is the player’s resulting response: do not infer, reinterpret, expand, narrow, relocate, complete, substitute, evaluate, or define the action, its target, its manner, the player’s intent, response, consent, inner state, or an uncertain result. OOC outcome commands bind the stated outcome. Never use planning to deny, delay, weaken, cap, or modify the user action. Never invent player-initiated movement or inner state; never invent player dialogue, thoughts, feelings, consent, decisions, compliance, retreat, or unrelated extra actions. An NPC or event may target or affect the player when established or unmistakable, but contested results remain open.',
-        direction_policy: DIRECTOR_POLICY,
-        calibration: 'Choose movement from scene need first; apply the sampled appetite only within that compatible movement. A high or adverse sample never independently warrants complication, conflict, interruption, or escalation. It may instead make a breather, deepening, relief, resolution, or transition more vivid and consequential.',
-        invention: 'A new cause used by a current branch needs conversational or explicit-canon support unless it is a strong, scene-supported inference about an incentive, capability, relationship, or hidden motive; do not treat a weak guess as fact. A private horizon seed may be labeled original and remain speculative. hidden_motives is scratchpad-only open hypothesis space: it may be scene-specific, franchise-specific, original, unlikely, contradictory, or wildly creative, as long as every item is clearly ranked and labeled rather than asserted as fact. Provider-visible when, operation, and required_effect text must contain only portable abstractions. Never copy names or concrete nouns from the scene: no character, location, faction, lore concept, object, body part, source material, exact activity, action, dialogue, prop, detail, endpoint, event, actor, outcome, or player reaction. Refer only to the current activity, current interaction, current environment, established pressure, or established relationship. Private fields may remain scene-specific. The provider sees only abstract conditions, directions, and effects; all scale classifications, target, basis, preserve, forbid, horizon data, hidden motives, and retained evidence stay private. A fitting branch governs NPC or world follow-through and may include an established action toward the player, but contested player results stay open.',
-        simulation: 'Use the causal unit natural to the scope. Personal and life simulation may move through needs, relationships, work, routine, opportunity, or consequence. Organization and country simulation may move through decisions, institutions, resources, factions, policy effects, public reaction, trends, or systemic pressures. World simulation may move through broad forces. Do not translate every scale into a conventional adventure encounter.',
-        movement: 'Write concise natural NPC-or-world follow-through operations, not generic bare verbs. primary_when and both alternative when conditions distinguish which external response best follows the newest user text. Include a broadly compatible external-response condition; all conditions are turn-local and expire after one response. Never keep an old topic active or encode a change to the user action, denial, delay, withheld answer, reduced access, or partial-resolution ceiling. Required effects describe positive external movement.',
-        horizon_rule: 'Privately scan beyond the current scene. horizon.seeds is a bounded radar of zero to four optional trajectories that could remain causally meaningful across an arc, months-years, or an open-ended future. detected means supported by conversation; original means a compatible invention and never a fact. Preserve stable ids with change=keep or adjust. Prefer independent causal engines, and omit a near-term matter merely renamed as distant. present_relation says whether this scene has no relation, echoes, seeds, advances, or converges with each trajectory. A relation may inform the current external response only when natural; never force setup, defer resolution, schedule a payoff, or turn a possibility into canon. Keep at least one genuinely original seed when compatible creative space exists.',
-        motive_rule: 'Privately ask why each notable event, acceleration, delay, silence, refusal, coincidence, invitation, or unusual opportunity is happening. hidden_motives has zero to six ranked explanations, ordered established, most-likely, likely, possible, wild-card, then contradicted; preserve the relative evidence order within the same likelihood. Preserve stable ids across analyses. Use change=keep for an unchanged hypothesis, adjust when its evidence or rank changes, replace for a genuinely new hypothesis, and retire when evidence resolves or defeats it; do not carry irrelevant mysteries forever. If established lore, identity, capability, or relationship makes a specific intervention the clearest causal explanation, state it plainly and rank it most-likely even without confirmation; a powerful figure personally summoning an unusually exceptional subject can be the top hypothesis for an expedited meeting. actor names the suspected person, institution, faction, force, or system; explanation states the hypothesis; mechanism explains the observation; evidence and counterevidence cite clues. Keep bold franchise-aware or original possibilities when they fit, but never add a novelty-only wild-card just to make the list entertaining. current_relevance says none, background, supports-beat, or drives-beat; a likely motive is not canon merely because it ranks first. Never add a motive to canon_updates, force a reveal, or expose exact motives to the provider. Explicit user/OOC facts outrank inferred motives.',
-        contribution_rule: 'Always set beat.inject=true for a fresh analysis. Every branch must be self-propelling: produce an observable external development that exists independently of any player reply. Use completed NPC decisions, reactions, actions, disclosures, commitments, consequences, discoveries, opportunities, environmental changes, or task-native progress. In dialogue-centered scenes, contribute information, position, emotion, decision, or action that changes the situation and leaves the player free to react or continue. Add only a complementary, context-native NPC or world response, consequence, opportunity, or next causal step. If a branch would interpret or compete with the user action, the writing model must ignore it. NPCs and events may target or affect the player when established or unmistakable; for contested actions, present the attempt without deciding the player’s response or uncertain result. Quiet listening, assignments, rest, travel, and other routine activity still receive something external to notice, exchange, discover, advance, or respond to; when arrival is complete, do not repeat transit, and do not author the player character’s response or unsupported result. Keep it subtle when warranted, but in fun mode let a strong causal inference land boldly instead of collapsing into a safe placeholder. Never manufacture conflict, interruption, pressure, urgency, or restriction merely to make something happen. Explain the private choice in inject_reason.',
-        response_audit_rule: 'response_audit evaluates only the newest assistant reply after a prior conditional set. Check whether Tale Fairy stayed outside the user action and whether the NPC or world follow-through created forward motion. Then infer the closest-matching branch and evaluate its external effect, plus repetition, unjustified escalation, player control, and continuity drift. Record brief patterns, not quoted prose. If repetition is clear, the next conditional set must change the local scene focus or causal engine rather than restating the same process. If no reply is eligible, set applicable=false and movement_fit=not-applicable. Audit and pattern memory are private, never injected, and never trigger automatic regeneration.',
-        scale_fields: 'content_class, scope, intensity, quantity, relative_power, plot_weight, and duration are private planning metadata. They describe only the proposed NPC or world follow-through and never characterize or limit the user action.',
+            ? 'Reconstruct the current scene from the newest authoritative exchange, update changed world and actor state, re-evaluate private hypotheses, and select the few underlying conditions most useful to the next response.'
+            : 'Reconstruct the current scene, audit the newest assistant reply, update the private world simulation, and select the few underlying conditions most useful to the next response.',
+        authority: 'Explicit OOC/scenario commands and the latest user text outrank retained state and inference. Never define, modify, complete, or judge the player action, intent, response, consent, or inner state.',
+        context_policy: DIRECTOR_POLICY,
+        simulation: 'Track the causal unit natural to any genre or scale: people, relationships, groups, institutions, economies, resources, environments, countries, societies, and world forces. The persistent boards may be broad; context.conditions is only the 1–6 items relevant now.',
+        condition_rule: 'Each condition must name its actual subject and describe a durable present-state cause. Good conditions answer what the subject wants, believes, knows, can do, is constrained by, or is under pressure from. Do not write a proposed future action, next beat, exact event, dialogue, reveal, discovery, consequence, outcome, or instruction. Do not disguise a planned event with future tense. The main writing model chooses every concrete realization.',
+        evidence_rule: 'confidence=established requires direct evidence. confidence=strong permits a well-supported causal inference. confidence=tentative is private scratchpad material and is automatically withheld from the provider. Newer explicit facts and corrections supersede all summaries and inference.',
+        disclosure_rule: 'open means generally knowable in scene; limited means known only to relevant participants; private means it may shape behavior without being automatically revealed. Disclosure never commands a reveal.',
+        relevance_rule: 'relevance is a private explanation for selecting the condition now. Do not assume that a condition is resolved because it was expressed, or escalate it because it was neglected. Change salience only from new evidence, elapsed time, dependency changes, or a real causal state change. Retrieve dormant actors or systems only when the current scene makes them relevant.',
+        horizon_rule: 'Stay one step ahead privately by maintaining optional horizon trajectories, but never convert them into provider instructions, promised events, delivery debt, or fixed plot. Long-range possibilities remain hypotheses until supported.',
+        motive_rule: 'Maintain the separate private hidden-motive board as ranked hypotheses. It can preserve bold specific explanations, but a likely motive is not canon. Retire or revise only when evidence changes; irrelevance may make an item dormant without resolving it.',
+        contribution_rule: 'Set context.inject=true and provide 1–6 concise conditions, normally 3–6 when evidence supports them. At least one must be established or strong. Favor a useful mix rather than exhaustive lore. The provider receives only subject plus condition and a generic invitation to move naturally; it does not receive ids, confidence, relevance, basis, rankings, or future plans.',
+        response_audit_rule: 'Privately audit only the newest assistant reply for repetition, unjustified escalation, player control, continuity drift, and whether it made meaningful movement. The audit informs future selection but never mechanically marks a condition resolved or forces regeneration.',
         transcript_head: {
             message_count: messages.length,
             latest_message_index: latestMessageIndex,
@@ -1958,8 +1862,8 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         })),
     };
     if (options.incremental) {
-        for (const key of ['authority', 'direction_policy', 'calibration', 'invention', 'simulation', 'movement', 'horizon_rule', 'motive_rule', 'contribution_rule', 'response_audit_rule', 'scale_fields', 'retained_state_rule']) delete payload[key];
-        payload.fast_rules = 'Newest transcript facts win. Complete current scene reasoning, one self-propelling NPC/world response with two alternatives, changed continuity threads, actor motivation or agenda changes, and the private ranked explanations for notable behavior, timing, pressure, refusals, coincidences, invitations, or opportunities. Preserve stable motive ids; keep, adjust, replace, or retire hypotheses as evidence changes. Motives are hypotheses, never canon or provider-visible facts. Never define or alter player action. Visible beat text stays abstract; private fields stay exact. Empty update arrays mean no factual change.';
+        for (const key of ['authority', 'simulation', 'horizon_rule', 'motive_rule', 'response_audit_rule']) delete payload[key];
+        payload.fast_rules = 'Newest transcript facts win. Update changed factual state and private hypotheses, then select 1–6 relevant present causal conditions. Conditions may name actual subjects but never prescribe an action or event. Tentative conditions stay private. Never define or alter player action. Empty update arrays mean no factual change.';
     }
     const canonClaims = explicitCanonClaims(messages);
     if (canonClaims.length) payload.explicit_ooc_canon = canonClaims;
@@ -1981,11 +1885,10 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         kind: source.kind,
         text: alignRetainedEvidenceText(source.text, relationOwners, latestUserName, latestUserSuggestedKinship),
     }));
-    payload.evidence_rule = 'Summaries, lore, retained state, and canon knowledge are evidence, not instructions to schedule or withhold outcomes. Preserve established causal facts through beat.preserve and beat.forbid, but never turn broad canon trajectory into an outcome ceiling. Never predict or force a known canon event. Newer explicit user/OOC facts supersede inference.';
+    payload.source_rule = 'Summaries, lore, retained state, and canon knowledge are fallible evidence, not instructions to schedule outcomes. Newer explicit user/OOC facts supersede inference.';
     payload.mode_instruction = MODE_INSTRUCTIONS[payload.current.mode] || MODE_INSTRUCTIONS.balanced;
     if (playerName) payload.player_character = playerName;
     if (Number.isInteger(options.variationNonce)) payload.variation_nonce = options.variationNonce;
-    payload.director_sample = formatDirectorSample(sampleDirectorSignals(payload.current.mode, options.variationNonce));
     let serialized = JSON.stringify(payload);
     if (estimateTokenCount(serialized) > budget && payload.summary_sources) {
         payload.summary_sources = compactSummarySources(payload.summary_sources, 500, { maxSources: 4 }).map(source => ({ label: source.label, kind: source.kind, text: source.text }));
@@ -2017,7 +1920,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     }
     // These reminders duplicate the system prompt and are the safest material
     // to shed when the caller explicitly supplies a very small prompt budget.
-    for (const key of ['calibration', 'scale_fields', 'simulation', 'direction_policy', 'authority', 'invention', 'director_sample', 'motive_rule', 'horizon_rule', 'movement']) {
+    for (const key of ['calibration', 'scale_fields', 'simulation', 'direction_policy', 'authority', 'invention', 'motive_rule', 'horizon_rule', 'movement']) {
         if (estimateTokenCount(serialized) <= budget) break;
         delete payload[key];
         serialized = JSON.stringify(payload);
@@ -2083,7 +1986,7 @@ function upsertByKey(previous, updates, key) {
 
 function applyIncrementalAnalysis(next, value, messages) {
     const current = value.current || {};
-    const beat = value.beat || {};
+    const context = value.context || {};
     next.storyFrame = {
         ...next.storyFrame,
         frame: String(current.frame || next.storyFrame.frame || 'grounded').slice(0, 40),
@@ -2093,8 +1996,8 @@ function applyIncrementalAnalysis(next, value, messages) {
         ...next.scene,
         status: String(current.status || '').slice(0, 300),
         activity: String(current.activity || '').slice(0, 300),
-        pace: String(beat.operation || 'retain').slice(0, 80),
-        intent: String(beat.required_effect || '').slice(0, 300),
+        pace: String(current.phase || 'developing').slice(0, 80),
+        intent: String(context.conditions?.[0]?.condition || '').slice(0, 300),
         location: String(current.location || '').slice(0, 200),
         time: String(current.time || '').slice(0, 160),
         loop: current.loop === true,
@@ -2108,7 +2011,7 @@ function applyIncrementalAnalysis(next, value, messages) {
         novelty_ceiling: current.novelty_ceiling,
         basis: current.frame_basis,
     } }).sceneProfile;
-    next.beatDirective = normalizeState({ beatDirective: beat }).beatDirective;
+    next.causalContext = normalizeState({ causalContext: context }).causalContext;
     next.narrativeLayers = normalizeState({ narrativeLayers: {
         ...next.narrativeLayers,
         immediate_action: current.immediate_action,
@@ -2156,8 +2059,8 @@ function applyIncrementalAnalysis(next, value, messages) {
     next.planHorizons = { items: [], deviation: { level: 'none', reason: '' } };
     next.narrativeEvents = [];
     next.guidance = '';
-    next.lastInject = next.beatDirective.inject;
-    next.lastReason = String(value.audit || beat.basis || '').trim().slice(0, 500);
+    next.lastInject = next.causalContext.inject;
+    next.lastReason = String(value.audit || context.basis || '').trim().slice(0, 500);
     if (typeof value.ledger === 'string' && value.ledger.trim()) next.contextLedger = value.ledger.trim().slice(0, 3000);
     next.lastAnalysisFingerprint = fingerprintMessages(messages);
     next.sourceMessageCount = messages.length;
@@ -2171,13 +2074,13 @@ function applyIncrementalAnalysis(next, value, messages) {
 
 function applyBeatAnalysis(next, value, messages) {
     const current = value.current || {};
-    const beat = value.beat || {};
+    const context = value.context || {};
     const world = value.world || {};
     next.storyFrame = { frame: String(current.frame || 'grounded').slice(0, 40), confidence: String(world.confidence || 'low').slice(0, 40), basis: String(current.frame_basis || '').slice(0, 240) };
     next.scene = {
         ...next.scene,
         status: String(current.status || '').slice(0, 300), activity: String(current.activity || '').slice(0, 300),
-        pace: String(beat.operation || 'retain').slice(0, 80), intent: String(beat.required_effect || '').slice(0, 300),
+        pace: String(current.phase || 'developing').slice(0, 80), intent: String(context.conditions?.[0]?.condition || '').slice(0, 300),
         location: String(current.location || '').slice(0, 200), time: String(current.time || '').slice(0, 160), loop: current.loop === true,
     };
     next.sceneProfile = normalizeState({ sceneProfile: {
@@ -2186,7 +2089,7 @@ function applyBeatAnalysis(next, value, messages) {
     } }).sceneProfile;
     next.responseAudit = normalizeState({ responseAudit: value.response_audit }).responseAudit;
     next.responsePatternMemory = [...next.responsePatternMemory, ...next.responseAudit.patterns].slice(-12);
-    if (value.contract_version === 7) {
+    if (value.contract_version === 8) {
         const proposed = normalizeState({ horizonRadar: {
             status: value.horizon?.status,
             seeds: asArray(value.horizon?.seeds).map(seed => ({ ...seed, presentRelation: seed.present_relation })),
@@ -2218,7 +2121,7 @@ function applyBeatAnalysis(next, value, messages) {
         });
         next.hiddenMotives = proposedMotives;
     }
-    next.beatDirective = normalizeState({ beatDirective: beat }).beatDirective;
+    next.causalContext = normalizeState({ causalContext: context }).causalContext;
     const horizonTrajectory = next.horizonRadar.seeds.find(seed => seed.kind === 'detected' && seed.presentRelation !== 'none')?.trajectory || '';
     next.narrativeLayers = normalizeState({ narrativeLayers: {
         immediate_action: current.immediate_action, local_activity: current.activity, situation: current.situation,
@@ -2258,8 +2161,8 @@ function applyBeatAnalysis(next, value, messages) {
     next.planHorizons = { items: [], deviation: { level: 'none', reason: '' } };
     next.narrativeEvents = [];
     next.guidance = '';
-    next.lastInject = next.beatDirective.inject;
-    next.lastReason = String(value.audit || beat.basis || '').trim().slice(0, 500);
+    next.lastInject = next.causalContext.inject;
+    next.lastReason = String(value.audit || context.basis || '').trim().slice(0, 500);
     if (typeof value.ledger === 'string' && value.ledger.trim()) next.contextLedger = value.ledger.trim().slice(0, 3000);
     next.lastAnalysisFingerprint = fingerprintMessages(messages);
     next.sourceMessageCount = messages.length;
@@ -2511,8 +2414,8 @@ export function applyAnalysis(state, result, messages) {
     const playerName = playerCharacterName(messages);
     const next = normalizeState(useSpecificPlayerName(state, playerName));
     const value = result && typeof result === 'object' ? useSpecificPlayerName(result, playerName) : {};
-    if (value.contract_version === 9) return applyIncrementalAnalysis(next, value, messages);
-    if ([6, 7].includes(value.contract_version)) return applyBeatAnalysis(next, value, messages);
+    if (value.contract_version === 10) return applyIncrementalAnalysis(next, value, messages);
+    if (value.contract_version === 8) return applyBeatAnalysis(next, value, messages);
     if (value.contract_version === 2) return applyCompactAnalysis(next, value, messages);
     if (value.story_frame && typeof value.story_frame === 'object') next.storyFrame = { ...next.storyFrame, frame: String(value.story_frame.frame || 'unknown').slice(0, 40), confidence: String(value.story_frame.confidence || 'low').slice(0, 40), basis: String(value.story_frame.basis || '').slice(0, 240) };
     if (value.director_score && typeof value.director_score === 'object') {
@@ -2593,60 +2496,24 @@ export function applyAnalysis(state, result, messages) {
     return next;
 }
 
-const PLANNER_SYSTEM = `You are Tale Fairy, an adaptive narrative director. Another model writes the actual roleplay or simulation. Return only JSON matching the schema.
+const PLANNER_SYSTEM = `You are Tale Fairy, a private active-world simulator and causal-context curator. Another model writes the roleplay or simulation. Return only JSON matching the schema.
 
-First determine what movement the scene actually warrants. Then privately ask what hidden motives could explain the scene's notable behavior, timing, pressure, or opportunity. Use the weighted sample to color the selected movement's strength, novelty, and fortune. The sample is not an event taxonomy: it never selects the movement and never creates a need for an incident. Conduct the next response rather than prescribing a future route; separately maintain the private horizon radar and hidden-motive board described below.
+Reconstruct the current state from the newest authoritative exchange. Maintain people, relationships, groups, institutions, systems, resources, environments, and long-range pressures at whatever scale fits the simulation. Then select only the few underlying conditions relevant to the next response.
 
-AUTHORITY: Explicit user/OOC/scenario commands and the latest user text outrank this entire plan. The user action and the player's resulting response are outside Tale Fairy's authority. Do not infer, reinterpret, expand, narrow, relocate, complete, substitute, evaluate, or define the user action, its target, its manner, the player's intent, response, consent, inner state, or an uncertain result. The main roleplay instructions and context resolve the action and player response. A forced outcome binds that outcome. Never use planning to deny, delay, weaken, cap, or modify the user action. Never invent player-initiated movement or inner state; never invent player dialogue, thoughts, feelings, consent, decisions, compliance, retreat, or unrelated extra actions. An NPC or event may target or affect the player when established or unmistakable, but contested hit, defense, injury, restraint, compliance, and other player results remain open.
+A condition is present causal state: a motivation, belief, knowledge state, stance, capability, constraint, relationship, institutional tendency, resource pressure, or environmental condition. Name the real subject. Never prescribe a future action, scene, event, dialogue, reveal, discovery, consequence, or outcome. Never disguise a plan as a condition. The writing model interprets these causes and creatively decides what happens.
 
-DIRECTION: ${DIRECTOR_POLICY}
+Use confidence carefully. established requires direct evidence; strong requires a well-supported inference; tentative remains private and is never provider-visible. open, limited, and private describe who may know a condition; private conditions may shape behavior but do not require revelation. Explicit user/OOC facts and corrections outrank retained state, summaries, lore, and inference.
 
-CALIBRATION: Quietness is not stagnation. A scene may warrant a breather, deepening, relief, resolution, or transition with no incident. High intervention means fuller expression of the chosen movement, not compulsory disruption. An adverse sample cannot justify manufacturing difficulty. Escalate only when pressure, causality, unresolved action, or explicit user direction independently supports it. In Fun mode, a strong causal inference may be realized boldly rather than softened into generic safe flavor; unsupported speculation remains private.
+Select 1–6 conditions, normally 3–6 when useful, with at least one established or strong item. Relevance is private selection reasoning, not a plot priority. Do not assume expressed means resolved or neglected means escalated. Revise salience only from evidence, time, dependencies, or real causal change. Dormant characters and systems can leave the active set and be reconstructed from retained summaries, lore, Continuity, and factual records when relevant again.
 
-CONDITIONAL MOVEMENT SET: If the newest message is an assistant response, prepare a compact policy for possible NPC or world responses; if it is user text, make the primary branch fit only that text. Conditions are local to the next response and expire after one response. Never keep an old topic active: if the user changes subject, activity, or focus, ignore the entire set. beat.primary_when states when the primary follow-through fits. beat.alternatives contains exactly two materially distinct redirect-safe branches with natural-language conditions. The conditions distinguish external response routes; they do not interpret the user action. Ignore all branches if they cross into defining or modifying the user action.
+Stay a step ahead only in the private horizon and motive boards. They are optional possibilities and hypotheses, never event queues, promises, or instructions. The player action, response, consent, and inner state remain outside Tale Fairy's authority. The provider will receive only a clean natural-language slice of subject plus condition and will choose concrete movement itself.`;
 
-MOVEMENT: Write every operation as a concise, natural, scene-aware direction for how the next response should move under that branch. Each must be general enough to leave the concrete realization open, but not a generic bare verb such as deepen, continue, complicate, or introduce. There is no fixed taxonomy, approved vocabulary, nearest label, or fallback bucket. Scene changes, pressure shifts, reversals, discoveries, good turns, bad turns, mixed consequences, new causes, stillness, and any other context-compatible movement are all available.
+export const ANALYSIS_OUTPUT_CONTRACT = `Return exactly: contract_version=8, current, context, response_audit, horizon, hidden_motives, world, thread_updates, actor_updates, canon_updates, ledger, note_resolution, audit.
+context={conditions,inject,inject_reason,basis}; inject=true. conditions has 1–6 items, each {id,kind,subject,condition,disclosure,confidence,relevance}. kind is actor, relationship, group, institution, system, or environment. disclosure is open, limited, or private. confidence is established, strong, or tentative. Describe current causes only, never future actions or planned events. At least one condition must not be tentative.
+current records the exact current scene. response_audit privately evaluates the prior assistant response. horizon and hidden_motives remain private optional hypotheses. world and updates contain factual state only. Empty update arrays mean no factual change. No other keys.`;
 
-INVENTION: The writing model chooses the realization. A new cause used by a current branch needs conversational or explicit-canon support unless it is a strong, scene-supported inference about an incentive, capability, relationship, or hidden motive; do not treat a weak guess as fact. Visible branch text must be portable to any scene with the same dramatic shape and state only wanted external function or change. Never name or repeat a character, location, faction, lore concept, object, body part, source, exact activity, user action, dialogue, prop, detail, endpoint, event, actor, outcome, or player reaction. Use current interaction, current environment, established pressure, or established relationship. Valid: "Introduce a quiet, favorable discovery" and "Let the surrounding world provide a meaningful next step without adding pressure." Naming the discovery, source, actor, user action, or player feeling is invalid. Keep scene specifics and every scale classification in private fields; unsupported details stay private. A fitting branch governs only NPC or world follow-through, never the user action. A weak or merely novelty-seeking cause used by a current branch stays Scratchpad-only. A private horizon seed may instead be a compatible original possibility because it is not injected or treated as fact.
+export const INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT = `Return exactly contract_version=10 plus current, context, thread_updates, hidden_motives, actor_updates, ledger, note_resolution, and audit.
+context contains 1–6 currently relevant present causal conditions using {id,kind,subject,condition,disclosure,confidence,relevance}, inject=true, inject_reason, and basis. At least one condition is established or strong; tentative items remain private. Conditions may name real subjects but never prescribe actions, events, dialogue, revelations, or outcomes. Updates contain factual changes only. No other keys.`;
 
-ALWAYS CONTRIBUTE: Set beat.inject=true for every fresh analysis. Every branch must be self-propelling: produce an observable external development that exists independently of any player reply. Use completed NPC decisions, reactions, actions, disclosures, commitments, consequences, discoveries, opportunities, environmental changes, or task-native progress. In dialogue-centered scenes, contribute information, position, emotion, decision, or action that changes the situation and leaves the player free to react or continue. Add a complementary, context-native NPC or world response, consequence, opportunity, or next causal step; do not interpret, redirect, delay, narrow, weaken, cap, or modify the user action. NPCs and events may target or affect the player when established or unmistakable. For contested actions, present the external attempt and preserve a meaningful chance to respond; do not decide an uncertain hit, defense, injury, restraint, compliance, or other player result. Required effects state positive external movement, never an exclusion, withheld answer, reduced access, or partial-resolution requirement. Quiet listening, assignments, rest, travel, and other routine activity still receive something external to notice, exchange, discover, advance, or respond to; when arrival is complete, do not repeat transit, and do not author the player character's response or unsupported result. In Fun mode, let a strong causal inference land with a bold or surprising external realization instead of collapsing into safe filler. Never manufacture conflict, interruption, pressure, urgency, or restriction merely to make something happen. Explain the private choice in inject_reason.
-
-PRIVATE RESPONSE AUDIT: For the newest assistant reply after a conditional set, judge whether Tale Fairy stayed outside the user action and whether NPC/world follow-through landed. Infer the closest branch and record its effect, repetition, unjustified escalation, player control, continuity drift, and brief non-quoted patterns. If repetition is clear, vary the next set's local focus or causal engine instead of orbiting the same unresolved process. If no reply, mark not applicable. Vary away from repetition, never as banned words or templates. This feedback is private, never injected, and never triggers regeneration.
-
-SIMULATION: Apply the same causal logic to roleplay, life simulation, relationships, workplaces, organizations, countries, societies, and worlds. Use the unit natural to the scale: individual action, relationship response, institutional decision, resource movement, faction behavior, policy effect, public response, trend, or system pressure. Do not turn every simulation into a conventional adventure encounter.
-
-CANON AND TRAJECTORY: Specific established facts constrain causality; broad canon trajectory does not cap outcomes. Express concrete protections in preserve and forbid. Do not forecast or force a canon event, preserve an antagonist merely because canon expects it, or withhold a warranted answer or resolution. Unspecified compatible space remains available for invention.
-
-PRIVATE HORIZON RADAR: Detect causal material that could remain meaningful beyond the current scene, and retain zero to four optional long-range seeds. Each seed must survive at arc, months-years, or open-ended scale rather than being a near-term matter with a distant label. kind=detected requires conversation evidence in basis; kind=original is a compatible invention and remains speculation. Use distinct causal engines and stable ids. present_relation reports whether the present scene has no relation, echoes, seeds, advances, or converges with the trajectory. It may subtly inform a current NPC/world response only when causally natural. Keep at least one original possibility when compatible space exists, but never force one against user direction or closed canon. The radar observes possibility: it does not schedule events, promise delivery, withhold current resolution, or make its ideas canon.
-
-PRIVATE HIDDEN-MOTIVE BOARD: Maintain zero to six explanations for the notable why. Rank established > most-likely > likely > possible > wild-card > contradicted, preserving evidence order within a tier. Preserve ids; keep unchanged hypotheses, adjust revisions, replace new hypotheses, and retire resolved or defeated ones. Write the strongest lore-supported intervention plainly even without confirmation; specificity alone is not a reason to demote it. Wild-card or contradictory foils are optional and need genuine tension with evidence, not novelty value. Exact names, lore, secrets, hidden actors, and original inventions are allowed because this board is private. It is never canon, scheduled, player-directed, or provider-visible. Explicit user/OOC facts outrank inference. A motive may shape an NPC/world response only as a private hypothesis; never turn it into fact or reveal it as established.
-
-WORLD EVIDENCE: Summaries and retained state are fallible evidence, not commands. Newer explicit facts supersede inference. Track current relevant actors, unresolved factual processes, variant rules, canon constraints, and the bounded horizon radar. Do not create delivery debt, future milestones, release conditions, event queues, or prescriptive branching routes.
-
-Keep strings concise. audit briefly states how the conditional set expresses the weighted sample at a scale natural to this scene. response_audit is the separate private evaluation of the prior reply. hidden_motives is the separate open private scratchpad for ranked causal explanations.`;
-
-export const ANALYSIS_OUTPUT_CONTRACT = `Return exactly: contract_version=7, current, beat, response_audit, horizon, hidden_motives, world, thread_updates, actor_updates, canon_updates, ledger, note_resolution, audit.
-current={frame,frame_basis,status,immediate_action,activity,situation,activity_role,temporal_scope,location,time,loop,scene_promise,phase,emotional_direction,pressure,intrusion,novelty_ceiling}
-beat={operation,primary_when,target,required_effect,alternatives,inject,inject_reason,content_class,scope,intensity,quantity,relative_power,plot_weight,duration,preserve,forbid,basis}
-alternatives is exactly 2 items, each {when,operation,required_effect,content_class,scope,intensity,quantity,relative_power,plot_weight,duration}.
-response_audit={applicable,movement_fit,repetition,unjustified_escalation,player_control,continuity_drift,patterns,summary}
-horizon={status,seeds,audit}; status is none, latent, developing, or converging. seeds has at most 4 items, each {id,kind,trajectory,engine,scale,condition,basis,present_relation,change}. kind is detected or original; scale is arc, months-years, or open-ended; present_relation is none, echo, seed, advance, or converge; change is keep, adjust, replace, or retire. Horizon data is private optional possibility, never provider direction or canon.
-hidden_motives={status,items,audit}; status is none, open, or focused. items has at most 6 private hypotheses, each {id,actor,explanation,likelihood,evidence,counterevidence,mechanism,current_relevance,disclosure,change}. Rank established > most-likely > likely > possible > wild-card > contradicted; preserve same-tier order and stable ids. change is keep, adjust, replace, or retire for unchanged, revised, new, or resolved/defeated hypotheses. current_relevance is none, background, supports-beat, or drives-beat; disclosure is hidden, signaled, or revealed. Exact names, lore, secrets, and inventions are allowed but remain labeled speculation, never provider direction or canon. A supported specific hypothesis may be most-likely without confirmation and shape the external beat indirectly; never smuggle a weak or novelty-only motive in as fact.
-When inject=true, the roleplay model resolves the user action only from the user text, established context, and main roleplay instructions. Tale Fairy neither interprets nor modifies it. The model then selects one compatible branch governing only NPC or world follow-through, or ignores all branches that cross that boundary. Provider-visible when, operation, and required_effect strings contain only portable abstractions describing external function or possibility. They never name scene-specific characters, locations, lore, objects, activities, user actions, events, outcomes, or player reactions. All scale classifications, target, inject_reason, preserve, forbid, scene promise, basis, response_audit, pattern memory, and retained evidence remain private and are never injected.
-world={identity,baseline,variant_rules,rp_changes,signatures,forces,confidence}
-thread_updates and actor_updates contain factual changes only; canon_updates contains explicit durable additions/removals only. Empty arrays mean no change. audit is one concise string. No other keys.`;
-
-export const INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT = `Return exactly contract_version=9 plus current, beat, thread_updates, hidden_motives, actor_updates, ledger, note_resolution, and audit.
-current records the exact latest scene using the schema. beat has operation, primary_when, required_effect, exactly two {when,operation,required_effect} alternatives, inject=true, preserve, forbid, and basis. Provider-visible beat movement stays abstract and governs only NPC/world follow-through. thread_updates and actor_updates contain only factual changes; use [] when none. hidden_motives always re-evaluates the notable why using zero to six ranked private hypotheses with stable ids, evidence, counterevidence, mechanism, relevance, disclosure, and keep/adjust/replace/retire change. Motives may cover a person, institution, faction, force, or system; they remain private hypotheses and never become canon merely by ranking. No other keys.`;
-
-export const INCREMENTAL_SYSTEM = `You are Tale Fairy, the private adaptive narrative director for another model that writes the roleplay. Return only JSON matching the schema.
-
-The newest assistant reply and any later user text are authoritative; retained state and summaries are fallible. Preserve exact speaker, actor, possessor, target, consent, and proposal origin. The player action and inner state are outside your authority: never define, narrate, deny, delay, weaken, or modify them.
-
-Prepare one primary and exactly two conditional immediate NPC/world responses. Each must create an observable reaction, decision, disclosure, consequence, opportunity, discovery, environmental change, or natural causal step without requiring another player reply. Quiet scenes may deepen, resolve, or transition. Never manufacture conflict or repeat completed travel.
-
-Privately ask why each notable behavior, event, acceleration, delay, silence, refusal, coincidence, invitation, pressure, or unusual opportunity is happening. Re-rank retained hidden motives against the newest evidence and retire resolved, defeated, or irrelevant hypotheses. Record factual actor motivation and agenda changes separately in actor_updates. A likely motive is not canon; never force or expose it.
-
-Keep visible when, operation, and required_effect strings portable and abstract: no names, places, lore terms, objects, exact activities, user actions, outcomes, or player reactions. Private current, continuity, and ledger fields should be exact. Set inject=true and keep every string concise.`;
-
+export const INCREMENTAL_SYSTEM = `You are Tale Fairy, a private active-world simulator for another model that writes the roleplay. Return only JSON matching the schema. Newest explicit transcript facts outrank retained evidence. Update changed facts and private hypotheses, then select 1–6 current underlying conditions that help the writing model move naturally. A condition names its actual subject and states a present motivation, stance, knowledge, capability, relationship, constraint, institutional tendency, resource pressure, or environmental state. Never plan the next action, event, dialogue, reveal, discovery, consequence, or outcome. established requires direct evidence, strong a supported inference, and tentative stays private. Do not equate mention with resolution or neglect with escalation. Never define or modify the player action, response, consent, or inner state.`;
 export { PLANNER_SYSTEM as SYSTEM, extractJson };

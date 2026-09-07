@@ -136,39 +136,29 @@ test('stale cleanup preserves non-text multimodal blocks', () => {
     assert.deepEqual(chat, [{ role: 'user', content: [{ type: 'text', text: '' }, image] }]);
 });
 
-test('provider-bound request receives subordinate follow-through and balanced treatment on regeneration', () => {
+test('provider-bound request receives only clean relevant causal conditions', () => {
     const state = {
         ...defaultState(),
-        sceneProfile: { promise: 'A tense report is being discussed.', phase: 'developing', emotionalDirection: 'intensify', pressure: 'active', intrusion: 'open', noveltyCeiling: 'moderate' },
-        beatDirective: {
-            operation: 'complicate', primaryWhen: 'The user continues examining or discussing the report.', target: 'the report discussion', requiredEffect: 'Add a credible difficulty that changes how the current information is understood.',
-            alternatives: [
-                { when: 'The user rejects or ends the report discussion.', operation: 'let that refusal change the immediate relationship to the report', requiredEffect: 'Make the consequence of ending the discussion perceptible without reopening it.', contentClass: 'consequence', scope: 'social', intensity: 'low', quantity: 'singular', relativePower: 'none', plotWeight: 'incidental', duration: 'beat' },
-                { when: 'The user redirects attention to a different active concern.', operation: 'follow the redirected concern while retaining relevant report pressure', requiredEffect: 'Advance the selected concern with one compatible connection to the report.', contentClass: 'reaction', scope: 'social', intensity: 'moderate', quantity: 'singular', relativePower: 'none', plotWeight: 'connective', duration: 'beat' },
+        causalContext: {
+            inject: true, injectReason: 'Private selection reason.', basis: 'Private evidence.',
+            conditions: [
+                { id: 'mira', kind: 'actor', subject: 'Mira', condition: 'suspects the report is false', disclosure: 'private', confidence: 'strong', relevance: 'She is present.' },
+                { id: 'reserves', kind: 'system', subject: 'Grain reserves', condition: 'are falling faster than reported', disclosure: 'limited', confidence: 'established', relevance: 'Policy depends on them.' },
+                { id: 'rumor', kind: 'group', subject: 'Merchants', condition: 'may be coordinating shortages', disclosure: 'private', confidence: 'tentative', relevance: 'They ship grain.' },
             ],
-            contentClass: 'revelation', scope: 'social', intensity: 'moderate', quantity: 'singular', relativePower: 'peer', plotWeight: 'connective', duration: 'beat', preserve: ['user authority'], forbid: ['a predetermined incident'], basis: 'The information is already unstable.',
         },
     };
-    const prompt = buildPromptPayload(state, { guidanceUsable: true, regeneration: true });
+    const prompt = buildPromptPayload(state, { guidanceUsable: true });
     const chat = [{ role: 'user', content: 'Tell me what happened.' }];
 
     assert.equal(ensureGuidanceInChat(chat, prompt, { role: 'user', depth: 1, inlineLatestUser: true }), true);
     assert.equal(chatHasCurrentGuidance(chat, prompt), true);
     assert.equal(chat.length, 1);
-    assert.equal(chat.at(-1).role, 'user');
-    assert.match(chat.at(-1).content, /TALE FAIRY EXTERNAL-REACTION GUIDE/i);
-    assert.match(chat.at(-1).content, /PRIMARY NEXT-STEP DIRECTION: Complicate\./i);
-    assert.match(chat.at(-1).content, /PRIMARY NEXT-STEP EFFECT: Add a credible difficulty that changes how the current information is understood\./i);
-    assert.match(chat.at(-1).content, /BALANCED TREATMENT: Give the NPC or world follow-through a clear, meaningful effect while preserving contested player outcomes/i);
-    assert.match(chat.at(-1).content, /govern only NPC or world follow-through/i);
-    assert.match(chat.at(-1).content, /user action is outside Tale Fairy’s authority/i);
-    assert.doesNotMatch(chat.at(-1).content, /revelation-led|social in scope|moderate in intensity|partially resolvable/i);
-    assert.doesNotMatch(chat.at(-1).content, /movement=|content=|scope=|intensity=|plot weight=/i);
-    assert.doesNotMatch(chat.at(-1).content, /PRESERVE:|DO NOT:/);
-    assert.doesNotMatch(chat.at(-1).content, /Infer every concrete action|Treat explicit user\/OOC|For this regeneration|Do not expose/i);
-    assert.doesNotMatch(chat.at(-1).content, /A tense report|The information is already unstable|WEIGHTED DIRECTOR SAMPLE|Vekk|war update|urgent contradiction/i);
-    assert.match(chat.at(-1).content, /Tell me what happened\.$/);
-    assert.doesNotMatch(chat.at(-1).content, /GROUNDING:|EXECUTION:/);
-    assert.equal(chat.map(message => String(message.content)).join('\n').match(/<tale-fairy-context>/g)?.length, 1);
-    assert.ok(prompt.length < 4000, `expected bounded director payload, got ${prompt.length} characters`);
+    assert.match(chat[0].content, /Mira suspects the report is false/);
+    assert.match(chat[0].content, /Grain reserves are falling faster than reported/);
+    assert.doesNotMatch(chat[0].content, /Merchants|confidence|relevance|Private evidence/i);
+    assert.match(chat[0].content, /writing model chooses every concrete action/i);
+    assert.match(chat[0].content, /Tell me what happened\.$/);
+    assert.equal(chat[0].content.match(/<tale-fairy-context>/g)?.length, 1);
+    assert.ok(prompt.length < 3000);
 });
