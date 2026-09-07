@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { compactContinuityPrompt, readContinuityBridge, waitForContinuityBridge } from '../extension/continuity.js';
+import { compactContinuityPrompt, formatPlanningEvidence, readContinuityBridge, waitForContinuityBridge } from '../extension/continuity.js';
 import { estimateTokenCount } from '../extension/token-budget.js';
 
 function bridge(snapshot) {
@@ -24,6 +24,57 @@ test('Continuity bridge never consumes a snapshot from another chat', () => {
     assert.deepEqual(readContinuityBridge({ chatId: 'chat-2' }, bridge({
         chatId: 'chat-1', status: 'current', prompt: 'wrong chat',
     })), { text: '', status: 'stale' });
+});
+
+test('v2 structured evidence is preferred while the v1 prompt remains a fallback', () => {
+    const v2 = {
+        version: 2,
+        getContextSnapshot: () => ({
+            version: 2, chatId: 'chat-1', revision: 9, status: 'current', prompt: 'legacy prompt must not win',
+            coverage: { throughMessageIndex: 14, signature: 'sig-14' },
+            planningEvidence: [{
+                id: 'thread-1', cmRevision: 9, category: 'threads', canonicalStatus: 'open', importance: 5,
+                text: 'La carta sigue sin respuesta.', participants: ['Mara'], sourceRange: { from: 4, to: 8 },
+                retrievalReason: 'important open canonical thread',
+            }],
+        }),
+    };
+    const result = readContinuityBridge({ chatId: 'chat-1' }, v2);
+    assert.match(result.text, /La carta sigue sin respuesta/);
+    assert.doesNotMatch(result.text, /legacy prompt must not win/);
+    assert.equal(result.version, 2);
+    assert.equal(result.revision, 9);
+    assert.equal(result.messageSignature, 'sig-14');
+    assert.equal(result.coverageThrough, 14);
+    assert.equal(result.planningEvidence[0].id, 'thread-1');
+});
+
+test('semantic evidence budgeting retains multilingual unresolved threads under severe compaction', () => {
+    const items = [{
+        id: 'zh-thread', cmRevision: 7, category: 'threads', canonicalStatus: 'open', importance: 5,
+        text: '尚未兑现的承诺：黎明前归还钥匙。', sourceRange: { from: 2, to: 3 }, retrievalReason: 'important open canonical thread',
+    }, ...Array.from({ length: 80 }, (_, index) => ({
+        id: `background-${index}`, cmRevision: 7, category: 'backgrounds', canonicalStatus: 'current', importance: 1,
+        text: `背景资料 ${index} ${'细节'.repeat(50)}`, sourceRange: { from: index, to: index }, retrievalReason: 'current canonical record',
+    }))];
+    const compacted = formatPlanningEvidence(items, 500);
+    assert.ok(estimateTokenCount(compacted) <= 500);
+    assert.match(compacted, /尚未兑现的承诺/);
+    assert.match(compacted, /IMPORTANT\/DUE OPEN THREADS/);
+});
+
+test('Continuity absence fails open and reading never invokes mutation or retrieval APIs', () => {
+    assert.equal(readContinuityBridge({ chatId: 'chat-1' }, undefined), null);
+    let writes = 0;
+    const safeBridge = {
+        version: 2,
+        getContextSnapshot: () => ({ version: 2, chatId: 'chat-1', status: 'current', prompt: 'snapshot', planningEvidence: [] }),
+        publish: () => { writes++; },
+        retrieve: () => { writes++; },
+        mutate: () => { writes++; },
+    };
+    assert.equal(readContinuityBridge({ chatId: 'chat-1' }, safeBridge).text, 'snapshot');
+    assert.equal(writes, 0);
 });
 
 test('Continuity startup wait observes a bridge published after Tale Fairy loads', async () => {

@@ -34,18 +34,36 @@ function boundedChronicleTail(value, tokenLimit) {
     return truncateToTokenBudget(`${heading}\n${tail}`, tokenLimit);
 }
 
-function routeBearingExcerpt(value, tokenLimit) {
-    const pattern = /\b(?:unresolved|open|pending|due|blocked|dormant|petition|letter|correspondence|decision|hearing|appointment|investigation|promise|commitment|journey|return|review|application|request|order)\b/giu;
-    const excerpts = [];
-    const seen = new Set();
-    for (const match of value.matchAll(pattern)) {
-        const excerpt = value.slice(Math.max(0, match.index - 120), Math.min(value.length, match.index + match[0].length + 180)).replace(/\s+/gu, ' ').trim();
-        const key = excerpt.toLowerCase();
-        if (excerpt && !seen.has(key)) excerpts.push(excerpt);
-        seen.add(key);
-        if (estimateTokenCount(excerpts.join(' … ')) >= tokenLimit) break;
+function semanticEvidenceText(items, requestedTokenLimit = 3500) {
+    const limit = Math.max(500, Math.min(12000, Number(requestedTokenLimit) || 3500));
+    const groups = new Map([
+        ['recent canonical changes', []], ['important/due open threads', []], ['supporting records', []],
+        ['relationships and current character state', []], ['Chronicle frontier', []], ['background context', []],
+    ]);
+    for (const item of Array.isArray(items) ? items : []) {
+        const category = String(item?.category || '').toLowerCase();
+        const status = String(item?.canonicalStatus || '').toLowerCase();
+        const reason = String(item?.retrievalReason || '').toLowerCase();
+        const bucket = category === 'threads' && ['open', 'pending'].includes(status)
+            ? 'important/due open threads'
+            : category === 'relationships' || category === 'states' || category === 'entities'
+                ? 'relationships and current character state'
+                : category === 'backgrounds' ? 'background context'
+                    : category === 'events' && /chronicle|frontier/iu.test(reason) ? 'Chronicle frontier'
+                        : /recent|correction|changed|updated/iu.test(reason) ? 'recent canonical changes' : 'supporting records';
+        groups.get(bucket).push(item);
     }
-    return truncateToTokenBudget(excerpts.join(' … '), tokenLimit).trim();
+    const sections = [];
+    for (const [label, values] of groups) {
+        if (!values.length) continue;
+        const lines = values.slice().sort((a, b) => Number(b?.importance || 0) - Number(a?.importance || 0) || Number(b?.sourceRange?.to ?? -1) - Number(a?.sourceRange?.to ?? -1))
+            .map(item => {
+                const provenance = [item.id && `id=${item.id}`, item.canonicalStatus && `status=${item.canonicalStatus}`, item.cmRevision && `revision=${item.cmRevision}`, item.sourceRange && `source=${item.sourceRange.from}-${item.sourceRange.to}`].filter(Boolean).join(' · ');
+                return `- ${item.text}${provenance ? ` [${provenance}]` : ''}`;
+            });
+        sections.push(`${label.toUpperCase()}:\n${lines.join('\n')}`);
+    }
+    return truncateToTokenBudget(sections.join('\n\n'), limit).trim();
 }
 
 export function compactContinuityPrompt(value, requestedTokenLimit = 3500) {
@@ -58,17 +76,27 @@ export function compactContinuityPrompt(value, requestedTokenLimit = 3500) {
     // prefix-clipping away the chronological continuity spine.
     const marker = '\n\n[… continuity context compacted …]\n\n';
     const markerTokens = estimateTokenCount(marker);
-    const routeBudget = Math.min(600, Math.floor((limit - markerTokens) * 0.25));
-    const routes = routeBearingExcerpt(text, routeBudget);
-    const routeSection = routes ? `Open-route records retained from omitted middle:\n${routes}` : '';
+    const middleLines = [...new Set(text.split(/\n+/u).slice(1, -1).map(line => line.trim()).filter(line => line.length > 24))]
+        .sort((a, b) => Number(/[.!?;:]/u.test(b)) - Number(/[.!?;:]/u.test(a)) || b.length - a.length)
+        .slice(0, 8);
+    const routeSection = middleLines.length ? `Open-route records retained from omitted middle:\n${truncateToTokenBudget(middleLines.join(' '), Math.min(600, Math.floor((limit - markerTokens) * 0.2)))}` : '';
     const edgeBudget = Math.max(0, limit - markerTokens * (routeSection ? 2 : 1) - estimateTokenCount(routeSection));
     const headLength = Math.floor(edgeBudget * 0.52);
     const tailLength = edgeBudget - headLength;
     return truncateToTokenBudget([boundedEdge(text, headLength), routeSection, boundedChronicleTail(text, tailLength)].filter(Boolean).join(marker), limit);
 }
 
+export function formatPlanningEvidence(items, requestedTokenLimit = 3500) {
+    return semanticEvidenceText(items, requestedTokenLimit);
+}
+
+function withMetadata(result, metadata = {}) {
+    for (const [key, value] of Object.entries(metadata)) Object.defineProperty(result, key, { value, enumerable: false, configurable: true });
+    return result;
+}
+
 export function readContinuityBridge(context = {}, bridge, { allowStale = false } = {}) {
-    if (bridge?.version !== 1 || typeof bridge.getContextSnapshot !== 'function') return null;
+    if (![1, 2].includes(Number(bridge?.version)) || typeof bridge.getContextSnapshot !== 'function') return null;
     const snapshot = bridge.getContextSnapshot();
     const chatId = String(context.getCurrentChatId?.() || context.chatId || '');
     const sameChat = !snapshot?.chatId || !chatId || String(snapshot.chatId) === chatId;
@@ -77,10 +105,17 @@ export function readContinuityBridge(context = {}, bridge, { allowStale = false 
             : snapshot?.status === 'stale' ? 'stale'
             : 'unavailable';
     const usableStatus = snapshot?.status === 'current' || (allowStale && snapshot?.status === 'stale');
-    const text = sameChat && usableStatus && typeof snapshot?.prompt === 'string'
-        ? snapshot.prompt
-        : '';
-    return { text, status };
+    const planningEvidence = sameChat && usableStatus && Array.isArray(snapshot?.planningEvidence) ? snapshot.planningEvidence : [];
+    const evidenceText = planningEvidence.length ? formatPlanningEvidence(planningEvidence) : '';
+    const text = sameChat && usableStatus && typeof snapshot?.prompt === 'string' ? snapshot.prompt : '';
+    return withMetadata({ text: evidenceText || text, status }, {
+        planningEvidence,
+        version: Number(snapshot?.version || bridge?.version || 1),
+        revision: Number(snapshot?.revision || 0),
+        messageSignature: String(snapshot?.coverage?.signature || ''),
+        coverageThrough: Number.isFinite(Number(snapshot?.coverage?.throughMessageIndex)) ? Number(snapshot.coverage.throughMessageIndex) : -1,
+        chatId: String(snapshot?.chatId || ''),
+    });
 }
 
 export async function waitForContinuityBridge(context = {}, bridgeProvider, {

@@ -50,6 +50,9 @@ export function defaultState() {
         loreModel: { worldIdentity: '', baseline: '', variantRules: [], continuitySignatures: [], baselineDepartures: [], trajectorySignals: [], activeForces: [], confidence: 'low' },
         objectives: [],
         continuityThreads: [],
+        continuityRevisionUsed: 0,
+        continuityMessageSignature: '',
+        continuityCoverageThrough: -1,
         selfChallenge: { weakness: '', counterRoute: '', mechanismCheck: '', decision: '' },
         entities: [],
         possibilities: [],
@@ -107,7 +110,43 @@ function normalizeContinuityThread(value = {}) {
         state: clippedText(value.state, 240),
         status: ['active', 'dormant', 'due', 'blocked'].includes(status) ? status : 'dormant',
         basis: clippedText(value.basis, 160),
+        cmRecordId: text(value.cmRecordId ?? value.cm_record_id).slice(0, 160),
+        cmRevision: Math.max(0, Number(value.cmRevision ?? value.cm_revision) || 0),
+        canonicalStatus: text(value.canonicalStatus ?? value.canonical_status).slice(0, 40).toLowerCase(),
+        directorialReadiness: text(value.directorialReadiness ?? value.directorial_readiness, status).slice(0, 40).toLowerCase(),
     };
+}
+
+const TERMINAL_CANONICAL_STATUSES = new Set(['resolved', 'abandoned']);
+
+// Continuity owns canonical status. Tale Fairy only reconciles linked factual
+// entries when a newer bridge record is available; its directorial readiness
+// remains local except when a canonical terminal status makes the entry unusable.
+export function reconcileContinuityThreads(threads = [], planningEvidence = []) {
+    const evidenceById = new Map((Array.isArray(planningEvidence) ? planningEvidence : [])
+        .filter(item => item?.id)
+        .map(item => [String(item.id), item]));
+    let changed = false;
+    const result = (Array.isArray(threads) ? threads : []).map(thread => {
+        const current = normalizeContinuityThread(thread);
+        if (!current.cmRecordId) return current;
+        const evidence = evidenceById.get(current.cmRecordId);
+        if (!evidence) return current;
+        const incomingRevision = Math.max(0, Number(evidence.cmRevision ?? evidence.revision ?? 0) || 0);
+        if (incomingRevision && incomingRevision < current.cmRevision) return current;
+        const canonicalStatus = String(evidence.canonicalStatus || current.canonicalStatus || '').trim().toLowerCase();
+        const terminal = TERMINAL_CANONICAL_STATUSES.has(canonicalStatus);
+        const next = {
+            ...current,
+            cmRevision: Math.max(current.cmRevision, incomingRevision),
+            canonicalStatus: canonicalStatus || current.canonicalStatus,
+            status: terminal ? 'dormant' : current.status,
+            directorialReadiness: terminal ? 'dormant' : current.directorialReadiness,
+        };
+        if (JSON.stringify(next) !== JSON.stringify(current)) changed = true;
+        return next;
+    });
+    return { threads: result, changed };
 }
 function normalizeHorizonSeed(value = {}) {
     const kind = text(value.kind).toLowerCase();
@@ -601,6 +640,9 @@ export function normalizeState(input = {}) {
         loreModel: normalizeLoreModel(value.loreModel ?? value.lore_model),
         objectives: beatContractUpgrade || recoveryUpgrade ? [] : cap(value.objectives, MAX_OBJECTIVES).map(normalizeObjective).filter(item => item.title || item.detail),
         continuityThreads: cap(value.continuityThreads ?? value.continuity_threads, MAX_CONTINUITY_THREADS).map(normalizeContinuityThread).filter(item => item.id && item.thread && item.state && item.basis),
+        continuityRevisionUsed: Math.max(0, Number(value.continuityRevisionUsed ?? value.continuity_revision_used) || 0),
+        continuityMessageSignature: text(value.continuityMessageSignature ?? value.continuity_message_signature).slice(0, 120),
+        continuityCoverageThrough: Number.isFinite(Number(value.continuityCoverageThrough ?? value.continuity_coverage_through)) ? Number(value.continuityCoverageThrough ?? value.continuity_coverage_through) : -1,
         selfChallenge: beatContractUpgrade ? base.selfChallenge : normalizeSelfChallenge(value.selfChallenge ?? value.self_challenge),
         entities: cap(value.entities).map(normalizeEntity).filter(item => item.name),
         possibilities: beatContractUpgrade ? [] : cap(value.possibilities, MAX_POSSIBILITIES).map(normalizePossibility).filter(item => item.description),
@@ -689,7 +731,10 @@ export function stateForPrompt(state) {
         },
         narrativeLayers: { immediateAction: s.narrativeLayers.immediateAction, localActivity: s.narrativeLayers.localActivity, situation: s.narrativeLayers.situation, widerWorld: s.narrativeLayers.widerWorld, durableTrajectory: s.narrativeLayers.durableTrajectory, activityRole: s.narrativeLayers.activityRole, temporalScope: s.narrativeLayers.temporalScope },
         loreModel: { ...s.loreModel },
-        continuityThreads: s.continuityThreads.map(item => ({ id: item.id, thread: item.thread, state: item.state, status: item.status, basis: item.basis })),
+        continuityThreads: s.continuityThreads.map(item => ({ id: item.id, thread: item.thread, state: item.state, status: item.status, basis: item.basis, cmRecordId: item.cmRecordId, cmRevision: item.cmRevision, canonicalStatus: item.canonicalStatus, directorialReadiness: item.directorialReadiness })),
+        continuityRevisionUsed: s.continuityRevisionUsed,
+        continuityMessageSignature: s.continuityMessageSignature,
+        continuityCoverageThrough: s.continuityCoverageThrough,
         entities: s.entities.filter(e => e && e.relevance !== 'ambient').slice(-5).map(item => ({
             name: item.name, state: item.state.slice(0, 120), location: item.location.slice(0, 80), relevance: item.relevance.slice(0, 80),
             perspective: item.perspective.slice(0, 100), motivation: item.motivation.slice(0, 110), knowledge: item.knowledge.slice(0, 90),

@@ -170,6 +170,19 @@ test('rapid-fire turns consume guidance once and coalesce planner catch-up', () 
     assert.doesNotMatch(directorSource, /delivery debt|release condition|event queue/i);
 });
 
+test('Continuity freshness replaces one unused plan, never one already selected for generation', () => {
+    const binding = source.slice(source.indexOf('function bindContinuityBridge'), source.indexOf('// The generation interceptor runs'));
+    assert.match(binding, /bridge\.subscribe\(snapshot/);
+    assert.match(binding, /String\(snapshot\?\.chatId \|\| ''\) !== chatId/);
+    assert.match(binding, /continuityReplacementRevision = revision/);
+    assert.match(binding, /if \(analysisPromise\)[\s\S]*queueLatestAnalysis/);
+    assert.match(binding, /const planAlreadyUsed = Boolean\(pendingRequestVerification \|\| generationGuideSelection\)/);
+    assert.doesNotMatch(binding, /planAlreadyUsed[\s\S]{0,100}state\.lastInject/);
+    assert.match(binding, /if \(planAlreadyUsed && !analysisPromise\) return/);
+    assert.match(binding, /reconcileStateWithContinuity/);
+    assert.doesNotMatch(binding, /bridge\.(?:publish|mutate|retrieve|write|update)\s*\(/);
+});
+
 test('transcript mutations cancel stale work and queue the newest snapshot', () => {
     assert.match(source, /function scheduleTranscriptRefresh/);
     assert.match(source, /cancelRunningAnalysis\(reason, status\)/);
