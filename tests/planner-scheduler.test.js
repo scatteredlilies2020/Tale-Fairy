@@ -7,7 +7,7 @@ function state(schedule = {}) {
         plannerSchedule: schedule,
         pacing: { inferred: 'natural' },
         sceneProfile: { promise: 'Continue the current scene.' },
-        beatDirective: { operation: 'deepen' },
+        causalContext: { conditions: [{ id: 'x', subject: 'Mira', condition: 'is cautious', relevance: 'present', confidence: 'strong' }] },
         authorBoard: { story: { identity: 'Story' }, scene: { purpose: 'Scene', requiredDevelopments: [] }, revision: 1 },
         conductor: { status: 'active', requiredDevelopment: 'Develop the scene.', boardRevision: 1, pacing: 'natural' },
     };

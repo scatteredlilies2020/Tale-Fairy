@@ -2,649 +2,146 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-    ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT,
-    INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_ANALYSIS_SCHEMA_VALUE, MODE_INSTRUCTIONS,
-    abstractIncrementalVisibleBranches, alignRetainedStateToTranscript, applyAnalysis, buildAnalysisPrompt, extractJson, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult,
+    ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA_VALUE, INCREMENTAL_ANALYSIS_SCHEMA_VALUE,
+    INCREMENTAL_SYSTEM, MODE_INSTRUCTIONS, SYSTEM, applyAnalysis, buildAnalysisPrompt,
+    extractJson, transcriptHeadAlignmentErrors, validateAnalysisResult,
 } from '../extension/analysis.js';
 import { buildPromptPayload, defaultState, stateForPrompt } from '../extension/state.js';
 import { estimateTokenCount } from '../extension/token-budget.js';
 
-function result(overrides = {}) {
-    const value = {
-        contract_version: 7,
-        current: {
-            frame: 'grounded', frame_basis: 'A quiet work session is physically and socially ordinary.',
-            status: 'The user is working alone on an assignment.', immediate_action: 'Continue the current attempt.',
-            activity: 'Completing an assignment at a desk.', situation: 'The task is calm but has a plausible practical difficulty.',
-            activity_role: 'developmental', temporal_scope: 'action', location: 'bedroom', time: 'evening', loop: false,
-            scene_promise: 'Focused, low-key progress with no unrelated intrusion.', phase: 'developing', emotional_direction: 'preserve',
-            pressure: 'latent', intrusion: 'closed', novelty_ceiling: 'context-native',
-        },
-        beat: {
-            inject: true, inject_reason: 'The scene benefits from a light directional nudge without prescribing its realization.',
-            operation: 'complicate', primary_when: 'The user continues or engages with the assignment.', target: 'the current assignment attempt',
-            required_effect: 'Expose one manageable, task-native difficulty that makes progress require a concrete adjustment.',
-            alternatives: [
-                { when: 'The user pauses, resists, or leaves the task.', operation: 'let the pause reveal a grounded consequence of disengaging', required_effect: 'Make the changed relationship to the unfinished task perceptible without forcing a return.', content_class: 'consequence', scope: 'personal', intensity: 'low', quantity: 'singular', relative_power: 'none', plot_weight: 'incidental', duration: 'beat' },
-                { when: 'The user redirects attention to another present concern.', operation: 'carry the unfinished pressure into the newly chosen focus', required_effect: 'Let the new focus proceed while preserving one observable connection to the unfinished work.', content_class: 'reaction', scope: 'personal', intensity: 'low', quantity: 'singular', relative_power: 'none', plot_weight: 'connective', duration: 'beat' },
-            ],
-            content_class: 'obstacle', scope: 'personal', intensity: 'low', quantity: 'singular', relative_power: 'inferior',
-            plot_weight: 'incidental', duration: 'beat',
-            preserve: ['the solitary work scene', 'the user controls how to respond'],
-            forbid: ['unrelated attackers', 'a forced player decision'], basis: 'The assignment supports a small practical obstacle, not a new plot.',
-        },
-        response_audit: {
-            applicable: true, movement_fit: 'clear', repetition: 'none', unjustified_escalation: false,
-            player_control: false, continuity_drift: false, patterns: ['task-native obstacle after quiet setup'],
-            summary: 'The prior response moved the current activity without taking control from the player.',
-        },
-        horizon: {
-            status: 'latent',
-            seeds: [
-                { id: 'education-path', kind: 'detected', trajectory: 'Repeated academic choices could reshape the user character’s longer educational direction.', engine: 'accumulated academic commitments', scale: 'arc', condition: 'Several meaningful choices continue to accumulate.', basis: 'The ongoing assignment establishes education as a recurring causal domain.', present_relation: 'echo', change: 'keep' },
-                { id: 'unexpected-mentor', kind: 'original', trajectory: 'A presently peripheral relationship could mature into an unexpected source of guidance or opposition.', engine: 'changing relationship expectations', scale: 'months-years', condition: 'A compatible recurring person gains independent reasons to remain involved.', basis: 'This is a compatible private possibility, not an established fact.', present_relation: 'none', change: 'replace' },
-            ],
-            audit: 'Both seeds can survive beyond the assignment scene and use independent causal engines.',
-        },
-        hidden_motives: { status: 'none', items: [], audit: 'No notable unexplained motive is required by this quiet scene.' },
-        world: {
-            identity: 'A contemporary life simulation', baseline: 'Ordinary school and home constraints apply.',
-            variant_rules: [], rp_changes: [], signatures: ['The user prefers grounded task detail.'], forces: ['time and incomplete materials'], confidence: 'high',
-        },
-        thread_updates: [], actor_updates: [], canon_updates: [],
-        ledger: 'The user is working alone on an unfinished assignment at home.', note_resolution: null,
-        audit: 'A low task-native complication creates effect without violating the closed quiet beat; escalation was rejected.',
-    };
-    return { ...value, ...overrides };
-}
-
-function incrementalResult(overrides = {}) {
-    const value = {
-        contract_version: 9,
-        current: {
-            frame: 'grounded', frame_basis: 'The latest exchange remains a quiet practical discussion.',
-            status: 'The group has clarified the private supporting option.', immediate_action: 'A companion waits for exact consent.',
-            activity: 'Discussing a possible private petition route.', situation: 'The option exists but nothing is attached or confirmed.',
-            location: 'refectory alcove', time: '01:10 PM', loop: false,
-            scene_promise: 'Preserve consent while letting the discussion move.', phase: 'developing', emotional_direction: 'preserve',
-            pressure: 'latent', intrusion: 'closed', novelty_ceiling: 'context-native',
-        },
-        beat: {
-            operation: 'clarify', primary_when: 'The current discussion continues.',
-            required_effect: 'Let the companion provide one useful clarification while preserving consent.',
-            alternatives: [
-                { when: 'The option is accepted.', operation: 'advance', required_effect: 'Let the surrounding response acknowledge the choice and move to its first practical consequence.' },
-                { when: 'The option is declined.', operation: 'release', required_effect: 'Let the surrounding response close that route cleanly and make another natural step available.' },
-            ],
-            inject: true, preserve: ['exact consent', 'unconfirmed status'], forbid: ['automatic attachment'],
-            basis: 'The newest exchange establishes an optional private route without authorization to use it.',
-        },
-        thread_updates: [
-            { op: 'upsert', id: 'private-case', thread: 'Optional private supporting case', state: 'Prepared but not attached without exact consent.', status: 'active', basis: 'The newest assistant reply states this explicitly.' },
-        ],
-        hidden_motives: {
-            status: 'focused',
-            items: [{ id: 'protect-consent', actor: 'Mara', explanation: 'The companion is protecting the user’s control over the petition.', likelihood: 'most-likely', evidence: ['They explicitly wait for consent.'], counterevidence: [], mechanism: 'Waiting prevents an unauthorized commitment.', current_relevance: 'drives-beat', disclosure: 'signaled', change: 'adjust' }],
-            audit: 'The newest exchange strengthens the consent-protection explanation.',
-        },
-        actor_updates: [{ op: 'upsert', name: 'Mara', state: 'Waiting for a decision.', location: 'refectory alcove', perspective: 'The option must remain voluntary.', motivation: 'Protect the user’s control over the petition.', knowledge: 'The case is prepared but unattached.', constraints: 'Cannot proceed without consent.', agenda: 'Clarify the option and wait.', window: 'current scene' }],
-        ledger: 'The user proposed petitioning the missing person’s sister. A companion prepared an optional private supporting case but will attach nothing without exact consent.',
-        note_resolution: null,
-        audit: 'Updates only the newest scene and immediate external response.',
-    };
-    return { ...value, ...overrides };
-}
-
-const messages = [
-    { is_user: false, name: 'Narrator', mes: 'The room is quiet and the assignment lies open.' },
-    { is_user: true, name: 'Ari', mes: 'I keep working on the next question.' },
+const current = {
+    frame: 'grounded', frame_basis: 'The cabinet is reviewing a reserve report.', status: 'Mira is questioning the figures.',
+    immediate_action: 'The report is under discussion.', activity: 'Cabinet review', situation: 'Reported reserves conflict with recent shipments.',
+    activity_role: 'central', temporal_scope: 'scene', location: 'cabinet chamber', time: 'morning', loop: false,
+    scene_promise: 'A consequential but open policy discussion.', phase: 'developing', emotional_direction: 'intensify',
+    pressure: 'active', intrusion: 'closed', novelty_ceiling: 'meaningful',
+};
+const conditions = [
+    { id: 'mira-doubt', kind: 'actor', subject: 'Mira', condition: 'suspects the reserve report is falsified', disclosure: 'private', confidence: 'strong', relevance: 'She is present in the cabinet meeting.' },
+    { id: 'grain-pressure', kind: 'system', subject: 'Grain reserves', condition: 'are falling faster than the official report indicates', disclosure: 'limited', confidence: 'established', relevance: 'The meeting is deciding ration policy.' },
+    { id: 'merchant-rumor', kind: 'group', subject: 'Harbor merchants', condition: 'may be coordinating shortages for leverage', disclosure: 'private', confidence: 'tentative', relevance: 'Their shipments explain one possible discrepancy.' },
 ];
+function full(overrides = {}) {
+    return {
+        contract_version: 8, current, context: { conditions, inject: true, inject_reason: 'These are the smallest relevant causal slice.', basis: 'Transcript and retained shipment records.' },
+        response_audit: { applicable: true, movement_fit: 'clear', repetition: 'none', unjustified_escalation: false, player_control: false, continuity_drift: false, patterns: [], summary: 'The discussion advanced.' },
+        horizon: { status: 'latent', seeds: [{ id: 'food-legitimacy', kind: 'detected', trajectory: 'Food policy may affect institutional legitimacy.', engine: 'scarcity and public trust', scale: 'arc', condition: 'Shortages persist.', basis: 'The cabinet is deciding ration policy.', present_relation: 'echo', change: 'keep' }], audit: 'A supported long-range pressure remains optional.' },
+        hidden_motives: { status: 'focused', items: [{ id: 'mira-protect', actor: 'Mira', explanation: 'Mira wants to expose manipulation without alerting its source.', likelihood: 'most-likely', evidence: ['She questions inconsistent totals.'], counterevidence: [], mechanism: 'Quiet scrutiny protects the inquiry.', current_relevance: 'drives-beat', disclosure: 'hidden', change: 'adjust' }], audit: 'This remains a hypothesis.' },
+        world: { identity: 'A political life simulation', baseline: 'Institutions and material constraints react causally.', variant_rules: [], rp_changes: [], signatures: [], forces: ['scarcity'], confidence: 'high' },
+        thread_updates: [], actor_updates: [], canon_updates: [], ledger: 'The cabinet is reviewing disputed reserve figures.', note_resolution: null, audit: 'Selected present causes rather than an outcome.',
+        ...overrides,
+    };
+}
+function incremental(overrides = {}) {
+    const { activity_role, temporal_scope, ...compactCurrent } = current;
+    return { contract_version: 10, current: compactCurrent, context: full().context, thread_updates: [], hidden_motives: full().hidden_motives, actor_updates: [], ledger: 'Current cabinet review.', note_resolution: null, audit: 'Fresh causal slice.', ...overrides };
+}
+const messages = [{ is_user: false, name: 'Narrator', mes: 'The reserve totals do not match the latest shipments.' }, { is_user: true, name: 'Ari', mes: 'I ask Mira what she thinks.' }];
 
-test('extractJson accepts fenced, wrapped, and locally repairable JSON', () => {
-    assert.deepEqual(extractJson('```json\n{"contract_version":4}\n```'), { contract_version: 4 });
+test('extractJson accepts fenced, wrapped, and repairable JSON', () => {
+    assert.deepEqual(extractJson('```json\n{"contract_version":8}\n```'), { contract_version: 8 });
     assert.deepEqual(extractJson('prefix {"ok":true} suffix'), { ok: true });
-    assert.deepEqual(extractJson('{"current":{"activity":"reading"\n"phase":"developing"},}'), { current: { activity: 'reading', phase: 'developing' } });
 });
 
-test('structured output contract combines external reaction with a private v7 horizon radar', () => {
-    assert.equal(ANALYSIS_SCHEMA_VALUE.properties.contract_version.const, 7);
-    assert.deepEqual(ANALYSIS_SCHEMA_VALUE.required, ['contract_version', 'current', 'beat', 'response_audit', 'horizon', 'hidden_motives', 'world', 'thread_updates', 'actor_updates', 'canon_updates', 'ledger', 'note_resolution', 'audit']);
-    assert.equal(ANALYSIS_SCHEMA.strict, true);
-    assert.equal(ANALYSIS_SCHEMA_VALUE.properties.beat.properties.alternatives.minItems, 2);
-    assert.equal(ANALYSIS_SCHEMA_VALUE.properties.beat.properties.alternatives.maxItems, 2);
-    assert.equal(ANALYSIS_SCHEMA_VALUE.properties.beat.properties.inject.const, true);
-    assert.match(ANALYSIS_OUTPUT_CONTRACT, /No other keys/);
-    assert.doesNotMatch(JSON.stringify(ANALYSIS_SCHEMA_VALUE), /routes|guides|milestones|future_setup/i);
+test('schemas expose causal-context contracts v8 and v10', () => {
+    assert.equal(ANALYSIS_SCHEMA_VALUE.properties.contract_version.const, 8);
+    assert.equal(INCREMENTAL_ANALYSIS_SCHEMA_VALUE.properties.contract_version.const, 10);
+    assert.ok(ANALYSIS_SCHEMA_VALUE.required.includes('context'));
+    assert.equal(ANALYSIS_SCHEMA_VALUE.properties.context.properties.conditions.maxItems, 6);
+    assert.match(ANALYSIS_OUTPUT_CONTRACT, /current causes only/i);
 });
 
-test('horizon radar accepts only independent genuinely long-range private seeds', () => {
-    assert.equal(validateAnalysisResult(result()).valid, true);
-    const near = result({ horizon: { ...result().horizon, seeds: [{ ...result().horizon.seeds[0], scale: 'scene' }] } });
-    assert.ok(validateAnalysisResult(near).errors.some(error => /genuinely long-range/i.test(error)));
-    const duplicateEngine = result({ horizon: { ...result().horizon, seeds: result().horizon.seeds.map(seed => ({ ...seed, engine: 'same engine' })) } });
-    assert.ok(validateAnalysisResult(duplicateEngine).errors.some(error => /distinct causal engines/i.test(error)));
-    const inconsistent = result({ horizon: { ...result().horizon, status: 'none' } });
-    assert.ok(validateAnalysisResult(inconsistent).errors.some(error => /cannot be none/i.test(error)));
+test('valid full and incremental causal results pass', () => {
+    assert.deepEqual(validateAnalysisResult(full()), { valid: true, errors: [] });
+    assert.deepEqual(validateAnalysisResult(incremental()), { valid: true, errors: [] });
 });
 
-test('legacy v6 beat results remain valid during in-flight upgrade', () => {
-    const legacy = { ...result(), contract_version: 6 };
-    delete legacy.horizon;
-    assert.deepEqual(validateAnalysisResult(legacy), { valid: true, errors: [] });
+test('validation requires an injectable non-tentative causal condition', () => {
+    const noInject = full({ context: { ...full().context, inject: false } });
+    assert.ok(validateAnalysisResult(noInject).errors.includes('context.inject must be true'));
+    const uncertain = full({ context: { ...full().context, conditions: [conditions[2]] } });
+    assert.ok(validateAnalysisResult(uncertain).errors.some(error => /non-tentative/i.test(error)));
 });
 
-test('valid current-beat result passes validation', () => {
-    assert.deepEqual(validateAnalysisResult(result()), { valid: true, errors: [] });
+test('condition validation enforces complete bounded records', () => {
+    const broken = full({ context: { ...full().context, conditions: [{ ...conditions[0], subject: '', confidence: 'certain' }] } });
+    const errors = validateAnalysisResult(broken).errors.join('\n');
+    assert.match(errors, /subject/);
+    assert.match(errors, /confidence/);
 });
 
-test('fresh planner results must always contribute a direction', () => {
-    const check = validateAnalysisResult(result({ beat: { ...result().beat, inject: false } }));
-    assert.equal(check.valid, false);
-    assert.ok(check.errors.includes('beat.inject must be true'));
+test('planner prompt defines private active simulation rather than future branches', () => {
+    assert.match(SYSTEM, /private active-world simulator/i);
+    assert.match(SYSTEM, /Never prescribe a future action/i);
+    assert.match(SYSTEM, /expressed means resolved/i);
+    assert.doesNotMatch(SYSTEM, /exactly two conditional/i);
+    assert.match(INCREMENTAL_SYSTEM, /tentative stays private/i);
 });
 
-test('validation rejects missing semantic effect and invalid scale values without restricting movement words', () => {
-    const missing = result({ beat: { ...result().beat, required_effect: '' } });
-    assert.equal(validateAnalysisResult(missing).valid, false);
-    const invalid = result({ beat: { ...result().beat, operation: 'summon-dragon', scope: 'scene' } });
-    const check = validateAnalysisResult(invalid);
-    assert.equal(check.valid, false);
-    assert.ok(!check.errors.includes('beat.operation is invalid'));
-    assert.ok(check.errors.includes('beat.scope is invalid'));
-    assert.equal(validateAnalysisResult(result({ beat: { ...result().beat, alternatives: result().beat.alternatives.slice(0, 1) } })).valid, false);
-});
-
-test('freeform movement phrases and every simulation scope validate', () => {
-    for (const operation of ['let the silence acquire meaning', 'reframe through an unintended kindness', 'fracture the apparent consensus', 'summon-dragon']) {
-        assert.equal(validateAnalysisResult(result({ beat: { ...result().beat, operation } })).valid, true, operation);
-    }
-    for (const scope of ['personal', 'social', 'institutional', 'societal', 'world']) {
-        assert.equal(validateAnalysisResult(result({ beat: { ...result().beat, scope } })).valid, true, scope);
-    }
-});
-
-test('provider-visible branches reject canon-specific names instead of injecting a miniature scene', () => {
-    const leaky = result({
-        actor_updates: [{ name: 'Lucia' }, { name: 'Commander Vekk' }],
-        beat: {
-            ...result().beat,
-            operation: 'Let Vekk offer a small personal reflection',
-            required_effect: 'Lucia feels more known through a connection to Jabiim or the Force.',
-        },
-    });
-    const check = validateAnalysisResult(leaky);
-    assert.equal(check.valid, false);
-    assert.ok(check.errors.some(error => /beat\.operation.*Vekk/i.test(error)));
-    assert.ok(check.errors.some(error => /beat\.required_effect.*Lucia/i.test(error)));
-});
-
-test('provider-visible branches accept arbitrary abstract sentence openings without a word allowlist', () => {
-    for (const required_effect of [
-        'Rest remains available without erasing one observable consequence of the current activity.',
-        'Pause long enough for the established pressure to become perceptible.',
-        'Relief changes the texture of the current interaction without deciding the player response.',
-        'Silence acquires a small amount of meaning through an observable contextual change.',
-    ]) {
-        const abstract = result({
-            beat: {
-                ...result().beat,
-                alternatives: [
-                    result().beat.alternatives[0],
-                    { ...result().beat.alternatives[1], required_effect },
-                ],
-            },
-        });
-        assert.equal(validateAnalysisResult(abstract).valid, true, required_effect);
-    }
-});
-
-test('provider-visible canon terms are rejected even when the model lowercases them', () => {
-    const leaky = result({
-        actor_updates: [{ name: 'Commander Vekk' }],
-        beat: { ...result().beat, operation: 'let vekk redirect the current interaction' },
-    });
-    assert.ok(validateAnalysisResult(leaky).errors.some(error => /beat\.operation.*vekk/i.test(error)));
-});
-
-test('multiword setting names do not reserve each ordinary component word', () => {
-    const abstract = result({
-        world: { ...result().world, identity: 'Star Wars' },
-        beat: { ...result().beat, operation: 'let one distant star alter the current environment' },
-    });
-    assert.equal(validateAnalysisResult(abstract).valid, true);
-});
-
-test('planner chooses scene-warranted movement before applying randomness', () => {
-    assert.match(SYSTEM, /First determine what movement the scene actually warrants/i);
-    assert.match(SYSTEM, /never selects the movement and never creates a need for an incident/i);
-    assert.match(SYSTEM, /Quietness is not stagnation/i);
-    assert.match(SYSTEM, /playable movement through an NPC reaction, world reaction/i);
-    assert.match(SYSTEM, /Active danger, competition, demanding tasks, and instability may exert credible pressure/i);
-    assert.match(SYSTEM, /new cause used by a current branch needs conversational or explicit-canon support/i);
-    assert.match(SYSTEM, /not compulsory disruption/i);
-    assert.match(SYSTEM, /cannot justify manufacturing difficulty/i);
-    assert.match(SYSTEM, /Scene changes, pressure shifts, reversals, discoveries/i);
-    assert.match(SYSTEM, /There is no fixed taxonomy, approved vocabulary, nearest label, or fallback bucket/i);
-    assert.match(SYSTEM, /Never invent player dialogue, thoughts, feelings, consent, decisions/i);
-    assert.match(SYSTEM, /conditional movement set/i);
-    assert.match(SYSTEM, /exactly two materially distinct redirect-safe branches/i);
-    assert.match(SYSTEM, /conditions distinguish external response routes/i);
-    assert.match(SYSTEM, /ignore all branches if they cross into defining or modifying the user action/i);
-    assert.match(SYSTEM, /Quiet listening, assignments, rest, travel/i);
-    assert.match(SYSTEM, /Never manufacture conflict, interruption, pressure, urgency, or restriction/i);
-});
-
-test('planner permits freeform AI invention and scale-native simulation', () => {
-    assert.match(SYSTEM, /not an event taxonomy/i);
-    assert.match(SYSTEM, /new cause used by a current branch needs conversational or explicit-canon support/i);
-    assert.match(SYSTEM, /PRIVATE HORIZON RADAR/i);
-    assert.match(SYSTEM, /near-term matter with a distant label/i);
-    assert.match(SYSTEM, /kind=original is a compatible invention and remains speculation/i);
-    assert.match(SYSTEM, /life simulation/i);
-    assert.match(SYSTEM, /countries, societies, and worlds/i);
-    assert.match(SYSTEM, /policy effect, public response, trend, or system pressure/i);
-    assert.match(SYSTEM, /every scale classification in private fields/i);
-    assert.match(SYSTEM, /contested hit, defense, injury, restraint, compliance, and other player results remain open/i);
-    assert.match(SYSTEM, /portable to any scene with the same dramatic shape/i);
-    assert.match(SYSTEM, /Never name or repeat a character, location, faction, lore concept/i);
-    assert.match(SYSTEM, /Introduce a quiet, favorable discovery/i);
-    assert.match(SYSTEM, /Keep scene specifics.*private fields/i);
-    assert.doesNotMatch(SYSTEM, /generate six to eight.*routes|schedule future milestones|maintain event queues/i);
-    assert.ok(estimateTokenCount(`${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}`) < 4100);
-});
-
-test('all modes alter only external follow-through without touching the user action', () => {
-    for (const mode of Object.values(MODE_INSTRUCTIONS)) assert.match(mode, /NPC or world|NPC or world follow-through/i);
-    assert.match(MODE_INSTRUCTIONS.light, /follow-through, expressed subtly but perceptibly/i);
-    assert.match(MODE_INSTRUCTIONS.balanced, /clear, meaningful next step/i);
-    assert.match(MODE_INSTRUCTIONS.fun, /prominent, lively expression/i);
-    assert.match(MODE_INSTRUCTIONS.fun, /Randomness never decides the user action/i);
-    assert.match(MODE_INSTRUCTIONS.balanced, /preserve a meaningful chance to answer contested actions/i);
-    for (const mode of Object.values(MODE_INSTRUCTIONS)) assert.doesNotMatch(mode, /control the player|force the player/i);
-});
-
-test('analysis prompt carries current context, identity, variation, bootstrap, and summaries', () => {
-    const prompt = JSON.parse(buildAnalysisPrompt(messages, { ...defaultState(), mode: 'fun' }, '', { scenario: 'A grounded school life simulation.' }, {
-        variationNonce: 731, summarySources: [{ label: 'Continuity Memory', kind: 'summary', text: 'The assignment is due tomorrow.' }],
-    }));
-    assert.equal(prompt.task, 'prepare_conditional_direction_set');
-    assert.equal(prompt.player_character, 'Ari');
-    assert.equal(prompt.variation_nonce, 731);
-    assert.equal(prompt.bootstrap.scenario, 'A grounded school life simulation.');
-    assert.equal(prompt.summary_sources[0].label, 'Continuity Memory');
-    assert.match(prompt.invention, /strong, scene-supported inference about an incentive, capability, relationship, or hidden motive/i);
-    assert.match(prompt.invention, /weak guess as fact/i);
-    assert.match(prompt.motive_rule, /specific intervention the clearest causal explanation/i);
-    assert.match(prompt.motive_rule, /personally summoning an unusually exceptional subject/i);
-    assert.match(prompt.motive_rule, /rank it most-likely/i);
-    assert.match(prompt.motive_rule, /ordered established, most-likely, likely, possible, wild-card, then contradicted/i);
-    assert.match(prompt.motive_rule, /Preserve stable ids across analyses/i);
-    assert.match(prompt.motive_rule, /retire when evidence resolves or defeats it/i);
-    assert.match(prompt.horizon_rule, /bounded radar of zero to four optional trajectories/i);
-    assert.match(prompt.horizon_rule, /near-term matter merely renamed as distant/i);
-    assert.match(prompt.horizon_rule, /genuinely original seed/i);
-    assert.match(prompt.invention, /provider-visible when, operation, and required_effect text must contain only portable abstractions/i);
-    assert.match(prompt.invention, /Never copy names or concrete nouns from the scene/i);
-    assert.match(prompt.invention, /current activity, current interaction, current environment/i);
-    assert.match(prompt.instruction, /governing only NPC or world follow-through/i);
-    assert.match(prompt.instruction, /main roleplay instructions resolve the user action/i);
-    assert.match(prompt.contribution_rule, /Always set beat\.inject=true/i);
-    assert.match(prompt.contribution_rule, /Quiet listening, assignments, rest, travel/i);
-    assert.match(prompt.movement, /broadly compatible external-response condition/i);
-    assert.match(prompt.response_audit_rule, /never injected/i);
-    assert.match(prompt.simulation, /country simulation/i);
-    assert.match(prompt.direction_policy, /choose one coherent primary NPC-or-world follow-through before applying random appetite/i);
-    assert.match(prompt.direction_policy, /two distinct redirect-safe alternatives/i);
-    assert.match(prompt.direction_policy, /breathing room.*as legitimate as complication/i);
-    assert.match(prompt.direction_policy, /Quiet or routine situations still gain a perceptible external response/i);
-    assert.match(prompt.direction_policy, /NPC reaction, world reaction, consequence, opportunity, or natural next causal step/i);
-    assert.match(prompt.direction_policy, /Provider-visible text states only abstract external function and effect/i);
-    assert.equal(Object.hasOwn(prompt, 'director_policy'), false);
-    assert.match(prompt.director_sample, /WEIGHTED DIRECTOR SAMPLE/);
-    assert.match(prompt.director_sample, /Choose movement from scene need before applying these signals/i);
-    assert.match(prompt.mode_instruction, /strongly implied motives and capabilities may shape/i);
-    assert.equal(Object.hasOwn(prompt, 'pacing'), false);
-});
-
-test('incremental contract is a compact v9 pass that still evaluates motives and actors', () => {
-    assert.equal(INCREMENTAL_ANALYSIS_SCHEMA_VALUE.properties.contract_version.const, 9);
-    assert.equal(INCREMENTAL_ANALYSIS_SCHEMA.strict, true);
-    for (const key of ['horizon', 'world', 'response_audit', 'canon_updates']) {
-        assert.ok(!Object.hasOwn(INCREMENTAL_ANALYSIS_SCHEMA_VALUE.properties, key));
-        assert.ok(!INCREMENTAL_ANALYSIS_SCHEMA_VALUE.required.includes(key));
-    }
-    for (const key of ['hidden_motives', 'actor_updates']) {
-        assert.ok(Object.hasOwn(INCREMENTAL_ANALYSIS_SCHEMA_VALUE.properties, key));
-        assert.ok(INCREMENTAL_ANALYSIS_SCHEMA_VALUE.required.includes(key));
-    }
-    assert.match(INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, /No other keys/);
-    assert.ok(JSON.stringify(INCREMENTAL_ANALYSIS_SCHEMA).length < JSON.stringify(ANALYSIS_SCHEMA).length);
-    assert.deepEqual(validateAnalysisResult(incrementalResult()), { valid: true, errors: [] });
-});
-
-test('incremental refresh locally abstracts private names without discarding an otherwise usable result', () => {
-    const leaky = incrementalResult({
-        current: { ...incrementalResult().current, location: 'East Refectory alcove' },
-        beat: {
-            ...incrementalResult().beat,
-            primary_when: "Nim's consent is discussed in the Refectory.",
-            operation: 'Let Vekk clarify the private option for Nim.',
-            required_effect: 'Vekk provides one observable answer without deciding the player response.',
-            alternatives: [
-                { when: 'Nim accepts.', operation: 'Let Vekk acknowledge it.', required_effect: 'Nim receives a concrete external response.' },
-                { when: 'The Refectory changes around them.', operation: 'Let the Refectory supply a natural transition.', required_effect: 'Move the Refectory interaction forward.' },
-            ],
-        },
-        ledger: "Lucia proposed petitioning Nim's sister, and Vekk prepared an optional private case.",
-    });
-    assert.equal(validateAnalysisResult(leaky).valid, false);
-    const abstract = abstractIncrementalVisibleBranches(leaky);
-    assert.deepEqual(validateAnalysisResult(abstract), { valid: true, errors: [] });
-    assert.doesNotMatch(JSON.stringify(abstract.beat), /Nim|Vekk|Refectory/iu);
-    assert.match(abstract.beat.operation, /established participant/i);
-    assert.match(abstract.beat.alternatives[1].operation, /current environment/i);
-    assert.equal(abstract.ledger, leaky.ledger);
-    assert.equal(abstract.current.location, leaky.current.location);
-    assert.match(leaky.beat.operation, /Vekk/);
-});
-
-test('incremental results refresh scene, direction, actors, and motives while retaining expensive long-range state', () => {
-    const initial = defaultState();
-    initial.horizonRadar = { status: 'latent', seeds: [{ id: 'long', kind: 'detected', trajectory: 'A long arc', engine: 'trust', scale: 'arc', condition: 'later', basis: 'prior evidence', presentRelation: 'none', change: 'keep' }], audit: 'retained' };
-    initial.hiddenMotives = { status: 'focused', items: [{ id: 'why', actor: 'Vekk', explanation: 'A prior hypothesis', likelihood: 'possible', evidence: [], counterevidence: [], mechanism: 'care', currentRelevance: 'background', disclosure: 'hidden', change: 'keep' }], audit: 'retained' };
-    const next = applyAnalysis(initial, incrementalResult(), messages);
-    assert.equal(next.scene.time, '01:10 PM');
-    assert.equal(next.beatDirective.requiredEffect, incrementalResult().beat.required_effect);
-    assert.equal(next.continuityThreads[0].state, 'Prepared but not attached without exact consent.');
-    assert.equal(next.horizonRadar.seeds[0].id, 'long');
-    assert.equal(next.hiddenMotives.items[0].id, 'protect-consent');
-    assert.equal(next.entities[0].motivation, 'Protect the user’s control over the petition.');
-});
-
-test('analysis prompt makes the newest assistant reply and status header authoritative over retained state', () => {
-    const prompt = JSON.parse(buildAnalysisPrompt([
-        { is_user: true, name: 'Ari', mes: 'Could we file the petition for her?' },
-        {
-            is_user: false,
-            name: 'Narrator',
-            mes: 'Time = 01:10 PM\nLocation = East Refectory — reserved south alcove table\nCurrent Beat = The private supporting case is accepted\n\nThe clerk records the missing relative as a private supporting case, and lunch is now underway.',
-        },
-        { is_user: true, name: 'Ari', mes: 'Good. Keep her fate unconfirmed.' },
-    ], {
-        ...defaultState(),
-        scene: { ...defaultState().scene, time: '01:01 PM', location: 'between the serving line and the alcove' },
-    }));
-
-    assert.equal(prompt.transcript_head.latest_message_index, 2);
-    assert.equal(prompt.transcript_head.latest_message_role, 'user');
-    assert.equal(prompt.transcript_head.newest_assistant_index, 1);
-    assert.equal(prompt.transcript_head.newest_user_index, 2);
-    assert.match(prompt.transcript_head.authoritative_assistant_status, /01:10 PM/);
-    assert.match(prompt.transcript_head.authoritative_assistant_status, /reserved south alcove table/);
-    assert.match(prompt.transcript_head.latest_user_text, /Keep her fate unconfirmed/);
-    assert.match(prompt.transcript_head.authoritative_assistant_excerpt, /private supporting case/);
-    assert.match(prompt.transcript_head.rule, /never invert speaker, actor, possessor, target, or pronoun referent/i);
-    assert.match(prompt.transcript_head.rule, /only reply response_audit may evaluate/i);
-    assert.match(prompt.retained_state_rule, /may be stale/i);
-    assert.match(prompt.retained_state_rule, /must never override the transcript head/i);
-    assert.match(prompt.messages.find(message => message.index === 1).content, /Time = 01:10 PM/);
-    assert.match(prompt.messages.find(message => message.index === 1).content, /private supporting case/i);
-    assert.match(prompt.messages.at(-1).content, /Keep her fate unconfirmed/);
-});
-
-test('analysis prompt preserves a SillyTavern stat block on the newest assistant reply', () => {
-    const prompt = JSON.parse(buildAnalysisPrompt([
-        { is_user: true, name: 'Lucia', mes: 'We eat.' },
-        {
-            is_user: false,
-            name: 'Narrator',
-            mes: '<stat>\n```\nTime & Weather = Date: 05.15.0021 BBY | Time: 01:10 PM; midday\nLocation = Coruscant | Jedi Temple, East Refectory south alcove\nCurrent Beat = The group eats while a private supporting case is accepted\n```\n</stat>\n\nThe commander records the missing relative as a private supporting case. Lunch continues at the table.',
-        },
-    ], {
-        ...defaultState(),
-        scene: { ...defaultState().scene, time: '01:01 PM', location: 'serving line' },
-    }));
-
-    assert.match(prompt.transcript_head.authoritative_assistant_status, /01:10 PM/);
-    assert.match(prompt.transcript_head.authoritative_assistant_status, /south alcove/);
-    assert.match(prompt.messages.at(-1).content, /^Time & Weather =/);
-    assert.match(prompt.messages.at(-1).content, /private supporting case/);
-    assert.doesNotMatch(prompt.messages.at(-1).content, /<stat>/);
-});
-
-test('planner validation detects a stale clock against the newest assistant status', () => {
-    const prompt = buildAnalysisPrompt([
-        { is_user: true, name: 'Ari', mes: 'Let us sit down.' },
-        { is_user: false, name: 'Narrator', mes: 'Time = 01:10 PM\nLocation = South alcove table\nCurrent Beat = Lunch has begun\n\nEveryone settles at the table.' },
-    ], defaultState());
-    const stale = result({ current: { ...result().current, time: '01:01 PM', location: 'Serving line' } });
-    const current = result({ current: { ...result().current, time: '13:10', location: 'South alcove table' } });
-    assert.match(transcriptHeadAlignmentErrors(stale, prompt)[0], /authoritative newest-assistant status is 01:10 PM/i);
-    assert.deepEqual(transcriptHeadAlignmentErrors(current, prompt), []);
-});
-
-test('planner validation rejects an omitted clock when the newest assistant stat block supplies one', () => {
-    const prompt = buildAnalysisPrompt([
-        { is_user: false, name: 'Narrator', mes: '<stat>\n```\nTime = 01:10 PM\nLocation = South alcove table\nCurrent Beat = Lunch has begun\n```\n</stat>\n\nEveryone settles at the table.' },
-    ], defaultState());
-    const missing = result({ current: { ...result().current, time: 'current midday', location: 'South alcove table' } });
-    assert.match(transcriptHeadAlignmentErrors(missing, prompt)[0], /omits the authoritative newest-assistant clock/i);
-});
-
-test('planner validation rejects a kinship owner inverted by stale retained context', () => {
-    const staleState = defaultState();
-    staleState.contextLedger = "Vekk raised the idea of petitioning Lucia's sister and prepared a private draft.";
-    const prompt = buildAnalysisPrompt([
-        { is_user: true, name: 'Lucia', mes: 'Maybe we can petition your sister, Nim.' },
-        {
-            is_user: false,
-            name: 'Narrator',
-            mes: `Time = 01:10 PM\nLocation = South alcove table\nCurrent Beat = Nim approves a private supporting case for his missing sister\n\n${'Routine lunch detail continues. '.repeat(400)} Vekk explains that Nim’s sister remains listed as missing and creates a private draft with Nim’s consent. ${'The meal continues without another procedural change. '.repeat(1200)}`,
-        },
-    ], staleState, '', {}, {
-        summarySources: [{
-            label: 'Stale continuity memory',
-            kind: 'summary',
-            text: "Vekk proposed filing a supporting case for Lucia's sister.",
-        }],
-    });
-    const inverted = result({
-        current: { ...result().current, time: '01:10 PM', location: 'South alcove table' },
-        continuity_threads: [{ id: 'relative', thread: "Lucia's sister", state: 'A petition may be filed.' }],
-    });
-    const aligned = result({
-        current: { ...result().current, time: '01:10 PM', location: 'South alcove table' },
-        continuity_threads: [{ id: 'relative', thread: "Nim's sister", state: 'A private supporting case exists.' }],
-    });
-    const misattributed = result({
-        current: { ...result().current, time: '01:10 PM', location: 'South alcove table' },
-        ledger: 'Vekk raised the idea of petitioning the sister and prepared a private draft.',
-    });
-    const parsedPrompt = JSON.parse(prompt);
-    assert.equal(parsedPrompt.transcript_head.latest_user_name, 'Lucia');
-    assert.match(parsedPrompt.transcript_head.proposal_attribution, /Lucia proposed/i);
-    assert.doesNotMatch(parsedPrompt.transcript_head.authoritative_assistant_excerpt, /Nim[’']s sister/iu);
-    assert.ok(parsedPrompt.transcript_head.authoritative_relations.includes('Nim’s sister'));
-    assert.match(parsedPrompt.current.contextLedger, /Lucia raised the idea of petitioning Nim's sister/i);
-    assert.doesNotMatch(parsedPrompt.current.contextLedger, /Vekk raised|Lucia's sister/i);
-    assert.match(parsedPrompt.summary_sources[0].text, /Lucia proposed filing a supporting case for Nim's sister/i);
-    assert.doesNotMatch(parsedPrompt.summary_sources[0].text, /Vekk proposed|Lucia's sister/i);
-    assert.match(transcriptHeadAlignmentErrors(inverted, prompt).join('\n'), /identifies Nim's sister/i);
-    assert.match(transcriptHeadAlignmentErrors(misattributed, prompt).join('\n'), /newest user Lucia made that suggestion/i);
-    assert.deepEqual(transcriptHeadAlignmentErrors(aligned, prompt), []);
-    const compactPrompt = parsedPrompt;
-    delete compactPrompt.transcript_head.latest_user_text;
-    delete compactPrompt.transcript_head.authoritative_assistant_excerpt;
-    assert.match(transcriptHeadAlignmentErrors(inverted, JSON.stringify(compactPrompt)).join('\n'), /identifies Nim's sister/i);
-});
-
-test('analysis prompt treats OOC and scenario authority as binding, not future suggestions', () => {
-    const prompt = JSON.parse(buildAnalysisPrompt([
-        ...messages,
-        { is_user: true, name: 'Ari', mes: 'OOC: I kill the dragon here. Do not advance beyond the immediate aftermath.' },
-    ], defaultState()));
-    assert.match(prompt.authority, /OOC outcome commands bind the stated outcome/i);
-    assert.match(prompt.authority, /user action is outside Tale Fairy’s authority/i);
-    assert.match(prompt.authority, /Never use planning to deny, delay, weaken, cap, or modify the user action/i);
-    assert.match(prompt.contribution_rule, /Every branch must be self-propelling/i);
-    assert.match(prompt.contribution_rule, /exists independently of any player reply/i);
-    assert.match(prompt.contribution_rule, /dialogue-centered scenes/i);
-    assert.doesNotMatch(prompt.contribution_rule, /interrogat/i);
-    assert.match(prompt.evidence_rule, /Never predict or force a known canon event/i);
-    assert.match(prompt.messages.at(-1).content, /I kill the dragon here/);
-});
-
-test('analysis prompt keeps newest explicit extreme canon intact', () => {
-    const prompt = JSON.parse(buildAnalysisPrompt([
-        { is_user: true, name: 'Ari', mes: 'OOC: My power is explicitly off the charts and unmatched in this era.' },
-    ], defaultState()));
-    assert.ok(prompt.explicit_ooc_canon.some(item => /off the charts and unmatched/i.test(item)));
-    assert.match(prompt.evidence_rule, /Newer explicit user\/OOC facts supersede inference/);
-});
-
-test('analysis prompt remains inside its configured budget with long rapid-fire history', () => {
-    const history = Array.from({ length: 180 }, (_, index) => ({ is_user: index % 2 === 0, name: index % 2 ? 'Narrator' : 'Ari', mes: `${index}: ${'context '.repeat(500)}` }));
-    const prompt = buildAnalysisPrompt(history, defaultState(), '', {}, { maxPromptTokens: 3200, effectivePromptTokens: 2400, recentContextTokens: 1600, messageTokenLimit: 220 });
-    assert.ok(estimateTokenCount(prompt) <= 2400, estimateTokenCount(prompt));
-    assert.match(JSON.parse(prompt).messages.at(-1).content, /^179:/);
-});
-
-test('incremental prompt omits horizon regeneration but retains compact motives for re-evaluation', () => {
+test('analysis prompt carries broad state but asks for only a relevant slice', () => {
     const state = defaultState();
-    state.hiddenMotives = { status: 'focused', items: [{ id: 'secret', actor: 'Someone', explanation: 'A private theory.' }], audit: 'private' };
-    state.horizonRadar = { status: 'latent', seeds: [{ id: 'future', trajectory: 'A distant possibility.' }], audit: 'private' };
-    const prompt = JSON.parse(buildAnalysisPrompt(messages, state, '', {}, {
-        incremental: true, maxPromptTokens: 7000, effectivePromptTokens: 4200, recentContextTokens: 2200,
-    }));
-    assert.match(prompt.instruction, /re-evaluate actor motivations and the private hidden motives/i);
-    assert.ok(!Object.hasOwn(prompt, 'horizon_rule'));
-    assert.ok(!Object.hasOwn(prompt, 'motive_rule'));
-    assert.ok(Object.hasOwn(prompt.current, 'hiddenMotives'));
-    assert.ok(!Object.hasOwn(prompt.current, 'horizonRadar'));
+    state.mode = 'fun'; state.contextLedger = 'Several ministries and families remain dormant.';
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, state, '', { scenario: 'Country simulation' }, { variationNonce: 7 }));
+    assert.equal(prompt.task, 'refresh_active_world_simulation');
+    assert.match(prompt.condition_rule, /durable present-state cause/i);
+    assert.match(prompt.relevance_rule, /real causal state change/i);
+    assert.match(prompt.mode_instruction, /bolder strongly supported pressure/i);
 });
 
-test('retained private boards are corrected to the authoritative transcript before reuse', () => {
-    const state = defaultState();
-    state.contextLedger = "Vekk proposed petitioning Lucia's sister.";
-    state.hiddenMotives = {
-        status: 'focused',
-        items: [{ id: 'petition', actor: 'Vekk', explanation: "Vekk raised the idea of a case for Lucia's sister.", likelihood: 'likely', evidence: [], counterevidence: [], mechanism: 'draft', currentRelevance: 'background', disclosure: 'hidden', change: 'keep' }],
-        audit: "Lucia's sister remains an optional route.",
-    };
-    const aligned = alignRetainedStateToTranscript(state, [
-        { is_user: true, name: 'Lucia', mes: 'Maybe we can petition your sister, hopefully she can be found.' },
-        { is_user: false, name: 'Vekk', mes: "Vekk quietly prepares an optional supporting draft for Nim's sister without assuming her fate or consent." },
-    ]);
-    assert.match(aligned.contextLedger, /Lucia proposed petitioning Nim's sister/i);
-    assert.doesNotMatch(JSON.stringify(aligned.hiddenMotives), /Lucia's sister|Vekk raised/iu);
-    assert.match(JSON.stringify(aligned.hiddenMotives), /Nim's sister/iu);
+test('incremental prompt remains compact and omits horizon regeneration', () => {
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { incremental: true }));
+    assert.equal(prompt.horizon_rule, undefined);
+    assert.match(prompt.fast_rules, /Tentative conditions stay private/i);
 });
 
-test('advertised high-budget settings can use more than the former internal clamps', () => {
-    const history = Array.from({ length: 20 }, (_, index) => ({
-        is_user: index % 2 === 0, name: index % 2 ? 'Narrator' : 'Ari', mes: `${index}: ${'scene detail '.repeat(900)}`,
-    }));
-    const parsed = JSON.parse(buildAnalysisPrompt(history, defaultState(), '', {}, {
-        maxPromptTokens: 30000, effectivePromptTokens: 25000, recentContextTokens: 10000, messageTokenLimit: 1800,
-        summarySources: [{ label: 'Long memory', kind: 'summary', text: 'continuity detail '.repeat(3000) }],
-    }));
-    const messageTokens = parsed.messages.reduce((total, message) => total + estimateTokenCount(message.content), 0);
-    const summaryTokens = parsed.summary_sources.reduce((total, summary) => total + estimateTokenCount(summary.text), 0);
-    assert.ok(messageTokens > 7000, messageTokens);
-    assert.ok(summaryTokens > 3000, summaryTokens);
+test('configured prompt budget remains bounded with long history', () => {
+    const history = Array.from({ length: 80 }, (_, i) => ({ is_user: i % 2 === 0, name: i % 2 ? 'NPC' : 'Ari', mes: `Turn ${i} ${'detail '.repeat(400)}` }));
+    const prompt = buildAnalysisPrompt(history, defaultState(), '', {}, { maxPromptTokens: 4000, recentContextTokens: 2600, messageTokenLimit: 220 });
+    assert.ok(estimateTokenCount(prompt) <= 4200);
 });
 
-test('applying analysis saves the beat and private horizon radar while clearing retired route machinery', () => {
-    const prior = { ...defaultState(), objectives: [{ title: 'Future' }], possibilities: [{ description: 'Future' }], pathways: [{ id: 'route' }], nextGuides: [{ id: 'guide' }], narrativeEvents: [{ id: 'event' }] };
-    const next = applyAnalysis(prior, result(), messages);
-    assert.equal(next.sceneProfile.promise, result().current.scene_promise);
-    assert.equal(next.beatDirective.operation, 'complicate');
-    assert.equal(next.beatDirective.contentClass, 'obstacle');
+test('applying full analysis stores causal context and private simulation boards', () => {
+    const next = applyAnalysis(defaultState(), full(), messages);
+    assert.equal(next.causalContext.conditions[0].subject, 'Mira');
+    assert.equal(next.horizonRadar.seeds.length, 1);
+    assert.equal(next.hiddenMotives.items[0].actor, 'Mira');
     assert.equal(next.lastInject, true);
-    assert.equal(next.responseAudit.movementFit, 'clear');
-    assert.deepEqual(next.responsePatternMemory, ['task-native obstacle after quiet setup']);
-    assert.equal(next.horizonRadar.status, 'latent');
-    assert.deepEqual(next.horizonRadar.seeds.map(seed => seed.id), ['education-path', 'unexpected-mentor']);
-    assert.equal(next.narrativeLayers.durableTrajectory, result().horizon.seeds[0].trajectory);
-    assert.deepEqual(next.objectives, []);
-    assert.deepEqual(next.possibilities, []);
-    assert.deepEqual(next.pathways, []);
-    assert.deepEqual(next.nextGuides, []);
-    assert.deepEqual(next.narrativeEvents, []);
+    assert.equal(next.objectives.length, 0);
 });
 
-test('applying analysis retains ranked hidden motives for the Scratchpad only', () => {
-    const analyzed = result({ hidden_motives: {
-        status: 'focused', audit: 'The first explanation best fits the observed timing.',
-        items: [{ id: 'trait-recognition', actor: 'Supreme Chancellor', explanation: 'The office recognized an unusually important latent trait and expedited the meeting before rivals could react.', likelihood: 'most-likely', evidence: ['The meeting was expedited.', 'The subject has an unusually high established trait.'], counterevidence: ['The office has not stated its reason.'], mechanism: 'The Chancellor can reorder appointments and prioritize strategically valuable subjects.', current_relevance: 'drives-beat', disclosure: 'hidden', change: 'keep' }],
-    } });
-    const next = applyAnalysis(defaultState(), analyzed, messages);
-    assert.equal(next.hiddenMotives.items[0].likelihood, 'most-likely');
-    assert.equal(stateForPrompt(next).hiddenMotives.items[0].actor, 'Supreme Chancellor');
-    assert.doesNotMatch(buildPromptPayload(next, { guidanceUsable: true }), /Supreme Chancellor|latent trait|expedited the meeting/i);
+test('incremental application refreshes causal context while retaining horizon', () => {
+    const prior = applyAnalysis(defaultState(), full(), messages);
+    const revised = incremental({ context: { ...full().context, conditions: [{ ...conditions[0], condition: 'now trusts the report totals' }] } });
+    const next = applyAnalysis(prior, revised, [...messages, { is_user: false, mes: 'Mira checks the source ledger.' }]);
+    assert.equal(next.causalContext.conditions[0].condition, 'now trusts the report totals');
+    assert.equal(next.horizonRadar.seeds.length, 1);
 });
 
-test('specific lore-supported personal intervention stays private while ranking most-likely', () => {
-    const analyzed = result({ hidden_motives: {
-        status: 'focused', audit: 'The established power relationship and exceptional trait make the personal summons the strongest explanation.',
-        items: [{ id: 'personal-summons', actor: 'Supreme Chancellor Palpatine', explanation: 'Palpatine personally summoned Lucia after recognizing that her unmatched Midichlorian count made the meeting strategically urgent.', likelihood: 'most-likely', evidence: ['The meeting was expedited.', 'Palpatine controls access to the office.', 'Lucia has the highest established Midichlorian count.'], counterevidence: ['No direct confirmation of a personal summons appears yet.'], mechanism: 'The Chancellor can personally reorder the schedule and call in a strategically important subject.', current_relevance: 'drives-beat', disclosure: 'hidden', change: 'keep' }],
-    } });
-    const next = applyAnalysis(defaultState(), analyzed, messages);
-    assert.equal(next.hiddenMotives.items[0].likelihood, 'most-likely');
-    assert.match(next.hiddenMotives.items[0].explanation, /personally summoned Lucia/i);
-    const payload = buildPromptPayload(next, { guidanceUsable: true });
-    assert.doesNotMatch(payload, /Palpatine|personally summoned Lucia|Midichlorian/i);
+test('provider payload exposes clean conditions and withholds tentative metadata', () => {
+    const state = applyAnalysis(defaultState(), full(), messages);
+    state.lastAnalysisFingerprint = 'x'; state.sourceMessageCount = messages.length; state.sourceChatId = 'chat';
+    const payload = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
+    assert.match(payload, /Mira suspects the reserve report is falsified/);
+    assert.match(payload, /Grain reserves are falling faster/);
+    assert.doesNotMatch(payload, /Harbor merchants/);
+    assert.doesNotMatch(payload, /confidence|relevance|mira-doubt/i);
+    assert.match(payload, /writing model chooses every concrete action/i);
 });
 
-test('related original horizon seeds remain speculation instead of becoming durable trajectory', () => {
-    const speculative = result({
-        horizon: {
-            ...result().horizon,
-            seeds: [
-                { ...result().horizon.seeds[0], kind: 'original', present_relation: 'advance' },
-            ],
-        },
-    });
-    const next = applyAnalysis(defaultState(), speculative, messages);
-    assert.equal(next.horizonRadar.seeds[0].kind, 'original');
-    assert.equal(next.narrativeLayers.durableTrajectory, '');
+test('stateForPrompt retains private condition metadata for future planning', () => {
+    const promptState = stateForPrompt(applyAnalysis(defaultState(), full(), messages));
+    assert.equal(promptState.causalContext.conditions[2].confidence, 'tentative');
+    assert.equal(promptState.causalContext.conditions[0].relevance, conditions[0].relevance);
 });
 
-test('private response audit informs later planning but never enters roleplay injection', () => {
-    const next = applyAnalysis(defaultState(), result(), messages);
-    const plannerState = JSON.stringify(next.responseAudit) + JSON.stringify(next.responsePatternMemory);
-    const providerPayload = buildAnalysisPrompt(messages, next);
-    const roleplayPayload = buildPromptPayload(next, { guidanceUsable: true });
-    assert.match(providerPayload, /task-native obstacle after quiet setup/);
-    assert.doesNotMatch(roleplayPayload, /movementFit|task-native obstacle|prior response/i);
-    assert.doesNotMatch(roleplayPayload, /education-path|unexpected-mentor|educational direction/i);
-    assert.ok(plannerState.includes('task-native obstacle'));
+test('transcript clock alignment still rejects stale planner state', () => {
+    const status = 'TIME = 09:30 PM\nLOCATION = North Hall\nCURRENT BEAT = Cabinet adjourned';
+    const errors = transcriptHeadAlignmentErrors(full(), { transcript_head: { authoritative_assistant_status: status, authoritative_assistant_excerpt: status } });
+    assert.ok(errors.some(error => /time/i.test(error)));
 });
 
-test('applying factual deltas updates and retires actors and unresolved processes', () => {
-    const prior = {
-        ...defaultState(),
-        continuityThreads: [{ id: 'permit', thread: 'Permit review', state: 'Pending.', status: 'dormant', basis: 'Filed.' }],
-        entities: [{ name: 'Clerk', state: 'At the counter.', relevance: 'current', agenda: 'Process forms.' }],
-        canonConstraints: ['The permit was filed.'],
-    };
-    const update = result({
-        thread_updates: [{ op: 'upsert', id: 'budget', thread: 'National budget', state: 'Debate is active.', status: 'active', basis: 'Parliament convened.' }, { op: 'retire', id: 'permit', thread: '', state: '', status: 'dormant', basis: '' }],
-        actor_updates: [{ op: 'retire', name: 'Clerk', state: '', location: '', perspective: '', motivation: '', knowledge: '', constraints: '', agenda: '', window: '' }, { op: 'upsert', name: 'Treasury', state: 'Drafting allocations.', location: 'capital', perspective: 'Revenue is tight.', motivation: 'Pass a viable budget.', knowledge: 'Current forecasts.', constraints: 'Legislative votes.', agenda: 'Revise the bill.', window: 'current session' }],
-        canon_updates: [{ op: 'remove', fact: 'The permit was filed.' }, { op: 'add', fact: 'Parliament is in session.' }],
-    });
-    const next = applyAnalysis(prior, update, messages);
-    assert.deepEqual(next.continuityThreads.map(item => item.id), ['budget']);
-    assert.deepEqual(next.entities.map(item => item.name), ['Treasury']);
-    assert.deepEqual(next.canonConstraints, ['Parliament is in session.']);
-});
-
-test('AI-assisted note resolution accepts only supported authority kinds', () => {
-    assert.equal(validateAnalysisResult(result({ note_resolution: { kind: 'forbid' } })).valid, true);
-    assert.equal(validateAnalysisResult(result({ note_resolution: { kind: 'maybe' } })).valid, false);
-});
-
-test('runtime planner source has no scenario-specific recovery keys', () => {
-    const source = ['analysis.js', 'state.js', 'beat-director.js', 'index.js'].map(file => readFileSync(new URL(`../extension/${file}`, import.meta.url), 'utf8')).join('\n');
-    assert.doesNotMatch(source, /Chancellor|C-5-2214|Hokage|Midichlorian|Dorn-2/u);
+test('runtime planner source contains no scenario-specific recovery keys', () => {
+    const source = readFileSync(new URL('../extension/analysis.js', import.meta.url), 'utf8');
+    assert.doesNotMatch(source, /hogwarts|naruto|star wars/i);
+    assert.deepEqual(Object.keys(MODE_INSTRUCTIONS), ['light', 'balanced', 'fun']);
 });

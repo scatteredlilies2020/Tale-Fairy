@@ -17,18 +17,18 @@ test('reads structured tool arguments and Responses API output', () => {
     assert.equal(completionText({ output: [{ type: 'message', content: [{ type: 'output_text', text: 'response' }] }] }), 'response');
 });
 
-test('reads a direct external-reaction v6 structured result', () => {
-    const result = { contract_version: 6, current: {}, beat: {}, response_audit: {} };
+test('reads a direct causal-context v8 structured result', () => {
+    const result = { contract_version: 8, current: {}, context: {}, response_audit: {} };
     assert.equal(completionText(result), JSON.stringify(result));
 });
 
-test('reads a direct horizon-aware v7 structured result', () => {
+test('retains support for direct horizon-aware v7 structured results in flight', () => {
     const result = { contract_version: 7, current: {}, beat: {}, response_audit: {}, horizon: {} };
     assert.equal(completionText(result), JSON.stringify(result));
 });
 
-test('reads a direct compact v9 structured result', () => {
-    const result = { contract_version: 9, current: {}, beat: {}, thread_updates: [], hidden_motives: {}, actor_updates: [] };
+test('reads a direct compact v10 causal result', () => {
+    const result = { contract_version: 10, current: {}, context: {}, thread_updates: [], hidden_motives: {}, actor_updates: [] };
     assert.equal(completionText(result), JSON.stringify(result));
 });
 

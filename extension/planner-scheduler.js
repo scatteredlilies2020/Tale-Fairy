@@ -22,7 +22,7 @@ export function markAssistantTurn(schedule, responseKey = '') {
 }
 
 export function markPlannerCompleted(schedule, { turnCount = 0, fingerprint = '' } = {}) {
-    return { ...normalizePlannerSchedule(schedule), turnsSincePlanner: 0, lastPlannerTurn: Math.max(0, Number(turnCount) || 0), lastPlannerFingerprint: String(fingerprint || ''), pendingReason: '', refreshReason: 'Current beat analysis is fresh.', manualRequested: false };
+    return { ...normalizePlannerSchedule(schedule), turnsSincePlanner: 0, lastPlannerTurn: Math.max(0, Number(turnCount) || 0), lastPlannerFingerprint: String(fingerprint || ''), pendingReason: '', refreshReason: 'Active world context is fresh.', manualRequested: false };
 }
 
 function latestUserText(messages = []) { return String([...messages].reverse().find(message => message?.is_user)?.mes || ''); }
@@ -38,14 +38,14 @@ function hasContradiction(messages) {
 
 export function plannerRefreshDecision({ state, messages = [], event = 'turn', manual = false, swipe = false } = {}) {
     const schedule = normalizePlannerSchedule(state?.plannerSchedule);
-    const initialized = Boolean(state?.sceneProfile?.promise && state?.beatDirective?.operation);
-    if (manual || schedule.manualRequested) return { shouldRun: true, code: 'manual', reason: 'Manual current-beat reevaluation requested.' };
-    if (swipe) return { shouldRun: false, code: '', reason: 'A replacement response reuses the archived semantic beat and never spends a planner call.' };
-    if (!initialized) return { shouldRun: true, code: 'initialization', reason: 'Current scene promise or beat operation is missing.' };
+    const initialized = Boolean(state?.sceneProfile?.promise && state?.causalContext?.conditions?.length);
+    if (manual || schedule.manualRequested) return { shouldRun: true, code: 'manual', reason: 'Manual active-world reevaluation requested.' };
+    if (swipe) return { shouldRun: false, code: '', reason: 'A replacement response reuses the archived causal slice and never spends a planner call.' };
+    if (!initialized) return { shouldRun: true, code: 'initialization', reason: 'Current scene promise or causal context is missing.' };
     if (event === 'turn' && hasContradiction(messages)) return { shouldRun: true, code: 'contradiction', reason: 'The latest user turn corrects or contradicts retained planning.' };
     if (event === 'turn' && hasMajorPivot(messages)) return { shouldRun: true, code: 'major-pivot', reason: 'The latest user turn explicitly begins a new scene or substantial time shift.' };
     if (event === 'turn' && schedule.turnsSincePlanner >= schedule.refreshInterval) return { shouldRun: true, code: 'periodic', reason: `${schedule.turnsSincePlanner} assistant turns have passed since the last planner update.` };
-    return { shouldRun: false, code: '', reason: 'No current-beat refresh trigger is active.' };
+    return { shouldRun: false, code: '', reason: 'No active-world refresh trigger is active.' };
 }
 
 export function withRefreshReason(schedule, decision) {

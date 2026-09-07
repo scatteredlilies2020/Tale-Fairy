@@ -1,4 +1,4 @@
-import { applyPlannerAuthorLayer, defaultState, normalizeState } from './state.js?v=0.12.22';
+import { applyPlannerAuthorLayer, defaultState, normalizeState } from './state.js?v=0.13.0';
 
 function statusFields(value) {
     const fields = {};
@@ -28,7 +28,7 @@ export function createSafetyFallbackState(state, {
 
     next.scene = {
         ...next.scene,
-        status: currentBeat || 'Latest transcript loaded; awaiting the next external follow-through.',
+        status: currentBeat || 'Latest transcript loaded; awaiting fresh causal analysis.',
         activity: currentBeat || 'Continue from the exact latest transcript.',
         location: location || '',
         time: time || '',
@@ -42,32 +42,9 @@ export function createSafetyFallbackState(state, {
         noveltyCeiling: 'context-native',
         basis: 'Transcript-bound safety fallback used because the adaptive planner did not produce a usable result.',
     };
-    next.beatDirective = {
-        operation: 'let an established NPC or the current environment complete one natural observable follow-through',
-        primaryWhen: 'When an established NPC or the current environment can naturally answer the latest turn.',
-        target: 'the latest established interaction',
-        requiredEffect: 'Create one concrete external response, change, or discovery while leaving the player action and intent untouched; an established or unmistakable action toward the player may remain contested.',
-        alternatives: [
-            {
-                when: 'When the interaction is quiet or conversational.',
-                operation: 'let an established NPC contribute one specific reaction decision or disclosure',
-                requiredEffect: 'Move the current interaction forward with information or commitment that does not require a player reply.',
-                contentClass: 'reaction', scope: 'social', intensity: 'low', quantity: 'singular', relativePower: 'established', plotWeight: 'connective', duration: 'beat',
-            },
-            {
-                when: 'When environmental movement fits better than an NPC response.',
-                operation: 'let the current environment produce one context native observable development',
-                requiredEffect: 'Advance the immediate situation without invented conflict or urgency; leave any contested player response or result open.',
-                contentClass: 'opportunity', scope: 'social', intensity: 'low', quantity: 'singular', relativePower: 'none', plotWeight: 'connective', duration: 'beat',
-            },
-        ],
-        inject: true,
-        injectReason: 'A safe current direction is required while the adaptive planner recovers.',
-        contentClass: 'reaction', scope: 'social', intensity: 'low', quantity: 'singular', relativePower: 'established', plotWeight: 'connective', duration: 'beat',
-        preserve: ['Established facts and the exact latest transcript state.', 'Player agency, intent, dialogue, and consent.'],
-        forbid: ['Inventing or narrating player action.', 'Inventing conflict or urgency merely to force movement.'],
-        basis: 'Fresh generic fallback bound to the exact current transcript; never reused after it becomes stale.',
-    };
+    // A planner failure cannot safely invent causal facts. Keep the fallback
+    // transcript-bound and inject nothing until a verified analysis succeeds.
+    next.causalContext = clean.causalContext;
     next.responseAudit = clean.responseAudit;
     next.hiddenMotives = clean.hiddenMotives;
     next.horizonRadar = clean.horizonRadar;
@@ -79,8 +56,8 @@ export function createSafetyFallbackState(state, {
         activityRole: 'routine',
         temporalScope: 'action',
     };
-    next.lastInject = true;
-    next.lastReason = `Safety fallback prepared from the latest transcript${reason ? ` after ${String(reason).slice(0, 160)}` : ''}.`;
+    next.lastInject = false;
+    next.lastReason = `No causal context injected; planner fallback retained only the latest transcript${reason ? ` after ${String(reason).slice(0, 160)}` : ''}.`;
     next.lastAnalysisFingerprint = fingerprint;
     next.sourceMessageCount = messages.length;
     next.sourceChatId = String(chatId || '');

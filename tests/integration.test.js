@@ -5,282 +5,101 @@ import test from 'node:test';
 const source = await readFile(new URL('../extension/index.js', import.meta.url), 'utf8');
 const stateSource = await readFile(new URL('../extension/state.js', import.meta.url), 'utf8');
 const analysisSource = await readFile(new URL('../extension/analysis.js', import.meta.url), 'utf8');
-const directorSource = await readFile(new URL('../extension/beat-director.js', import.meta.url), 'utf8');
+const causalSource = await readFile(new URL('../extension/causal-context.js', import.meta.url), 'utf8');
 const schedulerSource = await readFile(new URL('../extension/planner-scheduler.js', import.meta.url), 'utf8');
+const fallbackSource = await readFile(new URL('../extension/fallback-direction.js', import.meta.url), 'utf8');
 const template = await readFile(new URL('../extension/settings.html', import.meta.url), 'utf8');
 const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.meta.url), 'utf8'));
 const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json', import.meta.url), 'utf8'));
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
-test('manifest and detached plugin identify the adaptive-director release', () => {
-    assert.equal(manifest.version, '0.12.22');
-    assert.equal(manifest.js, 'extension/index.js?v=0.12.22');
-    assert.equal(manifest.css, 'extension/style.css?v=0.12.22');
-    assert.match(manifest.description, /always-on adaptive story director/i);
+test('manifest, browser runtime, and detached plugin share the release version', () => {
+    assert.equal(manifest.version, '0.13.0');
+    assert.equal(manifest.js, 'extension/index.js?v=0.13.0');
+    assert.equal(manifest.css, 'extension/style.css?v=0.13.0');
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.12\.22'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.12\.22'/);
+    assert.match(pluginSource, /const VERSION = '0\.13\.0'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.13\.0'/);
 });
 
-test('extension loads the background-only direction modules', () => {
-    assert.match(source, /from '\.\/analysis\.js\?v=0\.12\.22'/);
-    assert.match(source, /from '\.\/state\.js\?v=0\.12\.22'/);
-    assert.match(source, /from '\.\/request-injection\.js\?v=0\.12\.22'/);
-    assert.match(source, /from '\.\/director-sampling\.js\?v=0\.12\.22'/);
-    assert.doesNotMatch(source, /action-gate/);
-    assert.match(stateSource, /from '\.\/beat-director\.js\?v=0\.12\.22'/);
+test('runtime uses causal context and has no prescriptive beat-director dependency', () => {
+    assert.match(source, /from '\.\/causal-context\.js\?v=0\.13\.0'/);
+    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.13\.0'/);
+    assert.doesNotMatch(source, /beat-director/);
+    assert.doesNotMatch(stateSource, /beat-director/);
+    assert.match(stateSource, /export const STATE_VERSION = 57/);
+    assert.match(stateSource, /delete state\.beatDirective/);
 });
 
-test('full rebuild keeps long-form capacity while incremental refresh stays compact', () => {
-    assert.match(source, /recentContextTokens: 6000/);
-    assert.match(source, /maxPromptTokens: 16000/);
-    assert.match(source, /const INCREMENTAL_MAX_PROMPT_TOKENS = 4200/);
-    assert.match(source, /const INCREMENTAL_RECENT_CONTEXT_TOKENS = 1800/);
-    assert.match(source, /const INCREMENTAL_SUMMARY_CONTEXT_TOKENS = 600/);
-    assert.match(source, /const INCREMENTAL_RESPONSE_TOKENS = 2304/);
-    assert.match(source, /const REBUILD_RESPONSE_TOKENS = 16384/);
-    assert.match(source, /fullContextPass \? REBUILD_RESPONSE_TOKENS : INCREMENTAL_RESPONSE_TOKENS/);
-    assert.match(source, /reasoningMode: 'off'/);
-    assert.match(source, /summaryContextTokens: 4000/);
-    assert.match(source, /contextSettingsVersion: 11/);
-    assert.match(source, /recentContextTokens\) === 4000.*recentContextTokens = 6000/);
-    assert.match(source, /maxPromptTokens\) === 12000.*maxPromptTokens = 16000/);
-    assert.match(analysisSource, /DEFAULT_PROMPT_TOKEN_BUDGET = 16000/);
-    assert.match(analysisSource, /Math\.min\(30000, Number\(options\.maxPromptTokens\)/);
-    assert.match(template, /Summary retrieval pool \(tokens\)/);
-    assert.match(template, /fast refresh reserves up to 1,536 output\/thinking tokens/i);
-    assert.match(template, /full rebuild can reserve up to 16,384/i);
+test('planner contracts return active world conditions rather than future branches', () => {
+    assert.match(analysisSource, /contract_version=8/);
+    assert.match(analysisSource, /contract_version=10/);
+    assert.match(analysisSource, /private active-world simulator/i);
+    assert.match(analysisSource, /underlying conditions|present causal state/i);
+    assert.match(analysisSource, /Never prescribe a future action, scene, event, dialogue, reveal, discovery, consequence, or outcome/i);
+    assert.match(analysisSource, /Do not assume expressed means resolved|Do not equate mention with resolution/i);
+    assert.doesNotMatch(analysisSource, /one primary.*two.*alternatives/i);
 });
 
-test('depth one is the default and injection proof cannot block roleplay generation', () => {
-    assert.match(source, /injectionDepth: 1/);
-    assert.match(source, /injectionDepth\) === 2[\s\S]*settings\.injectionDepth = 1/);
-    assert.match(template, /0 = newest edge; default 1/);
-    assert.match(source, /verificationFingerprint\(guidanceBlock\)/);
-    assert.match(source, /state\.lastRequestVerification = verification/);
-    assert.doesNotMatch(source, /await rememberVerifiedRequest/);
-    assert.match(source, /scheduleVerificationPersistence\(context\)/);
-    assert.match(source, /Tale Fairy plans to inject this exact context/);
-    assert.match(source, /savedState\.lastRequestVerification\?\.status === 'included'/);
-    assert.match(source, /ensureGuidanceInChat\(request\.messages, payload/);
-    assert.match(source, /request\.prompt = ensureGuidanceInText\(request\.prompt, payload\)/);
-    assert.match(source, /outboundInit = \{ \.\.\.init, body: JSON\.stringify\(request\) \}/);
-    assert.match(source, /guidanceBlock = extractTaleFairyContext\(JSON\.parse\(outboundInit\.body\)\)/);
-    assert.match(source, /rememberVerifiedRequest\(guidanceBlock,[\s\S]*recordRuntimeStage\('provider-bound-proof-saved'/);
-    assert.match(source, /s\.lastProviderBoundVerification = verification/);
-    assert.match(source, /newestProviderBoundVerification\([\s\S]*cachedProviderBoundVerification\(chatId\)/);
-    assert.match(source, /cacheProviderBoundVerification\(state\.lastRequestVerification\)/);
-    assert.match(source, /const response = plannerNativeFetch\(input, outboundInit\);[\s\S]*queueMicrotask/);
-    assert.ok(source.indexOf("recordRuntimeStage('provider-bound-proof-saved'") < source.indexOf('const response = plannerNativeFetch(input, outboundInit)'));
-    assert.match(source, /No Tale Fairy work is awaited and no verification failure can[\s\S]*reject the provider request/);
-    assert.match(source, /Passive injection verification failed without affecting generation/);
-    assert.match(source, /Injection observed after network dispatch/);
-    assert.doesNotMatch(source, /blocked this roleplay request because its context was missing/);
-    assert.match(source, /taleFairyNativeFetch/);
-    assert.match(source, /reportNonBlockingInjectionFailure/);
-    assert.match(source, /Generation will continue without Tale Fairy blocking it/);
-    assert.match(source, /Injection verified in the final provider payload/);
-    assert.match(source, /recordRuntimeStage\('runtime-loaded'\)/);
-    assert.match(source, /recordRuntimeStage\('generation-started'/);
-    assert.match(source, /recordRuntimeStage\('final-provider-payload'/);
-    assert.match(source, /recordRuntimeStage\('network-dispatched'/);
-    assert.match(source, /s\.runtimeDiagnostics = \[\.\.\.\(Array\.isArray\(s\.runtimeDiagnostics\)/);
-    assert.match(source, /recordRuntimeStage\('generation-ended'\)/);
-    assert.match(source, /CURRENT GENERATION REQUEST/);
-});
-
-test('obsolete pacing selector and static provider boilerplate are absent', () => {
-    assert.doesNotMatch(template, /data-setting="pacing"|Scene pacing/);
-    assert.doesNotMatch(source, /updatePacing|data-setting="pacing"/);
-    assert.doesNotMatch(directorSource, /USER-CONTROLLED PACING|maximum time, activity, and player progress/i);
-    assert.doesNotMatch(directorSource, /Use the analyzed beat only|Never invent the player character/i);
-    assert.match(directorSource, /never control the player character/i);
-    assert.match(directorSource, /EXTERNAL-REACTION GUIDE/i);
-    assert.doesNotMatch(directorSource, /fatigue, sleepiness, pain, fear, readiness/i);
-    assert.match(directorSource, /contested results remain open for the player to answer/i);
-    assert.match(analysisSource, /Never invent player dialogue, thoughts, feelings, consent, decisions/i);
-});
-
-test('adaptive analysis uses freeform direction rather than an event taxonomy', () => {
-    assert.match(analysisSource, /contract_version=7/);
-    assert.match(analysisSource, /adaptive narrative director/i);
-    assert.match(analysisSource, /not an event taxonomy/i);
-    assert.match(analysisSource, /other context-compatible movement/i);
-    assert.match(analysisSource, /countries, societies, and worlds/i);
-    assert.match(analysisSource, /operation: text\(80\)/);
-    assert.doesNotMatch(analysisSource, /beat\.operation': \[/);
-    assert.match(analysisSource, /every scale classification in private fields/i);
-    assert.match(analysisSource, /NPCs and events may target or affect the player when established or unmistakable/i);
-    assert.match(analysisSource, /Keep scene specifics.*private fields/i);
-    assert.match(stateSource, /export const STATE_VERSION = 56/);
-    assert.match(stateSource, /beatContractUpgrade/);
-});
-
-test('provider injection uses only an analyzed beat and otherwise removes stale guidance', () => {
-    assert.match(stateSource, /formatBeatContract/);
-    assert.doesNotMatch(stateSource, /formatFreshBeatFallback/);
+test('provider context exposes only clean relevant conditions', () => {
+    assert.match(causalSource, /RELEVANT UNDERLYING CONDITIONS/);
+    assert.match(causalSource, /causal context, not required events or predetermined outcomes/i);
+    assert.match(causalSource, /confidence !== 'tentative'/);
+    assert.doesNotMatch(causalSource, /branchIndex|weighted random choice|NEXT-STEP EFFECT/);
+    assert.match(stateSource, /formatCausalContext/);
     assert.match(stateSource, /if \(!enabled \|\| !guidanceUsable\) return ''/);
-    assert.match(source, /buildPromptPayload\(state/);
-    assert.match(source, /sceneProfile: generationGuideSelection\.sceneProfile/);
-    assert.match(source, /beatDirective: generationGuideSelection\.beatDirective/);
-    assert.match(source, /ensureGuidanceInChat/);
-    assert.match(source, /ensureGuidanceInText/);
-    assert.match(source, /CHAT_COMPLETION_PROMPT_READY/);
-    assert.match(source, /GENERATE_AFTER_COMBINE_PROMPTS/);
-    assert.match(source, /guidanceBlock = extractTaleFairyContext\(JSON\.parse\(outboundInit\.body\)\)/);
-    assert.match(source, /rememberSkippedRequest/);
-    assert.match(source, /provider-bound-skip-saved/);
-    assert.match(pluginSource, /\[2, 3, 4, 5, 6, 7, 8\]\.includes\(value\.contract_version\)/);
 });
 
-test('replacement generation archives semantic direction and the exact weighted sample', () => {
-    assert.match(source, /const archived = replacement \? state\.lastRequestVerification : null/);
-    assert.match(source, /archived\?\.beatDirective/);
-    assert.match(source, /sceneProfile: \(archivedUsable \|\| archivedSkipped\) \? archived\.sceneProfile/);
-    assert.match(source, /beatDirective: \(archivedUsable \|\| archivedSkipped\) \? archived\.beatDirective/);
-    assert.match(source, /archived\?\.directorSample/);
-    assert.match(source, /archived\?\.directorSeed/);
-    assert.match(source, /const replacementMessages = generationRetrySource\(messages, replacement\)/);
-    assert.match(source, /const currentGuidanceUsable = isGuidanceUsable\(state, replacementMessages, chatId\)/);
-    assert.match(source, /usable: archivedUsable \|\| currentGuidanceUsable/);
-    assert.match(source, /isReplacementVerificationCurrent\(archived, messages, chatId\)/);
-    assert.doesNotMatch(source, /currentBeatUsable|Boolean\(state\.lastInject/);
+test('generation archives and reuses the same causal slice for regeneration', () => {
+    assert.match(source, /causalContext: generationGuideSelection\.causalContext/);
+    assert.match(source, /causalContext: \(archivedUsable \|\| archivedSkipped\) \? archived\.causalContext/);
+    assert.doesNotMatch(source, /branchIndex|selectBeatBranchIndex/);
     const interceptor = source.slice(source.indexOf('export async function livingWorldGuideGenerateInterceptor'), source.indexOf('globalThis.livingWorldGuideGenerateInterceptor'));
     assert.doesNotMatch(interceptor, /await |analyzeNow\(/);
-    assert.match(interceptor, /an unavailable direction simply injects/);
-    assert.doesNotMatch(directorSource, /For this regeneration|different realization|context-compatible development/i);
-    assert.doesNotMatch(source, /\(previousIndex \+ 1\) % candidates\.length/);
 });
 
-test('rapid-fire turns consume guidance once and coalesce planner catch-up', () => {
-    assert.doesNotMatch(directorSource, /NARRATIVE FLOW ONLY/);
-    assert.match(schedulerSource, /replacement response reuses the archived semantic beat and never spends a planner call/i);
-    assert.match(source, /function queueLatestAnalysis/);
-    assert.match(source, /Planner active · latest turn queued/);
-    assert.match(source, /decision\.shouldRun \|\| supersededIntent/);
-    assert.match(source, /const freshDirectionNeeded = !isDirectionCurrent/);
-    assert.doesNotMatch(source, /freshDirectionNeeded = !replacement/);
-    assert.match(source, /decision\.shouldRun \|\| supersededIntent \|\| freshDirectionNeeded/);
-    assert.match(source, /GENERATION_ENDED[\s\S]{0,900}isDirectionCurrent\(state, messages, chatId\)[\s\S]{0,300}queueLatestAnalysis/);
-    assert.match(source, /GENERATION_STOPPED[\s\S]{0,1200}isDirectionCurrent\(state, messages, chatId\)[\s\S]{0,300}queueLatestAnalysis/);
-    assert.match(source, /const directionMissing = !isDirectionCurrent\(state, messages, chatId\)/);
-    assert.match(source, /code: 'missing-direction'/);
-    assert.match(source, /revision !== generationRevision[\s\S]{0,160}acknowledgeDetachedPlannerRun/);
-    assert.doesNotMatch(source, /MESSAGE_RECEIVED[\s\S]{0,180}cancelRunningAnalysis/);
-    assert.doesNotMatch(directorSource, /delivery debt|release condition|event queue/i);
+test('missing or failed planning never invents provider facts', () => {
+    assert.match(fallbackSource, /causalContext/);
+    assert.match(fallbackSource, /next\.causalContext = clean\.causalContext/);
+    assert.match(fallbackSource, /next\.lastInject = false/);
+    assert.match(schedulerSource, /causalContext/);
 });
 
-test('Continuity freshness replaces one unused plan, never one already selected for generation', () => {
-    const binding = source.slice(source.indexOf('function bindContinuityBridge'), source.indexOf('// The generation interceptor runs'));
-    assert.match(binding, /bridge\.subscribe\(snapshot/);
-    assert.match(binding, /String\(snapshot\?\.chatId \|\| ''\) !== chatId/);
-    assert.match(binding, /continuityReplacementRevision = revision/);
-    assert.match(binding, /if \(analysisPromise\)[\s\S]*queueLatestAnalysis/);
-    assert.match(binding, /const planAlreadyUsed = Boolean\(pendingRequestVerification \|\| generationGuideSelection\)/);
-    assert.doesNotMatch(binding, /planAlreadyUsed[\s\S]{0,100}state\.lastInject/);
-    assert.match(binding, /if \(planAlreadyUsed && !analysisPromise\) return/);
-    assert.match(binding, /reconcileStateWithContinuity/);
-    assert.doesNotMatch(binding, /bridge\.(?:publish|mutate|retrieve|write|update)\s*\(/);
-});
-
-test('transcript mutations cancel stale work and queue the newest snapshot', () => {
-    assert.match(source, /function scheduleTranscriptRefresh/);
-    assert.match(source, /cancelRunningAnalysis\(reason, status\)/);
-    assert.match(source, /cancelDetachedPlannerJobs\(chatId\)/);
-    assert.match(source, /void queueLatestAnalysis\(\{ chatId \}\)/);
-    assert.match(source, /scheduleTranscriptRefresh\('The chat changed while Tale Fairy was analyzing\.'/);
-});
-
-test('roleplay injection exposes one selected direction while alternatives stay private to the scratchpad', () => {
-    assert.doesNotMatch(stateSource, /<user-established-canon>|<tale-fairy-user-notes>/i);
-    assert.doesNotMatch(directorSource, /PLANNER LEAN|WEIGHTED DIRECTOR SAMPLE|INTERVENTION_GUIDANCE|FORTUNE_GUIDANCE/i);
-    assert.doesNotMatch(directorSource, /CURRENT TARGET|SCENE PROMISE TO HONOR/);
-    assert.match(directorSource, /TALE FAIRY EXTERNAL-REACTION GUIDE/);
-    assert.match(directorSource, /branchIndex === 0/);
-    assert.match(directorSource, /ALTERNATIVE \$\{branchIndex\}/);
-    assert.match(directorSource, /weighted random choice/i);
-    assert.match(directorSource, /extension has already selected the branch below/);
-    assert.doesNotMatch(directorSource, /\.\.\.beat\.alternatives\.flatMap/);
-    assert.match(directorSource, /NEXT-STEP EFFECT/);
-    assert.match(directorSource, /LIGHT TREATMENT/);
-    assert.match(directorSource, /BALANCED TREATMENT/);
-    assert.match(directorSource, /FUN TREATMENT/);
-    assert.match(directorSource, /govern only NPC or world follow-through/i);
-    assert.match(directorSource, /user action is outside Tale Fairy’s authority/i);
-    assert.match(directorSource, /select exactly one closest-fitting branch for external forward motion/i);
-    assert.doesNotMatch(directorSource, /movement=|content=|scope=|intensity=|plot weight=/i);
-    assert.doesNotMatch(directorSource, /beat\.preserve|beat\.forbid/);
-    assert.doesNotMatch(directorSource, /beat\.basis|scene\.basis/);
-    assert.doesNotMatch(directorSource, /Treat explicit user\/OOC|Infer every concrete action|Do not expose/i);
-    assert.match(source, /runtimeVersion: RUNTIME_VERSION/);
-    assert.match(source, /item\?\.runtimeVersion === RUNTIME_VERSION/);
-});
-
-test('planner output is lightweight while retaining structured-output negotiation', () => {
-    assert.doesNotMatch(source, /const PLANNER_RESPONSE_TOKENS = 16384/);
-    assert.match(source, /mode === PLANNER_OUTPUT_MODE\.JSON_SCHEMA \? \{ json_schema: schema \} : \{\}/);
-    assert.match(source, /plannerMessages\(systemPrompt, prompt, schema, mode, repairInstruction\)/);
-    assert.match(source, /withValidationRepair\(\(\) => runProfileAttempt\(mode\)/);
-    assert.match(source, /withValidationRepair\(\(\) => runActiveAttempt\(mode\)/);
-    assert.match(source, /withValidationRepair\(\(\) => runDirectAttempt\(mode\)/);
-    assert.doesNotMatch(source, /retryInvalidOutput: !glmTarget/);
-    assert.match(source, /PLANNER_MAX_AUTO_RETRIES = 2/);
-});
-
-test('latest user actions never trigger a blocking Tale Fairy planner call', () => {
-    assert.doesNotMatch(source, /ACTION_GATE|adjustGuideForLatestAction|Quickly checking latest action/);
-    assert.match(directorSource, /user action is outside Tale Fairy’s authority/i);
-    assert.match(directorSource, /Resolve it only from the user text, established context, and the main roleplay instructions/i);
-    assert.doesNotMatch(directorSource, /infer the natural target|minimal implied positioning/i);
-});
-
-test('scratchpad shows only fresh upcoming guidance and rejects stale fallback', () => {
-    assert.match(template, />Tale Fairy guidance</);
-    assert.ok(template.indexOf('<h5>Tale Fairy guidance</h5>') < template.indexOf('<h5>Current scene</h5>'));
-    assert.match(template, /used and stale sets are never fallbacks/i);
-    assert.match(source, /const previewPayload = buildPromptPayload\(state, \{ enabled: getSettings\(\)\.enabled, \.\.\.previewOptions \}\)/);
-    assert.doesNotMatch(source, /MOST RECENT USED DIRECTION|historicalVerification\.guidanceBlock/);
-    assert.match(source, /NO FRESH DIRECTION READY/);
-    assert.match(source, /PREPARING FRESH DIRECTION IN BACKGROUND/);
-    assert.match(source, /INVALID OR LEGACY NON-INJECTION DIRECTION/);
-    assert.match(source, /NEXT NORMAL GENERATION/);
-    assert.match(source, /CURRENT REGENERATION REQUEST/);
-    assert.match(template, />Adaptive direction</);
-    assert.match(template, /Observed response effect \(private\)/);
-    assert.match(template, /never injected and never triggers automatic regeneration/i);
-    assert.match(template, /one primary NPC\/world response and two redirect-safe alternatives/i);
-    assert.match(template, />Continuity evidence</);
-    assert.match(template, /never dormant triggers, delivery promises, or a scheduled event queue/i);
-    assert.match(template, /scratchpad-continuity-section" hidden/);
-    assert.match(template, /scratchpad-entities-section" hidden/);
-    assert.doesNotMatch(template, /Direction audit|No relevant continuity evidence|No generated entities or processes/);
-    assert.match(source, /function scratchpadOptionalText/);
-    assert.doesNotMatch(source, /\[\$\{item\.status \|\| 'dormant'\}\]/);
-    assert.doesNotMatch(template, /Conditional pathways|Plan horizons|Private idea bank|Private causal events|Durable directions/);
-    assert.match(source, /function renderBoard/);
-    assert.match(source, /state\.sceneProfile/);
-    assert.match(source, /state\.beatDirective/);
-    assert.match(source, /state\.responseAudit/);
-    assert.match(template, /Hidden motives and explanations \(private\)/);
-    assert.match(source, /scratchpad-hidden-motives-section/);
-    assert.match(analysisSource, /never add a novelty-only wild-card just to make the list entertaining/i);
-});
-
-test('SillyTavern-compatible registration and detached planner transport remain intact', () => {
+test('SillyTavern interception and detached planner compatibility remain intact', () => {
     assert.equal(manifest.loading_order, 65);
     assert.equal(manifest.generate_interceptor, 'livingWorldGuideGenerateInterceptor');
     assert.match(source, /globalThis\.livingWorldGuideGenerateInterceptor\s*=\s*livingWorldGuideGenerateInterceptor/);
-    assert.match(source, /new MutationObserver\(attemptMount\)/);
+    assert.match(source, /CHAT_COMPLETION_PROMPT_READY/);
+    assert.match(source, /GENERATE_AFTER_COMBINE_PROMPTS/);
+    assert.match(source, /ensureGuidanceInChat/);
+    assert.match(source, /ensureGuidanceInText/);
     assert.match(source, /X-Tale-Fairy-Job-Id/);
-    assert.match(source, /planner-jobs\/generate/);
     assert.match(pluginSource, /router\.post\('\/planner-jobs\/generate'/);
+    assert.match(pluginSource, /\[2, 3, 4, 5, 6, 7, 8, 9, 10\]\.includes\(value\.contract_version\)/);
 });
 
-test('full rebuild and user-note controls preserve their safe lifecycle', () => {
-    assert.match(source, /async function rebuildGuideState/);
-    assert.match(source, /await resetState\(\{ rebuilding: true \}\)/);
-    assert.match(source, /function stopAnalysis\(\)/);
-    assert.match(source, /analysisAbortController\.abort/);
-    assert.match(source, /note_resolution/);
-    assert.match(template, /AI-assisted instruction/);
+test('planner token budgets, retries, and nonblocking behavior remain compatible', () => {
+    assert.match(source, /recentContextTokens: 6000/);
+    assert.match(source, /maxPromptTokens: 16000/);
+    assert.match(source, /const INCREMENTAL_MAX_PROMPT_TOKENS = 4200/);
+    assert.match(source, /const REBUILD_RESPONSE_TOKENS = 16384/);
+    assert.match(source, /PLANNER_MAX_AUTO_RETRIES = 2/);
+    assert.match(source, /No Tale Fairy work is awaited and no verification failure can[\s\S]*reject the provider request/);
+    assert.match(source, /Generation will continue without Tale Fairy blocking it/);
+});
+
+test('settings describe private simulation and causal injection without branch controls', () => {
+    assert.match(template, /active world simulation|world simulation/i);
+    assert.match(template, /causal context|underlying conditions/i);
+    assert.doesNotMatch(template, /one primary NPC\/world response and two redirect-safe alternatives/i);
+    assert.doesNotMatch(template, /one compatible external branch/i);
+    assert.doesNotMatch(template, /data-setting="pacing"|Scene pacing/);
+});
+
+test('Continuity remains optional one-way evidence rather than an authority dependency', () => {
+    assert.match(template, /Reads Continuity's existing snapshot as one optional summary provider/i);
+    const binding = source.slice(source.indexOf('function bindContinuityBridge'), source.indexOf('// The generation interceptor runs'));
+    assert.match(binding, /bridge\.subscribe\(snapshot/);
+    assert.match(binding, /reconcileStateWithContinuity/);
+    assert.doesNotMatch(binding, /bridge\.(?:publish|mutate|retrieve|write|update)\s*\(/);
 });
