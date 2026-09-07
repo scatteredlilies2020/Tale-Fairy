@@ -5,7 +5,7 @@ import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
 import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.12.22';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.12.22';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.12.22';
 import { markAssistantTurn, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.12.22';
 import { resolveInjectionPlacement } from './injection-placement.js?v=0.12.22';
 import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.12.22';
@@ -62,6 +62,8 @@ let uiMountPromise = null;
 let uiMountObserver = null;
 let uiMountTimeout = null;
 let lastSummaryAudit = { count: 0, includedTokens: 0, originalTokens: 0, labels: [] };
+let continuityUnsubscribe = null;
+let continuityReplacementRevision = 0;
 const legacyUpgradeAttempts = new Set();
 const directModelCache = new Map();
 const plannerOutputModeCache = new Map();
@@ -576,7 +578,7 @@ function continuityContextState(context, allowStale = false) {
     const s = getSettings();
     if (!s.continuityIntegration) return { text: '', status: 'off' };
     const bridge = globalThis.continuityMemoryBridge;
-    if (bridge?.version === 1 && typeof bridge.getContextSnapshot === 'function') {
+    if ([1, 2].includes(Number(bridge?.version)) && typeof bridge.getContextSnapshot === 'function') {
         try {
             return readContinuityBridge(context, bridge, { allowStale });
         } catch (error) {
@@ -591,13 +593,13 @@ function continuityContextState(context, allowStale = false) {
 }
 
 function optionalContinuityContext(context, allowStale = false) {
-    return continuityContextState(context, allowStale).text;
+    return continuityContextState(context, allowStale);
 }
 
 async function optionalContinuityContextWhenReady(context, allowStale, signal) {
     const s = getSettings();
     const immediate = continuityContextState(context, allowStale);
-    if (!s.continuityIntegration || immediate.text) return immediate.text;
+    if (!s.continuityIntegration || immediate.text) return immediate;
     const ready = await waitForContinuityBridge(context, () => globalThis.continuityMemoryBridge, {
         allowStale,
         timeoutMs: 8000,
@@ -607,7 +609,7 @@ async function optionalContinuityContextWhenReady(context, allowStale, signal) {
     // Preserve compatibility with Continuity versions that expose only their
     // SillyTavern extension prompt rather than the bridge.
     const finalState = ready.text ? ready : continuityContextState(context, allowStale);
-    return finalState.text;
+    return finalState;
 }
 
 function bootstrapContext(context) {
@@ -734,6 +736,13 @@ function currentGuidancePayload() {
     const context = currentContext();
     const state = loadState(context.chatMetadata);
     return buildPromptPayload(state, { enabled: getSettings().enabled, ...guideSelectionOptions(state, context) });
+}
+
+function reconcileStateWithContinuity(state, continuityState) {
+    if (!Array.isArray(continuityState?.planningEvidence)) return { state, changed: false };
+    const reconciled = reconcileContinuityThreads(state.continuityThreads, continuityState.planningEvidence);
+    if (!reconciled.changed) return { state, changed: false };
+    return { state: { ...state, continuityThreads: reconciled.threads }, changed: true };
 }
 
 function requestInjectionOptions() {
@@ -1359,6 +1368,10 @@ async function recoverDetachedPlannerJobs() {
                 seedRequiredDevelopment: !meta.rebuild,
             });
             next.summaryEvidence = { ...(meta.summaryEvidence || {}), scannedAt: Date.now() };
+            next.continuityRevisionUsed = Number(meta.continuityRevision || 0);
+            next.continuityMessageSignature = String(meta.continuityMessageSignature || '');
+            next.continuityCoverageThrough = Number(meta.continuityCoverageThrough ?? -1);
+            next = reconcileStateWithContinuity(next, optionalContinuityContext(context, true)).state;
             next.plannerSeed = Number(meta.plannerSeed) || 0;
             next.sourceChatId = chatId;
             next.analysisModel = meta.analysisSelection || {};
@@ -1812,13 +1825,15 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
             url: s.analysisUrl,
         };
         if (waitForContinuity) showAnalysisPhase('Waiting for Continuity Memory', runId, startedAt);
-        const continuityContext = waitForContinuity
+        const continuityState = waitForContinuity
             ? await optionalContinuityContextWhenReady(context, allowStaleContinuity, controller.signal)
             : optionalContinuityContext(context, allowStaleContinuity);
+        const continuityContext = continuityState?.text ?? continuityState;
         controller.signal.throwIfAborted();
         showAnalysisPhase('Reading summaries and World Info', runId, startedAt);
         const summarySources = await collectSummarySources(context, chat, {
             continuityContext,
+            continuityEvidence: continuityState?.planningEvidence,
             includeContinuity: s.continuityIntegration,
             ownPromptKey: PROMPT_KEY,
             tokenBudget: plannerSummaryContextTokens,
@@ -1845,6 +1860,9 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
             analysisSelection,
             userNote,
             summaryEvidence: lastSummaryAudit,
+            continuityRevision: Number(continuityState?.revision || 0),
+            continuityMessageSignature: String(continuityState?.messageSignature || ''),
+            continuityCoverageThrough: Number(continuityState?.coverageThrough ?? -1),
             transcriptHead: plannerTranscriptHead,
         });
         controller.signal.throwIfAborted();
@@ -1857,7 +1875,14 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         }
         let next = applyAnalysis(alignRetainedStateToTranscript(current, chat), result, chat);
         next = applyPlannerAuthorLayer(next, { turnCount: assistantTurnNumber(chat), fingerprint, seedRequiredDevelopment: !rebuild });
+        // A bridge notification can arrive while the planner is running. The
+        // direction still records the snapshot it actually used, while linked
+        // factual entries immediately accept the latest canonical correction.
+        next = reconcileStateWithContinuity(next, optionalContinuityContext(context, true)).state;
         next.summaryEvidence = { ...lastSummaryAudit, scannedAt: Date.now() };
+        next.continuityRevisionUsed = Number(continuityState?.revision || 0);
+        next.continuityMessageSignature = String(continuityState?.messageSignature || '');
+        next.continuityCoverageThrough = Number(continuityState?.coverageThrough ?? -1);
         next.plannerSeed = variationNonce;
         next.sourceChatId = chatId;
         next.analysisModel = analysisSelection;
@@ -2431,6 +2456,45 @@ export async function livingWorldGuideGenerateInterceptor(_chat, _contextSize, _
 // interceptor registry used by current and older builds.
 globalThis.livingWorldGuideGenerateInterceptor = livingWorldGuideGenerateInterceptor;
 
+function bindContinuityBridge() {
+    continuityUnsubscribe?.();
+    continuityUnsubscribe = null;
+    const bridge = globalThis.continuityMemoryBridge;
+    if (!getSettings().continuityIntegration || typeof bridge?.subscribe !== 'function') return;
+    continuityUnsubscribe = bridge.subscribe(snapshot => {
+        const context = currentContext();
+        const chatId = String(context.getCurrentChatId?.() || '');
+        if (!chatId || String(snapshot?.chatId || '') !== chatId || snapshot?.status !== 'current') return;
+        const revision = Number(snapshot.revision || 0);
+        if (!revision || revision <= continuityReplacementRevision) return;
+        continuityReplacementRevision = revision;
+        let state = loadState(context.chatMetadata);
+        const reconciled = reconcileStateWithContinuity(state, {
+            planningEvidence: Array.isArray(snapshot.planningEvidence) ? snapshot.planningEvidence : [],
+        });
+        if (reconciled.changed) {
+            state = reconciled.state;
+            context.updateChatMetadata(saveState(context.chatMetadata, state));
+            updatePrompt(state);
+            renderBoard(state);
+            if (typeof context.saveMetadata === 'function') {
+                void context.saveMetadata().catch(error => console.warn(`[${EXTENSION_ID}] Could not persist Continuity reconciliation`, error));
+            }
+        }
+        // lastInject means the direction is eligible, not that it reached a
+        // generation request. Only the request-selection lifecycle marks use.
+        const planAlreadyUsed = Boolean(pendingRequestVerification || generationGuideSelection);
+        if (planAlreadyUsed && !analysisPromise) return;
+        if (analysisPromise) {
+            if (Number(state.continuityRevisionUsed || 0) >= revision) return;
+            void queueLatestAnalysis({ chatId, note: null, allowStaleContinuity: false });
+            return;
+        }
+        if (Number(state.continuityRevisionUsed || 0) >= revision) return;
+        void queueLatestAnalysis({ chatId, allowStaleContinuity: false });
+    });
+}
+
 // The generation interceptor runs before SillyTavern assembles the provider
 // payload. Verify the finished request too and insert the current dynamic guide
 // if another prompt path omitted it.
@@ -2558,6 +2622,8 @@ for (const event of [event_types.CONNECTION_PROFILE_CREATED, event_types.CONNECT
 // Observe briefly instead of assuming one startup event is late enough.
 eventSource.on(event_types.EXTENSIONS_FIRST_LOAD, startUIMounting);
 startUIMounting();
+bindContinuityBridge();
+setTimeout(bindContinuityBridge, 0);
 recordRuntimeStage('runtime-loaded');
 // CHAT_CHANGED may fire before a third-party module finishes loading. Audit
 // the active beat once on startup as well, so stale or legacy guidance is

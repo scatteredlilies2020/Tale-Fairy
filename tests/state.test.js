@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
     applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages,
     generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned,
-    loadState, normalizeState, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION, stateForPrompt,
+    loadState, normalizeState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION, stateForPrompt,
 } from '../extension/state.js';
 import { formatBeatContract, normalizeBeatDirective, normalizeSceneProfile, selectBeatBranchIndex } from '../extension/beat-director.js';
 
@@ -40,6 +40,28 @@ test('default and normalized state use the v56 horizon-aware external-reaction c
     assert.equal(state.beatDirective.operation, '');
     assert.deepEqual(state.horizonRadar, { status: 'none', seeds: [], audit: '' });
     assert.deepEqual(state.hiddenMotives, { status: 'none', items: [], audit: '' });
+});
+
+test('linked factual threads reconcile corrected and resolved Continuity records without taking over directorial readiness', () => {
+    const linked = [{
+        id: 'local-thread', thread: 'Deliver the letter', state: 'Waiting on the court.', status: 'due', basis: 'Filed on screen.',
+        cmRecordId: 'cm-thread', cmRevision: 3, canonicalStatus: 'open', directorialReadiness: 'due',
+    }];
+    const corrected = reconcileContinuityThreads(linked, [{ id: 'cm-thread', cmRevision: 4, canonicalStatus: 'open', text: 'Corrected recipient.' }]);
+    assert.equal(corrected.changed, true);
+    assert.equal(corrected.threads[0].cmRevision, 4);
+    assert.equal(corrected.threads[0].canonicalStatus, 'open');
+    assert.equal(corrected.threads[0].status, 'due');
+    assert.equal(corrected.threads[0].directorialReadiness, 'due');
+
+    const resolved = reconcileContinuityThreads(corrected.threads, [{ id: 'cm-thread', cmRevision: 5, canonicalStatus: 'resolved', text: 'Delivered.' }]);
+    assert.equal(resolved.threads[0].canonicalStatus, 'resolved');
+    assert.equal(resolved.threads[0].status, 'dormant');
+    assert.equal(resolved.threads[0].directorialReadiness, 'dormant');
+
+    const stale = reconcileContinuityThreads(resolved.threads, [{ id: 'cm-thread', cmRevision: 4, canonicalStatus: 'open', text: 'Old state.' }]);
+    assert.equal(stale.changed, false);
+    assert.equal(stale.threads[0].canonicalStatus, 'resolved');
 });
 
 test('hidden motives remain open, ranked, and private across normalization and prompt payloads', () => {

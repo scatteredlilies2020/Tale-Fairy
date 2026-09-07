@@ -113,7 +113,7 @@ export const ANALYSIS_SCHEMA_VALUE = {
             identity: text(140), baseline: text(300), variant_rules: strings(4, 220), rp_changes: strings(5, 240),
             signatures: strings(6, 220), forces: strings(4, 180), confidence: { type: 'string', enum: ['low', 'moderate', 'high'] },
         }, required: ['identity', 'baseline', 'variant_rules', 'rp_changes', 'signatures', 'forces', 'confidence'] },
-        thread_updates: { type: 'array', maxItems: 6, items: { type: 'object', additionalProperties: false, properties: { op: { type: 'string', enum: ['upsert', 'retire'] }, id: text(100), thread: text(180), state: text(240), status: { type: 'string', enum: ['active', 'dormant', 'due', 'blocked'] }, basis: text(160) }, required: ['op', 'id', 'thread', 'state', 'status', 'basis'] } },
+        thread_updates: { type: 'array', maxItems: 6, items: { type: 'object', additionalProperties: false, properties: { op: { type: 'string', enum: ['upsert', 'retire'] }, id: text(100), thread: text(180), state: text(240), status: { type: 'string', enum: ['active', 'dormant', 'due', 'blocked'] }, basis: text(160), cmRecordId: text(160), cmRevision: { type: 'integer', minimum: 0 }, canonicalStatus: text(40), directorialReadiness: text(40) }, required: ['op', 'id', 'thread', 'state', 'status', 'basis'] } },
         actor_updates: { type: 'array', maxItems: 6, items: { type: 'object', additionalProperties: false, properties: { op: { type: 'string', enum: ['upsert', 'retire'] }, name: text(100), state: text(220), location: text(140), perspective: text(180), motivation: text(180), knowledge: text(180), constraints: text(160), agenda: text(180), window: text(100) }, required: ['op', 'name', 'state', 'location', 'perspective', 'motivation', 'knowledge', 'constraints', 'agenda', 'window'] } },
         canon_updates: { type: 'array', maxItems: 4, items: { type: 'object', additionalProperties: false, properties: { op: { type: 'string', enum: ['add', 'remove'] }, fact: text(500) }, required: ['op', 'fact'] } },
         ledger: text(1800),
@@ -1085,7 +1085,7 @@ function compactPromptStateForPriority(current = {}) {
         scene: current.scene,
         authorBoard: compactAuthorBoard(current.authorBoard),
         objectives: (current.objectives || []).slice(-5).map(item => ({ title: compactText(item.title, 80), detail: compactText(item.detail, 90), status: compactText(item.status, 30) })),
-        continuityThreads: (current.continuityThreads || []).slice(0, 8).map(item => ({ id: compactText(item.id, 60), thread: compactText(item.thread, 110), state: compactText(item.state, 130), status: item.status, basis: compactText(item.basis, 90) })),
+        continuityThreads: (current.continuityThreads || []).slice(0, 8).map(item => ({ id: compactText(item.id, 60), thread: compactText(item.thread, 110), state: compactText(item.state, 130), status: item.status, basis: compactText(item.basis, 90), cmRecordId: compactText(item.cmRecordId, 100), cmRevision: item.cmRevision, canonicalStatus: item.canonicalStatus, directorialReadiness: item.directorialReadiness })),
         selfChallenge: current.selfChallenge ? { weakness: compactText(current.selfChallenge.weakness, 150), counterRoute: compactText(current.selfChallenge.counterRoute, 150), mechanismCheck: compactText(current.selfChallenge.mechanismCheck, 150), decision: compactText(current.selfChallenge.decision, 180) } : undefined,
         entities: (current.entities || []).slice(-3).map(item => ({ name: compactText(item.name, 80), state: compactText(item.state, 100), location: compactText(item.location, 60), relevance: compactText(item.relevance, 60), perspective: compactText(item.perspective, 90), motivation: compactText(item.motivation, 100), knowledge: compactText(item.knowledge, 80), constraints: compactText(item.constraints, 80), agenda: compactText(item.agenda, 100) })),
         possibilities: (current.possibilities || []).slice(-6).map(item => compactText(item, 100)),
@@ -1133,7 +1133,7 @@ function compactPromptStateForBudget(current = {}) {
         scene: current.scene,
         authorBoard: compactAuthorBoard(current.authorBoard),
         objectives: (current.objectives || []).slice(-2).map(item => ({ title: compactText(item.title, 70), detail: compactText(item.detail, 70), status: compactText(item.status, 24) })),
-        continuityThreads: (current.continuityThreads || []).slice(0, 5).map(item => ({ id: compactText(item.id, 40), thread: compactText(item.thread, 70), state: compactText(item.state, 80), status: item.status })),
+        continuityThreads: (current.continuityThreads || []).slice(0, 5).map(item => ({ id: compactText(item.id, 40), thread: compactText(item.thread, 70), state: compactText(item.state, 80), status: item.status, cmRecordId: compactText(item.cmRecordId, 80), cmRevision: item.cmRevision, canonicalStatus: item.canonicalStatus, directorialReadiness: item.directorialReadiness })),
         selfChallenge: current.selfChallenge ? { weakness: compactText(current.selfChallenge.weakness, 90), counterRoute: compactText(current.selfChallenge.counterRoute, 90), mechanismCheck: compactText(current.selfChallenge.mechanismCheck, 90), decision: compactText(current.selfChallenge.decision, 110) } : undefined,
         entities: (current.entities || []).slice(-2).map(item => ({ name: compactText(item.name, 70), state: compactText(item.state, 70), perspective: compactText(item.perspective, 70), motivation: compactText(item.motivation, 80), knowledge: compactText(item.knowledge, 65), constraints: compactText(item.constraints, 65), agenda: compactText(item.agenda, 80) })),
         hiddenMotives: current.hiddenMotives ? {
@@ -1963,6 +1963,13 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     }
     const canonClaims = explicitCanonClaims(messages);
     if (canonClaims.length) payload.explicit_ooc_canon = canonClaims;
+    payload.provenance_order = [
+        'recent explicit chat or OOC instructions',
+        'reviewed Continuity corrections',
+        'current Continuity records',
+        'other summaries and World Info',
+        'Tale Fairy inference',
+    ];
     const userInstruction = compactText(note, 800);
     if (userInstruction) payload.user_instruction = userInstruction;
     const bootstrapContext = compactOptionalObject(bootstrap, 1400);

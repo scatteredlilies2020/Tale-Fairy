@@ -1,4 +1,4 @@
-import { compactContinuityPrompt } from './continuity.js?v=0.11.96';
+import { compactContinuityPrompt, formatPlanningEvidence } from './continuity.js?v=0.11.96';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 
 const SUMMARY_KEY = /(?:summar(?:y|ies|i[sz](?:e|ed|er|ing|ation)?)|synopsis|recap|story[\s_.-]*so[\s_.-]*far|memory|continuity|chronicle|world[\s_.-]*(?:state|info|status|model)|lore|plot[\s_.-]*state|session[\s_.-]*state|context[\s_.-]*(?:ledger|summary|memory|state))/iu;
@@ -214,7 +214,10 @@ export async function collectSummarySources(context = {}, messages = [], options
     const hostMessages = Array.isArray(context.chat) && context.chat.length ? context.chat : messages;
     let continuityOwner = '';
     if (options.continuityContext && options.includeContinuity !== false) {
-        discovered.push({ label: 'Continuity Memory snapshot', kind: 'continuity-memory', priority: 0, text: options.continuityContext });
+        const evidenceText = Array.isArray(options.continuityEvidence) && options.continuityEvidence.length
+            ? formatPlanningEvidence(options.continuityEvidence, Math.max(500, Math.floor((options.tokenBudget || 4000) * 0.72)))
+            : '';
+        discovered.push({ label: 'Continuity Memory snapshot', kind: 'continuity-memory', priority: 0, text: evidenceText || options.continuityContext });
         continuityOwner = 'bridge';
     }
 
