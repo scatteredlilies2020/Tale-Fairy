@@ -1,4 +1,4 @@
-import { normalizeInjectionRole } from './injection-role.js?v=0.13.3';
+import { normalizeInjectionRole } from './injection-role.js?v=0.13.4';
 
 const CONTEXT_PATTERN = /\n?<tale-fairy-context>[\s\S]*?<\/tale-fairy-context>\n?/giu;
 const LEGACY_GUIDE_PATTERN = /\n?<living-world-guide>[\s\S]*?<\/living-world-guide>\n?/giu;

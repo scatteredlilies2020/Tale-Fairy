@@ -15,12 +15,12 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest, browser runtime, and detached plugin share the release version', () => {
-    assert.equal(manifest.version, '0.13.3');
-    assert.equal(manifest.js, 'extension/index.js?v=0.13.3');
-    assert.equal(manifest.css, 'extension/style.css?v=0.13.3');
+    assert.equal(manifest.version, '0.13.4');
+    assert.equal(manifest.js, 'extension/index.js?v=0.13.4');
+    assert.equal(manifest.css, 'extension/style.css?v=0.13.4');
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.13\.3'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.13\.3'/);
+    assert.match(pluginSource, /const VERSION = '0\.13\.4'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.13\.4'/);
 });
 
 test('roleplay injection never migrates the user default into a system message', () => {
@@ -32,8 +32,8 @@ test('roleplay injection never migrates the user default into a system message',
 });
 
 test('runtime uses causal context and deferred world state without prescriptive beat-director dependency', () => {
-    assert.match(source, /from '\.\/causal-context\.js\?v=0\.13\.3'/);
-    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.13\.3'/);
+    assert.match(source, /from '\.\/causal-context\.js\?v=0\.13\.4'/);
+    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.13\.4'/);
     assert.doesNotMatch(source, /beat-director/);
     assert.doesNotMatch(stateSource, /beat-director/);
     assert.match(stateSource, /export const STATE_VERSION = 58/);
@@ -49,6 +49,8 @@ test('planner contracts return active world conditions rather than future branch
     assert.match(analysisSource, /Never prescribe a future action, scene, event, dialogue, reveal, discovery, consequence, or outcome/i);
     assert.match(analysisSource, /Do not assume expressed means resolved|Do not equate mention with resolution/i);
     assert.match(analysisSource, /deferred debt, not continuous ticking/i);
+    assert.match(analysisSource, /Every provider response is self-propelling/i);
+    assert.match(analysisSource, /same scene or activity continues/i);
     assert.match(offscreenSource, /scheduled arrival/i);
     assert.doesNotMatch(analysisSource, /one primary.*two.*alternatives/i);
 });
@@ -56,6 +58,9 @@ test('planner contracts return active world conditions rather than future branch
 test('provider context exposes only clean relevant conditions', () => {
     assert.match(causalSource, /RELEVANT UNDERLYING CONDITIONS/);
     assert.match(causalSource, /causal context, not required events or predetermined outcomes/i);
+    assert.match(causalSource, /SELF-PROPELLING MOVEMENT/);
+    assert.match(causalSource, /Every reply changes the current situation/i);
+    assert.doesNotMatch(causalSource, /question|interrogat/i);
     assert.match(causalSource, /confidence !== 'tentative'/);
     assert.doesNotMatch(causalSource, /branchIndex|weighted random choice|NEXT-STEP EFFECT/);
     assert.match(stateSource, /formatCausalContext/);

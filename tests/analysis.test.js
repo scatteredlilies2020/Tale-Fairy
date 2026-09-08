@@ -101,6 +101,11 @@ test('planner prompt defines private active simulation rather than future branch
     assert.match(SYSTEM, /private active-world simulator/i);
     assert.match(SYSTEM, /Never prescribe a future action/i);
     assert.match(SYSTEM, /expressed means resolved/i);
+    assert.match(SYSTEM, /Every provider response is self-propelling/i);
+    assert.match(SYSTEM, /while remaining in the same scene or activity/i);
+    assert.match(INCREMENTAL_SYSTEM, /observable self-propelling change/i);
+    assert.match(MODE_INSTRUCTIONS.light, /self-propelling change within the present activity/i);
+    assert.doesNotMatch(`${SYSTEM}\n${INCREMENTAL_SYSTEM}\n${Object.values(MODE_INSTRUCTIONS).join('\n')}`, /question|interrogat/i);
     assert.doesNotMatch(SYSTEM, /exactly two conditional/i);
     assert.match(INCREMENTAL_SYSTEM, /tentative stays private/i);
 });
