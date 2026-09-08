@@ -155,7 +155,7 @@ test('replacement generation strips only the discarded assistant reply', () => {
 
 test('request verification keeps the exact archived causal slice', () => {
     const state = analyzed();
-    const verification = { status: 'confirmed', injectionDecision: 'inject', runtimeVersion: '0.13.2', verificationId: 'v', guidanceBlock: 'x', requestedAt: 1, confirmedAt: 2, sourceMessageCount: 1, sourceFingerprint: fingerprintMessages([{ is_user: true, mes: 'Question' }]), responseMessageCount: 2, chatId: 'chat', replacementGeneration: false, sceneProfile: state.sceneProfile, causalContext: state.causalContext };
+    const verification = { status: 'confirmed', injectionDecision: 'inject', runtimeVersion: '0.13.3', verificationId: 'v', guidanceBlock: 'x', requestedAt: 1, confirmedAt: 2, sourceMessageCount: 1, sourceFingerprint: fingerprintMessages([{ is_user: true, mes: 'Question' }]), responseMessageCount: 2, chatId: 'chat', replacementGeneration: false, sceneProfile: state.sceneProfile, causalContext: state.causalContext };
     const normalized = normalizeState({ ...state, lastRequestVerification: verification }).lastRequestVerification;
     assert.equal(normalized.causalContext.conditions[0].subject, 'Mira');
     assert.equal(returnedReplyMatchesVerification(normalized, [{ is_user: true, mes: 'Question' }, { is_user: false, mes: 'Reply' }], 'chat'), true);

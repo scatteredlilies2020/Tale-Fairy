@@ -39,6 +39,17 @@ test('adds current guidance to an assembled chat request at the configured depth
     assert.equal(ensureGuidanceInChat(chat, payload, { role: 'system', depth: 3 }), false);
 });
 
+test('standalone message injection defaults to user and honors every selectable role', () => {
+    for (const role of ['user', 'system', 'assistant']) {
+        const chat = [{ role: 'user', content: 'Continue.' }];
+        ensureGuidanceInChat(chat, payload, { role, depth: 0 });
+        assert.equal(chat.at(-1).role, role);
+    }
+    const fallback = [{ role: 'user', content: 'Continue.' }];
+    ensureGuidanceInChat(fallback, payload, { role: 'developer', depth: 0 });
+    assert.equal(fallback.at(-1).role, 'user');
+});
+
 test('atomically replaces legacy guidance and policy blocks', () => {
     const chat = [{ role: 'user', content: `${oldNotes}\n${oldCanon}\n${policy}\n${oldGuide}` }, { role: 'assistant', content: 'reply' }];
     assert.equal(ensureGuidanceInChat(chat, payload, { role: 'user', depth: 0 }), true);

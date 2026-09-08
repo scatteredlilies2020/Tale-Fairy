@@ -70,10 +70,11 @@
           </label>
           <label>Injection role
             <select class="text_pole" data-setting="injection-role">
-                <option value="user">User (default)</option>
-                <option value="system">System</option>
+              <option value="user">User (default)</option>
+              <option value="system">System</option>
               <option value="assistant">Assistant</option>
             </select>
+            <small>Applied to every chat-message injection path. User is the provider-compatible default.</small>
           </label>
         </div>
         <small>Prompt Manager positions apply exactly on Chat Completion APIs. Other APIs use the closest safe main-prompt anchor. At-depth placement works across APIs.</small>

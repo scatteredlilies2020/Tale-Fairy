@@ -1,7 +1,7 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.13.2';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.13.3';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.11.96';
-import { formatDriftRequest, mergeOffscreenWorld } from './offscreen-world.js?v=0.13.2';
+import { formatDriftRequest, mergeOffscreenWorld } from './offscreen-world.js?v=0.13.3';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;

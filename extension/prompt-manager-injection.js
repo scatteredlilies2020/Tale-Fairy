@@ -1,4 +1,5 @@
-import { PROMPT_MANAGER_SLOTS } from './injection-placement.js?v=0.11.96';
+import { PROMPT_MANAGER_SLOTS } from './injection-placement.js?v=0.13.3';
+import { normalizeInjectionRole } from './injection-role.js?v=0.13.3';
 
 export const PROMPT_MANAGER_ID = 'tale_fairy_dynamic';
 
@@ -17,7 +18,7 @@ export function configurePromptManagerInjection(manager, settings, content) {
 
     Object.assign(prompt, {
         name: 'Tale Fairy',
-        role: ['system', 'user', 'assistant'].includes(settings.injectionRole) ? settings.injectionRole : 'user',
+        role: normalizeInjectionRole(settings.injectionRole),
         content: String(content),
         system_prompt: false,
         marker: false,

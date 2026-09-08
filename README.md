@@ -20,6 +20,7 @@ Tale Fairy is a standalone SillyTavern extension that runs a **private active-wo
 - Preserves player agency: it never authors the player's dialogue, choices, thoughts, feelings, consent, or uncertain result.
 - Treats explicit user text and OOC corrections as higher authority than summaries, lore, retained state, or inference.
 - Places the dynamic block inside the provider-bound latest user content without modifying saved chat, and records the exact verified block in the Planner Scratchpad.
+- Uses a selectable injection role across all chat-message paths: **User** by default, with **System** and **Assistant** available when a provider expects them.
 - Stores compact chat-local state, supports active/profile/custom/OpenRouter planner connections, and can continue server-backed planner jobs through a browser reload when the bundled plugin is installed.
 - Uses bounded recent turns, summaries, World Info, character/scenario fields, a narrative ledger, and optional read-only Continuity evidence. Continuity is supporting evidence, never a dependency or authority.
 

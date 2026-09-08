@@ -1,10 +1,10 @@
-import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.13.2';
+import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.13.3';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
 import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js';
-import { defaultCausalContext, defaultSceneProfile, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, normalizeSceneProfile } from './causal-context.js?v=0.13.2';
-import { normalizeDirectorSample } from './director-sampling.js?v=0.13.2';
-import { defaultOffscreenWorld, normalizeOffscreenWorld } from './offscreen-world.js?v=0.13.2';
+import { defaultCausalContext, defaultSceneProfile, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, normalizeSceneProfile } from './causal-context.js?v=0.13.3';
+import { normalizeDirectorSample } from './director-sampling.js?v=0.13.3';
+import { defaultOffscreenWorld, normalizeOffscreenWorld } from './offscreen-world.js?v=0.13.3';
 
 export const STATE_KEY = 'livingWorldGuide';
 export const STATE_VERSION = 58;
