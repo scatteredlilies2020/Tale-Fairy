@@ -5,6 +5,7 @@ import test from 'node:test';
 const source = await readFile(new URL('../extension/index.js', import.meta.url), 'utf8');
 const stateSource = await readFile(new URL('../extension/state.js', import.meta.url), 'utf8');
 const analysisSource = await readFile(new URL('../extension/analysis.js', import.meta.url), 'utf8');
+const offscreenSource = await readFile(new URL('../extension/offscreen-world.js', import.meta.url), 'utf8');
 const causalSource = await readFile(new URL('../extension/causal-context.js', import.meta.url), 'utf8');
 const schedulerSource = await readFile(new URL('../extension/planner-scheduler.js', import.meta.url), 'utf8');
 const fallbackSource = await readFile(new URL('../extension/fallback-direction.js', import.meta.url), 'utf8');
@@ -14,30 +15,33 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest, browser runtime, and detached plugin share the release version', () => {
-    assert.equal(manifest.version, '0.13.1');
-    assert.equal(manifest.js, 'extension/index.js?v=0.13.1');
-    assert.equal(manifest.css, 'extension/style.css?v=0.13.1');
+    assert.equal(manifest.version, '0.13.2');
+    assert.equal(manifest.js, 'extension/index.js?v=0.13.2');
+    assert.equal(manifest.css, 'extension/style.css?v=0.13.2');
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.13\.1'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.13\.1'/);
+    assert.match(pluginSource, /const VERSION = '0\.13\.2'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.13\.2'/);
 });
 
-test('runtime uses causal context and has no prescriptive beat-director dependency', () => {
-    assert.match(source, /from '\.\/causal-context\.js\?v=0\.13\.1'/);
-    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.13\.1'/);
+test('runtime uses causal context and deferred world state without prescriptive beat-director dependency', () => {
+    assert.match(source, /from '\.\/causal-context\.js\?v=0\.13\.2'/);
+    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.13\.2'/);
     assert.doesNotMatch(source, /beat-director/);
     assert.doesNotMatch(stateSource, /beat-director/);
-    assert.match(stateSource, /export const STATE_VERSION = 57/);
+    assert.match(stateSource, /export const STATE_VERSION = 58/);
+    assert.match(stateSource, /offscreenWorld/);
     assert.match(stateSource, /delete state\.beatDirective/);
 });
 
 test('planner contracts return active world conditions rather than future branches', () => {
-    assert.match(analysisSource, /contract_version=8/);
-    assert.match(analysisSource, /contract_version=10/);
+    assert.match(analysisSource, /contract_version=9/);
+    assert.match(analysisSource, /contract_version=11/);
     assert.match(analysisSource, /private active-world simulator/i);
     assert.match(analysisSource, /underlying conditions|present causal state/i);
     assert.match(analysisSource, /Never prescribe a future action, scene, event, dialogue, reveal, discovery, consequence, or outcome/i);
     assert.match(analysisSource, /Do not assume expressed means resolved|Do not equate mention with resolution/i);
+    assert.match(analysisSource, /deferred debt, not continuous ticking/i);
+    assert.match(offscreenSource, /scheduled arrival/i);
     assert.doesNotMatch(analysisSource, /one primary.*two.*alternatives/i);
 });
 
@@ -80,7 +84,7 @@ test('SillyTavern interception and detached planner compatibility remain intact'
     assert.match(source, /ensureGuidanceInText/);
     assert.match(source, /X-Tale-Fairy-Job-Id/);
     assert.match(pluginSource, /router\.post\('\/planner-jobs\/generate'/);
-    assert.match(pluginSource, /\[2, 3, 4, 5, 6, 7, 8, 9, 10\]\.includes\(value\.contract_version\)/);
+    assert.match(pluginSource, /\[2, 3, 4, 5, 6, 7, 8, 9, 10, 11\]\.includes\(value\.contract_version\)/);
 });
 
 test('planner token budgets, retries, and nonblocking behavior remain compatible', () => {

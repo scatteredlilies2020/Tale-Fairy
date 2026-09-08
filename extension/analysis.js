@@ -1,6 +1,7 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.13.1';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.13.2';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.11.96';
+import { formatDriftRequest, mergeOffscreenWorld } from './offscreen-world.js?v=0.13.2';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
@@ -60,10 +61,28 @@ const HIDDEN_MOTIVE_SCHEMA = { type: 'object', additionalProperties: false, prop
 // The model returns observations plus deltas, not a duplicate of Tale Fairy's
 // entire persistent state. applyAnalysis expands this compact wire contract into
 // the rich internal state used by the UI and prompt injector.
+// Tracked subjects carry the turn we last looked at them. Nothing runs in the
+// background; the growing gap is a debt paid only when the subject matters again.
+const OFFSCREEN_SUBJECT_SCHEMA = { type: 'object', additionalProperties: false, properties: {
+    id: text(80),
+    kind: { type: 'string', enum: ['actor', 'group', 'institution', 'system', 'environment', 'place', 'situation'] },
+    subject: text(120),
+    reach: { type: 'string', enum: ['present', 'near', 'distant', 'remote'] },
+    motion: { type: 'string', enum: ['static', 'drifting', 'building', 'accelerating', 'resolving'] },
+    trajectory: text(240), settled: text(400),
+    confidence: { type: 'string', enum: ['established', 'strong', 'tentative'] },
+    last_seen_turn: { type: 'integer', minimum: 0 },
+    owed: text(240), carried_by: text(160),
+}, required: ['id', 'kind', 'subject', 'reach', 'motion', 'trajectory', 'settled', 'confidence', 'last_seen_turn', 'owed', 'carried_by'] };
+const OFFSCREEN_SCHEMA = { type: 'object', additionalProperties: false, properties: {
+    subjects: { type: 'array', maxItems: 12, items: OFFSCREEN_SUBJECT_SCHEMA },
+    elapsed: text(120), settled_through: { type: 'integer', minimum: 0 }, audit: text(300),
+}, required: ['subjects', 'elapsed', 'settled_through', 'audit'] };
+
 export const ANALYSIS_SCHEMA_VALUE = {
     type: 'object', additionalProperties: false,
     properties: {
-        contract_version: { type: 'integer', const: 8 },
+        contract_version: { type: 'integer', const: 9 },
         current: { type: 'object', additionalProperties: false, properties: {
             frame: { type: 'string', enum: ['grounded', 'heightened', 'surreal'] }, frame_basis: text(180),
             status: text(180), immediate_action: text(140), activity: text(180), situation: text(220),
@@ -80,6 +99,7 @@ export const ANALYSIS_SCHEMA_VALUE = {
             conditions: { type: 'array', minItems: 1, maxItems: 6, items: CAUSAL_CONDITION_SCHEMA },
             inject: { type: 'boolean', const: true }, inject_reason: text(220), basis: text(240),
         }, required: ['conditions', 'inject', 'inject_reason', 'basis'] },
+        offscreen: OFFSCREEN_SCHEMA,
         response_audit: { type: 'object', additionalProperties: false, properties: {
             applicable: { type: 'boolean' },
             movement_fit: { type: 'string', enum: ['not-applicable', 'missed', 'partial', 'clear'] },
@@ -107,10 +127,10 @@ export const ANALYSIS_SCHEMA_VALUE = {
         note_resolution: { anyOf: [{ type: 'object', additionalProperties: false, properties: { kind: { type: 'string', enum: ['suggest', 'correct', 'establish', 'forbid'] } }, required: ['kind'] }, { type: 'null' }] },
         audit: text(500),
     },
-    required: ['contract_version', 'current', 'context', 'response_audit', 'horizon', 'hidden_motives', 'world', 'thread_updates', 'actor_updates', 'canon_updates', 'ledger', 'note_resolution', 'audit'],
+    required: ['contract_version', 'current', 'context', 'offscreen', 'response_audit', 'horizon', 'hidden_motives', 'world', 'thread_updates', 'actor_updates', 'canon_updates', 'ledger', 'note_resolution', 'audit'],
 };
 export const ANALYSIS_SCHEMA = Object.freeze({
-    name: 'tale_fairy_causal_context_v8',
+    name: 'tale_fairy_causal_context_v9',
     description: 'Compact Tale Fairy observations and state deltas.',
     strict: true,
     returnInvalid: true,
@@ -120,7 +140,7 @@ export const ANALYSIS_SCHEMA = Object.freeze({
 export const INCREMENTAL_ANALYSIS_SCHEMA_VALUE = {
     type: 'object', additionalProperties: false,
     properties: {
-        contract_version: { type: 'integer', const: 10 },
+        contract_version: { type: 'integer', const: 11 },
         current: { type: 'object', additionalProperties: false, properties: {
             frame: { type: 'string', enum: ['grounded', 'heightened', 'surreal'] }, frame_basis: text(160),
             status: text(180), immediate_action: text(140), activity: text(180), situation: text(220),
@@ -135,6 +155,7 @@ export const INCREMENTAL_ANALYSIS_SCHEMA_VALUE = {
             conditions: { type: 'array', minItems: 1, maxItems: 6, items: CAUSAL_CONDITION_SCHEMA },
             inject: { type: 'boolean', const: true }, inject_reason: text(200), basis: text(220),
         }, required: ['conditions', 'inject', 'inject_reason', 'basis'] },
+        offscreen: OFFSCREEN_SCHEMA,
         thread_updates: { type: 'array', maxItems: 4, items: { type: 'object', additionalProperties: false, properties: {
             op: { type: 'string', enum: ['upsert', 'retire'] }, id: text(100), thread: text(180), state: text(220),
             status: { type: 'string', enum: ['active', 'dormant', 'due', 'blocked'] }, basis: text(150),
@@ -152,10 +173,10 @@ export const INCREMENTAL_ANALYSIS_SCHEMA_VALUE = {
         note_resolution: { anyOf: [{ type: 'object', additionalProperties: false, properties: { kind: { type: 'string', enum: ['suggest', 'correct', 'establish', 'forbid'] } }, required: ['kind'] }, { type: 'null' }] },
         audit: text(320),
     },
-    required: ['contract_version', 'current', 'context', 'thread_updates', 'hidden_motives', 'actor_updates', 'ledger', 'note_resolution', 'audit'],
+    required: ['contract_version', 'current', 'context', 'offscreen', 'thread_updates', 'hidden_motives', 'actor_updates', 'ledger', 'note_resolution', 'audit'],
 };
 export const INCREMENTAL_ANALYSIS_SCHEMA = Object.freeze({
-    name: 'tale_fairy_causal_context_v10_incremental',
+    name: 'tale_fairy_causal_context_v11_incremental',
     description: 'Compact complete Tale Fairy scene, motive, actor, causal-context, and continuity pass.',
     strict: true,
     returnInvalid: true,
@@ -327,7 +348,35 @@ function validateCausalContext(value, errors, label = 'context') {
     if (!providerEligible) errors.push(`${label}.conditions must include at least one non-tentative (established or strongly supported) condition`);
 }
 
-function validateBeatAnalysisResult(result, { requireHorizon = true } = {}) {
+function validateOffscreenWorld(value, errors, label = 'offscreen') {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        errors.push(`${label} must be an object`);
+        return;
+    }
+    if (!Array.isArray(value.subjects)) errors.push(`${label}.subjects must be an array`);
+    const subjects = asArray(value.subjects);
+    if (subjects.length > 12) errors.push(`${label}.subjects must contain at most 12 tracked subjects`);
+    const ids = [];
+    for (const [index, subject] of subjects.entries()) {
+        const path = `${label}.subjects[${index}]`;
+        for (const key of ['id', 'kind', 'subject', 'reach', 'motion', 'trajectory', 'confidence']) {
+            if (typeof subject?.[key] !== 'string' || !subject[key].trim()) errors.push(`${path}.${key} must be a non-empty string`);
+        }
+        for (const key of ['settled', 'owed', 'carried_by']) if (typeof subject?.[key] !== 'string') errors.push(`${path}.${key} must be a string`);
+        if (!['actor', 'group', 'institution', 'system', 'environment', 'place', 'situation'].includes(subject?.kind)) errors.push(`${path}.kind is invalid`);
+        if (!['present', 'near', 'distant', 'remote'].includes(subject?.reach)) errors.push(`${path}.reach is invalid`);
+        if (!['static', 'drifting', 'building', 'accelerating', 'resolving'].includes(subject?.motion)) errors.push(`${path}.motion is invalid`);
+        if (!['established', 'strong', 'tentative'].includes(subject?.confidence)) errors.push(`${path}.confidence is invalid`);
+        if (!Number.isInteger(subject?.last_seen_turn) || subject.last_seen_turn < 0) errors.push(`${path}.last_seen_turn must be a non-negative integer`);
+        if (subject?.id) ids.push(String(subject.id).trim().toLocaleLowerCase());
+    }
+    if (new Set(ids).size !== ids.length) errors.push(`${label}.subjects must use distinct ids`);
+    if (typeof value.elapsed !== 'string') errors.push(`${label}.elapsed must be a string`);
+    if (!Number.isInteger(value.settled_through) || value.settled_through < 0) errors.push(`${label}.settled_through must be a non-negative integer`);
+    if (typeof value.audit !== 'string') errors.push(`${label}.audit must be a string`);
+}
+
+function validateBeatAnalysisResult(result, { requireHorizon = true, requireOffscreen = true } = {}) {
     const errors = [];
     const requiredStrings = (value, keys, label) => {
         if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -336,10 +385,11 @@ function validateBeatAnalysisResult(result, { requireHorizon = true } = {}) {
         }
         for (const key of keys) if (typeof value[key] !== 'string' || !value[key].trim()) errors.push(`${label}.${key} must be a non-empty string`);
     };
-    if (requireHorizon && result?.contract_version !== 8) errors.push('contract_version must be 8');
+    if (requireHorizon && ![8, 9].includes(result?.contract_version)) errors.push('contract_version must be 8 or 9');
     if (!requireHorizon && result?.contract_version !== 6) errors.push('contract_version must be 6');
     requiredStrings(result?.current, ['frame', 'frame_basis', 'status', 'immediate_action', 'activity', 'situation', 'activity_role', 'temporal_scope', 'scene_promise', 'phase', 'emotional_direction', 'pressure', 'intrusion', 'novelty_ceiling'], 'current');
     validateCausalContext(result?.context, errors);
+    if (requireOffscreen) validateOffscreenWorld(result?.offscreen, errors);
     requiredStrings(result?.response_audit, ['movement_fit', 'repetition', 'summary'], 'response_audit');
     if (requireHorizon) {
         requiredStrings(result?.horizon, ['status', 'audit'], 'horizon');
@@ -405,7 +455,7 @@ function validateBeatAnalysisResult(result, { requireHorizon = true } = {}) {
     return { valid: errors.length === 0, errors };
 }
 
-function validateIncrementalAnalysisResult(result) {
+function validateIncrementalAnalysisResult(result, { requireOffscreen = true } = {}) {
     const errors = [];
     const requiredStrings = (value, keys, label) => {
         if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -414,9 +464,10 @@ function validateIncrementalAnalysisResult(result) {
         }
         for (const key of keys) if (typeof value[key] !== 'string' || !value[key].trim()) errors.push(`${label}.${key} must be a non-empty string`);
     };
-    if (result?.contract_version !== 10) errors.push('contract_version must be 10');
+    if (![10, 11].includes(result?.contract_version)) errors.push('contract_version must be 10 or 11');
     requiredStrings(result?.current, ['frame', 'frame_basis', 'status', 'immediate_action', 'activity', 'situation', 'scene_promise', 'phase', 'emotional_direction', 'pressure', 'intrusion', 'novelty_ceiling'], 'current');
     validateCausalContext(result?.context, errors);
+    if (requireOffscreen) validateOffscreenWorld(result?.offscreen, errors);
     if (typeof result?.current?.location !== 'string') errors.push('current.location must be a string');
     if (typeof result?.current?.time !== 'string') errors.push('current.time must be a string');
     if (typeof result?.current?.loop !== 'boolean') errors.push('current.loop must be a boolean');
@@ -573,8 +624,10 @@ function validateCompactAnalysisResult(result) {
 }
 
 export function validateAnalysisResult(result) {
-    if (result?.contract_version === 10) return validateIncrementalAnalysisResult(result);
-    if (result?.contract_version === 8) return validateBeatAnalysisResult(result);
+    if (result?.contract_version === 11) return validateIncrementalAnalysisResult(result);
+    if (result?.contract_version === 10) return validateIncrementalAnalysisResult(result, { requireOffscreen: false });
+    if (result?.contract_version === 9) return validateBeatAnalysisResult(result);
+    if (result?.contract_version === 8) return validateBeatAnalysisResult(result, { requireOffscreen: false });
     if (result?.contract_version === 2) return validateCompactAnalysisResult(result);
     const errors = [];
     if (!result || typeof result !== 'object' || Array.isArray(result)) {
@@ -983,6 +1036,7 @@ function compactPromptStateForPriority(current = {}) {
     const horizons = current.planHorizons || {};
     return {
         mode: current.mode,
+        turnCount: Math.max(0, Number(current.turnCount) || 0),
         directorScore: current.directorScore,
         loreModel: current.loreModel,
         narrativeLayers: current.narrativeLayers,
@@ -1043,6 +1097,14 @@ function compactPromptStateForBudget(current = {}) {
         hiddenMotives: current.hiddenMotives ? {
             status: current.hiddenMotives.status,
             items: (current.hiddenMotives.items || []).slice(0, 6).map(item => ({ id: compactText(item.id, 50), actor: compactText(item.actor, 60), explanation: compactText(item.explanation, 110), likelihood: item.likelihood, evidence: (item.evidence || []).slice(0, 2).map(value => compactText(value, 75)), counterevidence: (item.counterevidence || []).slice(0, 1).map(value => compactText(value, 75)), mechanism: compactText(item.mechanism, 80), currentRelevance: item.currentRelevance, disclosure: item.disclosure })),
+        } : undefined,
+        offscreenWorld: current.offscreenWorld ? {
+            subjects: (current.offscreenWorld.subjects || []).slice(0, 12).map(item => ({
+                id: compactText(item.id, 50), kind: item.kind, subject: compactText(item.subject, 70), reach: item.reach, motion: item.motion,
+                trajectory: compactText(item.trajectory, 110), settled: compactText(item.settled, 150), confidence: item.confidence,
+                lastSeenTurn: item.lastSeenTurn, owed: compactText(item.owed, 100), carriedBy: compactText(item.carriedBy, 70),
+            })),
+            elapsed: compactText(current.offscreenWorld.elapsed, 80), settledThrough: current.offscreenWorld.settledThrough,
         } : undefined,
         possibilities: (current.possibilities || []).slice(-2).map(item => compactText(item, 80)),
         pathways: (current.pathways || []).slice(0, 6).map(item => ({ id: compactText(item.id, 50), lane: item.lane, agent: compactText(item.agent, 40), engine: compactText(item.engine, 45), relation: item.relation, scale: item.scale, origin: item.origin, evidenceRefs: (item.evidenceRefs || []).slice(0, 2), unresolvedBasis: compactText(item.unresolvedBasis, 75), completionCheck: item.completionCheck, mechanismStatus: item.mechanismStatus, mechanismBasis: compactText(item.mechanismBasis, 75), direction: compactText(item.direction, 90), when: compactText(item.when, 70), horizon: compactText(item.horizon, 30), status: item.status })),
@@ -1813,6 +1875,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         && SUGGESTION_CUE_PATTERN.test(latestUserText)
         && new RegExp(`\\b(?:${KINSHIP_TERM_SOURCE})\\b`, 'iu').test(latestUserText));
     const retainedState = stateForPrompt(state);
+    const currentPlannerTurn = normalizeState(state).turnCount;
     const retainedCurrent = alignRetainedEvidence(
         useSpecificPlayerName(options.incremental ? compactPromptStateForBudget(retainedState) : retainedState, playerName),
         relationOwners,
@@ -1831,6 +1894,11 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         evidence_rule: 'confidence=established requires direct evidence. confidence=strong permits a well-supported causal inference. confidence=tentative is private scratchpad material and is automatically withheld from the provider. Newer explicit facts and corrections supersede all summaries and inference.',
         disclosure_rule: 'open means generally knowable in scene; limited means known only to relevant participants; private means it may shape behavior without being automatically revealed. Disclosure never commands a reveal.',
         relevance_rule: 'relevance is a private explanation for selecting the condition now. Do not assume that a condition is resolved because it was expressed, or escalate it because it was neglected. Change salience only from new evidence, elapsed time, dependency changes, or a real causal state change. Retrieve dormant actors or systems only when the current scene makes them relevant.',
+        offscreen_rule: 'Maintain offscreen as a bounded complete board of relevant actors, groups, institutions, systems, environments, places, and situations. This is deferred debt, not continuous ticking: preserve an unobserved subject unchanged until the newest exchange makes it relevant again, an explicit material time skip occurs, or a dependency changes. Then settle only the plausible broad change already latent in its trajectory, append rather than replace settled history, and advance last_seen_turn. Never re-roll settled facts. Nothing much changing is valid. To retire a fully settled subject, first return it with motion=static and owed empty; it may be omitted on a later pass.',
+        distance_rule: 'Distance controls resolution, not importance: present and near subjects may be specific; distant subjects get broad strokes; remote subjects remain rumour-level, incomplete, and possibly outdated. After more than about fourteen days without reliable contact, cap the settlement at remote resolution unless the transcript supplies a trustworthy nearer witness. Do not grant the player omniscient knowledge of a private settlement.',
+        pressure_rule: 'owed records a plausible undelivered consequence, not an event queue or deadline. Wider-world pressure may remain silent, color description or NPC subtext, complicate existing activity, or arrive openly only when causal access and scene scale support it. A quiet scene may linger. Never interrupt merely because a subject was ignored or because time passed.',
+        scene_scale_rule: 'Calibrate challenge to the actual setting and activity. Challenge can be social, intellectual, bureaucratic, material, emotional, environmental, or physical; combat is only one possibility. Context creates possibilities, never guarantees. A major derailment is rare and may be supported only when an established or strong cause is already converging and current.intrusion is primed; never manufacture one for novelty. The latest explicit user/OOC request to stay, skip, or advance outranks all optional pressure.',
+        repetition_rule: 'Use response_audit and retained responsePatternMemory to avoid repeating the same presentation, escalation, arrival, dialogue shape, or emotional turn. Vary realization only through supported causes; choosing no new event is always allowed.',
         horizon_rule: 'Stay one step ahead privately by maintaining optional horizon trajectories, but never convert them into provider instructions, promised events, delivery debt, or fixed plot. Long-range possibilities remain hypotheses until supported.',
         motive_rule: 'Maintain the separate private hidden-motive board as ranked hypotheses. It can preserve bold specific explanations, but a likely motive is not canon. Retire or revise only when evidence changes; irrelevance may make an item dormant without resolving it.',
         contribution_rule: 'Set context.inject=true and provide 1–6 concise conditions, normally 3–6 when evidence supports them. At least one must be established or strong. Favor a useful mix rather than exhaustive lore. The provider receives only subject plus condition and a generic invitation to move naturally; it does not receive ids, confidence, relevance, basis, rankings, or future plans.',
@@ -1851,6 +1919,11 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
                 : undefined,
             rule: 'messages is chronological and the highest index is newest. Read latest_user_text and authoritative_assistant_excerpt as one authoritative exchange. Preserve exactly who spoke, who acted, and whose person, relative, object, or idea is being discussed; never invert speaker, actor, possessor, target, or pronoun referent. The message at newest_assistant_index is the only reply response_audit may evaluate and is the authoritative completed scene before any later user message. Its status header is authoritative when present. Do not mistake the newest user message for an unanswered prompt when a higher-index assistant reply already answered it.',
         },
+        planner_clock: {
+            previous_turn: currentPlannerTurn,
+            output_turn: currentPlannerTurn + 1,
+            rule: 'Use output_turn for last_seen_turn only when this pass observes or settles that subject. Otherwise preserve its previous last_seen_turn. settled_through is the newest turn through which the board was actually settled, not a timer.',
+        },
         retained_state_rule: 'current is retained planner state from before this analysis. It may be stale and must never override the transcript head. Replace obsolete time, location, activity, unresolved actions, and completed beats with what the newest assistant reply actually established.',
         current: retainedCurrent,
         messages: selected.map(({ index, kind, message, content }) => ({
@@ -1861,9 +1934,14 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
             }),
         })),
     };
+    const offscreenDebt = formatDriftRequest(retainedState.offscreenWorld, {
+        currentTurn: currentPlannerTurn,
+        elapsed: retainedState.offscreenWorld?.elapsed,
+    });
+    if (offscreenDebt) payload.offscreen_debt = offscreenDebt;
     if (options.incremental) {
         for (const key of ['authority', 'simulation', 'horizon_rule', 'motive_rule', 'response_audit_rule']) delete payload[key];
-        payload.fast_rules = 'Newest transcript facts win. Update changed factual state and private hypotheses, then select 1–6 relevant present causal conditions. Conditions may name actual subjects but never prescribe an action or event. Tentative conditions stay private. Never define or alter player action. Empty update arrays mean no factual change.';
+        payload.fast_rules = 'Newest transcript facts win. Update changed factual state and private hypotheses, then select 1–6 relevant present causal conditions. Maintain the complete offscreen board, but settle only newly relevant or explicitly time-skipped debt and never re-roll settled history. Conditions may name actual subjects but never prescribe an action or event. Tentative conditions stay private. Never define or alter player action. Empty update arrays mean no factual change.';
     }
     const canonClaims = explicitCanonClaims(messages);
     if (canonClaims.length) payload.explicit_ooc_canon = canonClaims;
@@ -1920,7 +1998,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     }
     // These reminders duplicate the system prompt and are the safest material
     // to shed when the caller explicitly supplies a very small prompt budget.
-    for (const key of ['calibration', 'scale_fields', 'simulation', 'direction_policy', 'authority', 'invention', 'motive_rule', 'horizon_rule', 'movement']) {
+    for (const key of ['calibration', 'scale_fields', 'simulation', 'direction_policy', 'authority', 'invention', 'motive_rule', 'horizon_rule', 'movement', 'distance_rule', 'repetition_rule']) {
         if (estimateTokenCount(serialized) <= budget) break;
         delete payload[key];
         serialized = JSON.stringify(payload);
@@ -2012,6 +2090,7 @@ function applyIncrementalAnalysis(next, value, messages) {
         basis: current.frame_basis,
     } }).sceneProfile;
     next.causalContext = normalizeState({ causalContext: context }).causalContext;
+    if (value.offscreen) next.offscreenWorld = mergeOffscreenWorld(next.offscreenWorld, value.offscreen, { currentTurn: next.turnCount + 1 });
     next.narrativeLayers = normalizeState({ narrativeLayers: {
         ...next.narrativeLayers,
         immediate_action: current.immediate_action,
@@ -2089,7 +2168,7 @@ function applyBeatAnalysis(next, value, messages) {
     } }).sceneProfile;
     next.responseAudit = normalizeState({ responseAudit: value.response_audit }).responseAudit;
     next.responsePatternMemory = [...next.responsePatternMemory, ...next.responseAudit.patterns].slice(-12);
-    if (value.contract_version === 8) {
+    if ([8, 9].includes(value.contract_version)) {
         const proposed = normalizeState({ horizonRadar: {
             status: value.horizon?.status,
             seeds: asArray(value.horizon?.seeds).map(seed => ({ ...seed, presentRelation: seed.present_relation })),
@@ -2122,6 +2201,7 @@ function applyBeatAnalysis(next, value, messages) {
         next.hiddenMotives = proposedMotives;
     }
     next.causalContext = normalizeState({ causalContext: context }).causalContext;
+    if (value.offscreen) next.offscreenWorld = mergeOffscreenWorld(next.offscreenWorld, value.offscreen, { currentTurn: next.turnCount + 1 });
     const horizonTrajectory = next.horizonRadar.seeds.find(seed => seed.kind === 'detected' && seed.presentRelation !== 'none')?.trajectory || '';
     next.narrativeLayers = normalizeState({ narrativeLayers: {
         immediate_action: current.immediate_action, local_activity: current.activity, situation: current.situation,
@@ -2414,8 +2494,8 @@ export function applyAnalysis(state, result, messages) {
     const playerName = playerCharacterName(messages);
     const next = normalizeState(useSpecificPlayerName(state, playerName));
     const value = result && typeof result === 'object' ? useSpecificPlayerName(result, playerName) : {};
-    if (value.contract_version === 10) return applyIncrementalAnalysis(next, value, messages);
-    if (value.contract_version === 8) return applyBeatAnalysis(next, value, messages);
+    if ([10, 11].includes(value.contract_version)) return applyIncrementalAnalysis(next, value, messages);
+    if ([8, 9].includes(value.contract_version)) return applyBeatAnalysis(next, value, messages);
     if (value.contract_version === 2) return applyCompactAnalysis(next, value, messages);
     if (value.story_frame && typeof value.story_frame === 'object') next.storyFrame = { ...next.storyFrame, frame: String(value.story_frame.frame || 'unknown').slice(0, 40), confidence: String(value.story_frame.confidence || 'low').slice(0, 40), basis: String(value.story_frame.basis || '').slice(0, 240) };
     if (value.director_score && typeof value.director_score === 'object') {
@@ -2500,20 +2580,22 @@ const PLANNER_SYSTEM = `You are Tale Fairy, a private active-world simulator and
 
 Reconstruct the current state from the newest authoritative exchange. Maintain people, relationships, groups, institutions, systems, resources, environments, and long-range pressures at whatever scale fits the simulation. Then select only the few underlying conditions relevant to the next response.
 
+The offscreen board is deferred debt, not continuous ticking. Preserve unseen subjects until they become relevant again, the transcript explicitly advances material time, or a dependency changes; only then settle the broad plausible development already latent in their trajectory. Distance controls resolution. Never re-roll settled history, schedule an owed consequence, or make elapsed time manufacture drama. Quiet scenes may linger and wider-world pressure may remain silent or subtextual.
+
 A condition is present causal state: a motivation, belief, knowledge state, stance, capability, constraint, relationship, institutional tendency, resource pressure, or environmental condition. Name the real subject. Never prescribe a future action, scene, event, dialogue, reveal, discovery, consequence, or outcome. Never disguise a plan as a condition. The writing model interprets these causes and creatively decides what happens.
 
 Use confidence carefully. established requires direct evidence; strong requires a well-supported inference; tentative remains private and is never provider-visible. open, limited, and private describe who may know a condition; private conditions may shape behavior but do not require revelation. Explicit user/OOC facts and corrections outrank retained state, summaries, lore, and inference.
 
 Select 1–6 conditions, normally 3–6 when useful, with at least one established or strong item. Relevance is private selection reasoning, not a plot priority. Do not assume expressed means resolved or neglected means escalated. Revise salience only from evidence, time, dependencies, or real causal change. Dormant characters and systems can leave the active set and be reconstructed from retained summaries, lore, Continuity, and factual records when relevant again.
 
-Stay a step ahead only in the private horizon and motive boards. They are optional possibilities and hypotheses, never event queues, promises, or instructions. The player action, response, consent, and inner state remain outside Tale Fairy's authority. The provider will receive only a clean natural-language slice of subject plus condition and will choose concrete movement itself.`;
+Stay a step ahead only in the private horizon, motive, and offscreen boards. They are optional possibilities and hypotheses, never event queues, promises, or instructions. Setting-native challenge may be social, intellectual, bureaucratic, material, emotional, environmental, or physical. Rare derailment is permissible only from an established or strong cause already converging in a primed scene, never for novelty. The player action, response, consent, and inner state remain outside Tale Fairy's authority. The provider will receive only a clean natural-language slice of subject plus condition and will choose concrete movement itself.`;
 
-export const ANALYSIS_OUTPUT_CONTRACT = `Return exactly: contract_version=8, current, context, response_audit, horizon, hidden_motives, world, thread_updates, actor_updates, canon_updates, ledger, note_resolution, audit.
+export const ANALYSIS_OUTPUT_CONTRACT = `Return exactly: contract_version=9, current, context, offscreen, response_audit, horizon, hidden_motives, world, thread_updates, actor_updates, canon_updates, ledger, note_resolution, audit.
 context={conditions,inject,inject_reason,basis}; inject=true. conditions has 1–6 items, each {id,kind,subject,condition,disclosure,confidence,relevance}. kind is actor, relationship, group, institution, system, or environment. disclosure is open, limited, or private. confidence is established, strong, or tentative. Describe current causes only, never future actions or planned events. At least one condition must not be tentative.
-current records the exact current scene. response_audit privately evaluates the prior assistant response. horizon and hidden_motives remain private optional hypotheses. world and updates contain factual state only. Empty update arrays mean no factual change. No other keys.`;
+offscreen={subjects,elapsed,settled_through,audit} is the complete bounded deferred-debt board. Preserve unseen subjects and settled history; update last_seen_turn only when settling relevant debt. current records the exact current scene. response_audit privately evaluates the prior assistant response. horizon and hidden_motives remain private optional hypotheses. world and updates contain factual state only. Empty update arrays mean no factual change. No other keys.`;
 
-export const INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT = `Return exactly contract_version=10 plus current, context, thread_updates, hidden_motives, actor_updates, ledger, note_resolution, and audit.
+export const INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT = `Return exactly contract_version=11 plus current, context, offscreen, thread_updates, hidden_motives, actor_updates, ledger, note_resolution, and audit.
 context contains 1–6 currently relevant present causal conditions using {id,kind,subject,condition,disclosure,confidence,relevance}, inject=true, inject_reason, and basis. At least one condition is established or strong; tentative items remain private. Conditions may name real subjects but never prescribe actions, events, dialogue, revelations, or outcomes. Updates contain factual changes only. No other keys.`;
 
-export const INCREMENTAL_SYSTEM = `You are Tale Fairy, a private active-world simulator for another model that writes the roleplay. Return only JSON matching the schema. Newest explicit transcript facts outrank retained evidence. Update changed facts and private hypotheses, then select 1–6 current underlying conditions that help the writing model move naturally. A condition names its actual subject and states a present motivation, stance, knowledge, capability, relationship, constraint, institutional tendency, resource pressure, or environmental state. Never plan the next action, event, dialogue, reveal, discovery, consequence, or outcome. established requires direct evidence, strong a supported inference, and tentative stays private. Do not equate mention with resolution or neglect with escalation. Never define or modify the player action, response, consent, or inner state.`;
+export const INCREMENTAL_SYSTEM = `You are Tale Fairy, a private active-world simulator for another model that writes the roleplay. Return only JSON matching the schema. Newest explicit transcript facts outrank retained evidence. Update changed facts and private hypotheses, then select 1–6 current underlying conditions that help the writing model move naturally. Maintain offscreen as deferred debt rather than continuous ticking: preserve unseen subjects, settle only newly relevant or explicitly time-skipped change, scale detail by distance, and never re-roll settled history or schedule consequences. A condition names its actual subject and states a present motivation, stance, knowledge, capability, relationship, constraint, institutional tendency, resource pressure, or environmental state. Never plan the next action, event, dialogue, reveal, discovery, consequence, or outcome. established requires direct evidence, strong a supported inference, and tentative stays private. Do not equate mention with resolution or neglect with escalation. Quiet scenes may linger. Never define or modify the player action, response, consent, or inner state.`;
 export { PLANNER_SYSTEM as SYSTEM, extractJson };

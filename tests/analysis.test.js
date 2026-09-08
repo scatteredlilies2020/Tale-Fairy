@@ -21,9 +21,18 @@ const conditions = [
     { id: 'grain-pressure', kind: 'system', subject: 'Grain reserves', condition: 'are falling faster than the official report indicates', disclosure: 'limited', confidence: 'established', relevance: 'The meeting is deciding ration policy.' },
     { id: 'merchant-rumor', kind: 'group', subject: 'Harbor merchants', condition: 'may be coordinating shortages for leverage', disclosure: 'private', confidence: 'tentative', relevance: 'Their shipments explain one possible discrepancy.' },
 ];
+const offscreen = {
+    subjects: [{
+        id: 'harbor-shortage', kind: 'situation', subject: 'Harbor shortages', reach: 'distant', motion: 'building',
+        trajectory: 'Shipments continue falling behind demand.', settled: '', confidence: 'strong', last_seen_turn: 0,
+        owed: 'The shortage may reach cabinet decisions through reports and prices.', carried_by: 'shipping ledgers and merchant testimony',
+    }],
+    elapsed: 'No material time skip is established.', settled_through: 0,
+    audit: 'Preserved offscreen pressure without scheduling its arrival.',
+};
 function full(overrides = {}) {
     return {
-        contract_version: 8, current, context: { conditions, inject: true, inject_reason: 'These are the smallest relevant causal slice.', basis: 'Transcript and retained shipment records.' },
+        contract_version: 9, current, context: { conditions, inject: true, inject_reason: 'These are the smallest relevant causal slice.', basis: 'Transcript and retained shipment records.' }, offscreen,
         response_audit: { applicable: true, movement_fit: 'clear', repetition: 'none', unjustified_escalation: false, player_control: false, continuity_drift: false, patterns: [], summary: 'The discussion advanced.' },
         horizon: { status: 'latent', seeds: [{ id: 'food-legitimacy', kind: 'detected', trajectory: 'Food policy may affect institutional legitimacy.', engine: 'scarcity and public trust', scale: 'arc', condition: 'Shortages persist.', basis: 'The cabinet is deciding ration policy.', present_relation: 'echo', change: 'keep' }], audit: 'A supported long-range pressure remains optional.' },
         hidden_motives: { status: 'focused', items: [{ id: 'mira-protect', actor: 'Mira', explanation: 'Mira wants to expose manipulation without alerting its source.', likelihood: 'most-likely', evidence: ['She questions inconsistent totals.'], counterevidence: [], mechanism: 'Quiet scrutiny protects the inquiry.', current_relevance: 'drives-beat', disclosure: 'hidden', change: 'adjust' }], audit: 'This remains a hypothesis.' },
@@ -34,7 +43,7 @@ function full(overrides = {}) {
 }
 function incremental(overrides = {}) {
     const { activity_role, temporal_scope, ...compactCurrent } = current;
-    return { contract_version: 10, current: compactCurrent, context: full().context, thread_updates: [], hidden_motives: full().hidden_motives, actor_updates: [], ledger: 'Current cabinet review.', note_resolution: null, audit: 'Fresh causal slice.', ...overrides };
+    return { contract_version: 11, current: compactCurrent, context: full().context, offscreen, thread_updates: [], hidden_motives: full().hidden_motives, actor_updates: [], ledger: 'Current cabinet review.', note_resolution: null, audit: 'Fresh causal slice.', ...overrides };
 }
 const messages = [{ is_user: false, name: 'Narrator', mes: 'The reserve totals do not match the latest shipments.' }, { is_user: true, name: 'Ari', mes: 'I ask Mira what she thinks.' }];
 
@@ -43,10 +52,13 @@ test('extractJson accepts fenced, wrapped, and repairable JSON', () => {
     assert.deepEqual(extractJson('prefix {"ok":true} suffix'), { ok: true });
 });
 
-test('schemas expose causal-context contracts v8 and v10', () => {
-    assert.equal(ANALYSIS_SCHEMA_VALUE.properties.contract_version.const, 8);
-    assert.equal(INCREMENTAL_ANALYSIS_SCHEMA_VALUE.properties.contract_version.const, 10);
+test('schemas expose deferred-world contracts v9 and v11', () => {
+    assert.equal(ANALYSIS_SCHEMA_VALUE.properties.contract_version.const, 9);
+    assert.equal(INCREMENTAL_ANALYSIS_SCHEMA_VALUE.properties.contract_version.const, 11);
     assert.ok(ANALYSIS_SCHEMA_VALUE.required.includes('context'));
+    assert.ok(ANALYSIS_SCHEMA_VALUE.required.includes('offscreen'));
+    assert.ok(INCREMENTAL_ANALYSIS_SCHEMA_VALUE.required.includes('offscreen'));
+    assert.ok(ANALYSIS_SCHEMA_VALUE.properties.offscreen.required.includes('settled_through'));
     assert.equal(ANALYSIS_SCHEMA_VALUE.properties.context.properties.conditions.maxItems, 6);
     assert.match(ANALYSIS_OUTPUT_CONTRACT, /current causes only/i);
 });
@@ -54,6 +66,13 @@ test('schemas expose causal-context contracts v8 and v10', () => {
 test('valid full and incremental causal results pass', () => {
     assert.deepEqual(validateAnalysisResult(full()), { valid: true, errors: [] });
     assert.deepEqual(validateAnalysisResult(incremental()), { valid: true, errors: [] });
+});
+
+test('previous v8 and v10 results remain valid in flight without a new offscreen board', () => {
+    const { offscreen: _fullOffscreen, ...oldFull } = full({ contract_version: 8 });
+    const { offscreen: _incrementalOffscreen, ...oldIncremental } = incremental({ contract_version: 10 });
+    assert.deepEqual(validateAnalysisResult(oldFull), { valid: true, errors: [] });
+    assert.deepEqual(validateAnalysisResult(oldIncremental), { valid: true, errors: [] });
 });
 
 test('validation requires an injectable non-tentative causal condition', () => {
@@ -68,6 +87,14 @@ test('condition validation enforces complete bounded records', () => {
     const errors = validateAnalysisResult(broken).errors.join('\n');
     assert.match(errors, /subject/);
     assert.match(errors, /confidence/);
+});
+
+test('offscreen validation enforces complete distinct bounded records', () => {
+    const duplicate = { ...offscreen.subjects[0] };
+    const result = full({ offscreen: { ...offscreen, subjects: [offscreen.subjects[0], duplicate] } });
+    assert.match(validateAnalysisResult(result).errors.join('\n'), /distinct ids/i);
+    const invalid = full({ offscreen: { ...offscreen, subjects: [{ ...offscreen.subjects[0], reach: 'omniscient', last_seen_turn: -1 }] } });
+    assert.match(validateAnalysisResult(invalid).errors.join('\n'), /reach is invalid[\s\S]*non-negative integer/i);
 });
 
 test('planner prompt defines private active simulation rather than future branches', () => {
@@ -86,6 +113,24 @@ test('analysis prompt carries broad state but asks for only a relevant slice', (
     assert.match(prompt.condition_rule, /durable present-state cause/i);
     assert.match(prompt.relevance_rule, /real causal state change/i);
     assert.match(prompt.mode_instruction, /bolder strongly supported pressure/i);
+    assert.equal(prompt.planner_clock.output_turn, 1);
+    assert.match(prompt.distance_rule, /fourteen days/i);
+    assert.match(prompt.scene_scale_rule, /user\/OOC request/i);
+});
+
+test('planner receives deferred debt as candidates, never a scheduled arrival', () => {
+    const state = defaultState();
+    state.turnCount = 3;
+    state.offscreenWorld = {
+        subjects: [{ id: 'harbor-shortage', kind: 'situation', subject: 'Harbor shortages', reach: 'remote', motion: 'building', trajectory: 'Shipments are falling behind demand.', settled: 'One convoy departed late.', confidence: 'strong', lastSeenTurn: 0, owed: 'Prices may carry the pressure inland.', carriedBy: 'merchant reports' }],
+        elapsed: 'Sixteen days', settledThrough: 0, audit: '',
+    };
+    const prompt = JSON.parse(buildAnalysisPrompt(messages, state));
+    assert.match(prompt.offscreen_debt, /settle only a subject made relevant/i);
+    assert.match(prompt.offscreen_debt, /fourteen days/i);
+    assert.match(prompt.offscreen_debt, /never turn owed pressure into a scheduled arrival/i);
+    assert.equal(prompt.planner_clock.previous_turn, 3);
+    assert.equal(prompt.planner_clock.output_turn, 4);
 });
 
 test('incremental prompt remains compact and omits horizon regeneration', () => {
@@ -105,8 +150,18 @@ test('applying full analysis stores causal context and private simulation boards
     assert.equal(next.causalContext.conditions[0].subject, 'Mira');
     assert.equal(next.horizonRadar.seeds.length, 1);
     assert.equal(next.hiddenMotives.items[0].actor, 'Mira');
+    assert.equal(next.offscreenWorld.subjects[0].subject, 'Harbor shortages');
     assert.equal(next.lastInject, true);
     assert.equal(next.objectives.length, 0);
+});
+
+test('offscreen settlement is append-only and observation clocks cannot jump ahead', () => {
+    const prior = applyAnalysis(defaultState(), full({ offscreen: { ...offscreen, subjects: [{ ...offscreen.subjects[0], settled: 'One convoy departed late.', last_seen_turn: 1 }], settled_through: 1 } }), messages);
+    const proposal = { ...offscreen, subjects: [{ ...offscreen.subjects[0], settled: 'A storm delayed it.', last_seen_turn: 999 }], settled_through: 999 };
+    const next = applyAnalysis(prior, incremental({ offscreen: proposal }), [...messages, { is_user: false, mes: 'Mira checks the source ledger.' }]);
+    assert.match(next.offscreenWorld.subjects[0].settled, /One convoy departed late\.[\s\S]*A storm delayed it\./);
+    assert.equal(next.offscreenWorld.subjects[0].lastSeenTurn, 2);
+    assert.equal(next.offscreenWorld.settledThrough, 2);
 });
 
 test('incremental application refreshes causal context while retaining horizon', () => {
@@ -124,6 +179,7 @@ test('provider payload exposes clean conditions and withholds tentative metadata
     assert.match(payload, /Mira suspects the reserve report is falsified/);
     assert.match(payload, /Grain reserves are falling faster/);
     assert.doesNotMatch(payload, /Harbor merchants/);
+    assert.doesNotMatch(payload, /Harbor shortages|shipping ledgers|scheduled arrival/i);
     assert.doesNotMatch(payload, /confidence|relevance|mira-doubt/i);
     assert.match(payload, /writing model chooses every concrete action/i);
 });
@@ -132,6 +188,8 @@ test('stateForPrompt retains private condition metadata for future planning', ()
     const promptState = stateForPrompt(applyAnalysis(defaultState(), full(), messages));
     assert.equal(promptState.causalContext.conditions[2].confidence, 'tentative');
     assert.equal(promptState.causalContext.conditions[0].relevance, conditions[0].relevance);
+    assert.equal(promptState.offscreenWorld.subjects[0].confidence, 'strong');
+    assert.equal(promptState.turnCount, 1);
 });
 
 test('transcript clock alignment still rejects stale planner state', () => {
