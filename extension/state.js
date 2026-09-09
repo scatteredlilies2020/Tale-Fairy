@@ -1,12 +1,13 @@
-import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.13.0';
+import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.13.4';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
 import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js';
-import { defaultCausalContext, defaultSceneProfile, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, normalizeSceneProfile } from './causal-context.js?v=0.13.0';
-import { normalizeDirectorSample } from './director-sampling.js?v=0.13.0';
+import { defaultCausalContext, defaultSceneProfile, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, normalizeSceneProfile } from './causal-context.js?v=0.13.4';
+import { normalizeDirectorSample } from './director-sampling.js?v=0.13.4';
+import { defaultOffscreenWorld, normalizeOffscreenWorld } from './offscreen-world.js?v=0.13.4';
 
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 57;
+export const STATE_VERSION = 58;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -40,6 +41,7 @@ export function defaultState() {
         scene: { status: 'uninitialized', activity: '', pace: '', intent: '', location: '', time: '', loop: false },
         sceneProfile: defaultSceneProfile(),
         causalContext: defaultCausalContext(),
+        offscreenWorld: defaultOffscreenWorld(),
         responseAudit: { applicable: false, movementFit: 'not-applicable', repetition: 'none', unjustifiedEscalation: false, playerControl: false, continuityDrift: false, patterns: [], summary: '' },
         responsePatternMemory: [],
         horizonRadar: { status: 'none', seeds: [], audit: '' },
@@ -601,6 +603,8 @@ export function normalizeState(input = {}) {
     // adds the private open hidden-motive board. v57 replaces conditional
     // future reactions with a relevant causal-state slice; old beats are not
     // migrated because they describe prescribed developments, not world state.
+    // v58 adds a private deferred offscreen-debt board. It is additive: older
+    // factual and causal state remains valid while the new board starts empty.
     const unsafePlannerUpgrade = inputVersion > 0 && inputVersion < 18;
     const movementUpgrade = inputVersion > 0 && inputVersion < 42;
     const recoveryUpgrade = inputVersion > 0 && inputVersion < 26;
@@ -630,6 +634,7 @@ export function normalizeState(input = {}) {
         scene: chronologyAuditUpgrade ? base.scene : { ...base.scene, ...(value.scene || {}) },
         sceneProfile: beatContractUpgrade ? base.sceneProfile : normalizeSceneProfile(value.sceneProfile ?? value.scene_profile),
         causalContext: causalContextUpgrade ? base.causalContext : normalizeCausalContext(value.causalContext ?? value.causal_context),
+        offscreenWorld: normalizeOffscreenWorld(value.offscreenWorld ?? value.offscreen_world),
         responseAudit: normalizeResponseAudit(value.responseAudit ?? value.response_audit),
         responsePatternMemory: cap(value.responsePatternMemory ?? value.response_pattern_memory, 12).map(item => clippedText(item, 140)).filter(Boolean),
         horizonRadar: normalizeHorizonRadar(value.horizonRadar ?? value.horizon_radar),
@@ -721,9 +726,11 @@ export function stateForPrompt(state) {
     const s = normalizeState(state);
     return {
         mode: s.mode,
+        turnCount: s.turnCount,
         scene: Object.fromEntries(Object.entries(s.scene).map(([key, value]) => [key, typeof value === 'string' ? value.slice(0, 100) : value])),
         sceneProfile: s.sceneProfile,
         causalContext: s.causalContext,
+        offscreenWorld: s.offscreenWorld,
         responseAudit: s.responseAudit,
         responsePatternMemory: s.responsePatternMemory.slice(-10),
         horizonRadar: {
@@ -863,13 +870,14 @@ function normalizeLoreModel(value = {}) {
     };
 }
 
-export function buildPromptPayload(state, { enabled = true, guidanceUsable = false, causalContext = null, directorSample = null, mode = null } = {}) {
+export function buildPromptPayload(state, { enabled = true, guidanceUsable = false, causalContext = null, sceneProfile = null, directorSample = null, mode = null } = {}) {
     if (!enabled || !guidanceUsable) return '';
     const s = normalizeState(state);
     const selectedContext = normalizeCausalContext(causalContext || s.causalContext);
     if (!hasUsableCausalContext(selectedContext)) return '';
     const selectedMode = directorSample?.mode || mode || s.mode;
-    const statePrompt = formatCausalContext(selectedContext, { mode: selectedMode });
+    const selectedSceneProfile = normalizeSceneProfile(sceneProfile || s.sceneProfile);
+    const statePrompt = formatCausalContext(selectedContext, { mode: selectedMode, sceneProfile: selectedSceneProfile });
     const guidancePrompt = `\n<living-world-guide>\n${statePrompt}\n</living-world-guide>`;
     return `<tale-fairy-context>${guidancePrompt}\n</tale-fairy-context>`;
 }

@@ -9,9 +9,25 @@ const INTRUSIONS = new Set(['closed', 'incidental', 'socially-open', 'dramatical
 const NOVELTY = new Set(['none', 'incidental', 'context-native', 'meaningful', 'major']);
 
 const MODE_TREATMENT = Object.freeze({
-    light: 'Let fitting conditions influence the response subtly; concrete movement is optional when stillness is more natural.',
-    balanced: 'Let at least one fitting condition meaningfully shape NPC or world behavior and create natural movement when appropriate.',
-    fun: 'Let fitting conditions interact boldly when supported, while leaving their concrete realization to the writing model.',
+    light: 'Make the reply self-propelling through one subtle fitting change in the present activity, relationship, understanding, or environment.',
+    balanced: 'Make the reply self-propelling through at least one fitting condition that meaningfully changes NPC or world behavior.',
+    fun: 'Make the reply self-propelling through a bolder interaction of fitting conditions when supported, while leaving their concrete realization to the writing model.',
+});
+
+const INTRUSION_TREATMENT = Object.freeze({
+    closed: 'Keep outside pressure silent or subtextual unless the latest turn opens the scene.',
+    incidental: 'Incidental setting texture may enter, but it must not displace the current activity.',
+    'socially-open': 'Natural social contact may carry existing pressure into the scene; an interruption is still optional.',
+    'dramatically-open': 'Existing pressure may complicate the scene openly when it has a credible route in.',
+    primed: 'A cause already converging may arrive openly, but even here no event is due merely for drama.',
+});
+
+const NOVELTY_TREATMENT = Object.freeze({
+    none: 'Keep movement within the established activity and causes, advancing their immediate state without adding a separate plot element.',
+    incidental: 'Keep any novelty incidental and immediately setting-native.',
+    'context-native': 'New detail may be context-native, not a genre-generic surprise.',
+    meaningful: 'A meaningful development is allowed only when supported by an existing cause.',
+    major: 'A major turn is possible only from an established cause already in motion; it is never required.',
 });
 
 function text(value, limit = 240) {
@@ -95,6 +111,7 @@ export function formatCausalContext(value, options = {}) {
     if (!hasUsableCausalContext(context)) return '';
     const modeValue = String(options.mode ?? '').trim().toLowerCase();
     const mode = MODES.has(modeValue) ? modeValue : 'balanced';
+    const sceneProfile = normalizeSceneProfile(options.sceneProfile);
     const conditions = providerCausalConditions(context);
     const open = conditions.filter(item => item.disclosure === 'open');
     const limited = conditions.filter(item => item.disclosure === 'limited');
@@ -105,6 +122,8 @@ export function formatCausalContext(value, options = {}) {
         section('Limited knowledge — do not make universally known:', limited),
         section('Private conditions — express through behavior unless disclosure becomes natural in-world:', privateItems),
         MODE_TREATMENT[mode],
+        'SELF-PROPELLING MOVEMENT: Every reply changes the current situation in an observable way independent of another player reply. Remaining in the same scene or activity is fully compatible: use task-native progress, an NPC decision or action, disclosure, consequence, discovery, opportunity, environmental change, or another fitting shift. Dialogue contributes when it changes what is known, decided, possible, or underway. Leave the player free to react or continue.',
+        `SCENE-SCALE BOUNDARY: ${INTRUSION_TREATMENT[sceneProfile.intrusion]} ${NOVELTY_TREATMENT[sceneProfile.noveltyCeiling]} Challenge may be social, intellectual, bureaucratic, material, emotional, environmental, or physical; combat is never the default. Quiet activity may continue without interruption while still gaining progress, substance, meaning, or changed circumstances. The latest explicit user/OOC request to stay, skip, or advance outranks every optional pressure.`,
         'Never use these conditions to author the player character’s choices, dialogue, consent, thoughts, feelings, or an uncertain result.',
     ].filter(Boolean).join('\n');
 }

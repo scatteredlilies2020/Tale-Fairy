@@ -27,12 +27,13 @@ function analyzed(messages = [{ is_user: false, mes: 'The figures conflict.' }])
     return state;
 }
 
-test('default state uses the v57 causal-context contract', () => {
+test('default state uses the v58 deferred-world contract', () => {
     const state = defaultState();
     assert.equal(state.version, STATE_VERSION);
-    assert.equal(STATE_VERSION, 57);
+    assert.equal(STATE_VERSION, 58);
     assert.deepEqual(state.causalContext.conditions, []);
     assert.equal(state.causalContext.inject, false);
+    assert.deepEqual(state.offscreenWorld, { subjects: [], elapsed: '', settledThrough: 0, audit: '' });
 });
 
 test('normalization bounds clean causal records and rejects incomplete ones', () => {
@@ -54,6 +55,11 @@ test('formatter exposes natural-language causes without internal metadata', () =
     assert.match(output, /Grain reserves are falling faster than reported\./);
     assert.doesNotMatch(output, /Merchants|strong|established|relevance|mira/);
     assert.match(output, /writing model chooses every concrete action/i);
+    assert.match(output, /self-propelling movement/i);
+    assert.match(output, /every reply changes the current situation/i);
+    assert.match(output, /remaining in the same scene or activity/i);
+    assert.match(output, /Dialogue contributes when it changes what is known, decided, possible, or underway/i);
+    assert.doesNotMatch(output, /question|interrogat/i);
 });
 
 test('private disclosure shapes behavior without requiring revelation', () => {
@@ -69,17 +75,41 @@ test('v56 migration clears prescribed beats rather than treating them as causes'
     assert.equal(state.beatDirective, undefined);
 });
 
-test('current v57 state preserves a normalized causal slice', () => {
-    const state = normalizeState(analyzed());
+test('v57 migration preserves its causal slice and initializes deferred world state', () => {
+    const state = normalizeState({ ...analyzed(), version: 57 });
     assert.equal(state.causalContext.conditions[0].subject, 'Mira');
     assert.equal(state.causalContext.inject, true);
+    assert.deepEqual(state.offscreenWorld.subjects, []);
+});
+
+test('v58 state normalizes and retains private offscreen debt', () => {
+    const state = normalizeState({ ...analyzed(), offscreenWorld: {
+        subjects: [{ id: 'harbor', kind: 'situation', subject: 'Harbor traffic', reach: 'remote', motion: 'building', trajectory: 'Ships are arriving late.', settled: 'One convoy was delayed.', confidence: 'strong', lastSeenTurn: 2, owed: 'Prices may rise.', carriedBy: 'merchant reports' }],
+        elapsed: 'Sixteen days', settledThrough: 2, audit: 'Private simulation only.',
+    } });
+    assert.equal(state.offscreenWorld.subjects[0].subject, 'Harbor traffic');
+    assert.equal(stateForPrompt(state).offscreenWorld.subjects[0].settled, 'One convoy was delayed.');
 });
 
 test('provider payload includes only clean causal context', () => {
-    const payload = buildPromptPayload(analyzed(), { enabled: true, guidanceUsable: true });
+    const state = analyzed();
+    state.offscreenWorld.subjects = [{ id: 'harbor', kind: 'situation', subject: 'Secret harbor debt', reach: 'remote', motion: 'building', trajectory: 'Ships are late.', settled: 'A convoy vanished.', confidence: 'strong', lastSeenTurn: 0, owed: 'A messenger may arrive.', carriedBy: 'private ledger' }];
+    const payload = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
     assert.match(payload, /<tale-fairy-context>/);
     assert.match(payload, /Mira suspects/);
     assert.doesNotMatch(payload, /Records|Current causes|Merchants|relevance/i);
+    assert.doesNotMatch(payload, /Secret harbor debt|convoy vanished|private ledger/i);
+});
+
+test('scene profile bounds outside pressure and preserves explicit OOC authority', () => {
+    const state = analyzed();
+    state.sceneProfile.intrusion = 'closed';
+    state.sceneProfile.noveltyCeiling = 'none';
+    const payload = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
+    assert.match(payload, /Keep outside pressure silent or subtextual/i);
+    assert.match(payload, /Keep movement within the established activity and causes/i);
+    assert.match(payload, /Quiet activity may continue without interruption while still gaining progress/i);
+    assert.match(payload, /user\/OOC request to stay, skip, or advance outranks/i);
 });
 
 test('missing, tentative-only, stale, and disabled state inject nothing', () => {
@@ -131,7 +161,7 @@ test('replacement generation strips only the discarded assistant reply', () => {
 
 test('request verification keeps the exact archived causal slice', () => {
     const state = analyzed();
-    const verification = { status: 'confirmed', injectionDecision: 'inject', runtimeVersion: '0.13.0', verificationId: 'v', guidanceBlock: 'x', requestedAt: 1, confirmedAt: 2, sourceMessageCount: 1, sourceFingerprint: fingerprintMessages([{ is_user: true, mes: 'Question' }]), responseMessageCount: 2, chatId: 'chat', replacementGeneration: false, sceneProfile: state.sceneProfile, causalContext: state.causalContext };
+    const verification = { status: 'confirmed', injectionDecision: 'inject', runtimeVersion: '0.13.4', verificationId: 'v', guidanceBlock: 'x', requestedAt: 1, confirmedAt: 2, sourceMessageCount: 1, sourceFingerprint: fingerprintMessages([{ is_user: true, mes: 'Question' }]), responseMessageCount: 2, chatId: 'chat', replacementGeneration: false, sceneProfile: state.sceneProfile, causalContext: state.causalContext };
     const normalized = normalizeState({ ...state, lastRequestVerification: verification }).lastRequestVerification;
     assert.equal(normalized.causalContext.conditions[0].subject, 'Mira');
     assert.equal(returnedReplyMatchesVerification(normalized, [{ is_user: true, mes: 'Question' }, { is_user: false, mes: 'Reply' }], 'chat'), true);

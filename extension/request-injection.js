@@ -1,3 +1,5 @@
+import { normalizeInjectionRole } from './injection-role.js?v=0.13.4';
+
 const CONTEXT_PATTERN = /\n?<tale-fairy-context>[\s\S]*?<\/tale-fairy-context>\n?/giu;
 const LEGACY_GUIDE_PATTERN = /\n?<living-world-guide>[\s\S]*?<\/living-world-guide>\n?/giu;
 const LEGACY_POLICY_PATTERN = /\n?<tale-fairy-narrative-policy>[\s\S]*?<\/tale-fairy-narrative-policy>\n?/giu;
@@ -158,7 +160,7 @@ export function ensureGuidanceInChat(chat, payload, { role = 'user', depth = 1, 
     const safeDepth = Math.max(0, Math.min(chat.length, Number(depth) || 0));
     const index = Math.max(0, chat.length - safeDepth);
     chat.splice(index, 0, {
-        role: ['system', 'user', 'assistant'].includes(role) ? role : 'user',
+        role: normalizeInjectionRole(role),
         content: context,
         injected: true,
     });

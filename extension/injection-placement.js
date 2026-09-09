@@ -1,3 +1,5 @@
+import { normalizeInjectionRole } from './injection-role.js?v=0.13.4';
+
 export const PROMPT_MANAGER_SLOTS = Object.freeze({
     'before-character-definitions': { anchor: 'charDescription', after: false },
     'after-character-definitions': { anchor: 'scenario', after: true },
@@ -19,9 +21,10 @@ export function resolveInjectionPlacement(settings, promptTypes, promptRoles) {
                 ? promptTypes.IN_PROMPT
                 : promptTypes.IN_CHAT;
     const roles = { system: promptRoles.SYSTEM, user: promptRoles.USER, assistant: promptRoles.ASSISTANT };
+    const role = normalizeInjectionRole(settings?.injectionRole);
     return {
         position,
         depth: settings?.injectionPosition === 'at-depth' ? Math.min(100, Math.max(0, Number(settings?.injectionDepth) || 0)) : 0,
-        role: roles[settings?.injectionRole] ?? promptRoles.USER,
+        role: roles[role],
     };
 }

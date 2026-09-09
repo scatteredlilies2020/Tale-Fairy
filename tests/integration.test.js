@@ -5,6 +5,7 @@ import test from 'node:test';
 const source = await readFile(new URL('../extension/index.js', import.meta.url), 'utf8');
 const stateSource = await readFile(new URL('../extension/state.js', import.meta.url), 'utf8');
 const analysisSource = await readFile(new URL('../extension/analysis.js', import.meta.url), 'utf8');
+const offscreenSource = await readFile(new URL('../extension/offscreen-world.js', import.meta.url), 'utf8');
 const causalSource = await readFile(new URL('../extension/causal-context.js', import.meta.url), 'utf8');
 const schedulerSource = await readFile(new URL('../extension/planner-scheduler.js', import.meta.url), 'utf8');
 const fallbackSource = await readFile(new URL('../extension/fallback-direction.js', import.meta.url), 'utf8');
@@ -14,36 +15,52 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest, browser runtime, and detached plugin share the release version', () => {
-    assert.equal(manifest.version, '0.13.0');
-    assert.equal(manifest.js, 'extension/index.js?v=0.13.0');
-    assert.equal(manifest.css, 'extension/style.css?v=0.13.0');
+    assert.equal(manifest.version, '0.13.4');
+    assert.equal(manifest.js, 'extension/index.js?v=0.13.4');
+    assert.equal(manifest.css, 'extension/style.css?v=0.13.4');
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.13\.0'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.13\.0'/);
+    assert.match(pluginSource, /const VERSION = '0\.13\.4'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.13\.4'/);
 });
 
-test('runtime uses causal context and has no prescriptive beat-director dependency', () => {
-    assert.match(source, /from '\.\/causal-context\.js\?v=0\.13\.0'/);
-    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.13\.0'/);
+test('roleplay injection never migrates the user default into a system message', () => {
+    assert.match(source, /injectionRole:\s*DEFAULT_INJECTION_ROLE/);
+    assert.doesNotMatch(source, /injectionRole\s*===\s*['"]user['"][^\n]*injectionRole\s*=\s*['"]system['"]/);
+    assert.match(template, /<option value="user">User \(default\)<\/option>/);
+    assert.match(template, /<option value="system">System<\/option>/);
+    assert.match(template, /<option value="assistant">Assistant<\/option>/);
+});
+
+test('runtime uses causal context and deferred world state without prescriptive beat-director dependency', () => {
+    assert.match(source, /from '\.\/causal-context\.js\?v=0\.13\.4'/);
+    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.13\.4'/);
     assert.doesNotMatch(source, /beat-director/);
     assert.doesNotMatch(stateSource, /beat-director/);
-    assert.match(stateSource, /export const STATE_VERSION = 57/);
+    assert.match(stateSource, /export const STATE_VERSION = 58/);
+    assert.match(stateSource, /offscreenWorld/);
     assert.match(stateSource, /delete state\.beatDirective/);
 });
 
 test('planner contracts return active world conditions rather than future branches', () => {
-    assert.match(analysisSource, /contract_version=8/);
-    assert.match(analysisSource, /contract_version=10/);
+    assert.match(analysisSource, /contract_version=9/);
+    assert.match(analysisSource, /contract_version=11/);
     assert.match(analysisSource, /private active-world simulator/i);
     assert.match(analysisSource, /underlying conditions|present causal state/i);
     assert.match(analysisSource, /Never prescribe a future action, scene, event, dialogue, reveal, discovery, consequence, or outcome/i);
     assert.match(analysisSource, /Do not assume expressed means resolved|Do not equate mention with resolution/i);
+    assert.match(analysisSource, /deferred debt, not continuous ticking/i);
+    assert.match(analysisSource, /Every provider response is self-propelling/i);
+    assert.match(analysisSource, /same scene or activity continues/i);
+    assert.match(offscreenSource, /scheduled arrival/i);
     assert.doesNotMatch(analysisSource, /one primary.*two.*alternatives/i);
 });
 
 test('provider context exposes only clean relevant conditions', () => {
     assert.match(causalSource, /RELEVANT UNDERLYING CONDITIONS/);
     assert.match(causalSource, /causal context, not required events or predetermined outcomes/i);
+    assert.match(causalSource, /SELF-PROPELLING MOVEMENT/);
+    assert.match(causalSource, /Every reply changes the current situation/i);
+    assert.doesNotMatch(causalSource, /question|interrogat/i);
     assert.match(causalSource, /confidence !== 'tentative'/);
     assert.doesNotMatch(causalSource, /branchIndex|weighted random choice|NEXT-STEP EFFECT/);
     assert.match(stateSource, /formatCausalContext/);
@@ -58,10 +75,18 @@ test('generation archives and reuses the same causal slice for regeneration', ()
     assert.doesNotMatch(interceptor, /await |analyzeNow\(/);
 });
 
-test('missing or failed planning never invents provider facts', () => {
+test('scratchpad rendering derives its request preview from defined live state', () => {
+    assert.match(source, /const preparedSelection = generationGuideSelection\?\.chatId === chatId \? generationGuideSelection : null/);
+    assert.doesNotMatch(source, /\bactiveSelection\b/);
+});
+
+test('failed planning supplies only transcript-grounded fallback conditions', () => {
     assert.match(fallbackSource, /causalContext/);
-    assert.match(fallbackSource, /next\.causalContext = clean\.causalContext/);
-    assert.match(fallbackSource, /next\.lastInject = false/);
+    assert.match(fallbackSource, /fallbackCausalConditions/);
+    assert.match(fallbackSource, /authoritative transcript status/);
+    assert.match(fallbackSource, /next\.lastInject = true/);
+    assert.match(analysisSource, /beginning of observation, not the birth of the world/);
+    assert.match(source, /allowValidationRepair: true/);
     assert.match(schedulerSource, /causalContext/);
 });
 
@@ -75,7 +100,7 @@ test('SillyTavern interception and detached planner compatibility remain intact'
     assert.match(source, /ensureGuidanceInText/);
     assert.match(source, /X-Tale-Fairy-Job-Id/);
     assert.match(pluginSource, /router\.post\('\/planner-jobs\/generate'/);
-    assert.match(pluginSource, /\[2, 3, 4, 5, 6, 7, 8, 9, 10\]\.includes\(value\.contract_version\)/);
+    assert.match(pluginSource, /\[2, 3, 4, 5, 6, 7, 8, 9, 10, 11\]\.includes\(value\.contract_version\)/);
 });
 
 test('planner token budgets, retries, and nonblocking behavior remain compatible', () => {

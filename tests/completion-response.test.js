@@ -22,6 +22,13 @@ test('reads a direct causal-context v8 structured result', () => {
     assert.equal(completionText(result), JSON.stringify(result));
 });
 
+test('reads direct deferred-world v9 and v11 structured results', () => {
+    const full = { contract_version: 9, current: {}, context: {}, offscreen: {} };
+    const incremental = { contract_version: 11, current: {}, context: {}, offscreen: {} };
+    assert.equal(completionText(full), JSON.stringify(full));
+    assert.equal(completionText(incremental), JSON.stringify(incremental));
+});
+
 test('retains support for direct horizon-aware v7 structured results in flight', () => {
     const result = { contract_version: 7, current: {}, beat: {}, response_audit: {}, horizon: {} };
     assert.equal(completionText(result), JSON.stringify(result));
