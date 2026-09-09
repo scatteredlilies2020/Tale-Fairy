@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-    formatDriftRequest, mergeOffscreenWorld, normalizeOffscreenWorld, subjectsOwingDrift,
+    formatDriftRequest, mergeOffscreenWorld, normalizeOffscreenWorld, OFFSCREEN_KINDS, subjectsOwingDrift,
 } from '../extension/offscreen-world.js';
 
 function subject(overrides = {}) {
@@ -31,6 +31,18 @@ test('normalization bounds the private board and accepts snake-case planner fiel
     ] });
     assert.equal(deduplicated.subjects.length, 1);
     assert.equal(deduplicated.subjects[0].subject, 'Harbor traffic');
+});
+
+test('deferred simulation supports social, settlement, and material causal units directly', () => {
+    assert.ok(OFFSCREEN_KINDS.includes('relationship'));
+    assert.ok(OFFSCREEN_KINDS.includes('community'));
+    assert.ok(OFFSCREEN_KINDS.includes('resource'));
+    const value = normalizeOffscreenWorld({ subjects: [
+        subject({ id: 'ward', kind: 'community', subject: 'Riverside ward' }),
+        subject({ id: 'water', kind: 'resource', subject: 'Reservoir capacity' }),
+        subject({ id: 'trust', kind: 'relationship', subject: 'Council–market trust' }),
+    ] });
+    assert.deepEqual(value.subjects.map(item => item.kind), ['community', 'resource', 'relationship']);
 });
 
 test('drift candidates exclude current and static subjects and sort oldest first', () => {

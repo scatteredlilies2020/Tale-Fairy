@@ -1,4 +1,8 @@
-const KINDS = new Set(['actor', 'group', 'institution', 'system', 'environment', 'place', 'situation']);
+export const OFFSCREEN_KINDS = Object.freeze([
+    'actor', 'relationship', 'group', 'community', 'institution',
+    'system', 'resource', 'environment', 'place', 'situation',
+]);
+const KINDS = new Set(OFFSCREEN_KINDS);
 const REACH = new Set(['present', 'near', 'distant', 'remote']);
 const MOTION = new Set(['static', 'drifting', 'building', 'accelerating', 'resolving']);
 const CONFIDENCES = new Set(['established', 'strong', 'tentative']);

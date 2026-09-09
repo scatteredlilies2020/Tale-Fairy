@@ -7,7 +7,7 @@ import {
     stateForPrompt,
 } from '../extension/state.js';
 import {
-    formatCausalContext, hasUsableCausalContext, normalizeCausalContext, providerCausalConditions,
+    CAUSAL_KINDS, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, providerCausalConditions,
 } from '../extension/causal-context.js';
 
 const conditions = [
@@ -41,6 +41,17 @@ test('normalization bounds clean causal records and rejects incomplete ones', ()
     const value = normalizeCausalContext({ conditions: [...many, { id: '', subject: 'Bad', condition: 'exists', relevance: 'now' }], inject: true });
     assert.equal(value.conditions.length, 6);
     assert.equal(value.conditions[0].kind, 'actor');
+});
+
+test('causal context represents towns, places, resources, and situations without generic coercion', () => {
+    for (const kind of ['community', 'place', 'resource', 'situation']) assert.ok(CAUSAL_KINDS.includes(kind));
+    const value = normalizeCausalContext({
+        conditions: ['community', 'place', 'resource', 'situation'].map((kind, index) => ({
+            ...conditions[0], id: `adaptive-${index}`, kind, subject: `${kind} subject`,
+        })),
+        inject: true,
+    });
+    assert.deepEqual(value.conditions.map(item => item.kind), ['community', 'place', 'resource', 'situation']);
 });
 
 test('tentative conditions remain private while strong and established ones inject', () => {
@@ -110,6 +121,8 @@ test('scene profile bounds outside pressure and preserves explicit OOC authority
     assert.match(payload, /Keep movement within the established activity and causes/i);
     assert.match(payload, /Quiet activity may continue without interruption while still gaining progress/i);
     assert.match(payload, /user\/OOC request to stay, skip, or advance outranks/i);
+    assert.match(payload, /under-specified world as an empty one/i);
+    assert.match(payload, /opposition may be personal or systemic/i);
 });
 
 test('missing, tentative-only, stale, and disabled state inject nothing', () => {
@@ -161,7 +174,7 @@ test('replacement generation strips only the discarded assistant reply', () => {
 
 test('request verification keeps the exact archived causal slice', () => {
     const state = analyzed();
-    const verification = { status: 'confirmed', injectionDecision: 'inject', runtimeVersion: '0.13.4', verificationId: 'v', guidanceBlock: 'x', requestedAt: 1, confirmedAt: 2, sourceMessageCount: 1, sourceFingerprint: fingerprintMessages([{ is_user: true, mes: 'Question' }]), responseMessageCount: 2, chatId: 'chat', replacementGeneration: false, sceneProfile: state.sceneProfile, causalContext: state.causalContext };
+    const verification = { status: 'confirmed', injectionDecision: 'inject', runtimeVersion: '0.13.5', verificationId: 'v', guidanceBlock: 'x', requestedAt: 1, confirmedAt: 2, sourceMessageCount: 1, sourceFingerprint: fingerprintMessages([{ is_user: true, mes: 'Question' }]), responseMessageCount: 2, chatId: 'chat', replacementGeneration: false, sceneProfile: state.sceneProfile, causalContext: state.causalContext };
     const normalized = normalizeState({ ...state, lastRequestVerification: verification }).lastRequestVerification;
     assert.equal(normalized.causalContext.conditions[0].subject, 'Mira');
     assert.equal(returnedReplyMatchesVerification(normalized, [{ is_user: true, mes: 'Question' }, { is_user: false, mes: 'Reply' }], 'chat'), true);

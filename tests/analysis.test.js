@@ -108,6 +108,10 @@ test('planner prompt defines private active simulation rather than future branch
     assert.doesNotMatch(`${SYSTEM}\n${INCREMENTAL_SYSTEM}\n${Object.values(MODE_INSTRUCTIONS).join('\n')}`, /question|interrogat/i);
     assert.doesNotMatch(SYSTEM, /exactly two conditional/i);
     assert.match(INCREMENTAL_SYSTEM, /tentative stays private/i);
+    assert.match(SYSTEM, /conversation, household, slice of life, business, town, country, ecosystem/i);
+    assert.match(SYSTEM, /under-specified setting is open simulation space/i);
+    assert.match(SYSTEM, /Enemies and threats are optional, never defaults/i);
+    assert.match(INCREMENTAL_SYSTEM, /adapt smoothly among personal, slice-of-life, household, organization, town, country/i);
 });
 
 test('analysis prompt carries broad state but asks for only a relevant slice', () => {
@@ -121,6 +125,23 @@ test('analysis prompt carries broad state but asks for only a relevant slice', (
     assert.equal(prompt.planner_clock.output_turn, 1);
     assert.match(prompt.distance_rule, /fourteen days/i);
     assert.match(prompt.scene_scale_rule, /user\/OOC request/i);
+    assert.match(prompt.adaptation_rule, /town through residents, services, supply, governance, infrastructure/i);
+    assert.match(prompt.world_generation_rule, /Generate compatible new information/i);
+    assert.match(prompt.opposition_rule, /New adversaries or threats need a setting-native motive, capability, constraint, and causal route/i);
+});
+
+test('planner schemas and validation accept settlement-scale causal units', () => {
+    for (const kind of ['community', 'place', 'resource', 'situation']) {
+        assert.ok(ANALYSIS_SCHEMA_VALUE.properties.context.properties.conditions.items.properties.kind.enum.includes(kind));
+    }
+    for (const kind of ['relationship', 'community', 'resource']) {
+        assert.ok(ANALYSIS_SCHEMA_VALUE.properties.offscreen.properties.subjects.items.properties.kind.enum.includes(kind));
+    }
+    const result = full({
+        context: { ...full().context, conditions: [{ ...conditions[0], kind: 'community', subject: 'Riverside ward' }] },
+        offscreen: { ...offscreen, subjects: [{ ...offscreen.subjects[0], kind: 'resource', subject: 'Reservoir capacity' }] },
+    });
+    assert.deepEqual(validateAnalysisResult(result), { valid: true, errors: [] });
 });
 
 test('planner receives deferred debt as candidates, never a scheduled arrival', () => {
@@ -142,6 +163,8 @@ test('incremental prompt remains compact and omits horizon regeneration', () => 
     const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { incremental: true }));
     assert.equal(prompt.horizon_rule, undefined);
     assert.match(prompt.fast_rules, /Tentative conditions stay private/i);
+    assert.match(prompt.fast_rules, /under-specified world permits compatible setting-native information/i);
+    assert.match(prompt.fast_rules, /new opposition remain tentative/i);
 });
 
 test('configured prompt budget remains bounded with long history', () => {

@@ -15,12 +15,12 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest, browser runtime, and detached plugin share the release version', () => {
-    assert.equal(manifest.version, '0.13.4');
-    assert.equal(manifest.js, 'extension/index.js?v=0.13.4');
-    assert.equal(manifest.css, 'extension/style.css?v=0.13.4');
+    assert.equal(manifest.version, '0.13.5');
+    assert.equal(manifest.js, 'extension/index.js?v=0.13.5');
+    assert.equal(manifest.css, 'extension/style.css?v=0.13.5');
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.13\.4'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.13\.4'/);
+    assert.match(pluginSource, /const VERSION = '0\.13\.5'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.13\.5'/);
 });
 
 test('roleplay injection never migrates the user default into a system message', () => {
@@ -32,8 +32,8 @@ test('roleplay injection never migrates the user default into a system message',
 });
 
 test('runtime uses causal context and deferred world state without prescriptive beat-director dependency', () => {
-    assert.match(source, /from '\.\/causal-context\.js\?v=0\.13\.4'/);
-    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.13\.4'/);
+    assert.match(source, /from '\.\/causal-context\.js\?v=0\.13\.5'/);
+    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.13\.5'/);
     assert.doesNotMatch(source, /beat-director/);
     assert.doesNotMatch(stateSource, /beat-director/);
     assert.match(stateSource, /export const STATE_VERSION = 58/);
@@ -52,6 +52,9 @@ test('planner contracts return active world conditions rather than future branch
     assert.match(analysisSource, /Every provider response is self-propelling/i);
     assert.match(analysisSource, /same scene or activity continues/i);
     assert.match(offscreenSource, /scheduled arrival/i);
+    assert.match(analysisSource, /under-specified setting is open simulation space/i);
+    assert.match(analysisSource, /Enemies and threats are optional, never defaults/i);
+    assert.match(analysisSource, /communities, settlements, organizations, institutions, resources, economies, infrastructure/i);
     assert.doesNotMatch(analysisSource, /one primary.*two.*alternatives/i);
 });
 
@@ -116,6 +119,8 @@ test('planner token budgets, retries, and nonblocking behavior remain compatible
 test('settings describe private simulation and causal injection without branch controls', () => {
     assert.match(template, /active world simulation|world simulation/i);
     assert.match(template, /causal context|underlying conditions/i);
+    assert.match(template, /slice of life and households through towns, organizations, countries, ecosystems/i);
+    assert.match(template, /without making enemies, combat, or escalation mandatory/i);
     assert.doesNotMatch(template, /one primary NPC\/world response and two redirect-safe alternatives/i);
     assert.doesNotMatch(template, /one compatible external branch/i);
     assert.doesNotMatch(template, /data-setting="pacing"|Scene pacing/);
