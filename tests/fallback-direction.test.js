@@ -11,7 +11,7 @@ test('detached metadata retains the authoritative transcript head for recovery v
     assert.deepEqual(JSON.parse(alignmentPromptFromMeta({ transcriptHead: head })).transcript_head, head);
 });
 
-test('planner failure retains transcript context but injects no invented causal facts', () => {
+test('planner failure infers a minimal in-medias-res causal slice from transcript status', () => {
     const messages = [{ mes: 'latest assistant', is_user: false }];
     const fingerprint = fingerprintMessages(messages);
     const head = { authoritative_assistant_status: 'Time & Weather = Time: 01:10 PM\nLocation = East Refectory south alcove\nCurrent Beat = Nim approves the private supporting-case draft.' };
@@ -21,7 +21,23 @@ test('planner failure retains transcript context but injects no invented causal 
     assert.equal(state.scene.time, 'Time: 01:10 PM');
     assert.equal(state.scene.location, 'East Refectory south alcove');
     assert.match(state.scene.activity, /supporting-case draft/i);
-    assert.equal(state.causalContext.conditions.length, 0);
-    assert.equal(state.lastInject, false);
-    assert.equal(isGuidanceUsable(state, messages, 'chat-1'), false);
+    assert.equal(state.causalContext.conditions.length, 2);
+    assert.match(state.causalContext.conditions[0].condition, /supporting-case draft/i);
+    assert.equal(state.causalContext.conditions[0].confidence, 'established');
+    assert.equal(state.causalContext.conditions[1].subject, 'East Refectory south alcove');
+    assert.equal(state.lastInject, true);
+    assert.equal(isGuidanceUsable(state, messages, 'chat-1'), true);
+});
+
+test('a headerless first exchange still represents an ongoing world', () => {
+    const messages = [{ mes: 'The tavern door opens on an argument already underway.', is_user: false }];
+    const fingerprint = fingerprintMessages(messages);
+    const state = createSafetyFallbackState(defaultState(), {
+        messages, chatId: 'chat-1', fingerprint, turnCount: 1, reason: 'planner timed out',
+    });
+    assert.equal(state.causalContext.conditions.length, 1);
+    assert.equal(state.causalContext.conditions[0].id, 'fallback-ongoing-world');
+    assert.match(state.causalContext.conditions[0].condition, /already in progress/i);
+    assert.equal(state.lastInject, true);
+    assert.equal(isGuidanceUsable(state, messages, 'chat-1'), true);
 });

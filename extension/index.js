@@ -1753,7 +1753,10 @@ async function requestAnalysis(prompt, externalSignal, detachedMeta) {
             // budget before the provider emits an answer. Full Rebuild still
             // honors the configured/inherited reasoning level.
             reasoningMode: 'off',
-            allowValidationRepair: false,
+            // Invalid structured output still gets one focused repair pass.
+            // A routine refresh must not discard an active world merely because
+            // the first response omitted a required field.
+            allowValidationRepair: true,
             label: 'incremental planner',
             cacheNamespace: 'analysis-incremental-v9',
         }),

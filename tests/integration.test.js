@@ -80,10 +80,13 @@ test('scratchpad rendering derives its request preview from defined live state',
     assert.doesNotMatch(source, /\bactiveSelection\b/);
 });
 
-test('missing or failed planning never invents provider facts', () => {
+test('failed planning supplies only transcript-grounded fallback conditions', () => {
     assert.match(fallbackSource, /causalContext/);
-    assert.match(fallbackSource, /next\.causalContext = clean\.causalContext/);
-    assert.match(fallbackSource, /next\.lastInject = false/);
+    assert.match(fallbackSource, /fallbackCausalConditions/);
+    assert.match(fallbackSource, /authoritative transcript status/);
+    assert.match(fallbackSource, /next\.lastInject = true/);
+    assert.match(analysisSource, /beginning of observation, not the birth of the world/);
+    assert.match(source, /allowValidationRepair: true/);
     assert.match(schedulerSource, /causalContext/);
 });
 

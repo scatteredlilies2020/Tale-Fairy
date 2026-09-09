@@ -9,6 +9,68 @@ function statusFields(value) {
     return fields;
 }
 
+function cleanClause(value, limit = 220) {
+    return String(value || '')
+        .replace(/<[^>]*>/gu, ' ')
+        .replace(/\s+/gu, ' ')
+        .replace(/^[\s:;,.!?-]+|[\s:;,.!?-]+$/gu, '')
+        .trim()
+        .slice(0, limit);
+}
+
+function fallbackCausalConditions({ currentBeat = '', location = '', time = '' } = {}) {
+    const conditions = [];
+    const beat = cleanClause(currentBeat);
+    const place = cleanClause(location, 120);
+    const clock = cleanClause(time, 120);
+
+    if (beat) {
+        conditions.push({
+            id: 'fallback-current-scene',
+            kind: 'system',
+            subject: 'The current scene',
+            condition: `is already underway around ${beat}; its established participants, relationships, and constraints remain causally active`,
+            disclosure: 'open',
+            confidence: 'established',
+            relevance: 'The authoritative transcript status identifies this as the current beat.',
+        });
+    }
+    if (place) {
+        conditions.push({
+            id: 'fallback-active-setting',
+            kind: 'environment',
+            subject: place,
+            condition: 'is the active setting, whose established environment and occupants continue operating beyond the visible exchange',
+            disclosure: 'open',
+            confidence: 'established',
+            relevance: 'The authoritative transcript status identifies this as the current location.',
+        });
+    }
+    if (!conditions.length && clock) {
+        conditions.push({
+            id: 'fallback-active-time',
+            kind: 'environment',
+            subject: 'The current environment',
+            condition: `continues under the established time and weather context: ${clock}`,
+            disclosure: 'open',
+            confidence: 'established',
+            relevance: 'The authoritative transcript status supplies the current temporal context.',
+        });
+    }
+    if (!conditions.length) {
+        conditions.push({
+            id: 'fallback-ongoing-world',
+            kind: 'system',
+            subject: 'The ongoing roleplay situation',
+            condition: 'is already in progress at the transcript opening; its latest established activity, relationships, and constraints remain causally active rather than resetting with the chat',
+            disclosure: 'open',
+            confidence: 'established',
+            relevance: 'A chat opening is an in-medias-res observation of the world, not the beginning of that world.',
+        });
+    }
+    return conditions;
+}
+
 export function createSafetyFallbackState(state, {
     transcriptHead = null,
     messages = [],
@@ -36,15 +98,21 @@ export function createSafetyFallbackState(state, {
     };
     next.sceneProfile = {
         ...clean.sceneProfile,
-        promise: 'Continue directly from the latest transcript without inventing player action.',
+        promise: 'Continue the already-active world directly from the latest transcript without inventing player action.',
         phase: 'developing',
         emotionalDirection: 'preserve',
         noveltyCeiling: 'context-native',
         basis: 'Transcript-bound safety fallback used because the adaptive planner did not produce a usable result.',
     };
-    // A planner failure cannot safely invent causal facts. Keep the fallback
-    // transcript-bound and inject nothing until a verified analysis succeeds.
-    next.causalContext = clean.causalContext;
+    // A chat opening is only the edge of the observation window, never the
+    // beginning of the world. If the planner fails, retain a minimal causal
+    // slice grounded exclusively in the authoritative transcript status.
+    next.causalContext = {
+        conditions: fallbackCausalConditions({ currentBeat, location, time }),
+        inject: true,
+        injectReason: 'A minimal in-medias-res causal slice was inferred from the authoritative transcript after planner failure.',
+        basis: 'Transcript-grounded safety inference; no future event or player action was invented.',
+    };
     next.responseAudit = clean.responseAudit;
     next.hiddenMotives = clean.hiddenMotives;
     next.horizonRadar = clean.horizonRadar;
@@ -56,8 +124,8 @@ export function createSafetyFallbackState(state, {
         activityRole: 'routine',
         temporalScope: 'action',
     };
-    next.lastInject = false;
-    next.lastReason = `No causal context injected; planner fallback retained only the latest transcript${reason ? ` after ${String(reason).slice(0, 160)}` : ''}.`;
+    next.lastInject = true;
+    next.lastReason = `Minimal transcript-grounded causal context inferred after planner fallback${reason ? `: ${String(reason).slice(0, 160)}` : ''}.`;
     next.lastAnalysisFingerprint = fingerprint;
     next.sourceMessageCount = messages.length;
     next.sourceChatId = String(chatId || '');
