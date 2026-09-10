@@ -4,7 +4,7 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.13.6';
+import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.13.7';
 import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.13.6';
 import { selectSituationalOpenings } from './situations.js?v=0.13.6';
 import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.13.6';
@@ -30,7 +30,7 @@ import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-me
 import { createSafetyFallbackState } from './fallback-direction.js?v=0.13.6';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.13.6';
+const RUNTIME_VERSION = '0.13.7';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -1234,7 +1234,7 @@ function parseAnalysisResponse(value, prompt = '') {
         const rawResult = value && typeof value === 'object' && !Array.isArray(value) && ([2, 8, 9, 10, 11, 12, 13].includes(value.contract_version) || value.scene)
             ? value
             : extractJson(completionText(value));
-        const result = abstractIncrementalVisibleBranches(rawResult);
+        const result = normalizeAnalysisDiagnostics(abstractIncrementalVisibleBranches(rawResult));
         const validation = validateAnalysisResult(result);
         if (!validation.valid) {
             const validationErrors = validation.errors.slice(0, 16);
@@ -2030,7 +2030,12 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const frame = state.storyFrame.frame && state.storyFrame.frame !== 'unknown'
         ? `${state.storyFrame.frame}${state.storyFrame.confidence ? ` · ${state.storyFrame.confidence} confidence` : ''}${state.storyFrame.basis ? `\nBasis: ${state.storyFrame.basis}` : ''}`
         : '';
-    scratchpadText(board, 'scratchpad-frame', analyzed ? frame : '', 'No generated story frame yet.');
+    const missingAnalysis = state.canonBootstrapPending
+        ? `Full rebuild has not completed. ${state.lastReason || 'Waiting for a valid planner result.'}`
+        : analyzed && /planner fallback/iu.test(state.lastReason)
+            ? `Planner analysis failed. ${state.lastReason}`
+            : '';
+    scratchpadText(board, 'scratchpad-frame', analyzed ? frame : '', missingAnalysis || 'No generated story frame yet.');
 
     const lore = state.loreModel || {};
     const loreText = [
@@ -2041,7 +2046,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         lore.baselineDepartures?.length && `Departures: ${lore.baselineDepartures.join('; ')}`,
         lore.activeForces?.length && `Relevant forces: ${lore.activeForces.join('; ')}`,
     ].filter(Boolean).join('\n');
-    scratchpadText(board, 'scratchpad-lore', analyzed ? loreText : '', 'No generated lore model yet.');
+    scratchpadText(board, 'scratchpad-lore', analyzed ? loreText : '', missingAnalysis || 'No generated lore model yet.');
 
     const motiveText = formatHiddenMotives(state.hiddenMotives, analyzed);
     scratchpadOptionalText(board, 'scratchpad-hidden-motives-section', 'scratchpad-hidden-motives', motiveText);
