@@ -4,7 +4,7 @@ Tale Fairy is a standalone SillyTavern extension that runs a **private active-wo
 
 ## What it does
 
-- Maintains broad world state privately, but injects only **1–6 currently relevant underlying conditions**—normally 3–6 when supported. Each clean line describes what a subject wants, believes, knows, can do, is constrained by, or is under pressure from.
+- Maintains broad world state privately, but injects only **1–6 currently relevant underlying conditions**—normally 1–3 on routine updates, more only when useful. Each clean line describes what a subject wants, believes, knows, can do, is constrained by, or is under pressure from.
 - Leaves concrete actions, events, dialogue, revelations, consequences, scene routes, and outcomes to the main roleplay model. Tale Fairy supplies causes, not a predetermined next beat.
 - Withholds internal IDs, confidence, relevance reasoning, evidence, rankings, and future plans from the roleplay prompt. Tentative reconstructions stay Scratchpad-only instead of being presented as facts.
 - Distinguishes open, limited, and private knowledge. Private motivations may shape believable behavior without forcing the roleplay model to reveal them.
@@ -50,6 +50,24 @@ Browser-independent planning requires the bundled `plugin` directory to be insta
 Before the provider request is sent, Tale Fairy atomically replaces stale Tale Fairy material and verifies that the assembled payload contains exactly the current dynamic context. If SillyTavern's normal extension-prompt path omitted it, Tale Fairy repairs the request in place. The `<tale-fairy-context>` and inner `<living-world-guide>` blocks are therefore visible in Prompt Inspector for the roleplay request.
 
 ## Scope
+
+### Lightweight planning
+
+Routine replies use **one background update**, not separate planning and critique calls. The update returns changed offscreen subjects and motive hypotheses, a fresh causal slice, and a small audit of the newest reply. Unchanged records stay local. The audit checks meaningful task, relationship, understanding, or circumstance changes rather than counting gestures; rest, quiet scenes, and scene endings remain valid.
+
+| Pass | Input ceiling, including instructions and schema | Output ceiling |
+| --- | ---: | ---: |
+| Routine update | 6,000 tokens | 2,304 tokens |
+| Bounded story review | 9,000 tokens | 4,096 tokens |
+| Initialization / explicit rebuild | Configured budget (default 16,000) | 16,384 tokens |
+
+Broader reviews run every **12 accepted assistant replies** by default (configurable from 3–20), or sooner for a detected correction, scene/time pivot, or manual reevaluation. Routine completions do not reset that clock. A review replaces that turn's routine pass; it is not an additional call or a full transcript rebuild. Routine updates and bounded reviews request reasoning off where supported. Existing compatibility retries and invalid-output repair can still require another request. Story generation never waits for planning.
+
+Repeated rules and legacy planner scaffolding are removed from tight prompts before recent story evidence. Token fitting includes the schema and falls back to a local estimate if the provider tokenizer fails. The routine 6,000-token ceiling makes the previously enforced runtime minimum explicit; it is not an increase from an actual 4,200-token limit.
+
+Offscreen history uses a durable local journal and archive, with only selected witnesses retrieved into prompts. New relevant subjects can enter a full active board without erasing older facts. Local saved history can grow with play, but it is not sent in full every turn. Knowledge conditions record evidenced knowers and learning routes; private beliefs are not promoted to objective truth or automatic player knowledge. Family relationships and proposal attribution are preserved instead of globally rewritten from the newest mention.
+
+Run `npm test` for offline regression checks. These verify budgets, state transitions, and injection boundaries—not the quality of live model prose. See [story evaluation](docs/story-evaluation.md) for a small paired quality check.
 
 This is a lightweight, chat-local active-world simulation and causal-context layer with enough retained working continuity to function independently. It consumes available summaries and context regardless of their source. The optional Continuity bridge is merely one-way input compatibility, not a dependency or division of responsibility.
 

@@ -15,12 +15,12 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest, browser runtime, and detached plugin share the release version', () => {
-    assert.equal(manifest.version, '0.13.5');
-    assert.equal(manifest.js, 'extension/index.js?v=0.13.5');
-    assert.equal(manifest.css, 'extension/style.css?v=0.13.5');
+    assert.equal(manifest.version, '0.13.6');
+    assert.equal(manifest.js, 'extension/index.js?v=0.13.6');
+    assert.equal(manifest.css, 'extension/style.css?v=0.13.6');
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.13\.5'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.13\.5'/);
+    assert.match(pluginSource, /const VERSION = '0\.13\.6'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.13\.6'/);
 });
 
 test('roleplay injection never migrates the user default into a system message', () => {
@@ -32,8 +32,8 @@ test('roleplay injection never migrates the user default into a system message',
 });
 
 test('runtime uses causal context and deferred world state without prescriptive beat-director dependency', () => {
-    assert.match(source, /from '\.\/causal-context\.js\?v=0\.13\.5'/);
-    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.13\.5'/);
+    assert.match(source, /from '\.\/causal-context\.js\?v=0\.13\.6'/);
+    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.13\.6'/);
     assert.doesNotMatch(source, /beat-director/);
     assert.doesNotMatch(stateSource, /beat-director/);
     assert.match(stateSource, /export const STATE_VERSION = 58/);
@@ -42,8 +42,8 @@ test('runtime uses causal context and deferred world state without prescriptive 
 });
 
 test('planner contracts return active world conditions rather than future branches', () => {
-    assert.match(analysisSource, /contract_version=9/);
-    assert.match(analysisSource, /contract_version=11/);
+    assert.match(analysisSource, /contract_version=12/);
+    assert.match(analysisSource, /contract_version=13/);
     assert.match(analysisSource, /private active-world simulator/i);
     assert.match(analysisSource, /underlying conditions|present causal state/i);
     assert.match(analysisSource, /Never prescribe a future action, scene, event, dialogue, reveal, discovery, consequence, or outcome/i);
@@ -103,13 +103,21 @@ test('SillyTavern interception and detached planner compatibility remain intact'
     assert.match(source, /ensureGuidanceInText/);
     assert.match(source, /X-Tale-Fairy-Job-Id/);
     assert.match(pluginSource, /router\.post\('\/planner-jobs\/generate'/);
-    assert.match(pluginSource, /\[2, 3, 4, 5, 6, 7, 8, 9, 10, 11\]\.includes\(value\.contract_version\)/);
+    assert.match(pluginSource, /\[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13\]\.includes\(value\.contract_version\)/);
 });
 
 test('planner token budgets, retries, and nonblocking behavior remain compatible', () => {
     assert.match(source, /recentContextTokens: 6000/);
     assert.match(source, /maxPromptTokens: 16000/);
-    assert.match(source, /const INCREMENTAL_MAX_PROMPT_TOKENS = 4200/);
+    assert.match(source, /const INCREMENTAL_MAX_PROMPT_TOKENS = 6000/);
+    assert.match(source, /const REVIEW_MAX_PROMPT_TOKENS = 9000/);
+    assert.match(source, /const REVIEW_RESPONSE_TOKENS = 4096/);
+    assert.match(source, /bootstrapScan \? REBUILD_RESPONSE_TOKENS : REVIEW_RESPONSE_TOKENS/);
+    assert.match(source, /fullContextPass && !bootstrapScan \? \{ reasoningMode: 'off'/);
+    assert.match(source, /cacheNamespace: 'analysis-incremental-v13'/);
+    assert.match(source, /cacheNamespace: 'analysis-review-v12'/);
+    assert.match(source, /fullReview: fullContextPass && \[8, 9, 12\]\.includes\(result\.contract_version\)/);
+    assert.match(source, /fullReview: meta\.fullContextPass === true && \[8, 9, 12\]\.includes\(result\.contract_version\)/);
     assert.match(source, /const REBUILD_RESPONSE_TOKENS = 16384/);
     assert.match(source, /PLANNER_MAX_AUTO_RETRIES = 2/);
     assert.match(source, /No Tale Fairy work is awaited and no verification failure can[\s\S]*reject the provider request/);

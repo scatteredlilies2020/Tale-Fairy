@@ -94,6 +94,26 @@ test('successful live response is unchanged and can be acknowledged after metada
     assert.equal(acknowledged.payload.job.acknowledged, true);
 });
 
+test('modern structured results and review tiers survive detached recovery', async () => {
+    for (const contractVersion of [12, 13]) {
+        const payload = { contract_version: contractVersion, audit: 'Mock structured planner result.' };
+        const router = routerMock();
+        await init(router, { fetchImpl: async () => new Response(JSON.stringify(payload), { status: 200 }) });
+        const body = plannerBody(`modern-${contractVersion}`);
+        body.meta.fullContextPass = contractVersion === 12;
+        body.meta.bootstrapScan = false;
+        const downstream = responseMock({ destroyed: true });
+        await router.routes.get('POST /planner-jobs/generate')(request(body), downstream);
+        const listed = responseMock();
+        router.routes.get('GET /planner-jobs')(request({}, { query: { chatId: 'chat-1' } }), listed);
+        const job = listed.payload.jobs.find(item => item.runKey === body.meta.runKey);
+        assert.equal(job.status, 'complete');
+        assert.deepEqual(JSON.parse(job.text), payload);
+        assert.equal(job.meta.fullContextPass, contractVersion === 12);
+        assert.equal(job.meta.bootstrapScan, false);
+    }
+});
+
 test('streaming planner keeps the request alive and returns only final content, not reasoning', async () => {
     let forwarded;
     const encoder = new TextEncoder();

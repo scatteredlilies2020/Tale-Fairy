@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { markAssistantTurn, markPlannerCompleted, plannerRefreshDecision } from '../extension/planner-scheduler.js';
+import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, markPlannerCompleted, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision } from '../extension/planner-scheduler.js';
 
 function state(schedule = {}) {
     return {
@@ -41,4 +41,41 @@ test('replacement responses never retrigger a planner pivot or initialization', 
     const uninitialized = state();
     uninitialized.sceneProfile.promise = '';
     assert.equal(plannerRefreshDecision({ state: uninitialized, messages, event: 'replacement', swipe: true }).shouldRun, false);
+});
+
+test('successful routine passes do not postpone the independent broad-review clock', () => {
+    assert.equal(DEFAULT_REFRESH_INTERVAL, 12);
+    let schedule = markPlannerCompleted({}, { fullReview: true });
+    for (let turn = 1; turn <= 12; turn++) {
+        schedule = markAssistantTurn(schedule, `reply-${turn}`);
+        schedule = markAssistantTurn(schedule, `reply-${turn}`);
+        assert.equal(plannerRefreshDecision({ state: state(schedule) }).shouldRun, turn === 12);
+        schedule = markPlannerCompleted(schedule, { turnCount: turn });
+        assert.equal(schedule.turnsSinceFullReview, turn);
+    }
+    schedule = markPlannerCompleted(schedule, { turnCount: 12, fullReview: true });
+    assert.equal(schedule.turnsSinceFullReview, 0);
+    assert.equal(schedule.lastFullReviewTurn, 12);
+    assert.equal(plannerRefreshDecision({ state: state(schedule) }).shouldRun, false);
+});
+
+test('a reviewed correction does not repeat a costly review, but an edit does', () => {
+    const messages = [{ is_user: true, mes: 'OOC: correction - remain in the library.' }, { is_user: false, mes: 'Lucia puts the book away.' }];
+    const reviewed = markPlannerCompleted({}, { fullReview: true, messages });
+    assert.equal(plannerRefreshDecision({ state: state(reviewed), messages }).shouldRun, false);
+    const edited = [{ ...messages[0], mes: 'OOC: correction - remain in the courtyard.' }, messages[1]];
+    assert.equal(plannerRefreshDecision({ state: state(reviewed), messages: edited }).code, 'contradiction');
+    const fallback = markPlannerCompleted({ ...reviewed, turnsSinceFullReview: 12, manualRequested: true });
+    assert.equal(fallback.turnsSinceFullReview, 12);
+    assert.equal(fallback.manualRequested, true);
+});
+
+test('broad reviews are not bootstrap rebuilds and configured intervals are bounded', () => {
+    const ready = { ...state({ turnsSinceFullReview: 12 }), scene: { status: 'At tea' }, contextLedger: 'Lucia and Ari are having tea.' };
+    assert.deepEqual({ ...plannerPassDecision({ state: ready }), reason: '' }, { fullContextPass: true, bootstrapScan: false, reason: '' });
+    assert.equal(plannerPassDecision({ state: ready, rebuild: true }).bootstrapScan, true);
+    assert.equal(plannerPassDecision({ state: { ...ready, contextLedger: '' } }).bootstrapScan, true);
+    assert.equal(normalizePlannerSchedule({ refreshInterval: 100 }).refreshInterval, 20);
+    assert.equal(normalizePlannerSchedule({ refreshInterval: 2 }).refreshInterval, 3);
+    assert.equal(normalizePlannerSchedule({ refreshInterval: 7.9 }).refreshInterval, 7);
 });

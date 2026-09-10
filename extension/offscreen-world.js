@@ -34,7 +34,7 @@ function integer(value, min, max, fallback = 0) {
 }
 
 export function defaultOffscreenWorld() {
-    return { subjects: [], elapsed: '', settledThrough: 0, audit: '' };
+    return { subjects: [], archive: [], elapsed: '', settledThrough: 0, audit: '' };
 }
 
 export function normalizeOffscreenSubject(value = {}) {
@@ -48,6 +48,9 @@ export function normalizeOffscreenSubject(value = {}) {
         trajectory: text(value.trajectory ?? value.direction, 240),
         // Settled history. Once written this is fact and is never re-rolled.
         settled: text(value.settled ?? value.happened, 400),
+        // Durable witnesses are local storage, not an ever-growing prompt.
+        history: [...new Set((Array.isArray(value.history) ? value.history : [])
+            .map(item => text(item, 400)).filter(Boolean))],
         confidence: choice(value.confidence, CONFIDENCES, 'tentative'),
         lastSeenTurn: integer(value.lastSeenTurn ?? value.last_seen_turn, 0, 100000, 0),
         // Owed but undelivered consequence. It may become relevant through a
@@ -70,6 +73,14 @@ export function normalizeOffscreenWorld(value = {}) {
     }
     return {
         subjects,
+        archive: (Array.isArray(value.archive) ? value.archive : [])
+            .map(normalizeOffscreenSubject)
+            .filter(item => {
+                const id = item.id.toLocaleLowerCase();
+                if (!id || !item.subject || !item.trajectory || seenIds.has(id)) return false;
+                seenIds.add(id);
+                return true;
+            }),
         elapsed: text(value.elapsed, 120),
         settledThrough: integer(value.settledThrough ?? value.settled_through, 0, 100000, 0),
         audit: text(value.audit, 300),
@@ -85,39 +96,79 @@ function mergeSettledHistory(previous, proposed) {
     // A provider may summarize old history rather than copy it verbatim. Keep
     // the previous settled fact intact and append the new settlement so an old
     // outcome can never be silently re-rolled.
-    return text(`${before} ${after}`, 400);
+    const combined = `${before} ${after}`;
+    // The compact view must retain the newest state. The durable journal below
+    // preserves older witnesses instead of truncating the new development.
+    return combined.length <= 400 ? combined : after;
 }
 
 /**
- * Accept a complete refreshed board while making settled history and its
+ * Accept refreshed subjects (including delta-only passes) while making history and its
  * observation clock monotonic for subjects that keep the same stable id.
  */
 export function mergeOffscreenWorld(previous, proposed, { currentTurn = 0 } = {}) {
     const before = normalizeOffscreenWorld(previous);
     const after = normalizeOffscreenWorld(proposed);
     const turn = integer(currentTurn, 0, 100000, 0);
-    const previousById = new Map(before.subjects.map(item => [item.id.toLocaleLowerCase(), item]));
+    const previousById = new Map([...before.archive, ...before.subjects].map(item => [item.id.toLocaleLowerCase(), item]));
     const refreshed = after.subjects.map(item => {
         const prior = previousById.get(item.id.toLocaleLowerCase());
-        if (!prior) return { ...item, lastSeenTurn: Math.min(item.lastSeenTurn, turn) };
+        if (!prior) return { ...item, history: item.settled ? [item.settled] : [], lastSeenTurn: Math.min(item.lastSeenTurn, turn) };
         return {
             ...item,
             settled: mergeSettledHistory(prior.settled, item.settled),
+            history: [...new Set([
+                ...(prior.history.length ? prior.history : [prior.settled]),
+                ...(item.settled !== prior.settled ? [item.settled] : []),
+            ].filter(Boolean))],
             lastSeenTurn: Math.max(prior.lastSeenTurn, Math.min(item.lastSeenTurn, turn)),
         };
     });
     const refreshedIds = new Set(refreshed.map(item => item.id.toLocaleLowerCase()));
     const unresolvedOmissions = before.subjects.filter(item => !refreshedIds.has(item.id.toLocaleLowerCase())
         && (item.motion !== 'static' || Boolean(item.owed)));
-    // The planner returns a complete board, but omissions are not sufficient
-    // evidence that a live trajectory ceased to exist. Preserve unresolved
-    // debt defensively. A subject can age out only after a prior pass marked it
-    // static and cleared its undelivered consequence.
-    const subjects = [...unresolvedOmissions, ...refreshed].slice(0, 12);
+    // Omissions are not evidence that a live trajectory ceased to exist. Preserve unresolved
+    // debt in spare active slots or in the durable archive.
+    // The planner's currently relevant selection wins active slots. Omission
+    // changes attention, never history or whether an unresolved debt exists.
+    const subjects = [...refreshed, ...unresolvedOmissions].slice(0, 12);
+    const activeIds = new Set(subjects.map(item => item.id.toLocaleLowerCase()));
+    const archive = [...previousById.values()].filter(item => !activeIds.has(item.id.toLocaleLowerCase()));
     return {
         ...after,
         subjects,
+        archive,
         settledThrough: Math.max(before.settledThrough, Math.min(after.settledThrough, turn)),
+    };
+}
+
+/** Bounded retrieval view; never serialize the entire durable journal to AI. */
+export function offscreenWorldForPrompt(value, query = '') {
+    const world = normalizeOffscreenWorld(value);
+    const stopwords = new Set(['the', 'and', 'that', 'this', 'with', 'from', 'for', 'was', 'were', 'are', 'has', 'have', 'had', 'her', 'his', 'their', 'they', 'them', 'she', 'who', 'what', 'when', 'where', 'there', 'then', 'into', 'about', 'but', 'not']);
+    const tokens = value => [...new Set(String(value).toLocaleLowerCase().match(/[\p{L}\p{N}_-]{3,}/gu) || [])].filter(term => !stopwords.has(term));
+    const terms = new Set(tokens(query));
+    const scoreText = value => tokens(value).reduce((total, term) => total + (terms.has(term) ? 1 : 0), 0);
+    const compact = ({ history, ...item }) => {
+        // Select one witness in a single pass rather than allocating and
+        // sorting the whole journal. Newest wins ties; no query needs no scan.
+        let relevant;
+        let bestScore = 0;
+        if (terms.size) for (let index = history.length - 1; index >= 0; index--) {
+            const score = scoreText(history[index]);
+            if (score > bestScore) { relevant = history[index]; bestScore = score; }
+            if (bestScore === terms.size) break;
+        }
+        const witnesses = [...new Set([relevant, ...history.slice(-1)].filter(fact => fact && !item.settled.includes(fact)))].slice(0, 2);
+        return { ...item, ...(witnesses.length ? { settledWitnesses: witnesses } : {}) };
+    };
+    return {
+        subjects: world.subjects.map(item => ({ item, score: 4 * scoreText(item.subject) + scoreText(item.trajectory) }))
+            .sort((a, b) => b.score - a.score).map(entry => compact(entry.item)),
+        archive: world.archive.map(item => ({ item, score: scoreText(item.subject) }))
+            .filter(entry => entry.score > 0).sort((a, b) => b.score - a.score).slice(0, 2)
+            .map(entry => compact(entry.item)),
+        elapsed: world.elapsed, settledThrough: world.settledThrough, audit: world.audit,
     };
 }
 

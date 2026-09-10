@@ -1,8 +1,8 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.13.5';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.13.6';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.11.96';
-import { formatDriftRequest, mergeOffscreenWorld, OFFSCREEN_KINDS } from './offscreen-world.js?v=0.13.5';
-import { CAUSAL_KINDS } from './causal-context.js?v=0.13.5';
+import { formatDriftRequest, mergeOffscreenWorld, OFFSCREEN_KINDS } from './offscreen-world.js?v=0.13.6';
+import { CAUSAL_KINDS } from './causal-context.js?v=0.13.6';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
@@ -42,8 +42,15 @@ const CAUSAL_CONDITION_SCHEMA = { type: 'object', additionalProperties: false, p
     subject: text(120), condition: text(280),
     disclosure: { type: 'string', enum: ['open', 'limited', 'private'] },
     confidence: { type: 'string', enum: ['established', 'strong', 'tentative'] },
-    relevance: text(180),
-}, required: ['id', 'kind', 'subject', 'condition', 'disclosure', 'confidence', 'relevance'] };
+    relevance: text(180), known_by: strings(6, 80), learned_from: text(180),
+}, required: ['id', 'kind', 'subject', 'condition', 'disclosure', 'confidence', 'relevance', 'known_by', 'learned_from'] };
+const RESPONSE_AUDIT_SCHEMA = { type: 'object', additionalProperties: false, properties: {
+    applicable: { type: 'boolean' },
+    movement_fit: { type: 'string', enum: ['not-applicable', 'missed', 'partial', 'clear'] },
+    repetition: { type: 'string', enum: ['none', 'possible', 'clear'] },
+    unjustified_escalation: { type: 'boolean' }, player_control: { type: 'boolean' }, continuity_drift: { type: 'boolean' },
+    patterns: strings(5, 140), summary: text(400), state_change: text(240),
+}, required: ['applicable', 'movement_fit', 'repetition', 'unjustified_escalation', 'player_control', 'continuity_drift', 'patterns', 'summary', 'state_change'] };
 const HORIZON_SEED_SCHEMA = { type: 'object', additionalProperties: false, properties: {
     id: text(80), kind: { type: 'string', enum: ['detected', 'original'] }, trajectory: text(260), engine: text(140),
     scale: { type: 'string', enum: ['arc', 'months-years', 'open-ended'] }, condition: text(160), basis: text(220),
@@ -83,7 +90,7 @@ const OFFSCREEN_SCHEMA = { type: 'object', additionalProperties: false, properti
 export const ANALYSIS_SCHEMA_VALUE = {
     type: 'object', additionalProperties: false,
     properties: {
-        contract_version: { type: 'integer', const: 9 },
+        contract_version: { type: 'integer', const: 12 },
         current: { type: 'object', additionalProperties: false, properties: {
             frame: { type: 'string', enum: ['grounded', 'heightened', 'surreal'] }, frame_basis: text(180),
             status: text(180), immediate_action: text(140), activity: text(180), situation: text(220),
@@ -101,13 +108,7 @@ export const ANALYSIS_SCHEMA_VALUE = {
             inject: { type: 'boolean', const: true }, inject_reason: text(220), basis: text(240),
         }, required: ['conditions', 'inject', 'inject_reason', 'basis'] },
         offscreen: OFFSCREEN_SCHEMA,
-        response_audit: { type: 'object', additionalProperties: false, properties: {
-            applicable: { type: 'boolean' },
-            movement_fit: { type: 'string', enum: ['not-applicable', 'missed', 'partial', 'clear'] },
-            repetition: { type: 'string', enum: ['none', 'possible', 'clear'] },
-            unjustified_escalation: { type: 'boolean' }, player_control: { type: 'boolean' }, continuity_drift: { type: 'boolean' },
-            patterns: strings(5, 140), summary: text(400),
-        }, required: ['applicable', 'movement_fit', 'repetition', 'unjustified_escalation', 'player_control', 'continuity_drift', 'patterns', 'summary'] },
+        response_audit: RESPONSE_AUDIT_SCHEMA,
         horizon: { type: 'object', additionalProperties: false, properties: {
             status: { type: 'string', enum: ['none', 'latent', 'developing', 'converging'] },
             seeds: { type: 'array', maxItems: 4, items: HORIZON_SEED_SCHEMA }, audit: text(360),
@@ -131,7 +132,7 @@ export const ANALYSIS_SCHEMA_VALUE = {
     required: ['contract_version', 'current', 'context', 'offscreen', 'response_audit', 'horizon', 'hidden_motives', 'world', 'thread_updates', 'actor_updates', 'canon_updates', 'ledger', 'note_resolution', 'audit'],
 };
 export const ANALYSIS_SCHEMA = Object.freeze({
-    name: 'tale_fairy_causal_context_v9',
+    name: 'tale_fairy_causal_context_v12',
     description: 'Compact Tale Fairy observations and state deltas.',
     strict: true,
     returnInvalid: true,
@@ -141,7 +142,7 @@ export const ANALYSIS_SCHEMA = Object.freeze({
 export const INCREMENTAL_ANALYSIS_SCHEMA_VALUE = {
     type: 'object', additionalProperties: false,
     properties: {
-        contract_version: { type: 'integer', const: 11 },
+        contract_version: { type: 'integer', const: 13 },
         current: { type: 'object', additionalProperties: false, properties: {
             frame: { type: 'string', enum: ['grounded', 'heightened', 'surreal'] }, frame_basis: text(160),
             status: text(180), immediate_action: text(140), activity: text(180), situation: text(220),
@@ -170,14 +171,15 @@ export const INCREMENTAL_ANALYSIS_SCHEMA_VALUE = {
             op: { type: 'string', enum: ['upsert', 'retire'] }, name: text(100), state: text(180), location: text(120),
             perspective: text(150), motivation: text(160), knowledge: text(150), constraints: text(140), agenda: text(160), window: text(90),
         }, required: ['op', 'name', 'state', 'location', 'perspective', 'motivation', 'knowledge', 'constraints', 'agenda', 'window'] } },
+        response_audit: RESPONSE_AUDIT_SCHEMA,
         ledger: text(1200),
         note_resolution: { anyOf: [{ type: 'object', additionalProperties: false, properties: { kind: { type: 'string', enum: ['suggest', 'correct', 'establish', 'forbid'] } }, required: ['kind'] }, { type: 'null' }] },
         audit: text(320),
     },
-    required: ['contract_version', 'current', 'context', 'offscreen', 'thread_updates', 'hidden_motives', 'actor_updates', 'ledger', 'note_resolution', 'audit'],
+    required: ['contract_version', 'current', 'context', 'offscreen', 'response_audit', 'thread_updates', 'hidden_motives', 'actor_updates', 'ledger', 'note_resolution', 'audit'],
 };
 export const INCREMENTAL_ANALYSIS_SCHEMA = Object.freeze({
-    name: 'tale_fairy_causal_context_v11_incremental',
+    name: 'tale_fairy_causal_context_v13_incremental',
     description: 'Compact complete Tale Fairy scene, motive, actor, causal-context, and continuity pass.',
     strict: true,
     returnInvalid: true,
@@ -323,7 +325,7 @@ export function abstractIncrementalVisibleBranches(result) {
     return result;
 }
 
-function validateCausalContext(value, errors, label = 'context') {
+function validateCausalContext(value, errors, label = 'context', requireKnowledge = false) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
         errors.push(`${label} must be an object`);
         return;
@@ -342,6 +344,11 @@ function validateCausalContext(value, errors, label = 'context') {
         if (!CAUSAL_KINDS.includes(condition?.kind)) errors.push(`${path}.kind is invalid`);
         if (!['open', 'limited', 'private'].includes(condition?.disclosure)) errors.push(`${path}.disclosure is invalid`);
         if (!['established', 'strong', 'tentative'].includes(condition?.confidence)) errors.push(`${path}.confidence is invalid`);
+        if (requireKnowledge) {
+            if (!Array.isArray(condition?.known_by) || condition.known_by.length > 6
+                || condition.known_by.some(name => typeof name !== 'string' || !name.trim() || name.length > 80)) errors.push(`${path}.known_by must contain at most 6 non-empty names`);
+            if (typeof condition?.learned_from !== 'string' || condition.learned_from.length > 180) errors.push(`${path}.learned_from must be a string of at most 180 characters`);
+        }
         if (condition?.confidence !== 'tentative') providerEligible += 1;
         if (condition?.id) ids.push(String(condition.id).trim().toLocaleLowerCase());
     }
@@ -377,6 +384,19 @@ function validateOffscreenWorld(value, errors, label = 'offscreen') {
     if (typeof value.audit !== 'string') errors.push(`${label}.audit must be a string`);
 }
 
+function validateResponseAudit(value, errors) {
+    for (const key of ['applicable', 'unjustified_escalation', 'player_control', 'continuity_drift']) {
+        if (typeof value?.[key] !== 'boolean') errors.push(`response_audit.${key} must be a boolean`);
+    }
+    if (!['not-applicable', 'missed', 'partial', 'clear'].includes(value?.movement_fit)) errors.push('response_audit.movement_fit is invalid');
+    if (!['none', 'possible', 'clear'].includes(value?.repetition)) errors.push('response_audit.repetition is invalid');
+    for (const [key, limit] of [['summary', 400], ['state_change', 240]]) {
+        if (typeof value?.[key] !== 'string' || value[key].length > limit) errors.push(`response_audit.${key} must be a string of at most ${limit} characters`);
+    }
+    if (!Array.isArray(value?.patterns) || value.patterns.length > 5
+        || value.patterns.some(item => typeof item !== 'string' || !item.trim() || item.length > 140)) errors.push('response_audit.patterns must contain at most 5 non-empty strings');
+}
+
 function validateBeatAnalysisResult(result, { requireHorizon = true, requireOffscreen = true } = {}) {
     const errors = [];
     const requiredStrings = (value, keys, label) => {
@@ -386,10 +406,11 @@ function validateBeatAnalysisResult(result, { requireHorizon = true, requireOffs
         }
         for (const key of keys) if (typeof value[key] !== 'string' || !value[key].trim()) errors.push(`${label}.${key} must be a non-empty string`);
     };
-    if (requireHorizon && ![8, 9].includes(result?.contract_version)) errors.push('contract_version must be 8 or 9');
+    if (requireHorizon && ![8, 9, 12].includes(result?.contract_version)) errors.push('contract_version must be 8, 9 or 12');
     if (!requireHorizon && result?.contract_version !== 6) errors.push('contract_version must be 6');
     requiredStrings(result?.current, ['frame', 'frame_basis', 'status', 'immediate_action', 'activity', 'situation', 'activity_role', 'temporal_scope', 'scene_promise', 'phase', 'emotional_direction', 'pressure', 'intrusion', 'novelty_ceiling'], 'current');
-    validateCausalContext(result?.context, errors);
+    validateCausalContext(result?.context, errors, 'context', result?.contract_version === 12);
+    if (result?.contract_version === 12) validateResponseAudit(result?.response_audit, errors);
     if (requireOffscreen) validateOffscreenWorld(result?.offscreen, errors);
     requiredStrings(result?.response_audit, ['movement_fit', 'repetition', 'summary'], 'response_audit');
     if (requireHorizon) {
@@ -465,9 +486,10 @@ function validateIncrementalAnalysisResult(result, { requireOffscreen = true } =
         }
         for (const key of keys) if (typeof value[key] !== 'string' || !value[key].trim()) errors.push(`${label}.${key} must be a non-empty string`);
     };
-    if (![10, 11].includes(result?.contract_version)) errors.push('contract_version must be 10 or 11');
+    if (![10, 11, 13].includes(result?.contract_version)) errors.push('contract_version must be 10, 11 or 13');
     requiredStrings(result?.current, ['frame', 'frame_basis', 'status', 'immediate_action', 'activity', 'situation', 'scene_promise', 'phase', 'emotional_direction', 'pressure', 'intrusion', 'novelty_ceiling'], 'current');
-    validateCausalContext(result?.context, errors);
+    validateCausalContext(result?.context, errors, 'context', result?.contract_version === 13);
+    if (result?.contract_version === 13) validateResponseAudit(result?.response_audit, errors);
     if (requireOffscreen) validateOffscreenWorld(result?.offscreen, errors);
     if (typeof result?.current?.location !== 'string') errors.push('current.location must be a string');
     if (typeof result?.current?.time !== 'string') errors.push('current.time must be a string');
@@ -478,7 +500,9 @@ function validateIncrementalAnalysisResult(result, { requireOffscreen = true } =
         if (!['upsert', 'retire'].includes(update?.op)) errors.push(`thread_updates[${index}].op is invalid`);
         if (!['active', 'dormant', 'due', 'blocked'].includes(update?.status)) errors.push(`thread_updates[${index}].status is invalid`);
     }
-    requiredStrings(result?.hidden_motives, ['status', 'audit'], 'hidden_motives');
+    requiredStrings(result?.hidden_motives, result?.contract_version === 13 ? ['status'] : ['status', 'audit'], 'hidden_motives');
+    if (typeof result?.hidden_motives?.audit !== 'string') errors.push('hidden_motives.audit must be a string');
+    if (!['none', 'open', 'focused'].includes(result?.hidden_motives?.status)) errors.push('hidden_motives.status is invalid');
     if (!Array.isArray(result?.hidden_motives?.items)) errors.push('hidden_motives.items must be an array');
     const motives = asArray(result?.hidden_motives?.items);
     if (motives.length > 6) errors.push('hidden_motives.items must contain at most 6 hypotheses');
@@ -494,7 +518,7 @@ function validateIncrementalAnalysisResult(result, { requireOffscreen = true } =
     const motiveIds = liveMotives.map(motive => String(motive?.id || '').trim().toLocaleLowerCase()).filter(Boolean);
     if (new Set(motiveIds).size !== motiveIds.length) errors.push('hidden motives must use distinct ids');
     if (result?.hidden_motives?.status === 'none' && liveMotives.length) errors.push('hidden_motives.status cannot be none while hypotheses remain');
-    if (result?.hidden_motives?.status !== 'none' && !liveMotives.length) errors.push('hidden_motives.status must be none when no hypotheses remain');
+    if (result?.contract_version !== 13 && result?.hidden_motives?.status !== 'none' && !liveMotives.length) errors.push('hidden_motives.status must be none when no hypotheses remain');
     if (!Array.isArray(result?.actor_updates)) errors.push('actor_updates must be an array');
     for (const [index, actor] of asArray(result?.actor_updates).entries()) {
         for (const key of ['op', 'name', 'state', 'location', 'perspective', 'motivation', 'knowledge', 'constraints', 'agenda', 'window']) {
@@ -625,9 +649,9 @@ function validateCompactAnalysisResult(result) {
 }
 
 export function validateAnalysisResult(result) {
-    if (result?.contract_version === 11) return validateIncrementalAnalysisResult(result);
+    if ([11, 13].includes(result?.contract_version)) return validateIncrementalAnalysisResult(result);
     if (result?.contract_version === 10) return validateIncrementalAnalysisResult(result, { requireOffscreen: false });
-    if (result?.contract_version === 9) return validateBeatAnalysisResult(result);
+    if ([9, 12].includes(result?.contract_version)) return validateBeatAnalysisResult(result);
     if (result?.contract_version === 8) return validateBeatAnalysisResult(result, { requireOffscreen: false });
     if (result?.contract_version === 2) return validateCompactAnalysisResult(result);
     const errors = [];
@@ -1082,45 +1106,24 @@ function compactAuthorBoard(board = {}) {
 }
 
 function compactPromptStateForBudget(current = {}) {
-    const beat = current.activeBeat || {};
-    const horizons = current.planHorizons || {};
+    // Only live causal-world fields belong in routine context. Legacy route,
+    // director, conductor and beat scaffolding is storage compatibility, not
+    // evidence the model needs to read again on every reply.
     return {
-        mode: current.mode,
-        directorScore: current.directorScore ? { sceneFunction: compactText(current.directorScore.sceneFunction, 80), settingIdentity: compactText(current.directorScore.settingIdentity, 80), settingForces: (current.directorScore.settingForces || []).slice(0, 2).map(item => compactText(item, 80)), causalTempo: current.directorScore.causalTempo, futureSetup: current.directorScore.futureSetup ? { id: compactText(current.directorScore.futureSetup.id, 50), development: compactText(current.directorScore.futureSetup.development, 100), currentStep: compactText(current.directorScore.futureSetup.currentStep, 90), conditions: (current.directorScore.futureSetup.conditions || []).slice(0, 2).map(item => compactText(item, 70)), earliestWindow: compactText(current.directorScore.futureSetup.earliestWindow, 60), disclosure: current.directorScore.futureSetup.disclosure } : undefined, meaningfulAim: compactText(current.directorScore.meaningfulAim, 100), change: current.directorScore.change } : undefined,
-        loreModel: current.loreModel ? { worldIdentity: compactText(current.loreModel.worldIdentity, 90), baseline: compactText(current.loreModel.baseline, 140), variantRules: (current.loreModel.variantRules || []).slice(0, 4).map(item => compactText(item, 100)), continuitySignatures: (current.loreModel.continuitySignatures || []).slice(0, 5).map(item => compactText(item, 105)), baselineDepartures: (current.loreModel.baselineDepartures || []).slice(0, 5).map(item => compactText(item, 110)), trajectorySignals: (current.loreModel.trajectorySignals || []).slice(0, 3).map(item => compactText(item, 100)), activeForces: (current.loreModel.activeForces || []).slice(0, 3).map(item => compactText(item, 90)), confidence: current.loreModel.confidence } : undefined,
-        narrativeLayers: current.narrativeLayers ? { immediateAction: compactText(current.narrativeLayers.immediateAction, 80), localActivity: compactText(current.narrativeLayers.localActivity, 90), situation: compactText(current.narrativeLayers.situation, 100), widerWorld: compactText(current.narrativeLayers.widerWorld, 110), activityRole: current.narrativeLayers.activityRole, temporalScope: current.narrativeLayers.temporalScope } : undefined,
-        scene: current.scene,
-        authorBoard: compactAuthorBoard(current.authorBoard),
-        objectives: (current.objectives || []).slice(-2).map(item => ({ title: compactText(item.title, 70), detail: compactText(item.detail, 70), status: compactText(item.status, 24) })),
-        continuityThreads: (current.continuityThreads || []).slice(0, 5).map(item => ({ id: compactText(item.id, 40), thread: compactText(item.thread, 70), state: compactText(item.state, 80), status: item.status, cmRecordId: compactText(item.cmRecordId, 80), cmRevision: item.cmRevision, canonicalStatus: item.canonicalStatus, directorialReadiness: item.directorialReadiness })),
-        selfChallenge: current.selfChallenge ? { weakness: compactText(current.selfChallenge.weakness, 90), counterRoute: compactText(current.selfChallenge.counterRoute, 90), mechanismCheck: compactText(current.selfChallenge.mechanismCheck, 90), decision: compactText(current.selfChallenge.decision, 110) } : undefined,
-        entities: (current.entities || []).slice(-2).map(item => ({ name: compactText(item.name, 70), state: compactText(item.state, 70), perspective: compactText(item.perspective, 70), motivation: compactText(item.motivation, 80), knowledge: compactText(item.knowledge, 65), constraints: compactText(item.constraints, 65), agenda: compactText(item.agenda, 80) })),
-        hiddenMotives: current.hiddenMotives ? {
-            status: current.hiddenMotives.status,
-            items: (current.hiddenMotives.items || []).slice(0, 6).map(item => ({ id: compactText(item.id, 50), actor: compactText(item.actor, 60), explanation: compactText(item.explanation, 110), likelihood: item.likelihood, evidence: (item.evidence || []).slice(0, 2).map(value => compactText(value, 75)), counterevidence: (item.counterevidence || []).slice(0, 1).map(value => compactText(value, 75)), mechanism: compactText(item.mechanism, 80), currentRelevance: item.currentRelevance, disclosure: item.disclosure })),
-        } : undefined,
-        offscreenWorld: current.offscreenWorld ? {
-            subjects: (current.offscreenWorld.subjects || []).slice(0, 12).map(item => ({
-                id: compactText(item.id, 50), kind: item.kind, subject: compactText(item.subject, 70), reach: item.reach, motion: item.motion,
-                trajectory: compactText(item.trajectory, 110), settled: compactText(item.settled, 150), confidence: item.confidence,
-                lastSeenTurn: item.lastSeenTurn, owed: compactText(item.owed, 100), carriedBy: compactText(item.carriedBy, 70),
-            })),
-            elapsed: compactText(current.offscreenWorld.elapsed, 80), settledThrough: current.offscreenWorld.settledThrough,
-        } : undefined,
-        possibilities: (current.possibilities || []).slice(-2).map(item => compactText(item, 80)),
-        pathways: (current.pathways || []).slice(0, 6).map(item => ({ id: compactText(item.id, 50), lane: item.lane, agent: compactText(item.agent, 40), engine: compactText(item.engine, 45), relation: item.relation, scale: item.scale, origin: item.origin, evidenceRefs: (item.evidenceRefs || []).slice(0, 2), unresolvedBasis: compactText(item.unresolvedBasis, 75), completionCheck: item.completionCheck, mechanismStatus: item.mechanismStatus, mechanismBasis: compactText(item.mechanismBasis, 75), direction: compactText(item.direction, 90), when: compactText(item.when, 70), horizon: compactText(item.horizon, 30), status: item.status })),
-        nextGuides: (current.nextGuides || []).slice(0, 2).map(item => ({ id: compactText(item.id, 50), routeLane: item.routeLane, causalAgent: compactText(item.causalAgent, 40), causalEngine: compactText(item.causalEngine, 45), scale: item.scale, direction: compactText(item.direction, 100), useWhen: compactText(item.useWhen, 70), dropWhen: compactText(item.dropWhen, 70), worldDelta: compactText(item.worldDelta, 80), origin: item.origin, mechanismStatus: item.mechanismStatus, mechanismBasis: compactText(item.mechanismBasis, 75), basis: compactText(item.basis, 80), strength: item.strength, causalEventIds: (item.causalEventIds || []).slice(0, 1), disclosure: item.disclosure })),
-        activeBeat: current.pathways?.length ? undefined : { id: compactText(beat.id, 80), objective: compactText(beat.objective, 180), nextAction: compactText(beat.nextAction, 260), completion: compactText(beat.completion, 180), lifecycle: beat.lifecycle },
-        planHorizons: {
-            items: sampleHorizonItems(horizons.items || []).map(item => ({ id: compactText(item.id, 50), lane: item.lane, agent: compactText(item.agent, 32), engine: compactText(item.engine, 40), scale: item.scale, evidenceRefs: (item.evidenceRefs || []).slice(0, 2), unresolvedBasis: compactText(item.unresolvedBasis, 70), completionCheck: item.completionCheck, mechanismStatus: item.mechanismStatus, mechanismBasis: compactText(item.mechanismBasis, 70), direction: compactText(item.direction, 60), timeframe: compactText(item.timeframe, 50), stability: item.stability })),
-            deviation: { level: horizons.deviation?.level, reason: compactText(horizons.deviation?.reason, 100) },
-        },
-        canonConstraints: (current.canonConstraints || []).slice(-4).map(item => compactText(item, 150)),
-        userNotes: (current.userNotes || []).slice(-1).map(item => ({ kind: item.kind, text: compactText(item.text, 250) })),
-        contextLedger: compactText(current.contextLedger, 300),
-        storyFrame: { frame: current.storyFrame?.frame, confidence: current.storyFrame?.confidence, basis: compactText(current.storyFrame?.basis, 100) },
-        narrativeEvents: (current.narrativeEvents || []).slice(-2).map(item => ({ id: compactText(item.id, 50), summary: compactText(item.summary, 90), scope: item.scope, epistemicStatus: item.epistemicStatus, disclosure: item.disclosure, status: item.status, cause: compactText(item.cause, 70), consequences: (item.consequences || []).slice(0, 1).map(value => compactText(value, 70)) })),
-        lastOfferedCues: (current.lastOfferedCues || []).slice(0, 1).map(item => ({ id: compactText(item.id, 60), direction: compactText(item.direction, 100), worldDelta: compactText(item.worldDelta, 80), requestConfirmed: item.requestConfirmed === true })),
+        mode: current.mode, turnCount: current.turnCount,
+        scene: current.scene, sceneProfile: current.sceneProfile,
+        causalContext: current.causalContext,
+        responseAudit: current.responseAudit,
+        responsePatternMemory: (current.responsePatternMemory || []).slice(-6),
+        loreModel: current.loreModel,
+        continuityThreads: (current.continuityThreads || []).slice(0, 5),
+        entities: (current.entities || []).slice(-5),
+        hiddenMotives: current.hiddenMotives,
+        offscreenWorld: current.offscreenWorld,
+        canonConstraints: (current.canonConstraints || []).slice(-4),
+        userNotes: (current.userNotes || []).slice(-2),
+        contextLedger: current.contextLedger,
+        storyFrame: current.storyFrame,
     };
 }
 
@@ -1166,73 +1169,11 @@ function normalizedClockMinutes(value) {
 
 const KINSHIP_TERM_SOURCE = 'sister|brother|mother|father|daughter|son|wife|husband|aunt|uncle|niece|nephew|grandmother|grandfather';
 const KINSHIP_POSSESSIVE_PATTERN_SOURCE = String.raw`\b([\p{Lu}][\p{L}\p{N}_-]{1,48})[’']s\s+(${KINSHIP_TERM_SOURCE})\b`;
-const SUGGESTION_CUE_PATTERN = /\b(?:maybe|suggest(?:ed|ing)?|propos(?:e|ed|ing)|could|can|what\s+if|how\s+about)\b/iu;
-const RELATIVE_PROPOSAL_ATTRIBUTION_PATTERN_SOURCE = String.raw`\b([\p{Lu}][\p{L}\p{N}_-]{1,48})(\s+(?:(?:suggested|proposed|floated|introduced|originated|offered)\b|raised\s+(?:the\s+)?(?:idea|possibility|option|proposal)\b)[^.!?\n]{0,220}\b(?:${KINSHIP_TERM_SOURCE})\b)`;
-
-function authoritativeRelationOwners(relations) {
-    const owners = new Map();
-    for (const value of relations) {
-        const match = String(value).match(new RegExp(KINSHIP_POSSESSIVE_PATTERN_SOURCE, 'iu'));
-        if (!match) continue;
-        const relation = String(match[2]).toLocaleLowerCase();
-        const candidates = owners.get(relation) || new Set();
-        candidates.add(String(match[1]));
-        owners.set(relation, candidates);
-    }
-    return new Map([...owners].flatMap(([relation, candidates]) => candidates.size === 1
-        ? [[relation, [...candidates][0]]]
-        : []));
-}
-
-function alignRetainedEvidenceText(value, relationOwners, latestUserName, latestUserSuggestedKinship) {
-    let aligned = String(value || '').replace(
-        new RegExp(KINSHIP_POSSESSIVE_PATTERN_SOURCE, 'giu'),
-        (phrase, owner, relation) => {
-            const expectedOwner = relationOwners.get(String(relation).toLocaleLowerCase());
-            if (!expectedOwner || expectedOwner.toLocaleLowerCase() === String(owner).toLocaleLowerCase()) return phrase;
-            return phrase.replace(String(owner), expectedOwner);
-        },
-    );
-    if (latestUserSuggestedKinship && latestUserName) {
-        aligned = aligned.replace(
-            new RegExp(RELATIVE_PROPOSAL_ATTRIBUTION_PATTERN_SOURCE, 'giu'),
-            (phrase, attributedName, remainder) => String(attributedName).toLocaleLowerCase() === latestUserName.toLocaleLowerCase()
-                ? phrase
-                : `${latestUserName}${remainder}`,
-        );
-    }
-    return aligned;
-}
-
-function alignRetainedEvidence(value, relationOwners, latestUserName, latestUserSuggestedKinship) {
-    if (typeof value === 'string') return alignRetainedEvidenceText(value, relationOwners, latestUserName, latestUserSuggestedKinship);
-    if (Array.isArray(value)) return value.map(item => alignRetainedEvidence(item, relationOwners, latestUserName, latestUserSuggestedKinship));
-    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value)
-        .map(([key, item]) => [key, alignRetainedEvidence(item, relationOwners, latestUserName, latestUserSuggestedKinship)]));
-    return value;
-}
-
-export function alignRetainedStateToTranscript(state, messages = []) {
-    const source = Array.isArray(messages) ? messages : [];
-    const newestAssistantIndex = source.findLastIndex(message => !message?.is_user);
-    const newestUserIndex = source.findLastIndex(message => message?.is_user);
-    const assistantText = newestAssistantIndex >= 0
-        ? cleanMessageContent(source[newestAssistantIndex]?.mes, { preserveLeadingStatus: true })
-        : '';
-    const relations = [...assistantText.matchAll(new RegExp(KINSHIP_POSSESSIVE_PATTERN_SOURCE, 'giu'))]
-        .map(match => match[0]);
-    const relationOwners = authoritativeRelationOwners(relations);
-    const latestUserText = newestUserIndex >= 0 ? cleanMessageContent(source[newestUserIndex]?.mes) : '';
-    const latestUserName = newestUserIndex >= 0 ? compactText(source[newestUserIndex]?.name, 120) : '';
-    const latestUserSuggestedKinship = Boolean(latestUserName
-        && SUGGESTION_CUE_PATTERN.test(latestUserText)
-        && new RegExp(`\\b(?:${KINSHIP_TERM_SOURCE})\\b`, 'iu').test(latestUserText));
-    return normalizeState(alignRetainedEvidence(
-        normalizeState(state),
-        relationOwners,
-        latestUserName,
-        latestUserSuggestedKinship,
-    ));
+export function alignRetainedStateToTranscript(state) {
+    // A relation category is not an identity: Mira and Lena can both have a
+    // father, and can even share one. Preserve source attribution verbatim.
+    // Only the evidence-aware planner may reconcile an explicit correction.
+    return normalizeState(state);
 }
 
 export function transcriptHeadAlignmentErrors(result, prompt) {
@@ -1256,43 +1197,8 @@ export function transcriptHeadAlignmentErrors(result, prompt) {
         errors.push(`current.time describes ${String(result.current.time).trim()} but the authoritative newest-assistant status is ${expectedTime}`);
     }
 
-    // Kinship inversions are especially destructive because stale summaries can
-    // silently reassign a missing relative to the player. The newest completed
-    // reply is authoritative, so reject a result that gives an explicitly named
-    // relative to a different named person.
-    const relationPattern = new RegExp(KINSHIP_POSSESSIVE_PATTERN_SOURCE, 'giu');
-    const authoritativeRelations = new Map();
-    for (const value of Array.isArray(head.authoritative_relations) ? head.authoritative_relations : []) {
-        const match = String(value).match(new RegExp(KINSHIP_POSSESSIVE_PATTERN_SOURCE, 'iu'));
-        if (match) authoritativeRelations.set(String(match[2]).toLocaleLowerCase(), String(match[1]));
-    }
-    const exchange = `${String(head.latest_user_text || '')}\n${String(head.authoritative_assistant_excerpt || '')}`;
-    for (const match of exchange.matchAll(relationPattern)) {
-        authoritativeRelations.set(String(match[2]).toLocaleLowerCase(), String(match[1]));
-    }
-    const serialized = JSON.stringify(result);
-    for (const match of serialized.matchAll(relationPattern)) {
-        const relation = String(match[2]).toLocaleLowerCase();
-        const expectedOwner = authoritativeRelations.get(relation);
-        if (expectedOwner && expectedOwner.toLocaleLowerCase() !== String(match[1]).toLocaleLowerCase()) {
-            errors.push(`${match[1]}'s ${relation} contradicts the authoritative newest exchange, which identifies ${expectedOwner}'s ${relation}`);
-        }
-    }
-
-    // When the newest user explicitly proposes doing something about a
-    // relative, do not let the planner credit that proposal to an NPC merely
-    // because the NPC acts on it in the following reply.
-    const latestUserText = String(head.latest_user_text || '');
-    const latestUserName = String(head.latest_user_name || '').trim();
-    const mentionsKinship = new RegExp(`\\b(?:${KINSHIP_TERM_SOURCE})\\b`, 'iu');
-    if (latestUserName && SUGGESTION_CUE_PATTERN.test(latestUserText) && mentionsKinship.test(latestUserText)) {
-        const attributionPattern = new RegExp(RELATIVE_PROPOSAL_ATTRIBUTION_PATTERN_SOURCE, 'giu');
-        for (const match of serialized.matchAll(attributionPattern)) {
-            if (String(match[1]).toLocaleLowerCase() !== latestUserName.toLocaleLowerCase()) {
-                errors.push(`${match[1]} is incorrectly credited with the relative-related proposal; the newest user ${latestUserName} made that suggestion`);
-            }
-        }
-    }
+    // Shared relation words or proposal verbs alone cannot establish a
+    // contradiction. Do not reject unrelated relatives or earlier proposals.
     return [...new Set(errors)];
 }
 
@@ -1846,7 +1752,7 @@ const PROMPT_EXTREME_CANON_INSTRUCTION = 'Explicit user/OOC facts remain authori
 
 export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, options = {}) {
     const configuredBudget = Math.max(3000, Math.min(30000, Number(options.maxPromptTokens) || DEFAULT_PROMPT_TOKEN_BUDGET));
-    const budget = Math.max(1800, Math.min(configuredBudget, Number(options.effectivePromptTokens) || configuredBudget));
+    const budget = Math.max(800, Math.min(configuredBudget, Number(options.effectivePromptTokens) || configuredBudget));
     const messageTokenLimit = Math.max(180, Math.min(1800, Number(options.messageTokenLimit) || 600));
     const recentTokens = Math.max(900, Math.min(12000, Number(options.recentContextTokens) || Math.floor(budget * 0.42)));
     const selected = selectMessages(messages, recentTokens, messageTokenLimit, Math.min(3000, recentTokens), Boolean(options.bootstrapScan));
@@ -1871,18 +1777,9 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         : '';
     const authoritativeRelations = [...authoritativeAssistantSource.matchAll(new RegExp(KINSHIP_POSSESSIVE_PATTERN_SOURCE, 'giu'))]
         .map(match => match[0]);
-    const relationOwners = authoritativeRelationOwners(authoritativeRelations);
-    const latestUserSuggestedKinship = Boolean(latestUserName
-        && SUGGESTION_CUE_PATTERN.test(latestUserText)
-        && new RegExp(`\\b(?:${KINSHIP_TERM_SOURCE})\\b`, 'iu').test(latestUserText));
-    const retainedState = stateForPrompt(state);
-    const currentPlannerTurn = normalizeState(state).turnCount;
-    const retainedCurrent = alignRetainedEvidence(
-        useSpecificPlayerName(options.incremental ? compactPromptStateForBudget(retainedState) : retainedState, playerName),
-        relationOwners,
-        latestUserName,
-        latestUserSuggestedKinship,
-    );
+    const retainedState = stateForPrompt(state, { query: messages.slice(-6).map(message => message?.mes || '').join('\n') });
+    const currentPlannerTurn = retainedState.turnCount;
+    const retainedCurrent = useSpecificPlayerName(options.incremental ? compactPromptStateForBudget(retainedState) : retainedState, playerName);
     const payload = {
         task: 'refresh_active_world_simulation',
         instruction: options.incremental
@@ -1919,9 +1816,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
             latest_user_text: latestUserText || undefined,
             authoritative_assistant_excerpt: authoritativeAssistantExcerpt || undefined,
             authoritative_relations: authoritativeRelations.length ? [...new Set(authoritativeRelations)] : undefined,
-            proposal_attribution: latestUserSuggestedKinship
-                ? `${latestUserName} proposed the relative-related option in latest_user_text; an NPC response may act on it but did not originate it.`
-                : undefined,
+            attribution_rule: 'Track each relative by owner plus relation and any explicitly named identity, never by relation category alone. Different people can have different fathers or share one. Attribute each proposal to its actual source turn; a newer unrelated proposal does not reassign older ones. Reconcile only specific evidence-backed corrections, never globally rename relatives or speakers.',
             rule: 'messages is chronological and the highest index is newest. Read latest_user_text and authoritative_assistant_excerpt as one authoritative exchange. Preserve exactly who spoke, who acted, and whose person, relative, object, or idea is being discussed; never invert speaker, actor, possessor, target, or pronoun referent. The message at newest_assistant_index is the only reply response_audit may evaluate and is the authoritative completed scene before any later user message. Its status header is authoritative when present. Do not mistake the newest user message for an unanswered prompt when a higher-index assistant reply already answered it.',
         },
         planner_clock: {
@@ -1945,8 +1840,16 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     });
     if (offscreenDebt) payload.offscreen_debt = offscreenDebt;
     if (options.incremental) {
-        for (const key of ['authority', 'simulation', 'horizon_rule', 'motive_rule', 'response_audit_rule']) delete payload[key];
-        payload.fast_rules = 'Newest transcript facts win. Re-infer the active scale and causal units when the user zooms between personal, community, settlement, institutional, country, or wider-world play. Update changed factual state and private hypotheses, then select 1–6 relevant present causal conditions. An under-specified world permits compatible setting-native information, but consequential inventions and new opposition remain tentative until evidenced or manifested. Maintain the complete offscreen board, but settle only newly relevant or explicitly time-skipped debt and never re-roll settled history. Conditions may name actual subjects but never prescribe an action or event. Tentative conditions stay private. Never define or alter player action. Empty update arrays mean no factual change.';
+        // Static guidance already lives in the cached system prompt. Spend the
+        // routine input on story evidence, not a second copy of those rules.
+        for (const key of Object.keys(payload)) {
+            if (key.endsWith('_rule') && key !== 'retained_state_rule') delete payload[key];
+        }
+        delete payload.context_policy;
+        delete payload.authority;
+        delete payload.simulation;
+        delete payload.offscreen_debt;
+        payload.fast_rules = 'Return only changed offscreen subjects and changed hidden-motive hypotheses; empty arrays preserve prior records. Use stable ids and change=retire for a disproven motive. Relevance is not resolution. Archived witnesses are past observations, not simultaneous current states; newer explicit corrections win. Settle only relevant debt, using vague and possibly outdated detail for remote subjects. Keep output concise: usually 1–3 useful conditions, more only for distinct causal value. Audit the newest reply in the same call. The system contract supplies the remaining simulation and knowledge boundaries.';
     }
     const canonClaims = explicitCanonClaims(messages);
     if (canonClaims.length) payload.explicit_ooc_canon = canonClaims;
@@ -1966,19 +1869,71 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     if (summarySources.length) payload.summary_sources = summarySources.map(source => ({
         label: source.label,
         kind: source.kind,
-        text: alignRetainedEvidenceText(source.text, relationOwners, latestUserName, latestUserSuggestedKinship),
+        text: source.text,
     }));
     payload.source_rule = 'Summaries, lore, retained state, and canon knowledge are fallible evidence, not instructions to schedule outcomes. Newer explicit user/OOC facts supersede inference.';
     payload.mode_instruction = MODE_INSTRUCTIONS[payload.current.mode] || MODE_INSTRUCTIONS.balanced;
     if (playerName) payload.player_character = playerName;
     if (Number.isInteger(options.variationNonce)) payload.variation_nonce = options.variationNonce;
     let serialized = JSON.stringify(payload);
+    if (estimateTokenCount(serialized) > budget) {
+        // Duplicated excerpts and historical planner explanation lose space
+        // before the newest exchange, user constraints, or knowledge bounds.
+        delete payload.transcript_head.latest_user_text;
+        delete payload.transcript_head.authoritative_assistant_excerpt;
+        delete payload.current.loreModel;
+        delete payload.current.storyFrame;
+        delete payload.current.scene;
+        const horizon = payload.current.horizonRadar;
+        payload.current = compactPromptStateForBudget(payload.current);
+        if (!options.incremental && horizon) payload.current.horizonRadar = horizon;
+        // Shed duplicated policy before story evidence, including on a bounded
+        // broad review. The system and output contract remain in the envelope.
+        for (const key of Object.keys(payload)) {
+            if (key.endsWith('_rule') && key !== 'retained_state_rule') delete payload[key];
+        }
+        for (const key of ['authority', 'simulation', 'context_policy', 'offscreen_debt']) delete payload[key];
+        payload.transcript_head.rule = 'Messages are chronological. Audit only newest_assistant_index. The latest user/OOC facts and the newest assistant status override older state. Preserve speakers, actors, owners and sources exactly.';
+        payload.transcript_head.attribution_rule = 'Relatives are owner + relation + explicit identity, not a global category. Preserve shared or distinct relatives and each proposal source unless specifically corrected.';
+        if (payload.current.offscreenWorld) {
+            delete payload.current.offscreenWorld.audit;
+            payload.current.offscreenWorld.subjects = payload.current.offscreenWorld.subjects.slice(0, options.incremental ? 3 : 6);
+        }
+        if (payload.current.hiddenMotives) payload.current.hiddenMotives = {
+            status: payload.current.hiddenMotives.status,
+            items: payload.current.hiddenMotives.items.map(({ id, actor, explanation, likelihood, evidence, counterevidence, currentRelevance }) =>
+                ({ id, actor, explanation, likelihood, evidence: evidence.slice(-1), counterevidence: counterevidence.slice(-1), currentRelevance })),
+        };
+        delete payload.current.responseAudit;
+        if (payload.current.causalContext) payload.current.causalContext = {
+            conditions: (payload.current.causalContext.conditions || []).slice(0, 3).map(({ id, kind, relevance, ...condition }) => condition),
+        };
+        // Empty compatibility containers do not help reconstruct this scene.
+        for (const [key, value] of Object.entries(payload.current)) {
+            if (value === '' || Array.isArray(value) && !value.length) delete payload.current[key];
+        }
+        serialized = JSON.stringify(payload);
+    }
     if (estimateTokenCount(serialized) > budget && payload.summary_sources) {
         payload.summary_sources = compactSummarySources(payload.summary_sources, 500, { maxSources: 4 }).map(source => ({ label: source.label, kind: source.kind, text: source.text }));
         serialized = JSON.stringify(payload);
     }
+    // Omitted records survive locally. Spend a tight routine budget on the
+    // latest exchange and the highest-ranked retrieved witnesses, rather than
+    // repeating entire boards and then truncating the new evidence to nothing.
+    for (const key of ['entities', 'continuityThreads', 'causalContext', 'contextLedger']) {
+        if (estimateTokenCount(serialized) <= budget) break;
+        delete payload.current[key];
+        serialized = JSON.stringify(payload);
+    }
+    for (const items of [payload.current.hiddenMotives?.items, payload.current.offscreenWorld?.subjects, payload.current.offscreenWorld?.archive]) {
+        while (items?.length > 1 && estimateTokenCount(serialized) > budget) {
+            items.pop();
+            serialized = JSON.stringify(payload);
+        }
+    }
     while (estimateTokenCount(serialized) > budget && payload.messages.length > 1) {
-        const removableIndex = payload.messages.findIndex(message => message.index !== latestMessageIndex && message.index !== newestAssistantIndex);
+        const removableIndex = payload.messages.findIndex(message => message.index !== latestMessageIndex && message.index !== newestAssistantIndex && message.index !== newestUserIndex);
         if (removableIndex < 0) break;
         payload.messages.splice(removableIndex, 1);
         serialized = JSON.stringify(payload);
@@ -1994,8 +1949,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         serialized = JSON.stringify(payload);
     }
     // The same newest exchange also remains in messages. On deliberately tiny
-    // budgets, retain only its compact relationship assertions in the head so
-    // validation still catches ownership inversions without duplicating prose.
+    // budgets, retain compact source attribution without duplicating prose.
     if (estimateTokenCount(serialized) > budget) {
         delete payload.transcript_head.latest_user_text;
         delete payload.transcript_head.authoritative_assistant_excerpt;
@@ -2095,6 +2049,12 @@ function applyIncrementalAnalysis(next, value, messages) {
         basis: current.frame_basis,
     } }).sceneProfile;
     next.causalContext = normalizeState({ causalContext: context }).causalContext;
+    // Legacy in-flight passes did not audit replies; never fabricate an audit
+    // for them. Every new incremental pass closes the feedback loop.
+    if (value.response_audit) {
+        next.responseAudit = normalizeState({ responseAudit: value.response_audit }).responseAudit;
+        next.responsePatternMemory = [...new Set([...next.responsePatternMemory, ...next.responseAudit.patterns])].slice(-12);
+    }
     if (value.offscreen) next.offscreenWorld = mergeOffscreenWorld(next.offscreenWorld, value.offscreen, { currentTurn: next.turnCount + 1 });
     next.narrativeLayers = normalizeState({ narrativeLayers: {
         ...next.narrativeLayers,
@@ -2113,7 +2073,8 @@ function applyIncrementalAnalysis(next, value, messages) {
         })),
         audit: value.hidden_motives?.audit,
     } }).hiddenMotives;
-    const previousMotivesById = new Map(next.hiddenMotives.items.map(motive => [motive.id.toLocaleLowerCase(), motive]));
+    const previousMotives = next.hiddenMotives;
+    const previousMotivesById = new Map(previousMotives.items.map(motive => [motive.id.toLocaleLowerCase(), motive]));
     proposedMotives.items = proposedMotives.items.map(motive => {
         const previous = previousMotivesById.get(motive.id.toLocaleLowerCase());
         return motive.change === 'keep' && previous
@@ -2121,6 +2082,13 @@ function applyIncrementalAnalysis(next, value, messages) {
             : motive;
     });
     next.hiddenMotives = proposedMotives;
+    if (value.contract_version === 13) {
+        const changedIds = new Set(asArray(value.hidden_motives?.items).map(item => String(item.id).trim().toLocaleLowerCase()));
+        next.hiddenMotives.items = [...proposedMotives.items.filter(item => item.change !== 'retire'),
+            ...[...previousMotivesById.values()].filter(item => !changedIds.has(item.id.toLocaleLowerCase()))].slice(0, 6);
+        next.hiddenMotives.status = next.hiddenMotives.items.length ? (proposedMotives.status === 'none' ? previousMotives.status : proposedMotives.status) : 'none';
+        if (!changedIds.size && !proposedMotives.audit) next.hiddenMotives.audit = previousMotives.audit;
+    }
     const actorUpdates = asArray(value.actor_updates).map(update => {
         const existing = next.entities.find(item => item.name.toLocaleLowerCase() === String(update?.name || '').trim().toLocaleLowerCase()) || {};
         return {
@@ -2172,8 +2140,8 @@ function applyBeatAnalysis(next, value, messages) {
         pressure: current.pressure, intrusion: current.intrusion, novelty_ceiling: current.novelty_ceiling, basis: current.frame_basis,
     } }).sceneProfile;
     next.responseAudit = normalizeState({ responseAudit: value.response_audit }).responseAudit;
-    next.responsePatternMemory = [...next.responsePatternMemory, ...next.responseAudit.patterns].slice(-12);
-    if ([8, 9].includes(value.contract_version)) {
+    next.responsePatternMemory = [...new Set([...next.responsePatternMemory, ...next.responseAudit.patterns])].slice(-12);
+    if ([8, 9, 12].includes(value.contract_version)) {
         const proposed = normalizeState({ horizonRadar: {
             status: value.horizon?.status,
             seeds: asArray(value.horizon?.seeds).map(seed => ({ ...seed, presentRelation: seed.present_relation })),
@@ -2499,8 +2467,8 @@ export function applyAnalysis(state, result, messages) {
     const playerName = playerCharacterName(messages);
     const next = normalizeState(useSpecificPlayerName(state, playerName));
     const value = result && typeof result === 'object' ? useSpecificPlayerName(result, playerName) : {};
-    if ([10, 11].includes(value.contract_version)) return applyIncrementalAnalysis(next, value, messages);
-    if ([8, 9].includes(value.contract_version)) return applyBeatAnalysis(next, value, messages);
+    if ([10, 11, 13].includes(value.contract_version)) return applyIncrementalAnalysis(next, value, messages);
+    if ([8, 9, 12].includes(value.contract_version)) return applyBeatAnalysis(next, value, messages);
     if (value.contract_version === 2) return applyCompactAnalysis(next, value, messages);
     if (value.story_frame && typeof value.story_frame === 'object') next.storyFrame = { ...next.storyFrame, frame: String(value.story_frame.frame || 'unknown').slice(0, 40), confidence: String(value.story_frame.confidence || 'low').slice(0, 40), basis: String(value.story_frame.basis || '').slice(0, 240) };
     if (value.director_score && typeof value.director_score === 'object') {
@@ -2599,12 +2567,14 @@ Select 1–6 conditions, normally 3–6 when useful, with at least one establish
 
 Stay a step ahead only in the private horizon, motive, and offscreen boards. They are optional possibilities and hypotheses, never event queues, promises, or instructions. Every provider response is self-propelling: it changes the current situation observably independent of another player reply, while remaining in the same scene or activity when that is the natural scale. Setting-native challenge may be social, intellectual, bureaucratic, material, emotional, environmental, or physical. Rare derailment is permissible only from an established or strong cause already converging in a primed scene, never for novelty. The player action, response, consent, and inner state remain outside Tale Fairy's authority. The provider will receive only a clean natural-language slice of subject plus condition and will choose concrete movement itself.`;
 
-export const ANALYSIS_OUTPUT_CONTRACT = `Return exactly: contract_version=9, current, context, offscreen, response_audit, horizon, hidden_motives, world, thread_updates, actor_updates, canon_updates, ledger, note_resolution, audit.
-context={conditions,inject,inject_reason,basis}; inject=true. conditions has 1–6 items, each {id,kind,subject,condition,disclosure,confidence,relevance}. kind is ${CAUSAL_KINDS.join(', ')}. disclosure is open, limited, or private. confidence is established, strong, or tentative. Describe current causes only, never future actions or planned events. At least one condition must not be tentative.
+const KNOWLEDGE_AND_AUDIT_RULES = `For each condition, known_by lists only evidenced knowers and learned_from gives their in-world learning route, not private planner reasoning. Use [] and an empty string when not established; do not invent knowledge or grant it to the player. A suspected fact stays a belief held by its subject, not objective truth. On every pass, response_audit evaluates only the newest assistant reply: state_change describes the supported before-to-after difference, or explicitly says no meaningful change was observed. Evaluate task progress, NPC stance, shared understanding, options, and circumstances, not gesture counts or decorative motion. Rest, silence, routine, and scene landings are legitimate; never manufacture escalation or player feelings to satisfy an audit. Patterns are concrete observed repetition, not speculative criticisms. With no assistant reply, set applicable=false, movement_fit=not-applicable, empty state_change, and no flags. The audit informs the next selection, not automatic retries or imposed outcomes.`;
+
+export const ANALYSIS_OUTPUT_CONTRACT = `Return exactly: contract_version=12, current, context, offscreen, response_audit, horizon, hidden_motives, world, thread_updates, actor_updates, canon_updates, ledger, note_resolution, audit.
+context={conditions,inject,inject_reason,basis}; inject=true. conditions has 1–6 items, each {id,kind,subject,condition,disclosure,confidence,relevance,known_by,learned_from}. kind is ${CAUSAL_KINDS.join(', ')}. disclosure is open, limited, or private. confidence is established, strong, or tentative. Describe current causes only, never future actions or planned events. At least one condition must not be tentative. ${KNOWLEDGE_AND_AUDIT_RULES}
 offscreen={subjects,elapsed,settled_through,audit} is the complete bounded deferred-debt board. Preserve unseen subjects and settled history; update last_seen_turn only when settling relevant debt. current records the exact current scene. response_audit privately evaluates the prior assistant response. horizon and hidden_motives remain private optional hypotheses. world and updates contain factual state only. Empty update arrays mean no factual change. No other keys.`;
 
-export const INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT = `Return exactly contract_version=11 plus current, context, offscreen, thread_updates, hidden_motives, actor_updates, ledger, note_resolution, and audit.
-context contains 1–6 currently relevant present causal conditions using {id,kind,subject,condition,disclosure,confidence,relevance}, inject=true, inject_reason, and basis. At least one condition is established or strong; tentative items remain private. Conditions may name real subjects but never prescribe actions, events, dialogue, revelations, or outcomes. Updates contain factual changes only. No other keys.`;
+export const INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT = `Return exactly contract_version=13 plus current, context, offscreen, response_audit, thread_updates, hidden_motives, actor_updates, ledger, note_resolution, and audit.
+context contains 1–6 currently relevant present causal conditions using {id,kind,subject,condition,disclosure,confidence,relevance,known_by,learned_from}, inject=true, inject_reason, and basis. At least one condition is established or strong; tentative items remain private. Conditions may name real subjects but never prescribe actions, events, dialogue, revelations, or outcomes. ${KNOWLEDGE_AND_AUDIT_RULES} offscreen.subjects and hidden_motives.items contain only changed records; omitted ids and empty arrays preserve prior records. Use stable ids and change=retire to remove a disproven motive. Usually select 1–3 useful conditions; keep prose concise. Updates contain factual changes only. No other keys.`;
 
 export const INCREMENTAL_SYSTEM = `You are Tale Fairy, a private active-world simulator for another model that writes the roleplay. Return only JSON matching the schema. The available transcript begins observation, not the world: treat even its first exchange as in medias res and always infer useful present causal conditions from transcript, scenario, World Info, and retained evidence, reducing confidence or scope rather than returning an empty world. Infer the active scale and causal units each pass; adapt smoothly among personal, slice-of-life, household, organization, town, country, ecosystem, adventure, civilization, and mixed-scale play without forcing one genre's mechanics onto another. Newest explicit transcript facts outrank retained evidence. Update changed facts and private hypotheses, then select 1–6 current underlying conditions that give the writing model causal traction for an observable self-propelling change, even when the same scene or activity continues. An under-specified world permits compatible setting-native information when it becomes relevant, but consequential inventions and new adversaries remain tentative private horizon/offscreen hypotheses until evidenced or manifested. Challenge may arise from goals, scarcity, rules, tradeoffs, uncertainty, environments, institutions, or opposing actors; enemies and combat are never defaults, and cooperation, routine, recovery, and uneventful periods remain valid. Maintain offscreen as deferred debt rather than continuous ticking: preserve unseen subjects, settle only newly relevant or explicitly time-skipped change, scale detail by distance, and never re-roll settled history or schedule consequences. A condition names its actual subject and states a present motivation, stance, knowledge, capability, relationship, constraint, institutional tendency, resource pressure, or environmental state. Never plan the next action, event, dialogue, reveal, discovery, consequence, or outcome. established requires direct evidence, strong a supported inference, and tentative stays private. Do not equate mention with resolution or neglect with escalation. Never define or modify the player action, response, consent, or inner state.`;
 export { PLANNER_SYSTEM as SYSTEM, extractJson };

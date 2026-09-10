@@ -76,6 +76,9 @@ export function normalizeCausalCondition(value = {}) {
         disclosure: choice(value.disclosure, DISCLOSURES, 'open'),
         confidence: choice(value.confidence, CONFIDENCES, 'tentative'),
         relevance: text(value.relevance, 180),
+        knownBy: [...new Set((Array.isArray(value.knownBy ?? value.known_by) ? (value.knownBy ?? value.known_by) : [])
+            .map(name => text(name, 80)).filter(Boolean))].slice(0, 6),
+        learnedFrom: text(value.learnedFrom ?? value.learned_from, 180),
     };
 }
 
@@ -106,7 +109,10 @@ function statement(item) {
     const condition = text(item.condition, 280).replace(/[.!?]+$/u, '');
     if (!subject || !condition) return '';
     const lower = condition.charAt(0).toLocaleLowerCase() + condition.slice(1);
-    return `${subject} ${lower}.`;
+    const knowledge = item.knownBy.length ? ` Known to: ${item.knownBy.join(', ')}; others need an in-world learning route.`
+        : item.disclosure !== 'open' ? ' Keep awareness local; do not infer additional knowers.' : '';
+    const learning = item.learnedFrom ? ` Learning route: ${item.learnedFrom}.` : '';
+    return `${subject} ${lower}.${knowledge}${learning}`;
 }
 
 function section(label, items) {
@@ -131,6 +137,7 @@ export function formatCausalContext(value, options = {}) {
         section('Private conditions — express through behavior unless disclosure becomes natural in-world:', privateItems),
         MODE_TREATMENT[mode],
         'SELF-PROPELLING MOVEMENT: Every reply changes the current situation in an observable way independent of another player reply. Remaining in the same scene or activity is fully compatible: use task-native progress, an NPC decision or action, disclosure, consequence, discovery, opportunity, environmental change, or another fitting shift. Dialogue contributes when it changes what is known, decided, possible, or underway. Leave the player free to react or continue.',
+        'MEANINGFUL CHANGE: Prefer a small lasting difference in task progress, NPC stance, shared understanding, available options, or circumstances. Repeated gestures, paraphrased feelings, and decorative motion alone are not progress. Rest, silence, routine, and a scene landing are valid; do not manufacture a disruption or assign the player a new feeling to satisfy this rule. A belief or suspicion remains that character’s belief, not objective truth.',
         `SCENE-SCALE BOUNDARY: ${INTRUSION_TREATMENT[sceneProfile.intrusion]} ${NOVELTY_TREATMENT[sceneProfile.noveltyCeiling]} Compatible new information may emerge when the current activity naturally observes, requests, or creates it; do not treat an under-specified world as an empty one. Challenge may be social, intellectual, bureaucratic, material, emotional, environmental, or physical; opposition may be personal or systemic, and combat is never the default. Quiet activity may continue without interruption while still gaining progress, substance, meaning, or changed circumstances. The latest explicit user/OOC request to stay, skip, or advance outranks every optional pressure.`,
         'Never use these conditions to author the player character’s choices, dialogue, consent, thoughts, feelings, or an uncertain result.',
     ].filter(Boolean).join('\n');

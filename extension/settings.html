@@ -35,7 +35,11 @@
           </label>
           <label>Total planner input budget (tokens)
             <input class="text_pole" type="number" data-setting="budget" min="9000" max="30000" step="1000" value="16000">
-                            <small>Hard input limit for instructions, schema, raw turns, summaries, World Info, and retained state together. Default: 16,000 tokens. Fast refresh reserves up to 1,536 output/thinking tokens; Full Rebuild can reserve up to 16,384.</small>
+            <small>Includes instructions, schema, and story evidence. Routine updates use at most 6,000 input / 2,304 output tokens; broad reviews use 9,000 / 4,096, with reasoning off for both. Initialization and Full Rebuild use the configured input limit and up to 16,384 output/thinking tokens.</small>
+          </label>
+          <label>Broad story review interval (assistant replies)
+            <input class="text_pole" type="number" data-setting="full-review-interval" min="3" max="20" step="1" value="12">
+            <small>Default: 12. Compact guidance and a brief story audit still refresh after each accepted reply. Corrections, major scene shifts, and manual reevaluation can trigger a review earlier. Reviews do not rescan the entire chat or block generation.</small>
           </label>
         </div>
         <label class="checkbox_label">

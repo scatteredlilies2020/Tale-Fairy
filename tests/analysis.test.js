@@ -2,12 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-    ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA_VALUE, INCREMENTAL_ANALYSIS_SCHEMA_VALUE,
+    ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_ANALYSIS_SCHEMA_VALUE, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT,
     INCREMENTAL_SYSTEM, MODE_INSTRUCTIONS, SYSTEM, applyAnalysis, buildAnalysisPrompt,
-    extractJson, transcriptHeadAlignmentErrors, validateAnalysisResult,
+    alignRetainedStateToTranscript, extractJson, transcriptHeadAlignmentErrors, validateAnalysisResult,
 } from '../extension/analysis.js';
-import { buildPromptPayload, defaultState, stateForPrompt } from '../extension/state.js';
+import { applyPlannerAuthorLayer, buildPromptPayload, defaultState, fingerprintMessages, isGuidanceUsable, loadState, saveState, stateForPrompt } from '../extension/state.js';
 import { estimateTokenCount } from '../extension/token-budget.js';
+import { fitPromptToBudget } from '../extension/prompt-budget.js';
+import { markAssistantTurn, plannerPassDecision } from '../extension/planner-scheduler.js';
+import { createSafetyFallbackState } from '../extension/fallback-direction.js';
 
 const current = {
     frame: 'grounded', frame_basis: 'The cabinet is reviewing a reserve report.', status: 'Mira is questioning the figures.',
@@ -45,16 +48,81 @@ function incremental(overrides = {}) {
     const { activity_role, temporal_scope, ...compactCurrent } = current;
     return { contract_version: 11, current: compactCurrent, context: full().context, offscreen, thread_updates: [], hidden_motives: full().hidden_motives, actor_updates: [], ledger: 'Current cabinet review.', note_resolution: null, audit: 'Fresh causal slice.', ...overrides };
 }
+function modern(incrementalPass = false, overrides = {}) {
+    return {
+        ...(incrementalPass ? incremental() : full()), contract_version: incrementalPass ? 13 : 12,
+        context: { ...full().context, conditions: conditions.map(item => ({ ...item, known_by: item.subject === 'Mira' ? ['Mira'] : [], learned_from: item.subject === 'Mira' ? 'Her comparison of the shipment figures.' : '' })) },
+        response_audit: { ...full().response_audit, state_change: 'Mira located a discrepancy; its cause remains unresolved.' },
+        ...overrides,
+    };
+}
 const messages = [{ is_user: false, name: 'Narrator', mes: 'The reserve totals do not match the latest shipments.' }, { is_user: true, name: 'Ari', mes: 'I ask Mira what she thinks.' }];
+
+test('modern multi-turn lifecycle preserves memory, reviews on schedule, and fails closed for stale guidance', () => {
+    const chat = [...messages, { is_user: false, name: 'Mira', mes: 'Mira marks the conflicting totals without claiming to know their cause.' }];
+    let state = defaultState();
+    assert.equal(plannerPassDecision({ state, messages: chat }).bootstrapScan, true);
+    const finish = (result, fullReview) => {
+        assert.equal(validateAnalysisResult(result).valid, true);
+        state = applyPlannerAuthorLayer(applyAnalysis(state, result, chat), {
+            turnCount: chat.filter(message => !message.is_user).length,
+            fingerprint: fingerprintMessages(chat), messages: chat, fullReview,
+        });
+        state.sourceChatId = 'story';
+        state = loadState(JSON.parse(JSON.stringify(saveState({}, state))));
+    };
+    finish(modern(), true);
+    const initialWorld = state.offscreenWorld.subjects;
+    const initialMotives = state.hiddenMotives;
+    for (let turn = 1; turn <= 12; turn++) {
+        chat.push({ is_user: true, name: 'Ari', mes: `I compare ledger entry ${turn}.` });
+        assert.equal(isGuidanceUsable(state, chat, 'story'), true);
+        chat.push({ is_user: false, name: 'Mira', mes: `Mira checks entry ${turn} against the shipping receipt.` });
+        assert.equal(isGuidanceUsable(state, chat, 'story'), false);
+        state.plannerSchedule = markAssistantTurn(state.plannerSchedule, `reply-${turn}`);
+        const tier = plannerPassDecision({ state, messages: chat });
+        assert.equal(tier.bootstrapScan, false);
+        assert.equal(tier.fullContextPass, turn === 12);
+        if (turn === 12) {
+            const fallback = createSafetyFallbackState(state, {
+                messages: chat, chatId: 'story', fingerprint: fingerprintMessages(chat),
+                turnCount: chat.filter(message => !message.is_user).length,
+                reason: 'Simulated provider failure',
+            });
+            assert.equal(fallback.plannerSchedule.turnsSinceFullReview, 12);
+            assert.equal(plannerPassDecision({ state: fallback, messages: chat }).fullContextPass, true);
+            const fallbackPrompt = buildPromptPayload(fallback, { guidanceUsable: isGuidanceUsable(fallback, chat, 'story') });
+            assert.match(fallbackPrompt, /ongoing roleplay situation/);
+            assert.doesNotMatch(fallbackPrompt, /suspects the reserve report|falsified/);
+            finish(modern(), true);
+        } else {
+            finish(modern(true, {
+                offscreen: { subjects: [], elapsed: '', settled_through: 0, audit: '' },
+                hidden_motives: { status: 'none', items: [], audit: '' },
+                response_audit: { ...modern(true).response_audit, state_change: `Entry ${turn} was checked.`, patterns: ['Repeated ledger-check framing'] },
+            }), false);
+            assert.equal(state.plannerSchedule.turnsSinceFullReview, turn);
+            assert.deepEqual(state.offscreenWorld.subjects, initialWorld);
+            assert.deepEqual(state.hiddenMotives, initialMotives);
+            assert.deepEqual(state.responsePatternMemory, ['Repeated ledger-check framing']);
+            assert.equal(state.responseAudit.stateChange, `Entry ${turn} was checked.`);
+        }
+    }
+    assert.equal(state.plannerSchedule.turnsSinceFullReview, 0);
+    assert.equal(isGuidanceUsable(state, chat, 'story'), true);
+    assert.equal(isGuidanceUsable(state, chat, 'different-chat'), false);
+    const edited = chat.map((message, index) => index === chat.length - 1 ? { ...message, mes: 'The user replaced this reply.' } : message);
+    assert.equal(isGuidanceUsable(state, edited, 'story'), false);
+});
 
 test('extractJson accepts fenced, wrapped, and repairable JSON', () => {
     assert.deepEqual(extractJson('```json\n{"contract_version":8}\n```'), { contract_version: 8 });
     assert.deepEqual(extractJson('prefix {"ok":true} suffix'), { ok: true });
 });
 
-test('schemas expose deferred-world contracts v9 and v11', () => {
-    assert.equal(ANALYSIS_SCHEMA_VALUE.properties.contract_version.const, 9);
-    assert.equal(INCREMENTAL_ANALYSIS_SCHEMA_VALUE.properties.contract_version.const, 11);
+test('schemas expose audited causal contracts v12 and v13', () => {
+    assert.equal(ANALYSIS_SCHEMA_VALUE.properties.contract_version.const, 12);
+    assert.equal(INCREMENTAL_ANALYSIS_SCHEMA_VALUE.properties.contract_version.const, 13);
     assert.ok(ANALYSIS_SCHEMA_VALUE.required.includes('context'));
     assert.ok(ANALYSIS_SCHEMA_VALUE.required.includes('offscreen'));
     assert.ok(INCREMENTAL_ANALYSIS_SCHEMA_VALUE.required.includes('offscreen'));
@@ -66,6 +134,73 @@ test('schemas expose deferred-world contracts v9 and v11', () => {
 test('valid full and incremental causal results pass', () => {
     assert.deepEqual(validateAnalysisResult(full()), { valid: true, errors: [] });
     assert.deepEqual(validateAnalysisResult(incremental()), { valid: true, errors: [] });
+});
+
+test('new contracts require bounded knowledge and an audit in the same result', () => {
+    for (const incrementalPass of [false, true]) {
+        const value = modern(incrementalPass);
+        assert.deepEqual(validateAnalysisResult(value), { valid: true, errors: [] });
+        delete value.context.conditions[0].known_by;
+        assert.match(validateAnalysisResult(value).errors.join('\n'), /known_by/);
+        const missingAudit = modern(incrementalPass);
+        delete missingAudit.response_audit;
+        assert.match(validateAnalysisResult(missingAudit).errors.join('\n'), /response_audit/);
+        const invalidAudit = modern(incrementalPass);
+        invalidAudit.response_audit.state_change = 'x'.repeat(241);
+        assert.match(validateAnalysisResult(invalidAudit).errors.join('\n'), /state_change/);
+    }
+});
+
+test('routine deltas preserve omitted hypotheses and retire only the named one', () => {
+    const prior = applyAnalysis(defaultState(), modern(), messages);
+    const empty = modern(true, { hidden_motives: { status: 'none', items: [], audit: '' }, offscreen: { subjects: [], elapsed: '', settled_through: 0, audit: '' } });
+    assert.equal(validateAnalysisResult(empty).valid, true);
+    const next = applyAnalysis(prior, empty, messages);
+    assert.deepEqual(next.hiddenMotives, prior.hiddenMotives);
+    assert.deepEqual(next.offscreenWorld.subjects, prior.offscreenWorld.subjects);
+    assert.equal(next.responseAudit.stateChange, empty.response_audit.state_change);
+    const retired = modern(true, { hidden_motives: { status: 'none', items: [{ ...full().hidden_motives.items[0], change: 'retire' }], audit: 'Explicitly disproven.' } });
+    assert.equal(validateAnalysisResult(retired).valid, true);
+    assert.deepEqual(applyAnalysis(next, retired, messages).hiddenMotives.items, []);
+});
+
+test('attribution never globally renames different or shared relatives and proposals', () => {
+    const state = defaultState();
+    state.contextLedger = "Mira's father is a doctor. Lena's father is a sailor. Mira and Bea share their father. Mira proposed a walk; Ari proposed tea.";
+    state.canonConstraints = ["Mira's father is a doctor."];
+    const history = [{ is_user: true, name: 'Ari', mes: "I suggest visiting Lena's father." }, { is_user: false, mes: "Lena's father agrees. Mira's father is still at the clinic." }];
+    const aligned = alignRetainedStateToTranscript(state, history);
+    assert.equal(aligned.contextLedger, state.contextLedger);
+    assert.deepEqual(aligned.canonConstraints, state.canonConstraints);
+    const prompt = JSON.parse(buildAnalysisPrompt(history, state, '', {}, { summarySources: [{ label: 'Family', kind: 'summary', text: state.contextLedger }] }));
+    assert.equal(prompt.current.contextLedger, state.contextLedger);
+    assert.match(prompt.summary_sources[0].text, /Mira proposed a walk; Ari proposed tea/);
+    assert.deepEqual(transcriptHeadAlignmentErrors(modern(), prompt), []);
+});
+
+test('story prompt fits the complete routine and review envelopes with durable history', async () => {
+    const state = applyAnalysis(defaultState(), modern(), messages);
+    state.offscreenWorld.subjects = Array.from({ length: 12 }, (_, i) => ({
+        ...state.offscreenWorld.subjects[0], id: `harbor-${i}`, subject: `Harbor district ${i}`,
+        settled: `District ${i} received a late shipment.`,
+        history: Array.from({ length: 300 }, (_, j) => `Unrelated old district ${i} observation ${j}.`),
+    }));
+    state.offscreenWorld.archive = Array.from({ length: 30 }, (_, i) => ({ ...state.offscreenWorld.subjects[0], id: `archive-${i}`, subject: `Distant province ${i}` }));
+    for (const incrementalPass of [true, false]) {
+        const fixedEnvelope = incrementalPass
+            ? `${INCREMENTAL_SYSTEM}\n${INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT}\n${JSON.stringify(INCREMENTAL_ANALYSIS_SCHEMA)}`
+            : `${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}\n${JSON.stringify(ANALYSIS_SCHEMA)}`;
+        const tokenBudget = incrementalPass ? 6000 : 9000;
+        const prompt = await fitPromptToBudget({ fixedEnvelope, tokenBudget,
+            buildPrompt: effectivePromptTokens => buildAnalysisPrompt(messages, state, '', {}, { incremental: incrementalPass, maxPromptTokens: tokenBudget, effectivePromptTokens }),
+        });
+        assert.ok(estimateTokenCount(`${fixedEnvelope}\n${prompt}`) <= tokenBudget);
+        const payload = JSON.parse(prompt);
+        assert.equal(payload.messages.at(-1).content, messages.at(-1).mes);
+        assert.ok(payload.messages.some(item => item.content === messages[0].mes));
+        assert.doesNotMatch(prompt, /observation 100/);
+        assert.ok(JSON.stringify(state).includes('observation 100'), 'retrieval must not delete local history');
+    }
 });
 
 test('previous v8 and v10 results remain valid in flight without a new offscreen board', () => {
@@ -162,9 +297,10 @@ test('planner receives deferred debt as candidates, never a scheduled arrival', 
 test('incremental prompt remains compact and omits horizon regeneration', () => {
     const prompt = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', {}, { incremental: true }));
     assert.equal(prompt.horizon_rule, undefined);
-    assert.match(prompt.fast_rules, /Tentative conditions stay private/i);
-    assert.match(prompt.fast_rules, /under-specified world permits compatible setting-native information/i);
-    assert.match(prompt.fast_rules, /new opposition remain tentative/i);
+    assert.equal(prompt.simulation, undefined);
+    assert.equal(prompt.authority, undefined);
+    assert.match(prompt.fast_rules, /only changed offscreen subjects/i);
+    assert.match(prompt.fast_rules, /Audit the newest reply in the same call/i);
 });
 
 test('configured prompt budget remains bounded with long history', () => {

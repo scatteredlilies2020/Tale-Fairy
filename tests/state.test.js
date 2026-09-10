@@ -33,7 +33,7 @@ test('default state uses the v58 deferred-world contract', () => {
     assert.equal(STATE_VERSION, 58);
     assert.deepEqual(state.causalContext.conditions, []);
     assert.equal(state.causalContext.inject, false);
-    assert.deepEqual(state.offscreenWorld, { subjects: [], elapsed: '', settledThrough: 0, audit: '' });
+    assert.deepEqual(state.offscreenWorld, { subjects: [], archive: [], elapsed: '', settledThrough: 0, audit: '' });
 });
 
 test('normalization bounds clean causal records and rejects incomplete ones', () => {
@@ -58,6 +58,28 @@ test('tentative conditions remain private while strong and established ones inje
     assert.equal(providerCausalConditions({ conditions }).length, 2);
     assert.equal(hasUsableCausalContext({ conditions, inject: true }), true);
     assert.equal(hasUsableCausalContext({ conditions: [conditions[2]], inject: true }), false);
+});
+
+test('knowledge routes survive storage without promoting beliefs or leaking private hypotheses', () => {
+    const state = analyzed();
+    state.causalContext.conditions[0] = { ...state.causalContext.conditions[0], knownBy: ['Mira'], learnedFrom: 'Her own comparison of two ledgers' };
+    const restored = loadState(JSON.parse(JSON.stringify(saveState({}, state))));
+    assert.deepEqual(restored.causalContext.conditions[0].knownBy, ['Mira']);
+    const output = formatCausalContext(restored.causalContext);
+    assert.match(output, /Mira suspects the report is false/);
+    assert.match(output, /Known to: Mira; others need an in-world learning route/);
+    assert.match(output, /Her own comparison of two ledgers/);
+    assert.match(output, /belief, not objective truth/);
+    assert.doesNotMatch(output, /Merchants/);
+    assert.deepEqual(normalizeCausalContext({ conditions }).conditions[0].knownBy, []);
+});
+
+test('quiet-scene guidance values meaningful progress without forcing conflict or player emotions', () => {
+    const output = formatCausalContext({ conditions: [{ ...conditions[0], subject: 'Lucia', condition: 'is finishing the shared tea ritual', disclosure: 'open' }], inject: true }, { sceneProfile: { phase: 'landing', intrusion: 'closed', noveltyCeiling: 'none' } });
+    assert.match(output, /Rest, silence, routine, and a scene landing are valid/);
+    assert.match(output, /decorative motion alone are not progress/);
+    assert.match(output, /do not manufacture a disruption or assign the player a new feeling/);
+    assert.match(output, /latest explicit user\/OOC request to stay, skip, or advance outranks/);
 });
 
 test('formatter exposes natural-language causes without internal metadata', () => {
@@ -174,7 +196,7 @@ test('replacement generation strips only the discarded assistant reply', () => {
 
 test('request verification keeps the exact archived causal slice', () => {
     const state = analyzed();
-    const verification = { status: 'confirmed', injectionDecision: 'inject', runtimeVersion: '0.13.5', verificationId: 'v', guidanceBlock: 'x', requestedAt: 1, confirmedAt: 2, sourceMessageCount: 1, sourceFingerprint: fingerprintMessages([{ is_user: true, mes: 'Question' }]), responseMessageCount: 2, chatId: 'chat', replacementGeneration: false, sceneProfile: state.sceneProfile, causalContext: state.causalContext };
+    const verification = { status: 'confirmed', injectionDecision: 'inject', runtimeVersion: '0.13.6', verificationId: 'v', guidanceBlock: 'x', requestedAt: 1, confirmedAt: 2, sourceMessageCount: 1, sourceFingerprint: fingerprintMessages([{ is_user: true, mes: 'Question' }]), responseMessageCount: 2, chatId: 'chat', replacementGeneration: false, sceneProfile: state.sceneProfile, causalContext: state.causalContext };
     const normalized = normalizeState({ ...state, lastRequestVerification: verification }).lastRequestVerification;
     assert.equal(normalized.causalContext.conditions[0].subject, 'Mira');
     assert.equal(returnedReplyMatchesVerification(normalized, [{ is_user: true, mes: 'Question' }, { is_user: false, mes: 'Reply' }], 'chat'), true);

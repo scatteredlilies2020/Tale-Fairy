@@ -22,6 +22,13 @@ test('reads a direct causal-context v8 structured result', () => {
     assert.equal(completionText(result), JSON.stringify(result));
 });
 
+test('reads new audited v12 and delta v13 results without hidden reasoning', () => {
+    for (const contract_version of [12, 13]) {
+        const result = { contract_version, context: { conditions: [] }, response_audit: { state_change: 'A quiet task finished.' } };
+        assert.equal(completionText({ reasoning: 'private analysis', data: result }), JSON.stringify(result));
+    }
+});
+
 test('reads direct deferred-world v9 and v11 structured results', () => {
     const full = { contract_version: 9, current: {}, context: {}, offscreen: {} };
     const incremental = { contract_version: 11, current: {}, context: {}, offscreen: {} };

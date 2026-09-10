@@ -1,10 +1,10 @@
-import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.13.5';
+import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.13.6';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
-import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js';
-import { defaultCausalContext, defaultSceneProfile, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, normalizeSceneProfile } from './causal-context.js?v=0.13.5';
-import { normalizeDirectorSample } from './director-sampling.js?v=0.13.5';
-import { defaultOffscreenWorld, normalizeOffscreenWorld } from './offscreen-world.js?v=0.13.5';
+import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js?v=0.13.6';
+import { defaultCausalContext, defaultSceneProfile, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, normalizeSceneProfile } from './causal-context.js?v=0.13.6';
+import { normalizeDirectorSample } from './director-sampling.js?v=0.13.6';
+import { defaultOffscreenWorld, normalizeOffscreenWorld, offscreenWorldForPrompt } from './offscreen-world.js?v=0.13.6';
 
 export const STATE_KEY = 'livingWorldGuide';
 export const STATE_VERSION = 58;
@@ -42,7 +42,7 @@ export function defaultState() {
         sceneProfile: defaultSceneProfile(),
         causalContext: defaultCausalContext(),
         offscreenWorld: defaultOffscreenWorld(),
-        responseAudit: { applicable: false, movementFit: 'not-applicable', repetition: 'none', unjustifiedEscalation: false, playerControl: false, continuityDrift: false, patterns: [], summary: '' },
+        responseAudit: { applicable: false, movementFit: 'not-applicable', repetition: 'none', unjustifiedEscalation: false, playerControl: false, continuityDrift: false, patterns: [], summary: '', stateChange: '' },
         responsePatternMemory: [],
         horizonRadar: { status: 'none', seeds: [], audit: '' },
         hiddenMotives: { status: 'none', items: [], audit: '' },
@@ -526,6 +526,7 @@ function normalizeResponseAudit(value = {}) {
         continuityDrift: value.continuityDrift === true || value.continuity_drift === true,
         patterns: cap(value.patterns, 5).map(item => clippedText(item, 140)).filter(Boolean),
         summary: clippedText(value.summary, 400),
+        stateChange: clippedText(value.stateChange ?? value.state_change, 240),
     };
 }
 
@@ -715,14 +716,14 @@ export function clearState(metadata) {
     return next;
 }
 
-export function applyPlannerAuthorLayer(state, { turnCount = 0, fingerprint = '', seedRequiredDevelopment = true } = {}) {
+export function applyPlannerAuthorLayer(state, { turnCount = 0, fingerprint = '', seedRequiredDevelopment = true, fullReview = false, messages = [] } = {}) {
     const next = normalizeState(state);
     const turn = Math.max(0, Number(turnCount) || next.turnCount);
-    next.plannerSchedule = markPlannerCompleted(next.plannerSchedule, { turnCount: turn, fingerprint });
+    next.plannerSchedule = markPlannerCompleted(next.plannerSchedule, { turnCount: turn, fingerprint, fullReview, messages });
     return next;
 }
 
-export function stateForPrompt(state) {
+export function stateForPrompt(state, { query = '' } = {}) {
     const s = normalizeState(state);
     return {
         mode: s.mode,
@@ -730,7 +731,7 @@ export function stateForPrompt(state) {
         scene: Object.fromEntries(Object.entries(s.scene).map(([key, value]) => [key, typeof value === 'string' ? value.slice(0, 100) : value])),
         sceneProfile: s.sceneProfile,
         causalContext: s.causalContext,
-        offscreenWorld: s.offscreenWorld,
+        offscreenWorld: offscreenWorldForPrompt(s.offscreenWorld, query),
         responseAudit: s.responseAudit,
         responsePatternMemory: s.responsePatternMemory.slice(-10),
         horizonRadar: {
