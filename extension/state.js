@@ -5,6 +5,7 @@ import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule 
 import { defaultCausalContext, defaultSceneProfile, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, normalizeSceneProfile } from './causal-context.js?v=0.13.6';
 import { normalizeDirectorSample } from './director-sampling.js?v=0.13.6';
 import { defaultOffscreenWorld, normalizeOffscreenWorld, offscreenWorldForPrompt } from './offscreen-world.js?v=0.13.6';
+import { defaultSituationBoard, normalizeSituationBoard } from './situations.js?v=0.13.6';
 
 export const STATE_KEY = 'livingWorldGuide';
 export const STATE_VERSION = 58;
@@ -42,6 +43,7 @@ export function defaultState() {
         sceneProfile: defaultSceneProfile(),
         causalContext: defaultCausalContext(),
         offscreenWorld: defaultOffscreenWorld(),
+        situationBoard: defaultSituationBoard(),
         responseAudit: { applicable: false, movementFit: 'not-applicable', repetition: 'none', unjustifiedEscalation: false, playerControl: false, continuityDrift: false, patterns: [], summary: '', stateChange: '' },
         responsePatternMemory: [],
         horizonRadar: { status: 'none', seeds: [], audit: '' },
@@ -636,6 +638,7 @@ export function normalizeState(input = {}) {
         sceneProfile: beatContractUpgrade ? base.sceneProfile : normalizeSceneProfile(value.sceneProfile ?? value.scene_profile),
         causalContext: causalContextUpgrade ? base.causalContext : normalizeCausalContext(value.causalContext ?? value.causal_context),
         offscreenWorld: normalizeOffscreenWorld(value.offscreenWorld ?? value.offscreen_world),
+        situationBoard: normalizeSituationBoard(value.situationBoard ?? value.situation_board),
         responseAudit: normalizeResponseAudit(value.responseAudit ?? value.response_audit),
         responsePatternMemory: cap(value.responsePatternMemory ?? value.response_pattern_memory, 12).map(item => clippedText(item, 140)).filter(Boolean),
         horizonRadar: normalizeHorizonRadar(value.horizonRadar ?? value.horizon_radar),
@@ -731,6 +734,7 @@ export function stateForPrompt(state, { query = '' } = {}) {
         scene: Object.fromEntries(Object.entries(s.scene).map(([key, value]) => [key, typeof value === 'string' ? value.slice(0, 100) : value])),
         sceneProfile: s.sceneProfile,
         causalContext: s.causalContext,
+        situationBoard: { items: s.situationBoard.items.map(item => ({ ...item })), lastSelectedId: s.situationBoard.lastSelectedId },
         offscreenWorld: offscreenWorldForPrompt(s.offscreenWorld, query),
         responseAudit: s.responseAudit,
         responsePatternMemory: s.responsePatternMemory.slice(-10),

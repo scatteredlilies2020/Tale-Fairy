@@ -3,6 +3,7 @@ import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0
 import { compactSummarySources } from './summary-context.js?v=0.11.96';
 import { formatDriftRequest, mergeOffscreenWorld, OFFSCREEN_KINDS } from './offscreen-world.js?v=0.13.6';
 import { CAUSAL_KINDS } from './causal-context.js?v=0.13.6';
+import { mergeSituationUpdates, retireManifestedSituations } from './situations.js?v=0.13.6';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
@@ -44,6 +45,23 @@ const CAUSAL_CONDITION_SCHEMA = { type: 'object', additionalProperties: false, p
     confidence: { type: 'string', enum: ['established', 'strong', 'tentative'] },
     relevance: text(180), known_by: strings(6, 80), learned_from: text(180),
 }, required: ['id', 'kind', 'subject', 'condition', 'disclosure', 'confidence', 'relevance', 'known_by', 'learned_from'] };
+const SITUATION_SCHEMA = { type: 'object', additionalProperties: false, properties: {
+    op: { type: 'string', enum: ['upsert', 'retire'] }, id: text(80),
+    type: { type: 'string', enum: ['challenge', 'opportunity', 'discovery', 'encounter', 'quest-hook'] },
+    premise: text(260), cause: text(220), entry: text(220),
+    scope: { type: 'string', enum: ['scene', 'days', 'arc'] },
+    persistence: { type: 'string', enum: ['transient', 'local', 'ongoing'] },
+    status: { type: 'string', enum: ['available', 'engaged', 'retired'] },
+    origin: { type: 'string', enum: ['established', 'inferred', 'original'] },
+}, required: ['op', 'id', 'type', 'premise', 'cause', 'entry', 'scope', 'persistence', 'status', 'origin'] };
+const SITUATION_SCHEMA_COMPACT = { type: 'object', additionalProperties: false, properties: {
+    op: { type: 'string', enum: ['upsert', 'retire'] }, id: { type: 'string' },
+    type: { type: 'string', enum: ['challenge', 'opportunity', 'discovery', 'encounter', 'quest-hook'] },
+    premise: { type: 'string' }, cause: { type: 'string' }, entry: { type: 'string' },
+    scope: { type: 'string', enum: ['scene', 'days', 'arc'] }, persistence: { type: 'string', enum: ['transient', 'local', 'ongoing'] },
+    status: { type: 'string', enum: ['available', 'engaged', 'retired'] }, origin: { type: 'string', enum: ['established', 'inferred', 'original'] },
+}, required: ['op', 'id', 'type', 'premise', 'cause', 'entry', 'scope', 'persistence', 'status', 'origin'] };
+const SITUATION_SCHEMA_WIRE = { type: 'object' };
 const RESPONSE_AUDIT_SCHEMA = { type: 'object', additionalProperties: false, properties: {
     applicable: { type: 'boolean' },
     movement_fit: { type: 'string', enum: ['not-applicable', 'missed', 'partial', 'clear'] },
@@ -107,6 +125,7 @@ export const ANALYSIS_SCHEMA_VALUE = {
             conditions: { type: 'array', minItems: 1, maxItems: 6, items: CAUSAL_CONDITION_SCHEMA },
             inject: { type: 'boolean', const: true }, inject_reason: text(220), basis: text(240),
         }, required: ['conditions', 'inject', 'inject_reason', 'basis'] },
+        situations: { type: 'array', maxItems: 6, items: SITUATION_SCHEMA_COMPACT },
         offscreen: OFFSCREEN_SCHEMA,
         response_audit: RESPONSE_AUDIT_SCHEMA,
         horizon: { type: 'object', additionalProperties: false, properties: {
@@ -157,6 +176,7 @@ export const INCREMENTAL_ANALYSIS_SCHEMA_VALUE = {
             conditions: { type: 'array', minItems: 1, maxItems: 6, items: CAUSAL_CONDITION_SCHEMA },
             inject: { type: 'boolean', const: true }, inject_reason: text(200), basis: text(220),
         }, required: ['conditions', 'inject', 'inject_reason', 'basis'] },
+        situations: { type: 'array', maxItems: 6, items: SITUATION_SCHEMA_WIRE },
         offscreen: OFFSCREEN_SCHEMA,
         thread_updates: { type: 'array', maxItems: 4, items: { type: 'object', additionalProperties: false, properties: {
             op: { type: 'string', enum: ['upsert', 'retire'] }, id: text(100), thread: text(180), state: text(220),
@@ -1804,6 +1824,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         horizon_rule: 'Stay one step ahead privately by maintaining optional horizon trajectories, but never convert them into provider instructions, promised events, delivery debt, or fixed plot. Long-range possibilities remain hypotheses until supported.',
         motive_rule: 'Maintain the separate private hidden-motive board as ranked hypotheses. It can preserve bold specific explanations, but a likely motive is not canon. Retire or revise only when evidence changes; irrelevance may make an item dormant without resolving it.',
         contribution_rule: 'Set context.inject=true and provide 1–6 concise conditions, normally 3–6 when evidence supports them. At least one must be established or strong. Favor a useful mix rather than exhaustive lore. The provider receives only subject plus condition and a positive self-propelling movement contract; it does not receive ids, confidence, relevance, basis, rankings, or future plans.',
+        situation_rule: 'Maintain 0–6 private optional situations suited to genre, setting, era, location, and activity. Use cause -> present circumstance -> possible entry. Challenges, opportunities, discoveries, encounters, and open quest-hooks are valid. Never require player actions, outcomes, reveals, or sequences; preserve quiet scenes. Original inventions stay optional until manifested. Use stable ids and retire contradicted or irrelevant items.',
         response_audit_rule: 'Privately audit only the newest assistant reply for repetition, unjustified escalation, player control, continuity drift, and whether it made meaningful movement. Meaningful movement is an observable change in activity, behavior, understanding, options, or circumstances that carries the situation forward at its natural scale. The audit informs future selection but never mechanically marks a condition resolved or forces regeneration.',
         transcript_head: {
             message_count: messages.length,
@@ -2049,6 +2070,8 @@ function applyIncrementalAnalysis(next, value, messages) {
         basis: current.frame_basis,
     } }).sceneProfile;
     next.causalContext = normalizeState({ causalContext: context }).causalContext;
+    if (Array.isArray(value.situations)) next.situationBoard = mergeSituationUpdates(next.situationBoard, value.situations, { currentTurn: next.turnCount + 1, full: false });
+    next.situationBoard = retireManifestedSituations(next.situationBoard, messages);
     // Legacy in-flight passes did not audit replies; never fabricate an audit
     // for them. Every new incremental pass closes the feedback loop.
     if (value.response_audit) {
@@ -2174,6 +2197,8 @@ function applyBeatAnalysis(next, value, messages) {
         next.hiddenMotives = proposedMotives;
     }
     next.causalContext = normalizeState({ causalContext: context }).causalContext;
+    if (Array.isArray(value.situations)) next.situationBoard = mergeSituationUpdates(next.situationBoard, value.situations, { currentTurn: next.turnCount + 1, full: true });
+    next.situationBoard = retireManifestedSituations(next.situationBoard, messages);
     if (value.offscreen) next.offscreenWorld = mergeOffscreenWorld(next.offscreenWorld, value.offscreen, { currentTurn: next.turnCount + 1 });
     const horizonTrajectory = next.horizonRadar.seeds.find(seed => seed.kind === 'detected' && seed.presentRelation !== 'none')?.trajectory || '';
     next.narrativeLayers = normalizeState({ narrativeLayers: {
@@ -2569,11 +2594,12 @@ Stay a step ahead only in the private horizon, motive, and offscreen boards. The
 
 const KNOWLEDGE_AND_AUDIT_RULES = `For each condition, known_by lists only evidenced knowers and learned_from gives their in-world learning route, not private planner reasoning. Use [] and an empty string when not established; do not invent knowledge or grant it to the player. A suspected fact stays a belief held by its subject, not objective truth. On every pass, response_audit evaluates only the newest assistant reply: state_change describes the supported before-to-after difference, or explicitly says no meaningful change was observed. Evaluate task progress, NPC stance, shared understanding, options, and circumstances, not gesture counts or decorative motion. Rest, silence, routine, and scene landings are legitimate; never manufacture escalation or player feelings to satisfy an audit. Patterns are concrete observed repetition, not speculative criticisms. With no assistant reply, set applicable=false, movement_fit=not-applicable, empty state_change, and no flags. The audit informs the next selection, not automatic retries or imposed outcomes.`;
 
-export const ANALYSIS_OUTPUT_CONTRACT = `Return exactly: contract_version=12, current, context, offscreen, response_audit, horizon, hidden_motives, world, thread_updates, actor_updates, canon_updates, ledger, note_resolution, audit.
+export const ANALYSIS_OUTPUT_CONTRACT = `Return exactly: contract_version=12, current, context, situations, offscreen, response_audit, horizon, hidden_motives, world, thread_updates, actor_updates, canon_updates, ledger, note_resolution, audit.
 context={conditions,inject,inject_reason,basis}; inject=true. conditions has 1–6 items, each {id,kind,subject,condition,disclosure,confidence,relevance,known_by,learned_from}. kind is ${CAUSAL_KINDS.join(', ')}. disclosure is open, limited, or private. confidence is established, strong, or tentative. Describe current causes only, never future actions or planned events. At least one condition must not be tentative. ${KNOWLEDGE_AND_AUDIT_RULES}
+situations has 0–6 optional setting-native circumstances, each {op,id,type,premise,cause,entry,scope,persistence,status,origin}. Use cause -> present circumstance -> possible interaction. These are never required events, objectives, outcomes, reveals, or player instructions. Original or consequential situations remain optional and non-canon until manifested. Return zero when none fit; use op=retire when contradicted or no longer relevant.
 offscreen={subjects,elapsed,settled_through,audit} is the complete bounded deferred-debt board. Preserve unseen subjects and settled history; update last_seen_turn only when settling relevant debt. current records the exact current scene. response_audit privately evaluates the prior assistant response. horizon and hidden_motives remain private optional hypotheses. world and updates contain factual state only. Empty update arrays mean no factual change. No other keys.`;
 
-export const INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT = `Return exactly contract_version=13 plus current, context, offscreen, response_audit, thread_updates, hidden_motives, actor_updates, ledger, note_resolution, and audit.
+export const INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT = `Return exactly contract_version=13 plus current, context, situations, offscreen, response_audit, thread_updates, hidden_motives, actor_updates, ledger, note_resolution, and audit.
 context contains 1–6 currently relevant present causal conditions using {id,kind,subject,condition,disclosure,confidence,relevance,known_by,learned_from}, inject=true, inject_reason, and basis. At least one condition is established or strong; tentative items remain private. Conditions may name real subjects but never prescribe actions, events, dialogue, revelations, or outcomes. ${KNOWLEDGE_AND_AUDIT_RULES} offscreen.subjects and hidden_motives.items contain only changed records; omitted ids and empty arrays preserve prior records. Use stable ids and change=retire to remove a disproven motive. Usually select 1–3 useful conditions; keep prose concise. Updates contain factual changes only. No other keys.`;
 
 export const INCREMENTAL_SYSTEM = `You are Tale Fairy, a private active-world simulator for another model that writes the roleplay. Return only JSON matching the schema. The available transcript begins observation, not the world: treat even its first exchange as in medias res and always infer useful present causal conditions from transcript, scenario, World Info, and retained evidence, reducing confidence or scope rather than returning an empty world. Infer the active scale and causal units each pass; adapt smoothly among personal, slice-of-life, household, organization, town, country, ecosystem, adventure, civilization, and mixed-scale play without forcing one genre's mechanics onto another. Newest explicit transcript facts outrank retained evidence. Update changed facts and private hypotheses, then select 1–6 current underlying conditions that give the writing model causal traction for an observable self-propelling change, even when the same scene or activity continues. An under-specified world permits compatible setting-native information when it becomes relevant, but consequential inventions and new adversaries remain tentative private horizon/offscreen hypotheses until evidenced or manifested. Challenge may arise from goals, scarcity, rules, tradeoffs, uncertainty, environments, institutions, or opposing actors; enemies and combat are never defaults, and cooperation, routine, recovery, and uneventful periods remain valid. Maintain offscreen as deferred debt rather than continuous ticking: preserve unseen subjects, settle only newly relevant or explicitly time-skipped change, scale detail by distance, and never re-roll settled history or schedule consequences. A condition names its actual subject and states a present motivation, stance, knowledge, capability, relationship, constraint, institutional tendency, resource pressure, or environmental state. Never plan the next action, event, dialogue, reveal, discovery, consequence, or outcome. established requires direct evidence, strong a supported inference, and tentative stays private. Do not equate mention with resolution or neglect with escalation. Never define or modify the player action, response, consent, or inner state.`;

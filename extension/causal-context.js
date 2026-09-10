@@ -48,7 +48,7 @@ function choice(value, allowed, fallback) {
 }
 
 export function defaultCausalContext() {
-    return { conditions: [], inject: false, injectReason: '', basis: '' };
+    return { conditions: [], optionalSituations: [], inject: false, injectReason: '', basis: '' };
 }
 
 export function defaultSceneProfile() {
@@ -89,6 +89,9 @@ export function normalizeCausalContext(value = {}) {
         .filter(item => item.id && item.subject && item.condition && item.relevance);
     return {
         conditions,
+        optionalSituations: (Array.isArray(value.optionalSituations ?? value.optional_situations) ? (value.optionalSituations ?? value.optional_situations) : [])
+            .slice(0, 1).map(item => ({ premise: text(item.premise, 260), entry: text(item.entry, 220) }))
+            .filter(item => item.premise && item.entry),
         inject: Object.hasOwn(value, 'inject') ? value.inject === true : conditions.some(item => item.confidence !== 'tentative'),
         injectReason: text(value.injectReason ?? value.inject_reason, 220),
         basis: text(value.basis, 240),
@@ -130,11 +133,16 @@ export function formatCausalContext(value, options = {}) {
     const open = conditions.filter(item => item.disclosure === 'open');
     const limited = conditions.filter(item => item.disclosure === 'limited');
     const privateItems = conditions.filter(item => item.disclosure === 'private');
+    const situations = context.optionalSituations;
     return [
         'RELEVANT UNDERLYING CONDITIONS — causal context, not required events or predetermined outcomes. Interpret only what fits the latest turn; the writing model chooses every concrete action, development, and consequence.',
         section('Current conditions:', open),
         section('Limited knowledge — do not make universally known:', limited),
         section('Private conditions — express through behavior unless disclosure becomes natural in-world:', privateItems),
+        situations.length ? [
+            'OPTIONAL SITUATIONAL OPENINGS — not required events or facts. Use only if the latest action naturally engages one; otherwise ignore it. Outcomes, player choices, consent, and consequences remain open.',
+            ...situations.map(item => `- ${item.premise} It is available if someone naturally ${item.entry.replace(/^[Tt]o\s+/u, '')}.`),
+        ].join('\n') : '',
         MODE_TREATMENT[mode],
         'SELF-PROPELLING MOVEMENT: Every reply changes the current situation in an observable way independent of another player reply. Remaining in the same scene or activity is fully compatible: use task-native progress, an NPC decision or action, disclosure, consequence, discovery, opportunity, environmental change, or another fitting shift. Dialogue contributes when it changes what is known, decided, possible, or underway. Leave the player free to react or continue.',
         'MEANINGFUL CHANGE: Prefer a small lasting difference in task progress, NPC stance, shared understanding, available options, or circumstances. Repeated gestures, paraphrased feelings, and decorative motion alone are not progress. Rest, silence, routine, and a scene landing are valid; do not manufacture a disruption or assign the player a new feeling to satisfy this rule. A belief or suspicion remains that character’s belief, not objective truth.',

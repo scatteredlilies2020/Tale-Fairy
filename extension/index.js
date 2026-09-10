@@ -6,6 +6,7 @@ import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
 import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.13.6';
 import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.13.6';
+import { selectSituationalOpenings } from './situations.js?v=0.13.6';
 import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.13.6';
 import { resolveInjectionPlacement } from './injection-placement.js?v=0.13.6';
 import { DEFAULT_INJECTION_ROLE, normalizeInjectionRole } from './injection-role.js?v=0.13.6';
@@ -610,6 +611,8 @@ function guideSelectionOptions(state, context = currentContext()) {
     const chatId = String(context.getCurrentChatId?.() || '');
     const chat = messagesFromChat(context.chat || []);
     const latestUserAction = [...chat].reverse().find(message => message.is_user)?.mes || '';
+    const selectedSituations = selectSituationalOpenings(state.situationBoard, { scene: state.scene, sceneProfile: state.sceneProfile, latestUserAction });
+    const selectedCausalContext = { ...(state.causalContext || {}), optionalSituations: selectedSituations.slice(0, 1).map(item => ({ premise: item.premise, entry: item.entry })) };
     if (generationGuideSelection?.chatId === chatId) {
         return {
             guidanceUsable: generationGuideSelection.usable,
@@ -632,6 +635,7 @@ function guideSelectionOptions(state, context = currentContext()) {
         variationCue: 0,
         directorSample: sampleDirectorSignals(state.mode, state.plannerSeed),
         latestUserAction,
+        causalContext: selectedCausalContext,
     };
 }
 
@@ -654,6 +658,12 @@ function prepareGenerationGuide(state, type) {
     const directorSample = replacement && archived?.directorSample
         ? archived.directorSample
         : sampleDirectorSignals(state.mode, directorSeed);
+    const selectedSituations = selectSituationalOpenings(state.situationBoard, {
+        scene: state.scene,
+        sceneProfile: state.sceneProfile,
+        latestUserAction: [...messages].reverse().find(message => message.is_user)?.mes || '',
+    });
+    const selectedCausalContext = { ...(state.causalContext || {}), optionalSituations: selectedSituations.slice(0, 1).map(item => ({ premise: item.premise, entry: item.entry })) };
     generationGuideSelection = {
         chatId,
         candidates: [], index: 0,
@@ -670,7 +680,7 @@ function prepareGenerationGuide(state, type) {
         // reply being discarded. Reuse the exact pre-response canon snapshot.
         canonConstraints: replacement ? ((archivedUsable || archivedSkipped) ? archived.canonConstraints : currentGuidanceUsable ? state.canonConstraints : []) : null,
         sceneProfile: (archivedUsable || archivedSkipped) ? archived.sceneProfile : state.sceneProfile,
-        causalContext: (archivedUsable || archivedSkipped) ? archived.causalContext : state.causalContext,
+        causalContext: (archivedUsable || archivedSkipped) ? archived.causalContext : selectedCausalContext,
     };
 }
 
