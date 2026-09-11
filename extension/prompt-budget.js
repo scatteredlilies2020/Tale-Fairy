@@ -1,4 +1,19 @@
-import { estimateTokenCount } from './token-budget.js?v=0.13.8';
+import { estimateTokenCount } from './token-budget.js?v=0.13.9';
+import { summarySourceAudit } from './summary-context.js?v=0.13.9';
+
+export function plannerEvidenceAudit(prompt, candidates, { fixedEnvelope = '', tokenBudget = 0, tier = '' } = {}) {
+    const payload = JSON.parse(prompt);
+    const included = summarySourceAudit(payload.summary_sources);
+    const candidate = summarySourceAudit(candidates);
+    return {
+        ...included, candidateCount: candidate.count, candidateTokens: candidate.includedTokens,
+        droppedLabels: candidate.labels.filter(label => !included.labels.includes(label)),
+        inputTokens: estimateTokenCount(`${fixedEnvelope}\n${prompt}`), inputBudget: tokenBudget, tier,
+        recentTokens: (payload.messages || []).reduce((sum, message) => sum + estimateTokenCount(message.content), 0),
+        historyCount: payload.historical_evidence?.length || 0,
+        actorCount: payload.current?.entities?.length || 0,
+    };
+}
 
 // Includes schema + system rules, not just the variable story payload. A broken
 // provider tokenizer must never disable the local budget guard.

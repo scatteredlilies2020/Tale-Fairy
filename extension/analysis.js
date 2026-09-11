@@ -1,10 +1,11 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.13.8';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.13.9';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
-import { compactSummarySources } from './summary-context.js?v=0.11.96';
-import { formatDriftRequest, mergeOffscreenWorld, OFFSCREEN_KINDS } from './offscreen-world.js?v=0.13.8';
-import { CAUSAL_KINDS } from './causal-context.js?v=0.13.8';
-import { mergeSituationUpdates, retireManifestedSituations } from './situations.js?v=0.13.8';
-import { PLANNER_AGENCY_RULE, ACTOR_AGENCY_RULE, AGENCY_AUDIT_RULE } from './game-master.js?v=0.13.8';
+import { compactSummarySources } from './summary-context.js?v=0.13.9';
+import { relevantExcerpt } from './evidence-selection.js?v=0.13.9';
+import { formatDriftRequest, mergeOffscreenWorld, OFFSCREEN_KINDS } from './offscreen-world.js?v=0.13.9';
+import { CAUSAL_KINDS } from './causal-context.js?v=0.13.9';
+import { mergeSituationUpdates, retireManifestedSituations } from './situations.js?v=0.13.9';
+import { PLANNER_AGENCY_RULE, ACTOR_AGENCY_RULE, AGENCY_AUDIT_RULE } from './game-master.js?v=0.13.9';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
@@ -1009,21 +1010,30 @@ function explicitCanonClaims(messages = []) {
 function selectMessages(messages, recentTokenBudget, messageTokenLimit, latestLimit, bootstrapScan = false) {
     const source = Array.isArray(messages) ? messages : [];
     const newestAssistantIndex = source.findLastIndex(message => !message?.is_user);
+    const newestUserIndex = source.findLastIndex(message => message?.is_user);
     const recent = [];
     let remainingTokens = Math.max(200, Number(recentTokenBudget) || 4000);
+    // Reserve both sides of the authoritative exchange before older prose.
+    // A long assistant reply must never consume the player's entire slot.
+    for (const index of [newestUserIndex, newestAssistantIndex]) {
+        if (index < 0) continue;
+        const allowance = index === newestUserIndex && newestAssistantIndex >= 0
+            ? Math.min(800, Math.floor((remainingTokens - 48) * 0.3)) : remainingTokens - 24;
+        const content = compactMessageContent(source[index]?.mes, Math.max(16, Math.min(latestLimit, allowance)), { latest: true, preserveLeadingStatus: index === newestAssistantIndex });
+        recent.push({ index, content });
+        remainingTokens -= estimateTokenCount(content) + 24;
+    }
     for (let index = source.length - 1; index >= 0; index--) {
+        if (index === newestUserIndex || index === newestAssistantIndex) continue;
         const message = source[index];
-        const headMessage = index === source.length - 1 || index === newestAssistantIndex;
-        const maximum = headMessage ? latestLimit : messageTokenLimit;
-        let content = compactMessageContent(message?.mes, maximum, { latest: headMessage, preserveLeadingStatus: index === newestAssistantIndex });
+        let content = compactMessageContent(message?.mes, messageTokenLimit);
         let cost = estimateTokenCount(content) + 24;
         if (cost > remainingTokens) {
             const availableContentTokens = remainingTokens - 24;
-            // Always retain the completed latest turn. Also retain a compact
-            // preceding turn when useful space remains so a reply is not
-            // interpreted without the action or request that caused it.
-            if (!recent.length || (recent.length === 1 && availableContentTokens >= 160)) {
-                content = compactMessageContent(message?.mes, Math.max(160, Math.min(maximum, availableContentTokens)), { latest: headMessage, preserveLeadingStatus: index === newestAssistantIndex });
+            // Use leftover capacity for one older excerpt only after the
+            // newest user and assistant have their protected allocations.
+            if (availableContentTokens >= 80) {
+                content = compactMessageContent(message?.mes, Math.min(messageTokenLimit, availableContentTokens));
                 cost = estimateTokenCount(content) + 24;
                 if (cost <= remainingTokens + 8) recent.push({ index, content });
             }
@@ -1032,7 +1042,7 @@ function selectMessages(messages, recentTokenBudget, messageTokenLimit, latestLi
         recent.push({ index, content });
         remainingTokens -= cost;
     }
-    recent.reverse();
+    recent.sort((a, b) => a.index - b.index);
     const recentStart = recent[0]?.index ?? source.length;
     const recentContent = new Map(recent.map(item => [item.index, item.content]));
     const indexes = new Set();
@@ -1275,9 +1285,9 @@ function cleanMessageContent(value, { preserveLeadingStatus = false } = {}) {
         .trim();
 }
 
-function compactMessageContent(value, tokenLimit, { latest = false, preserveLeadingStatus = false } = {}) {
+function compactMessageContent(value, tokenLimit, { preserveLeadingStatus = false } = {}) {
     const cleaned = cleanMessageContent(value, { preserveLeadingStatus });
-    const cap = latest ? Math.max(tokenLimit, 1400) : tokenLimit;
+    const cap = Math.max(16, tokenLimit);
     if (estimateTokenCount(cleaned) <= cap) return cleaned;
     const separator = ' … ';
     const available = Math.max(0, cap - estimateTokenCount(separator) * 2);
@@ -1404,7 +1414,7 @@ function retrievalTerms(value) {
 }
 
 function retrievalQueryTerms(state, recentMessages) {
-    const current = stateForPrompt(state);
+    const current = stateForPrompt(state, { query: (recentMessages || []).slice(-4).map(message => message?.mes || '').join('\n') });
     const weighted = new Map();
     const add = (values, weight) => {
         for (const value of values.flat(Infinity).filter(Boolean)) {
@@ -1412,6 +1422,7 @@ function retrievalQueryTerms(state, recentMessages) {
         }
     };
     add((recentMessages || []).slice(-6).map(message => compactMessageContent(message?.mes, 700)), 3);
+    add((current.entities || []).flatMap(item => [item.name, item.motivation, item.constraints, item.agenda]), 2);
     add([
         current.scene?.intent,
         current.directorScore?.storyIdentity,
@@ -1497,7 +1508,9 @@ function retrieveOlderHistoricalEvidence(messages, state, recentStart, selectedI
     const correctionPattern = /\b(?:actually|already|exactly|remember|don't forget|do not forget|i (?:said|told|meant))\b/iu;
     const documentFrequency = new Map();
     let documentCount = 0;
-    for (let index = 0; index < recentStart; index++) {
+    // Bounded ordinary-dialogue retrieval; older history remains in summaries.
+    const scanStart = Math.max(0, recentStart - 400);
+    for (let index = scanStart; index < recentStart; index++) {
         if (!messages[index] || selected.has(index)) continue;
         documentCount++;
         for (const term of new Set(retrievalTerms(compactMessageContent(messages[index].mes, 500)))) {
@@ -1505,10 +1518,10 @@ function retrieveOlderHistoricalEvidence(messages, state, recentStart, selectedI
         }
     }
     const records = [];
-    for (let index = 0; index < recentStart; index++) {
+    for (let index = scanStart; index < recentStart; index++) {
         const message = messages[index];
         if (!message || selected.has(index)) continue;
-        const content = compactMessageContent(message.mes, 360);
+        const content = relevantExcerpt(cleanMessageContent(message.mes), 280, [...queryTerms.keys()].join(' '));
         if (!content) continue;
         const terms = new Set(retrievalTerms(content));
         const overlap = [...terms].filter(term => queryTerms.has(term));
@@ -1536,7 +1549,7 @@ function retrieveOlderHistoricalEvidence(messages, state, recentStart, selectedI
         const threadBoost = linkedSeed && item.hasIntent
             ? linkedSeed.seed.specificity * 1.5 * (1 - linkedSeed.distance / 17)
             : 0;
-        if (item.overlap < 2 && !(item.overlap >= 1 && (item.hasIntent || item.hasCorrection)) && !threadBoost) return [];
+        if (item.overlap < 2 && !(item.overlap >= 1 && (item.hasIntent || item.hasCorrection || /\b(?:refused|declined|departed|left|promised|returned)\b/iu.test(item.content))) && !threadBoost) return [];
         return [{ index: item.index, role: item.role, content: item.content, score: item.specificity + item.intentBoost + item.correctionBoost + item.proximity + threadBoost }];
     });
     const limit = Math.max(1, Math.min(4, maxItems));
@@ -1824,6 +1837,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     const authoritativeRelations = [...authoritativeAssistantSource.matchAll(new RegExp(KINSHIP_POSSESSIVE_PATTERN_SOURCE, 'giu'))]
         .map(match => match[0]);
     const retainedState = stateForPrompt(state, { query: messages.slice(-6).map(message => message?.mes || '').join('\n') });
+    const evidenceQuery = [...messages.slice(-4).map(message => message?.mes || ''), ...retainedState.entities.map(item => item.name)].join('\n');
     const currentPlannerTurn = retainedState.turnCount;
     const retainedCurrent = useSpecificPlayerName(options.incremental ? compactPromptStateForBudget(retainedState) : retainedState, playerName);
     const payload = {
@@ -1884,6 +1898,15 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
             }),
         })),
     };
+    const recentStart = selected.filter(item => item.kind === 'recent')[0]?.index ?? messages.length;
+    const historyKey = `${recentStart}:${selected.map(item => item.index).join(',')}:${Boolean(options.incremental)}`;
+    const historical = options.historyCache?.get(historyKey)
+        || retrieveOlderHistoricalEvidence(messages, state, recentStart, new Set(selected.map(item => item.index)), options.incremental ? 2 : 4);
+    options.historyCache?.set(historyKey, historical);
+    if (historical.length) {
+        payload.historical_evidence = historical.map(item => ({ index: item.index, role: item.role, name: compactText(messages[item.index]?.name, 100), content: item.content }));
+        payload.historical_evidence_rule = 'Earlier indexed observations, not simultaneous current states. Newer explicit corrections and the transcript head win. A past refusal, departure, promise, or return is not permission to invent a new action.';
+    }
     const offscreenDebt = formatDriftRequest(retainedState.offscreenWorld, {
         currentTurn: currentPlannerTurn,
         elapsed: retainedState.offscreenWorld?.elapsed,
@@ -1915,7 +1938,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     const bootstrapContext = compactOptionalObject(bootstrap, 1400);
     if (Object.keys(bootstrapContext).length) payload.bootstrap = bootstrapContext;
 
-    const summarySources = compactSummarySources(Array.isArray(options.summarySources) ? options.summarySources : [], Math.max(300, Math.min(8000, Math.floor(budget * 0.24))));
+    const summarySources = compactSummarySources(Array.isArray(options.summarySources) ? options.summarySources : [], Math.max(160, Math.min(Number(options.summaryContextTokens) || 4000, Math.floor(budget * 0.24))), { query: evidenceQuery });
     if (summarySources.length) payload.summary_sources = summarySources.map(source => ({
         label: source.label,
         kind: source.kind,
@@ -1965,13 +1988,13 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         serialized = JSON.stringify(payload);
     }
     if (estimateTokenCount(serialized) > budget && payload.summary_sources) {
-        payload.summary_sources = compactSummarySources(payload.summary_sources, 500, { maxSources: 4 }).map(source => ({ label: source.label, kind: source.kind, text: source.text }));
+        payload.summary_sources = compactSummarySources(payload.summary_sources, 500, { maxSources: 3, query: evidenceQuery }).map(source => ({ label: source.label, kind: source.kind, text: source.text }));
         serialized = JSON.stringify(payload);
     }
     // Omitted records survive locally. Spend a tight routine budget on the
     // latest exchange and the highest-ranked retrieved witnesses, rather than
     // repeating entire boards and then truncating the new evidence to nothing.
-    for (const key of ['entities', 'continuityThreads', 'causalContext', 'contextLedger']) {
+    for (const key of ['continuityThreads', 'causalContext', 'contextLedger']) {
         if (estimateTokenCount(serialized) <= budget) break;
         delete payload.current[key];
         serialized = JSON.stringify(payload);
@@ -1990,12 +2013,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     }
     if (estimateTokenCount(serialized) > budget) {
         payload.current.contextLedger = truncateToTokenBudget(payload.current.contextLedger || '', 120);
-        payload.current.entities = [];
         delete payload.bootstrap;
-        serialized = JSON.stringify(payload);
-    }
-    if (estimateTokenCount(serialized) > budget && payload.messages.length) {
-        payload.messages[0].content = truncateToTokenBudget(payload.messages[0].content, Math.max(16, estimateTokenCount(payload.messages[0].content) - (estimateTokenCount(serialized) - budget) - 8));
         serialized = JSON.stringify(payload);
     }
     // The same newest exchange also remains in messages. On deliberately tiny
@@ -2010,6 +2028,36 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     for (const key of ['calibration', 'scale_fields', 'simulation', 'adaptation_rule', 'world_generation_rule', 'opposition_rule', 'direction_policy', 'authority', 'invention', 'motive_rule', 'horizon_rule', 'movement', 'distance_rule', 'repetition_rule']) {
         if (estimateTokenCount(serialized) <= budget) break;
         delete payload[key];
+        serialized = JSON.stringify(payload);
+    }
+    // Last-resort reductions protect the current exchange and actor boundaries
+    // ahead of optional boards. Never erase every actor to retain old prose.
+    for (const key of ['hiddenMotives', 'offscreenWorld', 'horizonRadar', 'responsePatternMemory', 'loreModel', 'sceneProfile']) {
+        if (estimateTokenCount(serialized) <= budget) break;
+        delete payload.current[key];
+        serialized = JSON.stringify(payload);
+    }
+    if (estimateTokenCount(serialized) > budget && payload.current.entities?.length) {
+        payload.current.entities = payload.current.entities.slice(0, 3).map(({ name, state, motivation, constraints, agenda }) => ({ name, state, motivation, constraints, agenda }));
+        serialized = JSON.stringify(payload);
+    }
+    for (const key of ['summary_sources', 'historical_evidence']) {
+        while (estimateTokenCount(serialized) > budget && payload[key]?.length) {
+            payload[key].pop();
+            serialized = JSON.stringify(payload);
+        }
+    }
+    while (estimateTokenCount(serialized) > budget && payload.current.entities?.length > 1) {
+        payload.current.entities.pop();
+        serialized = JSON.stringify(payload);
+    }
+    // Trim the largest excerpt, not blindly the first (often the player's
+    // entire action). Keep both roles, attribution, and sampled beginning/end.
+    for (let attempt = 0; attempt < 8 && estimateTokenCount(serialized) > budget; attempt++) {
+        const message = [...payload.messages].sort((a, b) => estimateTokenCount(b.content) - estimateTokenCount(a.content))[0];
+        if (!message || estimateTokenCount(message.content) <= 80) break;
+        const limit = Math.max(80, estimateTokenCount(message.content) - (estimateTokenCount(serialized) - budget) - 16);
+        message.content = compactMessageContent(message.content, limit);
         serialized = JSON.stringify(payload);
     }
     return serialized;

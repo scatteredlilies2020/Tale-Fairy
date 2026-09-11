@@ -1,12 +1,13 @@
-import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.13.8';
+import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.13.9';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
-import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js?v=0.13.8';
-import { defaultCausalContext, defaultSceneProfile, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, normalizeSceneProfile } from './causal-context.js?v=0.13.8';
-import { normalizeDirectorSample } from './director-sampling.js?v=0.13.8';
-import { defaultOffscreenWorld, normalizeOffscreenWorld, offscreenWorldForPrompt } from './offscreen-world.js?v=0.13.8';
-import { defaultSituationBoard, normalizeSituationBoard } from './situations.js?v=0.13.8';
-import { GAME_MASTER_CONTRACT, isStoryGeneration } from './game-master.js?v=0.13.8';
+import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js?v=0.13.9';
+import { defaultCausalContext, defaultSceneProfile, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, normalizeSceneProfile } from './causal-context.js?v=0.13.9';
+import { normalizeDirectorSample } from './director-sampling.js?v=0.13.9';
+import { defaultOffscreenWorld, normalizeOffscreenWorld, offscreenWorldForPrompt } from './offscreen-world.js?v=0.13.9';
+import { defaultSituationBoard, normalizeSituationBoard } from './situations.js?v=0.13.9';
+import { GAME_MASTER_CONTRACT, isStoryGeneration } from './game-master.js?v=0.13.9';
+import { relevantActors } from './evidence-selection.js?v=0.13.9';
 
 export const STATE_KEY = 'livingWorldGuide';
 export const STATE_VERSION = 58;
@@ -631,6 +632,9 @@ export function normalizeState(input = {}) {
             count: Math.max(0, Number(value.summaryEvidence?.count) || 0),
             includedTokens: Math.max(0, Number(value.summaryEvidence?.includedTokens) || 0),
             originalTokens: Math.max(0, Number(value.summaryEvidence?.originalTokens) || 0),
+            ...Object.fromEntries(['candidateCount', 'candidateTokens', 'inputTokens', 'inputBudget', 'recentTokens', 'historyCount', 'actorCount'].map(key => [key, Math.max(0, Number(value.summaryEvidence?.[key]) || 0)])),
+            tier: ['routine', 'review', 'rebuild'].includes(value.summaryEvidence?.tier) ? value.summaryEvidence.tier : '',
+            droppedLabels: (Array.isArray(value.summaryEvidence?.droppedLabels) ? value.summaryEvidence.droppedLabels.slice(0, 24) : []).map(item => text(item).slice(0, 140)),
             // Summary sources are priority ordered, so retain the leading
             // witnesses (including Continuity) rather than the newest tail.
             labels: (Array.isArray(value.summaryEvidence?.labels) ? value.summaryEvidence.labels.slice(0, 12) : []).map(item => text(item).slice(0, 120)).filter(Boolean),
@@ -756,7 +760,7 @@ export function stateForPrompt(state, { query = '' } = {}) {
         continuityRevisionUsed: s.continuityRevisionUsed,
         continuityMessageSignature: s.continuityMessageSignature,
         continuityCoverageThrough: s.continuityCoverageThrough,
-        entities: s.entities.filter(e => e && e.relevance !== 'ambient').slice(-5).map(item => ({
+        entities: relevantActors(s.entities, query).map(item => ({
             name: item.name, state: item.state.slice(0, 120), location: item.location.slice(0, 80), relevance: item.relevance.slice(0, 80),
             perspective: item.perspective.slice(0, 100), motivation: item.motivation.slice(0, 110), knowledge: item.knowledge.slice(0, 90),
             constraints: item.constraints.slice(0, 90), agenda: item.agenda.slice(0, 110),

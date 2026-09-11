@@ -16,12 +16,12 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest, browser runtime, and detached plugin share the release version', () => {
-    assert.equal(manifest.version, '0.13.8');
-    assert.equal(manifest.js, 'extension/index.js?v=0.13.8');
-    assert.equal(manifest.css, 'extension/style.css?v=0.13.8');
+    assert.equal(manifest.version, '0.13.9');
+    assert.equal(manifest.js, 'extension/index.js?v=0.13.9');
+    assert.equal(manifest.css, 'extension/style.css?v=0.13.9');
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.13\.8'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.13\.8'/);
+    assert.match(pluginSource, /const VERSION = '0\.13\.9'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.13\.9'/);
 });
 
 test('live and recovered planner results bound diagnostic prose before strict validation', () => {
@@ -44,8 +44,8 @@ test('roleplay injection never migrates the user default into a system message',
 });
 
 test('runtime uses causal context and deferred world state without prescriptive beat-director dependency', () => {
-    assert.match(source, /from '\.\/causal-context\.js\?v=0\.13\.8'/);
-    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.13\.8'/);
+    assert.match(source, /from '\.\/causal-context\.js\?v=0\.13\.9'/);
+    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.13\.9'/);
     assert.doesNotMatch(source, /beat-director/);
     assert.doesNotMatch(stateSource, /beat-director/);
     assert.match(stateSource, /export const STATE_VERSION = 58/);
@@ -122,8 +122,12 @@ test('SillyTavern interception and detached planner compatibility remain intact'
 test('planner token budgets, retries, and nonblocking behavior remain compatible', () => {
     assert.match(source, /recentContextTokens: 6000/);
     assert.match(source, /maxPromptTokens: 16000/);
-    assert.match(source, /const INCREMENTAL_MAX_PROMPT_TOKENS = 6000/);
-    assert.match(source, /const REVIEW_MAX_PROMPT_TOKENS = 9000/);
+    assert.match(source, /plannerBudgets\(s, \{ bootstrapScan, fullContextPass \}\)/);
+    assert.match(source, /routineInputTokens = normalizeInputBudget/);
+    assert.match(source, /reviewInputTokens = normalizeInputBudget/);
+    assert.match(template, /data-setting="routine-budget"/);
+    assert.match(template, /data-setting="review-budget"/);
+    assert.ok(source.indexOf('lastSummaryAudit = plannerEvidenceAudit(plannerPrompt') > source.indexOf('const plannerPrompt = await buildTokenBudgetedAnalysisPrompt'));
     assert.match(source, /const REVIEW_RESPONSE_TOKENS = 4096/);
     assert.match(source, /bootstrapScan \? REBUILD_RESPONSE_TOKENS : REVIEW_RESPONSE_TOKENS/);
     assert.match(source, /fullContextPass && !bootstrapScan \? \{ reasoningMode: 'off'/);

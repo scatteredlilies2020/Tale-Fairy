@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { defaultSituationBoard, mergeSituationUpdates, normalizeSituationBoard, retireManifestedSituations, selectSituationalOpenings } from '../extension/situations.js?v=0.13.8';
-import { formatCausalContext } from '../extension/causal-context.js?v=0.13.8';
+import { defaultSituationBoard, mergeSituationUpdates, normalizeSituationBoard, retireManifestedSituations, selectSituationalOpenings } from '../extension/situations.js?v=0.13.9';
+import { formatCausalContext } from '../extension/causal-context.js?v=0.13.9';
 
 const item = (id, extra = {}) => ({ id, type: 'opportunity', premise: 'A local resource is temporarily available.', cause: 'A recent ordinary change created the opening.', entry: 'someone checks the nearby records', scope: 'scene', persistence: 'local', status: 'available', origin: 'inferred', ...extra });
 

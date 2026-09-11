@@ -58,17 +58,21 @@ Before the provider request is sent, Tale Fairy atomically replaces stale Tale F
 
 ### Lightweight planning
 
-Routine replies use **one background update**, not separate planning and critique calls. The update returns changed offscreen subjects and motive hypotheses, a fresh causal slice, and a small audit of the newest reply. Unchanged records stay local. The audit checks meaningful task, relationship, understanding, or circumstance changes rather than counting gestures, plus autonomous initiative and mutual agency; rest, quiet scenes, and scene endings remain valid. The permanent GM block adds a bounded amount to roleplay input, but the planner ceilings below are unchanged.
+Routine replies use **one background update**, not separate planning and critique calls. The update returns changed offscreen subjects and motive hypotheses, a fresh causal slice, and a small audit of the newest reply. Unchanged records stay local. The audit checks meaningful task, relationship, understanding, or circumstance changes rather than counting gestures, plus autonomous initiative and mutual agency; rest, quiet scenes, and scene endings remain valid. The permanent GM block adds a bounded amount to roleplay input. Planner defaults now reserve more room for evidence alongside instructions and schema.
 
-| Pass | Input ceiling, including instructions and schema | Output ceiling |
-| --- | ---: | ---: |
-| Routine update | 6,000 tokens | 2,304 tokens |
-| Bounded story review | 9,000 tokens | 4,096 tokens |
-| Initialization / explicit rebuild | Configured budget (default 16,000) | 16,384 tokens |
+| Pass | Default input target, including instructions and schema | Raw-context ceiling | Summary-pool ceiling | Output ceiling |
+| --- | ---: | ---: | ---: | ---: |
+| Routine update | 10,000 tokens, configurable | 3,000 | 1,200 | 2,304 |
+| Bounded story review | 14,000 tokens, configurable | 4,500 | 2,400 | 4,096 |
+| Initialization / explicit rebuild | Configured total ceiling (default 16,000) | Configured (default 6,000) | Configured (default 4,000) | 16,384 |
+
+Every input target is capped by the saved total input ceiling. Lower raw/summary settings also cap each pass; final fitting may reduce evidence further. These larger routine/review defaults can increase API input cost. Existing total-budget choices are preserved.
 
 Broader reviews run every **12 accepted assistant replies** by default (configurable from 3–20), or sooner for a detected correction, scene/time pivot, or manual reevaluation. Routine completions do not reset that clock. A review replaces that turn's routine pass; it is not an additional call or a full transcript rebuild. Routine updates and bounded reviews request reasoning off where supported. Existing compatibility retries and invalid-output repair can still require another request. Story generation never waits for planning.
 
-Repeated rules and legacy planner scaffolding are removed from tight prompts before recent story evidence. Token fitting includes the schema and falls back to a local estimate if the provider tokenizer fails. The routine 6,000-token ceiling makes the previously enforced runtime minimum explicit; it is not an increase from an actual 4,200-token limit.
+Repeated rules and legacy planner scaffolding are removed from tight prompts before recent story evidence. Both sides of the newest exchange receive reserved space. Relevant actors are selected across the saved NPC list, not merely from its newest entries; compact boundaries, commitments, motivations, and availability survive before optional boards. Extremely long replies can still be excerpted. Token fitting includes the schema and falls back to a local estimate if the provider tokenizer fails.
+
+Summary selection favors relevant whole passages, including facts in the middle of a recap, rather than dozens of tiny edge fragments. Bounded raw-history retrieval adds up to two routine or four review witnesses from up to 400 messages before the recent window. These are indexed past observations, not current states; newer corrections win. Older history relies on summaries and retained state, and rebuilds additionally sample the transcript. Summary/recap discovery may still inspect the whole chat. The Scratchpad separates the candidate summary pool from final included sources, estimated total input, raw excerpt tokens, historical witnesses, actor count, and omitted source labels.
 
 Offscreen history uses a durable local journal and archive, with only selected witnesses retrieved into prompts. New relevant subjects can enter a full active board without erasing older facts. Local saved history can grow with play, but it is not sent in full every turn. Knowledge conditions record evidenced knowers and learning routes; private beliefs are not promoted to objective truth or automatic player knowledge. Family relationships and proposal attribution are preserved instead of globally rewritten from the newest mention.
 

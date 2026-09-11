@@ -1,5 +1,6 @@
 import { compactContinuityPrompt, formatPlanningEvidence } from './continuity.js?v=0.11.96';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
+import { evidenceRelevance, relevantExcerpt } from './evidence-selection.js?v=0.13.9';
 
 const SUMMARY_KEY = /(?:summar(?:y|ies|i[sz](?:e|ed|er|ing|ation)?)|synopsis|recap|story[\s_.-]*so[\s_.-]*far|memory|continuity|chronicle|world[\s_.-]*(?:state|info|status|model)|lore|plot[\s_.-]*state|session[\s_.-]*state|context[\s_.-]*(?:ledger|summary|memory|state))/iu;
 const SUMMARY_SHAPE = /(?:^|\n)\s*(?:#{1,4}\s*)?(?:\[|<)?(?:summary|synopsis|recap|story\s+so\s+far|continuity|chronicle|world\s+(?:state|info|status)|lore|plot\s+state|session\s+state)(?:\]|>|\s*:|\s*$)/imu;
@@ -105,7 +106,7 @@ function normalizedSource(source, ordinal = 0) {
  * high-authority sources. This prevents one large memory prompt from starving
  * a smaller world-state recap while keeping the entire bundle token bounded.
  */
-export function compactSummarySources(sources, requestedTokenLimit = 4000, { maxSources = 24 } = {}) {
+export function compactSummarySources(sources, requestedTokenLimit = 4000, { maxSources = 24, query = '' } = {}) {
     const limit = Math.max(0, Math.floor(Number(requestedTokenLimit) || 0));
     if (!limit) return [];
     const seen = new Set();
@@ -118,9 +119,13 @@ export function compactSummarySources(sources, requestedTokenLimit = 4000, { max
         seen.add(key);
         unique.push(item);
     }
-    const ranked = unique
-        .sort((a, b) => a.priority - b.priority || a.ordinal - b.ordinal)
-        .slice(0, Math.max(1, Math.min(32, Number(maxSources) || 24)));
+    // A queried pool favors usable passages over dozens of tiny fragments.
+    const sourceLimit = query ? Math.min(maxSources, Math.max(1, Math.floor(limit / 160))) : maxSources;
+    const ranked = unique.map(item => ({ ...item, relevance: query ? evidenceRelevance(item.text, query) : 0 }))
+        .sort((a, b) => Number(b.priority === 0) - Number(a.priority === 0)
+            || b.relevance - a.relevance
+            || a.priority - b.priority || a.ordinal - b.ordinal)
+        .slice(0, Math.max(1, Math.min(32, Number(sourceLimit) || 24)));
     const chosen = [];
     let runningHeaderTokens = 0;
     for (const item of ranked) {
@@ -157,7 +162,7 @@ export function compactSummarySources(sources, requestedTokenLimit = 4000, { max
     }
 
     return chosen.map((item, index) => {
-        const text = compactHeadAndTail(item.text, allocations[index], item.kind);
+        const text = query ? relevantExcerpt(item.text, allocations[index], query) : compactHeadAndTail(item.text, allocations[index], item.kind);
         const includedTokens = estimateTokenCount(text);
         return {
             label: item.label,
@@ -268,7 +273,7 @@ export async function collectSummarySources(context = {}, messages = [], options
         }
     }
 
-    return compactSummarySources(discovered, options.tokenBudget || 4000, { maxSources: options.maxSources || 24 });
+    return compactSummarySources(discovered, options.tokenBudget || 4000, { maxSources: options.maxSources || 24, query: options.query || messages.slice(-4).map(message => message?.mes || '').join('\n') });
 }
 
 /**

@@ -28,19 +28,27 @@
           </label>
           <label>Recent raw context budget (tokens)
             <input class="text_pole" type="number" data-setting="recent-budget" min="1000" max="12000" step="500" value="6000">
-            <small>Adaptive tail: includes as many newest turns as fit. Persistent summaries and full-chat retrieval are separate.</small>
+            <small>Raw-context ceiling. Routine updates use up to 3,000 tokens; broad reviews up to 4,500; rebuilds use this setting. Both sides of the newest exchange get reserved space. Separate retrieval checks up to 400 earlier messages for relevant evidence; older history relies on summaries.</small>
           </label>
           <label>Summary retrieval pool (tokens)
             <input class="text_pole" type="number" data-setting="summary-budget" min="1000" max="8000" step="500" value="4000">
-            <small>Candidate evidence shared fairly across Continuity Memory, extension summaries, recaps, world state, message memory, and active World Info. The total limit may compact this pool further.</small>
+            <small>Candidate-pool ceiling: routine updates use up to 1,200 tokens; broad reviews up to 2,400; rebuilds use this setting. Selects relevant passages from Continuity, summaries, recaps, memory, and World Info. Final input fitting can reduce the pool. The Scratchpad reports final included evidence separately.</small>
           </label>
-          <label>Total planner input budget (tokens)
+          <label>Total planner input ceiling / rebuild budget (tokens)
             <input class="text_pole" type="number" data-setting="budget" min="9000" max="30000" step="1000" value="16000">
-            <small>Includes instructions, schema, and story evidence. Routine updates use at most 6,000 input / 2,304 output tokens; broad reviews use 9,000 / 4,096, with reasoning off for both. Initialization and Full Rebuild use the configured input limit and up to 16,384 output/thinking tokens.</small>
+            <small>Includes instructions, schema, and story evidence. Caps every pass, including the targets below. Initialization and Full Rebuild use this limit and up to 16,384 output/thinking tokens.</small>
+          </label>
+          <label>Routine planner input target (tokens)
+            <input class="text_pole" type="number" data-setting="routine-budget" min="9000" max="30000" step="1000" value="10000">
+            <small>Default: 10,000, subject to the total ceiling. Every accepted reply; up to 2,304 output tokens, reasoning off. Larger inputs cost more but leave more space for evidence.</small>
+          </label>
+          <label>Broad-review input target (tokens)
+            <input class="text_pole" type="number" data-setting="review-budget" min="9000" max="30000" step="1000" value="14000">
+            <small>Default: 14,000, subject to the total ceiling. Up to 4,096 output tokens, reasoning off. All planning remains background-only.</small>
           </label>
           <label>Broad story review interval (assistant replies)
             <input class="text_pole" type="number" data-setting="full-review-interval" min="3" max="20" step="1" value="12">
-            <small>Default: 12. Compact guidance and a brief story audit still refresh after each accepted reply. Corrections, major scene shifts, and manual reevaluation can trigger a review earlier. Reviews do not rescan the entire chat or block generation.</small>
+            <small>Default: 12. Compact guidance and a brief story audit still refresh after each accepted reply. Corrections, major scene shifts, and manual reevaluation can trigger a review earlier. Raw-history retrieval is bounded; summary discovery may inspect the full chat. Neither blocks generation.</small>
           </label>
         </div>
         <label class="checkbox_label">

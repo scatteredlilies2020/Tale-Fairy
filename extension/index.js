@@ -4,34 +4,36 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.13.8';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.13.8';
-import { isStoryGeneration } from './game-master.js?v=0.13.8';
-import { selectSituationalOpenings } from './situations.js?v=0.13.8';
-import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.13.8';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.13.8';
-import { DEFAULT_INJECTION_ROLE, normalizeInjectionRole } from './injection-role.js?v=0.13.8';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.13.8';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.13.8';
-import { normalizeModelListResponse } from './models.js?v=0.13.8';
-import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.13.8';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.13.8';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.13.8';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.13.8';
-import { estimateTokenCount } from './token-budget.js?v=0.13.8';
-import { fitPromptToBudget } from './prompt-budget.js?v=0.13.8';
-import { completionText } from './completion-response.js?v=0.13.8';
-import { sampleDirectorSignals } from './director-sampling.js?v=0.13.8';
-import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, plannerValidationRepairInstruction, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.13.8';
+import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.13.9';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.13.9';
+import { isStoryGeneration } from './game-master.js?v=0.13.9';
+import { selectSituationalOpenings } from './situations.js?v=0.13.9';
+import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.13.9';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.13.9';
+import { DEFAULT_INJECTION_ROLE, normalizeInjectionRole } from './injection-role.js?v=0.13.9';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.13.9';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.13.9';
+import { normalizeModelListResponse } from './models.js?v=0.13.9';
+import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.13.9';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.13.9';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.13.9';
+import { collectSummarySources } from './summary-context.js?v=0.13.9';
+import { estimateTokenCount } from './token-budget.js?v=0.13.9';
+import { fitPromptToBudget, plannerEvidenceAudit } from './prompt-budget.js?v=0.13.9';
+import { DEFAULT_ROUTINE_INPUT, DEFAULT_REVIEW_INPUT, normalizeInputBudget, plannerBudgets } from './planner-budgets.js?v=0.13.9';
+import { relevantActors } from './evidence-selection.js?v=0.13.9';
+import { completionText } from './completion-response.js?v=0.13.9';
+import { sampleDirectorSignals } from './director-sampling.js?v=0.13.9';
+import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, plannerValidationRepairInstruction, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.13.9';
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
-import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.13.8';
-import { hasUsableCausalContext } from './causal-context.js?v=0.13.8';
-import { formatHiddenMotives } from './scratchpad-format.js?v=0.13.8';
-import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.8';
-import { createSafetyFallbackState } from './fallback-direction.js?v=0.13.8';
+import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.13.9';
+import { hasUsableCausalContext } from './causal-context.js?v=0.13.9';
+import { formatHiddenMotives } from './scratchpad-format.js?v=0.13.9';
+import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.9';
+import { createSafetyFallbackState } from './fallback-direction.js?v=0.13.9';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.13.8';
+const RUNTIME_VERSION = '0.13.9';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -77,12 +79,8 @@ let detachedPlannerEnabled = false;
 let detachedPlannerRecovering = false;
 // Reasoning providers may count hidden thinking against this ceiling. The
 // planner prompt and schema separately target a concise visible JSON result.
-const INCREMENTAL_MAX_PROMPT_TOKENS = 6000;
-const INCREMENTAL_RECENT_CONTEXT_TOKENS = 1800;
-const INCREMENTAL_SUMMARY_CONTEXT_TOKENS = 600;
 const INCREMENTAL_RESPONSE_TOKENS = 2304;
 const REBUILD_RESPONSE_TOKENS = 16384;
-const REVIEW_MAX_PROMPT_TOKENS = 9000;
 const REVIEW_RESPONSE_TOKENS = 4096;
 const PLANNER_MAX_AUTO_RETRIES = 2;
 const UI_MOUNT_TIMEOUT_MS = 30000;
@@ -201,6 +199,8 @@ function getSettings() {
     if (settings.analysisReasoningMode === 'default') settings.analysisReasoningMode = 'auto';
     settings.analysisTemperature = normalizePlannerTemperature(settings.analysisTemperature);
     settings.maxPromptTokens = Math.max(9000, Math.min(30000, Number(settings.maxPromptTokens) || DEFAULT_SETTINGS.maxPromptTokens));
+    settings.routineInputTokens = normalizeInputBudget(settings.routineInputTokens, DEFAULT_ROUTINE_INPUT);
+    settings.reviewInputTokens = normalizeInputBudget(settings.reviewInputTokens, DEFAULT_REVIEW_INPUT);
     return settings;
 }
 
@@ -372,11 +372,12 @@ const detachedPlannerReady = initializeDetachedPlanner();
 async function buildTokenBudgetedAnalysisPrompt(messages, state, note, bootstrap, options) {
     const tokenBudget = Math.max(options.incremental ? 6000 : 9000, Math.min(30000, Number(options.maxPromptTokens) || DEFAULT_SETTINGS.maxPromptTokens));
     const context = currentContext();
+    const historyCache = new Map(); // One transcript-bound cache per fit, never across turns.
     return fitPromptToBudget({
         tokenBudget,
         fixedEnvelope: options.incremental ? INCREMENTAL_BUDGET_ENVELOPE : PLANNER_BUDGET_ENVELOPE,
         tokenCounter: typeof context?.getTokenCountAsync === 'function' ? context.getTokenCountAsync.bind(context) : null,
-        buildPrompt: effectivePromptTokens => buildAnalysisPrompt(messages, state, note, bootstrap, { ...options, maxPromptTokens: tokenBudget, effectivePromptTokens }),
+        buildPrompt: effectivePromptTokens => buildAnalysisPrompt(messages, state, note, bootstrap, { ...options, maxPromptTokens: tokenBudget, effectivePromptTokens, historyCache }),
     });
 }
 
@@ -1819,9 +1820,8 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         current.mode = s.mode;
         current.plannerSchedule = normalizePlannerSchedule({ ...current.plannerSchedule, refreshInterval: s.fullReviewInterval });
         const { fullContextPass, bootstrapScan } = plannerPassDecision({ state: current, messages: chat, rebuild, manual: Boolean(userNote) });
-        const plannerMaxPromptTokens = bootstrapScan ? s.maxPromptTokens : Math.min(s.maxPromptTokens, fullContextPass ? REVIEW_MAX_PROMPT_TOKENS : INCREMENTAL_MAX_PROMPT_TOKENS);
-        const plannerRecentContextTokens = bootstrapScan ? s.recentContextTokens : Math.min(s.recentContextTokens, fullContextPass ? 3000 : INCREMENTAL_RECENT_CONTEXT_TOKENS);
-        const plannerSummaryContextTokens = bootstrapScan ? s.summaryContextTokens : Math.min(s.summaryContextTokens, fullContextPass ? 1600 : INCREMENTAL_SUMMARY_CONTEXT_TOKENS);
+        const budgets = plannerBudgets(s, { bootstrapScan, fullContextPass });
+        const { input: plannerMaxPromptTokens, recent: plannerRecentContextTokens, summary: plannerSummaryContextTokens } = budgets;
         const analysisSelection = {
             source: s.analysisSource,
             profileId: s.analysisProfileId,
@@ -1841,14 +1841,18 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
             includeContinuity: s.continuityIntegration,
             ownPromptKey: PROMPT_KEY,
             tokenBudget: plannerSummaryContextTokens,
+            query: [...chat.slice(-4).map(message => message?.mes || ''), ...relevantActors(current.entities, chat.slice(-4).map(message => message?.mes || '').join('\n')).map(item => item.name)].join('\n'),
             worldInfoActivationTokens: plannerMaxPromptTokens,
             onWarning: (message, error) => console.warn(`[${EXTENSION_ID}] ${message}`, error),
         });
-        lastSummaryAudit = summarySourceAudit(summarySources);
         controller.signal.throwIfAborted();
         showAnalysisPhase(`Building ${Number(plannerMaxPromptTokens).toLocaleString()}-token ${fullContextPass ? 'full' : 'incremental'} planner input`, runId, startedAt);
         const plannerPrompt = await buildTokenBudgetedAnalysisPrompt(chat, current, noteInstruction(userNote), bootstrapContext(context), { recentContextTokens: plannerRecentContextTokens, messageTokenLimit: s.messageTokenLimit, summaryContextTokens: plannerSummaryContextTokens, summarySources, bootstrapScan, fullRebuild: rebuild, incremental: !fullContextPass, maxPromptTokens: plannerMaxPromptTokens, variationNonce });
         plannerTranscriptHead = transcriptHeadFromPrompt(plannerPrompt);
+        lastSummaryAudit = plannerEvidenceAudit(plannerPrompt, summarySources, {
+            fixedEnvelope: fullContextPass ? PLANNER_BUDGET_ENVELOPE : INCREMENTAL_BUDGET_ENVELOPE,
+            tokenBudget: plannerMaxPromptTokens, tier: budgets.tier,
+        });
         showAnalysisPhase('Waiting for planner model', runId, startedAt);
         const result = await requestAnalysis(plannerPrompt, controller.signal, {
             chatId,
@@ -2006,7 +2010,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const continuityStatus = analyzed ? continuityContextState(currentContext()).status : 'unavailable';
     const summaryAudit = state.summaryEvidence?.scannedAt ? state.summaryEvidence : lastSummaryAudit;
     const summaryStatus = summaryAudit.scannedAt || summaryAudit.count
-        ? ` · evidence: ${summaryAudit.count} sources / ${summaryAudit.includedTokens.toLocaleString()} tokens`
+        ? ` · final summaries: ${summaryAudit.count} sources / ${summaryAudit.includedTokens.toLocaleString()} text tokens${summaryAudit.inputBudget ? ` · ${summaryAudit.tier}: ~${summaryAudit.inputTokens.toLocaleString()}/${summaryAudit.inputBudget.toLocaleString()} input tokens · raw excerpts: ${summaryAudit.recentTokens} tokens · historical witnesses: ${summaryAudit.historyCount} · actors: ${summaryAudit.actorCount} · candidate pool: ${summaryAudit.candidateCount} sources / ${summaryAudit.candidateTokens} text tokens${summaryAudit.droppedLabels?.length ? ` · omitted sources: ${summaryAudit.droppedLabels.join(', ')}` : ''}` : ' (legacy evidence count)'}`
         : '';
     scratchpadText(board, 'scratchpad-continuity', `Direct Continuity connector: ${continuityStatus}${summaryStatus}`, 'Direct Continuity connector: unavailable');
 
@@ -2289,6 +2293,8 @@ async function mountUI() {
     root.querySelector('[data-setting="recent-budget"]').value = s.recentContextTokens;
     root.querySelector('[data-setting="summary-budget"]').value = s.summaryContextTokens;
     root.querySelector('[data-setting="budget"]').value = s.maxPromptTokens;
+    root.querySelector('[data-setting="routine-budget"]').value = s.routineInputTokens;
+    root.querySelector('[data-setting="review-budget"]').value = s.reviewInputTokens;
     root.querySelector('[data-setting="injection-position"]').value = s.injectionPosition;
     root.querySelector('[data-setting="injection-depth"]').value = s.injectionDepth;
     root.querySelector('[data-setting="injection-role"]').value = s.injectionRole;
@@ -2336,6 +2342,9 @@ async function mountUI() {
     root.querySelector('[data-setting="recent-budget"]').addEventListener('change', e => { invalidatePlanner(); s.recentContextTokens = Math.max(1000, Math.min(12000, Number(e.target.value) || DEFAULT_SETTINGS.recentContextTokens)); e.target.value = s.recentContextTokens; save(); });
     root.querySelector('[data-setting="summary-budget"]').addEventListener('change', e => { invalidatePlanner(); s.summaryContextTokens = Math.max(1000, Math.min(8000, Number(e.target.value) || 4000)); e.target.value = s.summaryContextTokens; save(); });
     root.querySelector('[data-setting="budget"]').addEventListener('change', e => { invalidatePlanner(); s.maxPromptTokens = Math.max(9000, Math.min(30000, Number(e.target.value) || DEFAULT_SETTINGS.maxPromptTokens)); e.target.value = s.maxPromptTokens; save(); });
+    for (const [key, setting, fallback] of [['routine-budget', 'routineInputTokens', DEFAULT_ROUTINE_INPUT], ['review-budget', 'reviewInputTokens', DEFAULT_REVIEW_INPUT]]) {
+        root.querySelector(`[data-setting="${key}"]`).addEventListener('change', e => { invalidatePlanner(); s[setting] = normalizeInputBudget(e.target.value, fallback); e.target.value = s[setting]; save(); });
+    }
     root.querySelector('[data-setting="injection-position"]').addEventListener('change', e => { s.injectionPosition = e.target.value; save(); });
     root.querySelector('[data-setting="injection-depth"]').addEventListener('change', e => { s.injectionDepth = Math.min(100, Math.max(0, Number(e.target.value) || 0)); e.target.value = s.injectionDepth; save(); });
     root.querySelector('[data-setting="injection-role"]').addEventListener('change', e => { s.injectionRole = e.target.value; save(); });
@@ -2430,6 +2439,8 @@ function refreshControls(root = document.querySelector(`#${EXTENSION_ID}-setting
     root.querySelector('[data-setting="recent-budget"]').value = s.recentContextTokens;
     root.querySelector('[data-setting="summary-budget"]').value = s.summaryContextTokens;
     root.querySelector('[data-setting="budget"]').value = s.maxPromptTokens;
+    root.querySelector('[data-setting="routine-budget"]').value = s.routineInputTokens;
+    root.querySelector('[data-setting="review-budget"]').value = s.reviewInputTokens;
     root.querySelector('[data-setting="injection-position"]').value = s.injectionPosition;
     root.querySelector('[data-setting="injection-depth"]').value = s.injectionDepth;
     root.querySelector('[data-setting="injection-role"]').value = s.injectionRole;
