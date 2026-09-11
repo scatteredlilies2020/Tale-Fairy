@@ -171,5 +171,6 @@ test('provider-bound request receives only clean relevant causal conditions', ()
     assert.match(chat[0].content, /writing model chooses every concrete action/i);
     assert.match(chat[0].content, /Tell me what happened\.$/);
     assert.equal(chat[0].content.match(/<tale-fairy-context>/g)?.length, 1);
-    assert.ok(prompt.length < 3000);
+    // Includes permanent GM/agency rules as well as the concise dynamic slice.
+    assert.ok(prompt.length < 6500);
 });

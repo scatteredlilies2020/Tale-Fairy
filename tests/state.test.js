@@ -86,7 +86,7 @@ test('formatter exposes natural-language causes without internal metadata', () =
     const output = formatCausalContext({ conditions, inject: true }, { mode: 'balanced' });
     assert.match(output, /Mira suspects the report is false\./);
     assert.match(output, /Grain reserves are falling faster than reported\./);
-    assert.doesNotMatch(output, /Merchants|strong|established|relevance|mira/);
+    assert.doesNotMatch(output, /Merchants|confidence|relevance|"id"|mira/);
     assert.match(output, /writing model chooses every concrete action/i);
     assert.match(output, /self-propelling movement/i);
     assert.match(output, /every reply changes the current situation/i);
@@ -147,11 +147,14 @@ test('scene profile bounds outside pressure and preserves explicit OOC authority
     assert.match(payload, /opposition may be personal or systemic/i);
 });
 
-test('missing, tentative-only, stale, and disabled state inject nothing', () => {
-    assert.equal(buildPromptPayload(defaultState(), { enabled: true, guidanceUsable: true }), '');
+test('missing, tentative-only, and stale state retain only GM rules; disabled state injects nothing', () => {
+    const rulesOnly = buildPromptPayload(defaultState(), { enabled: true, guidanceUsable: true });
+    assert.match(rulesOnly, /GAME MASTER RESPONSIBILITY/);
     assert.equal(buildPromptPayload(analyzed(), { enabled: false, guidanceUsable: true }), '');
     const uncertain = analyzed(); uncertain.causalContext = normalizeCausalContext({ conditions: [conditions[2]], inject: true });
-    assert.equal(buildPromptPayload(uncertain, { enabled: true, guidanceUsable: true }), '');
+    assert.equal(buildPromptPayload(uncertain, { enabled: true, guidanceUsable: true }), rulesOnly);
+    assert.equal(buildPromptPayload(analyzed(), { guidanceUsable: false }), rulesOnly);
+    assert.doesNotMatch(rulesOnly, /Mira|Merchants|Grain reserves|RELEVANT UNDERLYING CONDITIONS/);
 });
 
 test('guidance remains usable for one appended user action only', () => {
@@ -196,7 +199,7 @@ test('replacement generation strips only the discarded assistant reply', () => {
 
 test('request verification keeps the exact archived causal slice', () => {
     const state = analyzed();
-    const verification = { status: 'confirmed', injectionDecision: 'inject', runtimeVersion: '0.13.6', verificationId: 'v', guidanceBlock: 'x', requestedAt: 1, confirmedAt: 2, sourceMessageCount: 1, sourceFingerprint: fingerprintMessages([{ is_user: true, mes: 'Question' }]), responseMessageCount: 2, chatId: 'chat', replacementGeneration: false, sceneProfile: state.sceneProfile, causalContext: state.causalContext };
+    const verification = { status: 'confirmed', injectionDecision: 'inject', runtimeVersion: '0.13.7', verificationId: 'v', guidanceBlock: 'x', requestedAt: 1, confirmedAt: 2, sourceMessageCount: 1, sourceFingerprint: fingerprintMessages([{ is_user: true, mes: 'Question' }]), responseMessageCount: 2, chatId: 'chat', replacementGeneration: false, sceneProfile: state.sceneProfile, causalContext: state.causalContext };
     const normalized = normalizeState({ ...state, lastRequestVerification: verification }).lastRequestVerification;
     assert.equal(normalized.causalContext.conditions[0].subject, 'Mira');
     assert.equal(returnedReplyMatchesVerification(normalized, [{ is_user: true, mes: 'Question' }, { is_user: false, mes: 'Reply' }], 'chat'), true);

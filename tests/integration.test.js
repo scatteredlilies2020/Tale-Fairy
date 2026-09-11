@@ -7,6 +7,7 @@ const stateSource = await readFile(new URL('../extension/state.js', import.meta.
 const analysisSource = await readFile(new URL('../extension/analysis.js', import.meta.url), 'utf8');
 const offscreenSource = await readFile(new URL('../extension/offscreen-world.js', import.meta.url), 'utf8');
 const causalSource = await readFile(new URL('../extension/causal-context.js', import.meta.url), 'utf8');
+const gmSource = await readFile(new URL('../extension/game-master.js', import.meta.url), 'utf8');
 const schedulerSource = await readFile(new URL('../extension/planner-scheduler.js', import.meta.url), 'utf8');
 const fallbackSource = await readFile(new URL('../extension/fallback-direction.js', import.meta.url), 'utf8');
 const template = await readFile(new URL('../extension/settings.html', import.meta.url), 'utf8');
@@ -15,12 +16,12 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest, browser runtime, and detached plugin share the release version', () => {
-    assert.equal(manifest.version, '0.13.6');
-    assert.equal(manifest.js, 'extension/index.js?v=0.13.6');
-    assert.equal(manifest.css, 'extension/style.css?v=0.13.6');
+    assert.equal(manifest.version, '0.13.7');
+    assert.equal(manifest.js, 'extension/index.js?v=0.13.7');
+    assert.equal(manifest.css, 'extension/style.css?v=0.13.7');
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.13\.6'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.13\.6'/);
+    assert.match(pluginSource, /const VERSION = '0\.13\.7'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.13\.7'/);
 });
 
 test('roleplay injection never migrates the user default into a system message', () => {
@@ -32,8 +33,8 @@ test('roleplay injection never migrates the user default into a system message',
 });
 
 test('runtime uses causal context and deferred world state without prescriptive beat-director dependency', () => {
-    assert.match(source, /from '\.\/causal-context\.js\?v=0\.13\.6'/);
-    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.13\.6'/);
+    assert.match(source, /from '\.\/causal-context\.js\?v=0\.13\.7'/);
+    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.13\.7'/);
     assert.doesNotMatch(source, /beat-director/);
     assert.doesNotMatch(stateSource, /beat-director/);
     assert.match(stateSource, /export const STATE_VERSION = 58/);
@@ -61,17 +62,18 @@ test('planner contracts return active world conditions rather than future branch
 test('provider context exposes only clean relevant conditions', () => {
     assert.match(causalSource, /RELEVANT UNDERLYING CONDITIONS/);
     assert.match(causalSource, /causal context, not required events or predetermined outcomes/i);
-    assert.match(causalSource, /SELF-PROPELLING MOVEMENT/);
-    assert.match(causalSource, /Every reply changes the current situation/i);
+    assert.match(gmSource, /SELF-PROPELLING MOVEMENT/);
+    assert.match(gmSource, /Every reply changes the current situation/i);
     assert.doesNotMatch(causalSource, /question|interrogat/i);
     assert.match(causalSource, /confidence !== 'tentative'/);
     assert.doesNotMatch(causalSource, /branchIndex|weighted random choice|NEXT-STEP EFFECT/);
     assert.match(stateSource, /formatCausalContext/);
-    assert.match(stateSource, /if \(!enabled \|\| !guidanceUsable\) return ''/);
+    assert.match(stateSource, /if \(!enabled \|\| !isStoryGeneration\(generationType\)\) return ''/);
+    assert.match(stateSource, /\[GAME_MASTER_CONTRACT, dynamicPrompt\]/);
 });
 
 test('generation archives and reuses the same causal slice for regeneration', () => {
-    assert.match(source, /causalContext: generationGuideSelection\.causalContext/);
+    assert.match(source, /guidanceSnapshot\(state, guideSelectionOptions\(state, context\)\)/);
     assert.match(source, /causalContext: \(archivedUsable \|\| archivedSkipped\) \? archived\.causalContext/);
     assert.doesNotMatch(source, /branchIndex|selectBeatBranchIndex/);
     const interceptor = source.slice(source.indexOf('export async function livingWorldGuideGenerateInterceptor'), source.indexOf('globalThis.livingWorldGuideGenerateInterceptor'));

@@ -2,6 +2,10 @@
 
 Tale Fairy is a standalone SillyTavern extension that runs a **private active-world simulation**, not a prose writer or plot script. It tracks causal state across actors, relationships, institutions, systems, resources, and environments while the roleplay model creatively realizes each scene from the full conversation.
 
+Its default behavior is **autonomous Game Master play**: the user is a player, not the world's director. Watching, listening, or waiting is a complete action. NPCs and established situations can develop, resolve, or leave the scene without requiring player commands or making the player responsible for every problem. The writing model remains responsible for realizing these developments; Tale Fairy supplies the GM rules and relevant world context, not a fixed event script.
+
+Agency is mutual. NPCs may refuse, end a conversation, leave, or return to their duties according to personality, relationships, commitments, and circumstances. Players may disengage too, without replacement hooks forcing them back. Existing opposition can matter, but disengagement is neither guaranteed success nor an excuse for invented punishment. Quiet scenes, viewpoint limits, and meaningful opportunities for player intervention remain protected. This is autonomy within generated replies, not unattended automatic message generation.
+
 ## What it does
 
 - Maintains broad world state privately, but injects only **1–6 currently relevant underlying conditions**—normally 1–3 on routine updates, more only when useful. Each clean line describes what a subject wants, believes, knows, can do, is constrained by, or is under pressure from.
@@ -13,7 +17,7 @@ Tale Fairy is a standalone SillyTavern extension that runs a **private active-wo
 - Tracks selected off-screen actors, groups, institutions, systems, environments, places, and situations as **deferred debt rather than continuous ticks**. It settles broad plausible change only when a subject becomes relevant again, material time explicitly advances, or a dependency changes; settled facts are append-only, and undelivered pressure is never a scheduled event.
 - Scales certainty and detail by distance. Nearby state may be specific; distant state stays broad; remote or long-unobserved state remains incomplete, possibly outdated, and never grants the player automatic omniscience.
 - Stays one step ahead through a private **horizon radar** and **hidden-motive board**. These remain optional hypotheses—not event queues, promises, canon, or provider instructions.
-- Runs planning after accepted assistant responses and on initialization, scene/time pivots, corrections, and manual reevaluation. Planning is background-only: roleplay generation never waits, and missing or stale analysis simply means no Tale Fairy injection.
+- Runs planning after accepted assistant responses and on initialization, scene/time pivots, corrections, and manual reevaluation. Planning is background-only: roleplay generation never waits. Permanent, fact-free GM rules remain when analysis is missing or stale; only fresh dynamic world facts are eligible for injection. Disabling Tale Fairy removes both layers. Quiet/tool requests and player impersonation do not receive GM rules.
 - Reuses the same causal slice for regenerations/swipes, allowing the writing model to produce a different realization without changing the underlying world state. Discarded prose never becomes canon.
 - Re-infers the active scale as play changes and tracks the causal unit natural to it: people, relationships, households, communities, towns, organizations, institutions, resources, infrastructure, environments, regions, countries, societies, ecosystems, or wider forces. It can zoom between these without imposing one genre's mechanics on another.
 - Treats an under-specified setting as open simulation space. It can generate compatible people, places, routines, services, customs, opportunities, problems, rumors, discoveries, challenges, and opposition when the current activity makes them relevant, while keeping consequential inventions private and tentative until evidence or on-screen manifestation establishes them.
@@ -21,6 +25,7 @@ Tale Fairy is a standalone SillyTavern extension that runs a **private active-wo
 - Respects scene scale: quiet activity may continue without interruption, outside pressure may remain silent or subtextual, and setting-native challenge may be social, intellectual, bureaucratic, material, emotional, environmental, physical, or absent. Rare derailments require a supported cause already converging; elapsed time or novelty alone never forces one.
 - Keeps every response self-propelling at the scene's natural scale. Staying in the same scene or activity still produces observable task-native progress, changed circumstances, or meaningful NPC/world action while leaving the player's response open.
 - Preserves player agency: it never authors the player's dialogue, choices, thoughts, feelings, consent, or uncertain result.
+- Retains accepted NPC departures, refusals, commitments, and boundaries in existing actor records. Omitted updates and empty unknown fields do not erase them; supported returns or changed willingness update them explicitly. The private reply audit flags player-dependent stalling, forced engagement, reset availability, and overridden intervention opportunities without adding a separate AI call.
 - Treats explicit user text and OOC corrections as higher authority than summaries, lore, retained state, or inference.
 - Places the dynamic block inside the provider-bound latest user content without modifying saved chat, and records the exact verified block in the Planner Scratchpad.
 - Uses a selectable injection role across all chat-message paths: **User** by default, with **System** and **Assistant** available when a provider expects them.
@@ -47,13 +52,13 @@ The planner returns structured JSON. If a provider rejects native JSON schema, t
 
 Browser-independent planning requires the bundled `plugin` directory to be installed as a SillyTavern server plugin and SillyTavern to be restarted. For a source checkout installed at `public/scripts/extensions/third-party/Tale-Fairy`, link `plugins/tale-fairy` to Tale Fairy's `plugin` directory. The extension checks `/api/plugins/tale-fairy/health` at startup and falls back to ordinary in-page requests when the server plugin is unavailable.
 
-Before the provider request is sent, Tale Fairy atomically replaces stale Tale Fairy material and verifies that the assembled payload contains exactly the current dynamic context. If SillyTavern's normal extension-prompt path omitted it, Tale Fairy repairs the request in place. The `<tale-fairy-context>` and inner `<living-world-guide>` blocks are therefore visible in Prompt Inspector for the roleplay request.
+Before the provider request is sent, Tale Fairy atomically replaces stale Tale Fairy material and verifies that the assembled payload contains exactly the current GM rules and any eligible dynamic context. If SillyTavern's normal extension-prompt path omitted it, Tale Fairy repairs the request in place. The `<tale-fairy-context>` and inner `<living-world-guide>` blocks are therefore visible in Prompt Inspector for the roleplay request. The Scratchpad distinguishes rules-only requests from rules plus fresh world facts. A rules-only reply stays rules-only on regeneration, even if planning has since completed.
 
 ## Scope
 
 ### Lightweight planning
 
-Routine replies use **one background update**, not separate planning and critique calls. The update returns changed offscreen subjects and motive hypotheses, a fresh causal slice, and a small audit of the newest reply. Unchanged records stay local. The audit checks meaningful task, relationship, understanding, or circumstance changes rather than counting gestures; rest, quiet scenes, and scene endings remain valid.
+Routine replies use **one background update**, not separate planning and critique calls. The update returns changed offscreen subjects and motive hypotheses, a fresh causal slice, and a small audit of the newest reply. Unchanged records stay local. The audit checks meaningful task, relationship, understanding, or circumstance changes rather than counting gestures, plus autonomous initiative and mutual agency; rest, quiet scenes, and scene endings remain valid. The permanent GM block adds a bounded amount to roleplay input, but the planner ceilings below are unchanged.
 
 | Pass | Input ceiling, including instructions and schema | Output ceiling |
 | --- | ---: | ---: |

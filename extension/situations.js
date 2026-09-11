@@ -71,11 +71,17 @@ export function selectSituationalOpenings(board, { scene = {}, sceneProfile = {}
     const quiet = String(sceneProfile.pressure || '').toLowerCase() === 'none'
         && ['none', 'incidental'].includes(String(sceneProfile.noveltyCeiling || '').toLowerCase());
     const userCloses = /\b(?:stay|remain|quiet|no interruption|do not interrupt|skip|just rest|keep it calm)\b/iu.test(instruction);
-    if (userCloses || (closed && quiet && !/\b(?:ask|check|explore|look|travel|leave|seek|investigate)\b/iu.test(instruction))) return [];
+    if (userCloses) return [];
     const haystack = lower([scene.activity, scene.location, scene.status, sceneProfile.promise, latestUserAction].join(' '));
     const scored = normalized.items.filter(item => item.status === 'available' || item.status === 'engaged').map(item => {
         let score = item.status === 'engaged' ? 5 : 0;
-        if (haystack && (lower(item.entry).split(/\W+/u).some(word => word.length > 3 && haystack.includes(word)) || lower(item.premise).split(/\W+/u).some(word => word.length > 4 && haystack.includes(word)))) score += 3;
+        const relevant = haystack && (lower(item.entry).split(/\W+/u).some(word => word.length > 3 && haystack.includes(word)) || lower(item.premise).split(/\W+/u).some(word => word.length > 4 && haystack.includes(word)));
+        // Relevance comes from the scene as well as the player's words. No
+        // action-verb whitelist: observation need not explicitly unlock it.
+        // Quiet closed scenes still cannot receive unrelated/new encounters.
+        if (closed && quiet && item.status !== 'engaged'
+            && (!relevant || item.type === 'encounter' || item.origin === 'original')) return { item, score: -Infinity };
+        if (relevant) score += 3;
         if (item.scope === 'scene') score += 2;
         if (item.id === normalized.lastSelectedId) score -= 3;
         if (quiet && item.type === 'encounter') score -= 2;

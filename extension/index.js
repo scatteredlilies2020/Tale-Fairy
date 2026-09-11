@@ -4,33 +4,34 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.13.6';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.13.6';
-import { selectSituationalOpenings } from './situations.js?v=0.13.6';
-import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.13.6';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.13.6';
-import { DEFAULT_INJECTION_ROLE, normalizeInjectionRole } from './injection-role.js?v=0.13.6';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.13.6';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.13.6';
-import { normalizeModelListResponse } from './models.js?v=0.13.6';
-import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.13.6';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.13.6';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.13.6';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.13.6';
-import { estimateTokenCount } from './token-budget.js?v=0.13.6';
-import { fitPromptToBudget } from './prompt-budget.js?v=0.13.6';
-import { completionText } from './completion-response.js?v=0.13.6';
-import { sampleDirectorSignals } from './director-sampling.js?v=0.13.6';
-import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, plannerValidationRepairInstruction, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.13.6';
+import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.13.7';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.13.7';
+import { isStoryGeneration } from './game-master.js?v=0.13.7';
+import { selectSituationalOpenings } from './situations.js?v=0.13.7';
+import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.13.7';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.13.7';
+import { DEFAULT_INJECTION_ROLE, normalizeInjectionRole } from './injection-role.js?v=0.13.7';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.13.7';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.13.7';
+import { normalizeModelListResponse } from './models.js?v=0.13.7';
+import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.13.7';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.13.7';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.13.7';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.13.7';
+import { estimateTokenCount } from './token-budget.js?v=0.13.7';
+import { fitPromptToBudget } from './prompt-budget.js?v=0.13.7';
+import { completionText } from './completion-response.js?v=0.13.7';
+import { sampleDirectorSignals } from './director-sampling.js?v=0.13.7';
+import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, plannerValidationRepairInstruction, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.13.7';
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
-import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.13.6';
-import { hasUsableCausalContext } from './causal-context.js?v=0.13.6';
-import { formatHiddenMotives } from './scratchpad-format.js?v=0.13.6';
-import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.6';
-import { createSafetyFallbackState } from './fallback-direction.js?v=0.13.6';
+import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.13.7';
+import { hasUsableCausalContext } from './causal-context.js?v=0.13.7';
+import { formatHiddenMotives } from './scratchpad-format.js?v=0.13.7';
+import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.7';
+import { createSafetyFallbackState } from './fallback-direction.js?v=0.13.7';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.13.6';
+const RUNTIME_VERSION = '0.13.7';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -38,7 +39,6 @@ const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/kobold/generate',
     '/api/backends/koboldhorde/generate',
 ]);
-const ROLEPLAY_GENERATION_TYPES = new Set(['normal', 'regenerate', 'swipe', 'continue', 'impersonate']);
 const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
@@ -61,6 +61,7 @@ let transcriptRefreshTimer = null;
 let lastAnalysisError = '';
 let pendingRequestVerification = null;
 let generationGuideSelection = null;
+let activeGenerationType = '';
 let uiMountPromise = null;
 let uiMountObserver = null;
 let uiMountTimeout = null;
@@ -275,12 +276,18 @@ function installDetachedPlannerTransport() {
             try {
                 const context = currentContext();
                 const chatId = String(context.getCurrentChatId?.() || '');
-                const roleplayRequest = request?.type !== 'quiet' && (
-                    ROLEPLAY_GENERATION_TYPES.has(request?.type)
-                    || generationGuideSelection?.chatId === chatId
+                const generationType = request?.type ?? activeGenerationType;
+                const plannerRequest = containsPlannerMarker(request);
+                const roleplayRequest = !plannerRequest && isStoryGeneration(generationType) && (
+                    Boolean(request?.type)
+                    || Boolean(chatId && generationGuideSelection?.chatId === chatId)
                 );
-                if (roleplayRequest && getSettings().enabled && !containsPlannerMarker(request)) {
-                    const payload = currentGuidancePayload();
+                const enabled = getSettings().enabled;
+                // Explicit quiet/impersonation types override a still-active
+                // story selection. Repair leaked context at the final boundary
+                // too, but never alter or verify a marked planner request.
+                if (!plannerRequest && (roleplayRequest || extractTaleFairyContext(request))) {
+                    const payload = roleplayRequest && enabled ? currentGuidancePayload(generationType) : '';
                     if (Array.isArray(request.messages)) {
                         ensureGuidanceInChat(request.messages, payload, requestInjectionOptions());
                     } else if (typeof request.prompt === 'string') {
@@ -290,15 +297,15 @@ function installDetachedPlannerTransport() {
                     // ensureGuidance* may have removed stale Tale Fairy context.
                     outboundInit = { ...init, body: JSON.stringify(request) };
                 }
-                guidanceBlock = extractTaleFairyContext(JSON.parse(outboundInit.body));
-                if (guidanceBlock && request?.type !== 'quiet' && getSettings().enabled) {
+                guidanceBlock = roleplayRequest && enabled ? extractTaleFairyContext(JSON.parse(outboundInit.body)) : '';
+                if (guidanceBlock) {
                     rememberVerifiedRequest(guidanceBlock, {
                         provider: request.chat_completion_source || currentContext().mainApi,
                         model: request.model,
                     });
                     recordRuntimeStage('provider-bound-proof-saved', { generationType: String(request?.type || '') });
                     renderAnalysisActivity('Exact provider-bound injection recorded', false);
-                } else if (roleplayRequest && getSettings().enabled && generationGuideSelection?.skipped) {
+                } else if (roleplayRequest && enabled && generationGuideSelection?.skipped) {
                     rememberSkippedRequest({
                         provider: request.chat_completion_source || currentContext().mainApi,
                         model: request.model,
@@ -320,7 +327,7 @@ function installDetachedPlannerTransport() {
             recordRuntimeStage('network-dispatched', { generationType: String(request?.type || '') });
             queueMicrotask(() => {
                 try {
-                    if (!guidanceBlock || request?.type === 'quiet' || !getSettings().enabled) return;
+                    if (!guidanceBlock || !getSettings().enabled) return;
                     renderAnalysisActivity('Injection observed after network dispatch', false);
                 } catch (error) {
                     console.warn(`[${EXTENSION_ID}] Passive injection verification failed without affecting generation.`, error);
@@ -648,9 +655,13 @@ function prepareGenerationGuide(state, type) {
     const archived = replacement ? state.lastRequestVerification : null;
     const archivedUsable = isReplacementVerificationCurrent(archived, messages, chatId)
         && archived?.injectionDecision !== 'skip'
+        && archived?.dynamicContextIncluded !== false
         && hasUsableCausalContext(archived?.causalContext);
     const archivedSkipped = isReplacementVerificationCurrent(archived, messages, chatId)
         && archived?.injectionDecision === 'skip';
+    const archivedRulesOnly = isReplacementVerificationCurrent(archived, messages, chatId)
+        && archived?.injectionDecision !== 'skip'
+        && (archived?.dynamicContextIncluded === false || !hasUsableCausalContext(archived?.causalContext));
     const currentDirectionReady = isDirectionCurrent(state, replacementMessages, chatId);
     const currentGuidanceUsable = isGuidanceUsable(state, replacementMessages, chatId);
     const hasArchivedSeed = replacement && Number.isInteger(archived?.directorSeed) && archived.directorSeed >= 0;
@@ -670,7 +681,9 @@ function prepareGenerationGuide(state, type) {
         // Normal guidance is valid for one response only. Replacements reuse
         // the exact provider-bound archive for the discarded response; if no
         // such proof exists, fail closed instead of reviving stale context.
-        usable: archivedUsable || currentGuidanceUsable,
+        // A rules-only original must stay rules-only on a swipe, even if a
+        // planner result from the discarded reply has since become available.
+        usable: archivedRulesOnly || archivedSkipped ? false : archivedUsable || currentGuidanceUsable,
         skipped: archivedSkipped || (!replacement && currentDirectionReady && !state.lastInject),
         regeneration: replacement,
         replacement,
@@ -698,7 +711,7 @@ function updatePrompt(state) {
     const context = currentContext();
     const s = getSettings();
     const selection = guideSelectionOptions(state, context);
-    const payload = buildPromptPayload(state, { enabled: s.enabled, ...selection });
+    const payload = buildPromptPayload(state, { enabled: s.enabled, generationType: activeGenerationType, ...selection });
     const placement = resolveInjectionPlacement(s, extension_prompt_types, extension_prompt_roles);
     const managerApplied = context.mainApi === 'openai' && configurePromptManagerInjection(promptManager, s, payload);
     if (!managerApplied) clearPromptManagerInjection(promptManager);
@@ -712,10 +725,10 @@ function updatePrompt(state) {
     );
 }
 
-function currentGuidancePayload() {
+function currentGuidancePayload(generationType = activeGenerationType) {
     const context = currentContext();
     const state = loadState(context.chatMetadata);
-    return buildPromptPayload(state, { enabled: getSettings().enabled, ...guideSelectionOptions(state, context) });
+    return buildPromptPayload(state, { enabled: getSettings().enabled, generationType, ...guideSelectionOptions(state, context) });
 }
 
 function reconcileStateWithContinuity(state, continuityState) {
@@ -807,8 +820,9 @@ function rememberVerifiedRequest(payload, { provider = '', model = '' } = {}) {
         canonConstraints: state.canonConstraints,
         selectedGuideIndex: generationGuideSelection?.index || 0,
         replacementGeneration,
-        sceneProfile: generationGuideSelection?.sceneProfile || state.sceneProfile,
-        causalContext: generationGuideSelection?.causalContext || state.causalContext,
+        // Archive only facts actually eligible for this request, never stale
+        // metadata that happened to coexist with the permanent GM rules.
+        ...guidanceSnapshot(state, guideSelectionOptions(state, context)),
         directorSample: generationGuideSelection?.directorSample || sampleDirectorSignals(state.mode, state.plannerSeed),
         directorSeed: generationGuideSelection?.variationCue ?? state.plannerSeed,
         conductorDevelopmentId: '', conductorContract: null,
@@ -860,7 +874,7 @@ function reportNonBlockingInjectionFailure(message, error) {
 function ensureChatCompletionRequestGuidance(eventData) {
     try {
         if (eventData?.dryRun || containsPlannerMarker(eventData?.chat) || !Array.isArray(eventData?.chat)) return;
-        const payload = currentGuidancePayload();
+        const payload = currentGuidancePayload(eventData?.type ?? activeGenerationType);
         const hasGuidance = payload.includes('<living-world-guide>');
         const inserted = ensureGuidanceInChat(eventData.chat, payload, requestInjectionOptions());
         if (!hasGuidance) return;
@@ -874,7 +888,7 @@ function ensureChatCompletionRequestGuidance(eventData) {
 function ensureTextCompletionRequestGuidance(eventData) {
     try {
         if (eventData?.dryRun || containsPlannerMarker(eventData?.prompt) || typeof eventData?.prompt !== 'string') return;
-        const payload = currentGuidancePayload();
+        const payload = currentGuidancePayload(eventData?.type ?? activeGenerationType);
         const hasGuidance = payload.includes('<living-world-guide>');
         eventData.prompt = ensureGuidanceInText(eventData.prompt, payload);
         if (!hasGuidance) return;
@@ -889,8 +903,8 @@ function ensureTextCompletionRequestGuidance(eventData) {
 
 function ensureProviderChatRequestGuidance(generateData) {
     try {
-        if (containsPlannerMarker(generateData) || generateData?.type === 'quiet' || !Array.isArray(generateData?.messages)) return;
-        const payload = currentGuidancePayload();
+        if (containsPlannerMarker(generateData) || !Array.isArray(generateData?.messages)) return;
+        const payload = currentGuidancePayload(generateData?.type ?? activeGenerationType);
         const hasGuidance = payload.includes('<living-world-guide>');
         ensureGuidanceInChat(generateData.messages, payload, requestInjectionOptions());
         if (!hasGuidance) return;
@@ -938,7 +952,11 @@ async function confirmReturnedReplyUsedGuidance() {
         }
     }
     renderBoard(state);
-    renderAnalysisActivity(pending.injectionDecision === 'skip' ? 'No fresh causal context was used for the returned reply' : 'Causal context confirmed in returned reply', false);
+    renderAnalysisActivity(pending.injectionDecision === 'skip'
+        ? 'No Tale Fairy context was used for the returned reply'
+        : pending.dynamicContextIncluded === false
+            ? 'GM rules confirmed in returned reply; no world facts were included'
+            : 'GM rules and causal context confirmed in returned reply', false);
     return true;
 }
 
@@ -1982,7 +2000,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
 
     const analyzedAt = state.lastAnalyzedAt ? new Date(state.lastAnalyzedAt).toLocaleString() : '';
     const meta = state.canonBootstrapPending
-        ? 'Full rebuild pending · retained guidance is not injected'
+        ? 'Full rebuild pending · retained world facts are not injected'
         : analyzed ? `Tale Fairy v${RUNTIME_VERSION} · ${state.mode} mode · world context updated ${analyzedAt || 'recently'}` : '';
     scratchpadText(board, 'scratchpad-meta', meta, 'No world analysis yet. Run Guide now or Full rebuild.');
     const continuityStatus = analyzed ? continuityContextState(currentContext()).status : 'unavailable';
@@ -2050,7 +2068,8 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const chatId = String(previewContext.getCurrentChatId?.() || '');
     const preparedSelection = generationGuideSelection?.chatId === chatId ? generationGuideSelection : null;
     const previewOptions = guideSelectionOptions(state, previewContext);
-    const previewPayload = buildPromptPayload(state, { enabled: getSettings().enabled, ...previewOptions });
+    const previewPayload = buildPromptPayload(state, { enabled: getSettings().enabled, generationType: activeGenerationType, ...previewOptions });
+    const previewDynamic = guidanceSnapshot(state, previewOptions).dynamicContextIncluded;
     const previewKind = preparedSelection
         ? preparedSelection.replacement ? 'CURRENT REGENERATION REQUEST' : 'CURRENT GENERATION REQUEST'
         : 'NEXT NORMAL GENERATION';
@@ -2059,7 +2078,9 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         ? `at-depth · ${previewSettings.injectionRole} · depth ${previewSettings.injectionDepth}`
         : `${previewSettings.injectionPosition} · ${previewSettings.injectionRole}`;
     const previewText = previewPayload
-        ? `${previewKind} — Tale Fairy plans to inject this exact context.\nPlacement: ${previewPlacement}\n\n${previewPayload}`
+        ? `${previewKind} — ${previewDynamic ? 'GM rules and fresh causal context' : 'GM rules only; no fresh world facts included'}.\nPlacement: ${previewPlacement}\n\n${previewPayload}`
+        : !getSettings().enabled || !isStoryGeneration(activeGenerationType)
+            ? 'TALE FAIRY INJECTION DISABLED — extension off or a non-story generation.'
         : isDirectionCurrent(state, messagesFromChat(previewContext.chat || []), chatId) && !state.lastInject
             ? 'INVALID OR LEGACY NON-INJECTION CONTEXT — waiting for fresh causal analysis.'
             : analysisPromise
@@ -2417,15 +2438,19 @@ function refreshControls(root = document.querySelector(`#${EXTENSION_ID}-setting
 }
 
 export async function livingWorldGuideGenerateInterceptor(_chat, _contextSize, _abort, type) {
-    if (type === 'quiet' || !getSettings().enabled) return;
+    activeGenerationType = String(type || '');
     const context = currentContext();
+    if (!isStoryGeneration(activeGenerationType) || !getSettings().enabled) {
+        updatePrompt(loadState(context.chatMetadata));
+        return;
+    }
     const state = prepareAuthorContract(loadState(context.chatMetadata), type);
     // Normal planning never blocks generation. The completed-turn guide is
     // already in metadata and the latest user action has absolute priority.
     prepareGenerationGuide(state, type);
     // Planning is strictly ahead-of-time. Never spend roleplay-generation
-    // latency on a planner request; an unavailable direction simply injects
-    // nothing while its successor is prepared in the background.
+    // latency on a planner request; unavailable world facts are withheld while
+    // the permanent GM rules remain active and planning continues separately.
     updatePrompt(state);
     renderBoard(state);
 }
@@ -2480,8 +2505,13 @@ function bindContinuityBridge() {
 eventSource.on(event_types.CHAT_COMPLETION_PROMPT_READY, ensureChatCompletionRequestGuidance);
 eventSource.on(event_types.CHAT_COMPLETION_SETTINGS_READY, ensureProviderChatRequestGuidance);
 eventSource.on(event_types.GENERATE_AFTER_COMBINE_PROMPTS, ensureTextCompletionRequestGuidance);
-eventSource.on(event_types.GENERATION_STARTED, type => recordRuntimeStage('generation-started', { generationType: String(type || '') }));
+eventSource.on(event_types.GENERATION_STARTED, type => {
+    activeGenerationType = String(type || '');
+    updatePrompt(loadState(currentContext().chatMetadata));
+    recordRuntimeStage('generation-started', { generationType: activeGenerationType });
+});
 eventSource.on(event_types.GENERATION_ENDED, () => {
+    activeGenerationType = '';
     recordRuntimeStage('generation-ended');
     // MESSAGE_RECEIVED is the primary successor trigger, but some stopped or
     // empty generations do not emit it consistently. Recheck after the host
@@ -2498,6 +2528,7 @@ eventSource.on(event_types.GENERATION_ENDED, () => {
 });
 
 if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPED, () => {
+    activeGenerationType = '';
     recordRuntimeStage('generation-stopped');
     clearTranscriptRefresh();
     pendingRequestVerification = null;
@@ -2581,6 +2612,7 @@ eventSource.on(event_types.MESSAGE_SWIPED, messageId => {
     // Newly generated replacements reuse the archived response contract.
 });
 eventSource.on(event_types.CHAT_CHANGED, () => {
+    activeGenerationType = '';
     clearTranscriptRefresh();
     pendingRequestVerification = null;
     generationGuideSelection = null;

@@ -1,4 +1,4 @@
-import { normalizeInjectionRole } from './injection-role.js?v=0.13.6';
+import { normalizeInjectionRole } from './injection-role.js?v=0.13.7';
 
 export const PROMPT_MANAGER_SLOTS = Object.freeze({
     'before-character-definitions': { anchor: 'charDescription', after: false },

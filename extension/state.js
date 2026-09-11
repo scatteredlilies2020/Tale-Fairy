@@ -1,11 +1,12 @@
-import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.13.6';
+import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.13.7';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
-import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js?v=0.13.6';
-import { defaultCausalContext, defaultSceneProfile, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, normalizeSceneProfile } from './causal-context.js?v=0.13.6';
-import { normalizeDirectorSample } from './director-sampling.js?v=0.13.6';
-import { defaultOffscreenWorld, normalizeOffscreenWorld, offscreenWorldForPrompt } from './offscreen-world.js?v=0.13.6';
-import { defaultSituationBoard, normalizeSituationBoard } from './situations.js?v=0.13.6';
+import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js?v=0.13.7';
+import { defaultCausalContext, defaultSceneProfile, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, normalizeSceneProfile } from './causal-context.js?v=0.13.7';
+import { normalizeDirectorSample } from './director-sampling.js?v=0.13.7';
+import { defaultOffscreenWorld, normalizeOffscreenWorld, offscreenWorldForPrompt } from './offscreen-world.js?v=0.13.7';
+import { defaultSituationBoard, normalizeSituationBoard } from './situations.js?v=0.13.7';
+import { GAME_MASTER_CONTRACT, isStoryGeneration } from './game-master.js?v=0.13.7';
 
 export const STATE_KEY = 'livingWorldGuide';
 export const STATE_VERSION = 58;
@@ -480,6 +481,7 @@ function normalizeRequestVerification(value) {
     return {
         status: value.status,
         injectionDecision,
+        dynamicContextIncluded: injectionDecision === 'inject' && value.dynamicContextIncluded !== false && hasUsableCausalContext(value.causalContext),
         runtimeVersion: text(value.runtimeVersion).slice(0, 40),
         verificationId: text(value.verificationId).slice(0, 100),
         guidanceBlock: injectionDecision === 'inject' ? text(value.guidanceBlock).slice(0, 12000) : '',
@@ -875,14 +877,24 @@ function normalizeLoreModel(value = {}) {
     };
 }
 
-export function buildPromptPayload(state, { enabled = true, guidanceUsable = false, causalContext = null, sceneProfile = null, directorSample = null, mode = null } = {}) {
-    if (!enabled || !guidanceUsable) return '';
+export function guidanceSnapshot(state, { guidanceUsable = false, causalContext = null, sceneProfile = null } = {}) {
+    const selectedContext = normalizeCausalContext(causalContext || state?.causalContext);
+    const dynamicContextIncluded = guidanceUsable && hasUsableCausalContext(selectedContext);
+    return {
+        dynamicContextIncluded: Boolean(dynamicContextIncluded),
+        causalContext: dynamicContextIncluded ? selectedContext : defaultCausalContext(),
+        sceneProfile: dynamicContextIncluded ? normalizeSceneProfile(sceneProfile || state?.sceneProfile) : defaultSceneProfile(),
+    };
+}
+
+export function buildPromptPayload(state, { enabled = true, generationType = '', guidanceUsable = false, causalContext = null, sceneProfile = null, directorSample = null, mode = null } = {}) {
+    if (!enabled || !isStoryGeneration(generationType)) return '';
     const s = normalizeState(state);
-    const selectedContext = normalizeCausalContext(causalContext || s.causalContext);
-    if (!hasUsableCausalContext(selectedContext)) return '';
+    const snapshot = guidanceSnapshot(s, { guidanceUsable, causalContext, sceneProfile });
     const selectedMode = directorSample?.mode || mode || s.mode;
-    const selectedSceneProfile = normalizeSceneProfile(sceneProfile || s.sceneProfile);
-    const statePrompt = formatCausalContext(selectedContext, { mode: selectedMode, sceneProfile: selectedSceneProfile });
+    const dynamicPrompt = snapshot.dynamicContextIncluded
+        ? formatCausalContext(snapshot.causalContext, { mode: selectedMode, sceneProfile: snapshot.sceneProfile, includeRules: false }) : '';
+    const statePrompt = [GAME_MASTER_CONTRACT, dynamicPrompt].filter(Boolean).join('\n');
     const guidancePrompt = `\n<living-world-guide>\n${statePrompt}\n</living-world-guide>`;
     return `<tale-fairy-context>${guidancePrompt}\n</tale-fairy-context>`;
 }

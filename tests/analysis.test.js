@@ -58,6 +58,60 @@ function modern(incrementalPass = false, overrides = {}) {
 }
 const messages = [{ is_user: false, name: 'Narrator', mes: 'The reserve totals do not match the latest shipments.' }, { is_user: true, name: 'Ari', mes: 'I ask Mira what she thinks.' }];
 
+test('accepted disengagement and personality boundaries survive full/routine updates, blanks, and reload', () => {
+    const departure = {
+        op: 'upsert', name: 'Mira', state: 'Left the conversation to make her promised delivery.',
+        location: 'Market road', perspective: 'Friendly but protective of her time.',
+        motivation: 'Keep her promise to a customer.', knowledge: 'Knows the delivery address.',
+        constraints: 'Declines personal questions during work.', agenda: 'Complete the promised delivery.', window: 'This afternoon',
+    };
+    const transcript = [{ is_user: true, name: 'Ari', mes: 'I observe.' }, { is_user: false, name: 'Narrator', mes: 'Mira politely ends the conversation and leaves for her promised delivery.' }];
+    let state = applyAnalysis(defaultState(), modern(false, { actor_updates: [departure] }), transcript);
+    const reload = value => loadState(JSON.parse(JSON.stringify(saveState({}, value))));
+    state = reload(state);
+    const savedActor = state.entities[0];
+    assert.equal(savedActor.state, departure.state);
+    assert.equal(savedActor.constraints, departure.constraints);
+    // Omitted actors stay retained; unknown empty fields are not a new canon
+    // claim that the NPC has reappeared, lost a boundary, or abandoned a duty.
+    for (const incrementalPass of [true, false]) {
+        state = reload(applyAnalysis(state, modern(incrementalPass, { actor_updates: [] }), transcript));
+        assert.deepEqual(state.entities[0], savedActor);
+        const blank = Object.fromEntries(Object.keys(departure).map(key => [key, '']));
+        Object.assign(blank, { op: 'upsert', name: 'Mira', motivation: departure.motivation, agenda: departure.agenda });
+        const update = modern(incrementalPass, { actor_updates: [blank] });
+        assert.equal(validateAnalysisResult(update).valid, true);
+        state = reload(applyAnalysis(state, update, transcript));
+        assert.deepEqual(state.entities[0], savedActor);
+        const retained = stateForPrompt(state).entities[0];
+        assert.match(retained.state, /Left the conversation/);
+        assert.equal(retained.constraints, departure.constraints);
+        assert.equal(retained.agenda, departure.agenda);
+    }
+    // Explicit evidence can change availability; preservation must not freeze
+    // personality, commitments, or departure state forever.
+    const returnTranscript = [...transcript, { is_user: true, mes: 'Later that afternoon, I look toward the road.' }, { is_user: false, mes: 'Mira returns after completing the delivery. She now has time to talk.' }];
+    const returned = { ...departure, state: 'Returned after completing the delivery; willing to talk.', location: 'Shop', constraints: 'Work no longer prevents a brief conversation.', agenda: 'Rest after the completed delivery.' };
+    state = reload(applyAnalysis(state, modern(true, { actor_updates: [returned] }), returnTranscript));
+    assert.equal(state.entities[0].state, returned.state);
+    assert.equal(state.entities[0].constraints, returned.constraints);
+    assert.equal(state.entities[0].perspective, departure.perspective);
+});
+
+test('agency audit findings persist for next selection without forcing outcomes', () => {
+    const patterns = ['[world-stall] The guards waited for a spectator to command pursuit.', '[availability-reset] Mira reappeared without a return after leaving.'];
+    const result = modern(true, { response_audit: {
+        ...modern(true).response_audit, movement_fit: 'missed', continuity_drift: true,
+        patterns, state_change: 'No supported development; the prior departure was contradicted.',
+    } });
+    assert.equal(validateAnalysisResult(result).valid, true);
+    const next = loadState(JSON.parse(JSON.stringify(saveState({}, applyAnalysis(defaultState(), result, messages)))));
+    assert.deepEqual(next.responseAudit.patterns, patterns);
+    assert.deepEqual(next.responsePatternMemory, patterns);
+    assert.equal(next.responseAudit.continuityDrift, true);
+    assert.doesNotMatch(buildPromptPayload(next, { guidanceUsable: true }), /world-stall|availability-reset|guards waited/);
+});
+
 test('modern multi-turn lifecycle preserves memory, reviews on schedule, and fails closed for stale guidance', () => {
     const chat = [...messages, { is_user: false, name: 'Mira', mes: 'Mira marks the conflicting totals without claiming to know their cause.' }];
     let state = defaultState();
@@ -187,9 +241,11 @@ test('story prompt fits the complete routine and review envelopes with durable h
     }));
     state.offscreenWorld.archive = Array.from({ length: 30 }, (_, i) => ({ ...state.offscreenWorld.subjects[0], id: `archive-${i}`, subject: `Distant province ${i}` }));
     for (const incrementalPass of [true, false]) {
+        const runtime = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
+        const plannerMarker = runtime.match(/const INTERNAL_PLANNER_MARKER = '([^']+)'/)[1];
         const fixedEnvelope = incrementalPass
-            ? `${INCREMENTAL_SYSTEM}\n${INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT}\n${JSON.stringify(INCREMENTAL_ANALYSIS_SCHEMA)}`
-            : `${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}\n${JSON.stringify(ANALYSIS_SCHEMA)}`;
+            ? `${plannerMarker}\n${INCREMENTAL_SYSTEM}\n${INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT}\n${JSON.stringify(INCREMENTAL_ANALYSIS_SCHEMA)}`
+            : `${plannerMarker}\n${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}\n${JSON.stringify(ANALYSIS_SCHEMA)}`;
         const tokenBudget = incrementalPass ? 6000 : 9000;
         const prompt = await fitPromptToBudget({ fixedEnvelope, tokenBudget,
             buildPrompt: effectivePromptTokens => buildAnalysisPrompt(messages, state, '', {}, { incremental: incrementalPass, maxPromptTokens: tokenBudget, effectivePromptTokens }),
@@ -246,7 +302,7 @@ test('planner prompt defines private active simulation rather than future branch
     assert.match(SYSTEM, /conversation, household, slice of life, business, town, country, ecosystem/i);
     assert.match(SYSTEM, /under-specified setting is open simulation space/i);
     assert.match(SYSTEM, /Enemies and threats are optional, never defaults/i);
-    assert.match(INCREMENTAL_SYSTEM, /adapt smoothly among personal, slice-of-life, household, organization, town, country/i);
+    assert.match(INCREMENTAL_SYSTEM, /Adapt scale naturally among people, households, institutions, towns, countries, ecosystems/i);
 });
 
 test('analysis prompt carries broad state but asks for only a relevant slice', () => {
