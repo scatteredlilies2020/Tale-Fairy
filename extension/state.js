@@ -1,12 +1,12 @@
-import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.13.7';
+import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.13.8';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
-import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js?v=0.13.7';
-import { defaultCausalContext, defaultSceneProfile, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, normalizeSceneProfile } from './causal-context.js?v=0.13.7';
-import { normalizeDirectorSample } from './director-sampling.js?v=0.13.7';
-import { defaultOffscreenWorld, normalizeOffscreenWorld, offscreenWorldForPrompt } from './offscreen-world.js?v=0.13.7';
-import { defaultSituationBoard, normalizeSituationBoard } from './situations.js?v=0.13.7';
-import { GAME_MASTER_CONTRACT, isStoryGeneration } from './game-master.js?v=0.13.7';
+import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js?v=0.13.8';
+import { defaultCausalContext, defaultSceneProfile, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, normalizeSceneProfile } from './causal-context.js?v=0.13.8';
+import { normalizeDirectorSample } from './director-sampling.js?v=0.13.8';
+import { defaultOffscreenWorld, normalizeOffscreenWorld, offscreenWorldForPrompt } from './offscreen-world.js?v=0.13.8';
+import { defaultSituationBoard, normalizeSituationBoard } from './situations.js?v=0.13.8';
+import { GAME_MASTER_CONTRACT, isStoryGeneration } from './game-master.js?v=0.13.8';
 
 export const STATE_KEY = 'livingWorldGuide';
 export const STATE_VERSION = 58;

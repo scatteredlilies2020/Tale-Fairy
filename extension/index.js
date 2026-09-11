@@ -4,34 +4,34 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.13.7';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.13.7';
-import { isStoryGeneration } from './game-master.js?v=0.13.7';
-import { selectSituationalOpenings } from './situations.js?v=0.13.7';
-import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.13.7';
-import { resolveInjectionPlacement } from './injection-placement.js?v=0.13.7';
-import { DEFAULT_INJECTION_ROLE, normalizeInjectionRole } from './injection-role.js?v=0.13.7';
-import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.13.7';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.13.7';
-import { normalizeModelListResponse } from './models.js?v=0.13.7';
-import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.13.7';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.13.7';
-import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.13.7';
-import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.13.7';
-import { estimateTokenCount } from './token-budget.js?v=0.13.7';
-import { fitPromptToBudget } from './prompt-budget.js?v=0.13.7';
-import { completionText } from './completion-response.js?v=0.13.7';
-import { sampleDirectorSignals } from './director-sampling.js?v=0.13.7';
-import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, plannerValidationRepairInstruction, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.13.7';
+import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.13.8';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.13.8';
+import { isStoryGeneration } from './game-master.js?v=0.13.8';
+import { selectSituationalOpenings } from './situations.js?v=0.13.8';
+import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.13.8';
+import { resolveInjectionPlacement } from './injection-placement.js?v=0.13.8';
+import { DEFAULT_INJECTION_ROLE, normalizeInjectionRole } from './injection-role.js?v=0.13.8';
+import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.13.8';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.13.8';
+import { normalizeModelListResponse } from './models.js?v=0.13.8';
+import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.13.8';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.13.8';
+import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.13.8';
+import { collectSummarySources, summarySourceAudit } from './summary-context.js?v=0.13.8';
+import { estimateTokenCount } from './token-budget.js?v=0.13.8';
+import { fitPromptToBudget } from './prompt-budget.js?v=0.13.8';
+import { completionText } from './completion-response.js?v=0.13.8';
+import { sampleDirectorSignals } from './director-sampling.js?v=0.13.8';
+import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, plannerValidationRepairInstruction, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.13.8';
 import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
-import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.13.7';
-import { hasUsableCausalContext } from './causal-context.js?v=0.13.7';
-import { formatHiddenMotives } from './scratchpad-format.js?v=0.13.7';
-import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.7';
-import { createSafetyFallbackState } from './fallback-direction.js?v=0.13.7';
+import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.13.8';
+import { hasUsableCausalContext } from './causal-context.js?v=0.13.8';
+import { formatHiddenMotives } from './scratchpad-format.js?v=0.13.8';
+import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.8';
+import { createSafetyFallbackState } from './fallback-direction.js?v=0.13.8';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.13.7';
+const RUNTIME_VERSION = '0.13.8';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -1252,7 +1252,7 @@ function parseAnalysisResponse(value, prompt = '') {
         const rawResult = value && typeof value === 'object' && !Array.isArray(value) && ([2, 8, 9, 10, 11, 12, 13].includes(value.contract_version) || value.scene)
             ? value
             : extractJson(completionText(value));
-        const result = abstractIncrementalVisibleBranches(rawResult);
+        const result = normalizeAnalysisDiagnostics(abstractIncrementalVisibleBranches(rawResult));
         const validation = validateAnalysisResult(result);
         if (!validation.valid) {
             const validationErrors = validation.errors.slice(0, 16);
@@ -2048,7 +2048,12 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const frame = state.storyFrame.frame && state.storyFrame.frame !== 'unknown'
         ? `${state.storyFrame.frame}${state.storyFrame.confidence ? ` · ${state.storyFrame.confidence} confidence` : ''}${state.storyFrame.basis ? `\nBasis: ${state.storyFrame.basis}` : ''}`
         : '';
-    scratchpadText(board, 'scratchpad-frame', analyzed ? frame : '', 'No generated story frame yet.');
+    const missingAnalysis = state.canonBootstrapPending
+        ? `Full rebuild has not completed. ${state.lastReason || 'Waiting for a valid planner result.'}`
+        : analyzed && /planner fallback/iu.test(state.lastReason)
+            ? `Planner analysis failed. ${state.lastReason}`
+            : '';
+    scratchpadText(board, 'scratchpad-frame', analyzed ? frame : '', missingAnalysis || 'No generated story frame yet.');
 
     const lore = state.loreModel || {};
     const loreText = [
@@ -2059,7 +2064,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         lore.baselineDepartures?.length && `Departures: ${lore.baselineDepartures.join('; ')}`,
         lore.activeForces?.length && `Relevant forces: ${lore.activeForces.join('; ')}`,
     ].filter(Boolean).join('\n');
-    scratchpadText(board, 'scratchpad-lore', analyzed ? loreText : '', 'No generated lore model yet.');
+    scratchpadText(board, 'scratchpad-lore', analyzed ? loreText : '', missingAnalysis || 'No generated lore model yet.');
 
     const motiveText = formatHiddenMotives(state.hiddenMotives, analyzed);
     scratchpadOptionalText(board, 'scratchpad-hidden-motives-section', 'scratchpad-hidden-motives', motiveText);

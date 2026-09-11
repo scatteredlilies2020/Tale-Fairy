@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import {
     ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_ANALYSIS_SCHEMA_VALUE, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT,
     INCREMENTAL_SYSTEM, MODE_INSTRUCTIONS, SYSTEM, applyAnalysis, buildAnalysisPrompt,
-    alignRetainedStateToTranscript, extractJson, transcriptHeadAlignmentErrors, validateAnalysisResult,
+    alignRetainedStateToTranscript, extractJson, normalizeAnalysisDiagnostics, transcriptHeadAlignmentErrors, validateAnalysisResult,
 } from '../extension/analysis.js';
 import { applyPlannerAuthorLayer, buildPromptPayload, defaultState, fingerprintMessages, isGuidanceUsable, loadState, saveState, stateForPrompt } from '../extension/state.js';
 import { estimateTokenCount } from '../extension/token-budget.js';
@@ -203,6 +203,68 @@ test('new contracts require bounded knowledge and an audit in the same result', 
         invalidAudit.response_audit.state_change = 'x'.repeat(241);
         assert.match(validateAnalysisResult(invalidAudit).errors.join('\n'), /state_change/);
     }
+});
+
+test('verbose private audits are bounded without losing a full rebuild or incremental world state', () => {
+    for (const incrementalPass of [false, true]) {
+        const raw = modern(incrementalPass);
+        raw.response_audit.summary = 'The latest reply made progress. '.repeat(30);
+        raw.response_audit.state_change = 'The discrepancy is unresolved. '.repeat(20);
+        raw.response_audit.patterns = ['Repeated ledger-check framing. '.repeat(12)];
+        const original = structuredClone(raw);
+        assert.equal(validateAnalysisResult(raw).valid, false);
+        const result = normalizeAnalysisDiagnostics(raw);
+        assert.deepEqual(raw, original, 'Do not mutate the provider response');
+        assert.deepEqual(validateAnalysisResult(result), { valid: true, errors: [] });
+        assert.equal(result.response_audit.summary.length, 400);
+        assert.ok(result.response_audit.state_change.length <= 240);
+        assert.ok(result.response_audit.patterns[0].length <= 140);
+        assert.ok(result.response_audit.summary.endsWith('…'));
+        for (const key of Object.keys(raw).filter(key => key !== 'response_audit')) {
+            assert.deepEqual(result[key], raw[key], `${key} must not be altered`);
+        }
+        const pending = incrementalPass ? applyAnalysis(defaultState(), modern(), messages) : defaultState();
+        pending.canonBootstrapPending = true;
+        const saved = loadState(saveState({}, applyAnalysis(pending, result, messages)));
+        assert.equal(saved.canonBootstrapPending, false);
+        assert.equal(saved.storyFrame.frame, current.frame);
+        assert.equal(saved.loreModel.worldIdentity, full().world.identity);
+        assert.equal(saved.loreModel.baseline, full().world.baseline);
+        assert.equal(saved.responseAudit.summary, result.response_audit.summary);
+    }
+});
+
+test('diagnostic bounding does not conceal malformed audits or invalid causal facts', () => {
+    for (const incrementalPass of [false, true]) {
+        for (const mutate of [
+            result => { delete result.response_audit; },
+            result => { delete result.response_audit.summary; },
+            result => { result.response_audit.summary = 123; },
+            result => { result.response_audit.state_change = null; },
+            result => { result.response_audit.applicable = 'true'; },
+            result => { result.response_audit.movement_fit = 'bogus'; },
+            result => { result.response_audit.patterns = ['']; },
+            result => { result.response_audit.patterns = [123]; },
+            result => { result.response_audit.patterns = Array(6).fill('Repeated'); },
+            result => { result.context.conditions[0].known_by = ['x'.repeat(81)]; },
+            result => { result.context.conditions[0].confidence = 'invented'; },
+            result => { result.context.inject = false; },
+        ]) {
+            const result = modern(incrementalPass);
+            mutate(result);
+            assert.equal(validateAnalysisResult(normalizeAnalysisDiagnostics(result)).valid, false);
+        }
+    }
+});
+
+test('diagnostic bounding preserves valid output and does not split Unicode surrogate pairs', () => {
+    assert.deepEqual(normalizeAnalysisDiagnostics(modern()), modern());
+    for (const result of [null, undefined, {}, { response_audit: [] }]) {
+        assert.equal(normalizeAnalysisDiagnostics(result), result);
+    }
+    const result = modern();
+    result.response_audit.summary = `${'x'.repeat(398)}😀 more`;
+    assert.equal(normalizeAnalysisDiagnostics(result).response_audit.summary, `${'x'.repeat(398)}…`);
 });
 
 test('routine deltas preserve omitted hypotheses and retire only the named one', () => {

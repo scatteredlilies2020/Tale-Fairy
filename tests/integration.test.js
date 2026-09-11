@@ -16,12 +16,23 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest, browser runtime, and detached plugin share the release version', () => {
-    assert.equal(manifest.version, '0.13.7');
-    assert.equal(manifest.js, 'extension/index.js?v=0.13.7');
-    assert.equal(manifest.css, 'extension/style.css?v=0.13.7');
+    assert.equal(manifest.version, '0.13.8');
+    assert.equal(manifest.js, 'extension/index.js?v=0.13.8');
+    assert.equal(manifest.css, 'extension/style.css?v=0.13.8');
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.13\.7'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.13\.7'/);
+    assert.match(pluginSource, /const VERSION = '0\.13\.8'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.13\.8'/);
+});
+
+test('live and recovered planner results bound diagnostic prose before strict validation', () => {
+    const parser = source.slice(source.indexOf('function parseAnalysisResponse('), source.indexOf('async function acknowledgeDetachedPlannerJob('));
+    assert.match(parser, /normalizeAnalysisDiagnostics\(abstractIncrementalVisibleBranches\(rawResult\)\)/);
+    assert.ok(parser.indexOf('normalizeAnalysisDiagnostics(') < parser.indexOf('validateAnalysisResult('));
+    assert.match(parser, /transcriptHeadAlignmentErrors\(result, prompt\)/);
+    assert.match(source, /parseAnalysisResponse\(job.text, alignmentPromptFromMeta\(meta\)\)/);
+    assert.match(source, /parseAnalysisResponse\(value, prompt\)/);
+    assert.match(source, /missingAnalysis \|\| 'No generated story frame yet\.'/);
+    assert.match(source, /missingAnalysis \|\| 'No generated lore model yet\.'/);
 });
 
 test('roleplay injection never migrates the user default into a system message', () => {
@@ -33,8 +44,8 @@ test('roleplay injection never migrates the user default into a system message',
 });
 
 test('runtime uses causal context and deferred world state without prescriptive beat-director dependency', () => {
-    assert.match(source, /from '\.\/causal-context\.js\?v=0\.13\.7'/);
-    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.13\.7'/);
+    assert.match(source, /from '\.\/causal-context\.js\?v=0\.13\.8'/);
+    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.13\.8'/);
     assert.doesNotMatch(source, /beat-director/);
     assert.doesNotMatch(stateSource, /beat-director/);
     assert.match(stateSource, /export const STATE_VERSION = 58/);

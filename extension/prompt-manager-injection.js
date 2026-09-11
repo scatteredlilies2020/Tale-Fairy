@@ -1,5 +1,5 @@
-import { PROMPT_MANAGER_SLOTS } from './injection-placement.js?v=0.13.7';
-import { normalizeInjectionRole } from './injection-role.js?v=0.13.7';
+import { PROMPT_MANAGER_SLOTS } from './injection-placement.js?v=0.13.8';
+import { normalizeInjectionRole } from './injection-role.js?v=0.13.8';
 
 export const PROMPT_MANAGER_ID = 'tale_fairy_dynamic';
 

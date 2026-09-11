@@ -1,10 +1,10 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.13.7';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.13.8';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.11.96';
-import { formatDriftRequest, mergeOffscreenWorld, OFFSCREEN_KINDS } from './offscreen-world.js?v=0.13.7';
-import { CAUSAL_KINDS } from './causal-context.js?v=0.13.7';
-import { mergeSituationUpdates, retireManifestedSituations } from './situations.js?v=0.13.7';
-import { PLANNER_AGENCY_RULE, ACTOR_AGENCY_RULE, AGENCY_AUDIT_RULE } from './game-master.js?v=0.13.7';
+import { formatDriftRequest, mergeOffscreenWorld, OFFSCREEN_KINDS } from './offscreen-world.js?v=0.13.8';
+import { CAUSAL_KINDS } from './causal-context.js?v=0.13.8';
+import { mergeSituationUpdates, retireManifestedSituations } from './situations.js?v=0.13.8';
+import { PLANNER_AGENCY_RULE, ACTOR_AGENCY_RULE, AGENCY_AUDIT_RULE } from './game-master.js?v=0.13.8';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
@@ -70,6 +70,31 @@ const RESPONSE_AUDIT_SCHEMA = { type: 'object', additionalProperties: false, pro
     unjustified_escalation: { type: 'boolean' }, player_control: { type: 'boolean' }, continuity_drift: { type: 'boolean' },
     patterns: strings(5, 140), summary: text(400), state_change: text(240),
 }, required: ['applicable', 'movement_fit', 'repetition', 'unjustified_escalation', 'player_control', 'continuity_drift', 'patterns', 'summary', 'state_change'] };
+
+// These are private diagnostic prose limits, not factual validity gates. Some
+// providers do not enforce schema maxLength. Bound strings before validation so
+// a verbose audit cannot discard an otherwise usable world rebuild. Never fill
+// missing fields, coerce types, drop array items, or repair factual/causal data.
+export function normalizeAnalysisDiagnostics(result) {
+    const audit = result?.response_audit;
+    if (!audit || typeof audit !== 'object' || Array.isArray(audit)) return result;
+    const bounded = (value, limit) => {
+        if (typeof value !== 'string' || value.length <= limit) return value;
+        // Avoid splitting a UTF-16 surrogate pair at the display boundary.
+        let prefix = value.slice(0, limit - 1);
+        if (/[\uD800-\uDBFF]$/u.test(prefix)) prefix = prefix.slice(0, -1);
+        return `${prefix.trimEnd()}…`;
+    };
+    const properties = RESPONSE_AUDIT_SCHEMA.properties;
+    const normalized = { ...audit };
+    for (const key of ['summary', 'state_change']) {
+        if (Object.hasOwn(audit, key)) normalized[key] = bounded(audit[key], properties[key].maxLength);
+    }
+    if (Array.isArray(audit.patterns)) {
+        normalized.patterns = audit.patterns.map(item => bounded(item, properties.patterns.items.maxLength));
+    }
+    return { ...result, response_audit: normalized };
+}
 const HORIZON_SEED_SCHEMA = { type: 'object', additionalProperties: false, properties: {
     id: text(80), kind: { type: 'string', enum: ['detected', 'original'] }, trajectory: text(260), engine: text(140),
     scale: { type: 'string', enum: ['arc', 'months-years', 'open-ended'] }, condition: text(160), basis: text(220),

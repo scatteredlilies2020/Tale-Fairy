@@ -1,4 +1,4 @@
-import { estimateTokenCount } from './token-budget.js?v=0.13.7';
+import { estimateTokenCount } from './token-budget.js?v=0.13.8';
 
 // Includes schema + system rules, not just the variable story payload. A broken
 // provider tokenizer must never disable the local budget guard.
