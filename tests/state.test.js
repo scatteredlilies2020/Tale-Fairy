@@ -76,10 +76,11 @@ test('knowledge routes survive storage without promoting beliefs or leaking priv
 
 test('quiet-scene guidance values meaningful progress without forcing conflict or player emotions', () => {
     const output = formatCausalContext({ conditions: [{ ...conditions[0], subject: 'Lucia', condition: 'is finishing the shared tea ritual', disclosure: 'open' }], inject: true }, { sceneProfile: { phase: 'landing', intrusion: 'closed', noveltyCeiling: 'none' } });
-    assert.match(output, /Rest, silence, routine, and a scene landing are valid/);
-    assert.match(output, /decorative motion alone are not progress/);
-    assert.match(output, /do not manufacture a disruption or assign the player a new feeling/);
-    assert.match(output, /latest explicit user\/OOC request to stay, skip, or advance outranks/);
+    assert.match(output, /meaningfully, even during rest or inactivity/);
+    assert.match(output, /not repetitive description/);
+    assert.match(output, /quiet progress needs no interruption or new conflict/);
+    assert.match(output, /Never author the player character's choices, dialogue, consent, thoughts, feelings/);
+    assert.match(output, /Explicit user\/OOC instructions and established facts take priority/);
 });
 
 test('formatter exposes natural-language causes without internal metadata', () => {
@@ -90,8 +91,8 @@ test('formatter exposes natural-language causes without internal metadata', () =
     assert.match(output, /writing model chooses every concrete action/i);
     assert.match(output, /self-propelling movement/i);
     assert.match(output, /every reply changes the current situation/i);
-    assert.match(output, /remaining in the same scene or activity/i);
-    assert.match(output, /Dialogue contributes when it changes what is known, decided, possible, or underway/i);
+    assert.match(output, /Develop what is underway/i);
+    assert.match(output, /lasting change in circumstances, understanding, relationships, or possibilities/i);
     assert.doesNotMatch(output, /question|interrogat/i);
 });
 
@@ -140,11 +141,30 @@ test('scene profile bounds outside pressure and preserves explicit OOC authority
     state.sceneProfile.noveltyCeiling = 'none';
     const payload = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
     assert.match(payload, /Keep outside pressure silent or subtextual/i);
-    assert.match(payload, /Keep movement within the established activity and causes/i);
-    assert.match(payload, /Quiet activity may continue without interruption while still gaining progress/i);
-    assert.match(payload, /user\/OOC request to stay, skip, or advance outranks/i);
-    assert.match(payload, /under-specified world as an empty one/i);
-    assert.match(payload, /opposition may be personal or systemic/i);
+    assert.match(payload, /Develop the established activity and causes; no separate plot element/i);
+    assert.match(payload, /quiet progress needs no interruption or new conflict/i);
+    assert.match(payload, /Explicit user\/OOC instructions and established facts take priority/i);
+    assert.doesNotMatch(payload, /combat|bureaucratic|opposition may be/i);
+});
+
+test('dynamic guidance remains lean across modes and scene boundaries without duplicating permanent rules', () => {
+    for (const mode of ['light', 'balanced', 'fun']) {
+        for (const intrusion of ['closed', 'incidental', 'socially-open', 'dramatically-open', 'primed']) {
+            for (const noveltyCeiling of ['none', 'incidental', 'context-native', 'meaningful', 'major']) {
+                const output = formatCausalContext({
+                    conditions: [conditions[0]], inject: true,
+                    optionalSituations: [{ premise: 'A rehearsal space may be available.', entry: 'checks the club noticeboard' }],
+                }, { mode, sceneProfile: { intrusion, noveltyCeiling }, includeRules: false });
+                assert.match(output, /DEVELOPMENT:/);
+                assert.match(output, /SCENE-SCALE BOUNDARY:/);
+                assert.match(output, /possibilities, not facts or required events/);
+                assert.match(output, /Private conditions/);
+                assert.match(output, /Keep awareness local/);
+                assert.doesNotMatch(output, /undefined|GAME MASTER RESPONSIBILITY|PLAYER BOUNDARY|SELF-PROPELLING MOVEMENT/);
+                assert.ok(output.split(/\s+/u).length < 150, 'Single-condition dynamic fixture must stay lean');
+            }
+        }
+    }
 });
 
 test('missing, tentative-only, and stale state retain only GM rules; disabled state injects nothing', () => {

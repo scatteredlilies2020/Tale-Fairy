@@ -19,25 +19,25 @@ const INTRUSIONS = new Set(['closed', 'incidental', 'socially-open', 'dramatical
 const NOVELTY = new Set(['none', 'incidental', 'context-native', 'meaningful', 'major']);
 
 const MODE_TREATMENT = Object.freeze({
-    light: 'Make the reply self-propelling through one subtle fitting change in the present activity, relationship, understanding, or environment.',
-    balanced: 'Make the reply self-propelling through at least one fitting condition that meaningfully changes NPC or world behavior.',
-    fun: 'Make the reply self-propelling through a bolder interaction of fitting conditions when supported, while leaving their concrete realization to the writing model.',
+    light: 'DEVELOPMENT: Subtle, within the current activity.',
+    balanced: 'DEVELOPMENT: Natural, proportionate to current conditions.',
+    fun: 'DEVELOPMENT: Bolder when supported by current conditions.',
 });
 
 const INTRUSION_TREATMENT = Object.freeze({
-    closed: 'Keep outside pressure silent or subtextual unless the latest turn opens the scene.',
-    incidental: 'Incidental setting texture may enter, but it must not displace the current activity.',
-    'socially-open': 'Natural social contact may carry existing pressure into the scene; an interruption is still optional.',
-    'dramatically-open': 'Existing pressure may complicate the scene openly when it has a credible route in.',
-    primed: 'A cause already converging may arrive openly, but even here no event is due merely for drama.',
+    closed: 'Keep outside pressure silent or subtextual.',
+    incidental: 'Outside texture must not displace the activity.',
+    'socially-open': 'Existing pressure may enter through natural social contact.',
+    'dramatically-open': 'Existing pressure may enter through a credible route.',
+    primed: 'Converging causes may arrive; no event is required.',
 });
 
 const NOVELTY_TREATMENT = Object.freeze({
-    none: 'Keep movement within the established activity and causes, advancing their immediate state without adding a separate plot element.',
-    incidental: 'Keep any novelty incidental and immediately setting-native.',
-    'context-native': 'New detail may be context-native, not a genre-generic surprise.',
-    meaningful: 'A meaningful development is allowed only when supported by an existing cause.',
-    major: 'A major turn is possible only from an established cause already in motion; it is never required.',
+    none: 'Develop the established activity and causes; no separate plot element.',
+    incidental: 'Keep novelty incidental and setting-native.',
+    'context-native': 'New details must fit the setting and activity.',
+    meaningful: 'Consequential novelty needs an existing cause.',
+    major: 'Major turns need an established cause already in motion.',
 });
 
 function text(value, limit = 240) {
@@ -137,17 +137,16 @@ export function formatCausalContext(value, options = {}) {
     const privateItems = conditions.filter(item => item.disclosure === 'private');
     const situations = context.optionalSituations;
     return [
-        'RELEVANT UNDERLYING CONDITIONS — causal context, not required events or predetermined outcomes. Interpret only what fits the latest turn; the writing model chooses every concrete action, development, and consequence.',
+        'RELEVANT UNDERLYING CONDITIONS — causal context, not required events or predetermined outcomes. Use what fits; the writing model chooses every concrete action.',
         section('Current conditions:', open),
         section('Limited knowledge — do not make universally known:', limited),
         section('Private conditions — express through behavior unless disclosure becomes natural in-world:', privateItems),
         situations.length ? [
-            'OPTIONAL SITUATIONAL OPENINGS — not required events or facts. An opening may become relevant through observation, NPC initiative, or an established causal process, not only player engagement. Established activity can continue without involving the player; unintroduced possibilities are not mandatory events. Outcomes, player choices, consent, and consequences remain open.',
+            'OPTIONAL SITUATIONAL OPENINGS — possibilities, not facts or required events. May emerge naturally without player engagement; outcomes remain open.',
             ...situations.map(item => `- ${item.premise} It is available if someone naturally ${item.entry.replace(/^[Tt]o\s+/u, '')}.`),
         ].join('\n') : '',
         MODE_TREATMENT[mode],
         options.includeRules === false ? '' : GAME_MASTER_CONTRACT,
-        `SCENE-SCALE BOUNDARY: ${INTRUSION_TREATMENT[sceneProfile.intrusion]} ${NOVELTY_TREATMENT[sceneProfile.noveltyCeiling]} Compatible new information may emerge when the current activity naturally observes, requests, or creates it; do not treat an under-specified world as an empty one. Challenge may be social, intellectual, bureaucratic, material, emotional, environmental, or physical; opposition may be personal or systemic, and combat is never the default. Quiet activity may continue without interruption while still gaining progress, substance, meaning, or changed circumstances. The latest explicit user/OOC request to stay, skip, or advance outranks every optional pressure.`,
-        'Never use these conditions to author the player character’s choices, dialogue, consent, thoughts, feelings, or an uncertain result.',
+        `SCENE-SCALE BOUNDARY: ${INTRUSION_TREATMENT[sceneProfile.intrusion]} ${NOVELTY_TREATMENT[sceneProfile.noveltyCeiling]}`,
     ].filter(Boolean).join('\n');
 }

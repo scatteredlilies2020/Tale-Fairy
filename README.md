@@ -4,6 +4,8 @@ Tale Fairy is a standalone SillyTavern extension that runs a **private active-wo
 
 Its default behavior is **autonomous Game Master play**: the user is a player, not the world's director. Watching, listening, or waiting is a complete action. NPCs and established situations can develop, resolve, or leave the scene without requiring player commands or making the player responsible for every problem. The writing model remains responsible for realizing these developments; Tale Fairy supplies the GM rules and relevant world context, not a fixed event script.
 
+The permanent story injection is three concise, genre-neutral rules: autonomous world behavior, meaningful change, and player/viewpoint boundaries. Every reply should make a lasting difference even during rest or inactivity, without requiring interruption or conflict. Detailed repetition, disengagement, availability, and pacing checks stay in the private planner audit. Fresh context adds only relevant conditions, optional openings, and short development/scene limits rather than repeating the general rules.
+
 Agency is mutual. NPCs may refuse, end a conversation, leave, or return to their duties according to personality, relationships, commitments, and circumstances. Players may disengage too, without replacement hooks forcing them back. Existing opposition can matter, but disengagement is neither guaranteed success nor an excuse for invented punishment. Quiet scenes, viewpoint limits, and meaningful opportunities for player intervention remain protected. This is autonomy within generated replies, not unattended automatic message generation.
 
 ## What it does

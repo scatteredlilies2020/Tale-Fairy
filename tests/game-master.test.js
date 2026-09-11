@@ -27,23 +27,37 @@ function stateWithFacts() {
     return state;
 }
 
-test('GM responsibility, observation, reciprocal disengagement, pace, and player limits are permanent', () => {
+test('permanent rules are lean, genre-neutral, and require meaningful change even during inactivity', () => {
     const payload = buildPromptPayload(defaultState());
     assert.ok(payload.includes(GAME_MASTER_CONTRACT));
     for (const rule of [
-        /Watching, listening, or waiting is a complete player action/,
-        /without making the player pursue/,
-        /preserve a meaningful opportunity for an active intervention/,
-        /NPCs may initiate, refuse, pause, disengage, leave/,
-        /without replacement hooks forcing re-engagement/,
-        /not automatic success/,
-        /not rigid traits or compulsory availability/,
-        /Rest, silence, routine, and a scene landing are valid/,
+        /without awaiting player direction/,
+        /freedom to engage or disengage/,
+        /Every reply changes the current situation meaningfully, even during rest or inactivity/,
+        /lasting change in circumstances, understanding, relationships, or possibilities/,
+        /not repetitive description/,
+        /quiet progress needs no interruption or new conflict/,
+        /Leave room for meaningful player decisions/,
         /Never author the player character's choices/,
-        /off-screen developments do not automatically become player knowledge/,
+        /within viewpoint knowledge/,
+        /time passage proportionate to the player's action/,
+        /Explicit user\/OOC instructions and established facts take priority/,
     ]) assert.match(payload, rule);
     assert.equal(payload.match(/GAME MASTER RESPONSIBILITY/g)?.length, 1);
-    assert.ok(estimateTokenCount(GAME_MASTER_CONTRACT) < 850, 'Permanent policy must remain bounded');
+    assert.ok(GAME_MASTER_CONTRACT.split(/\s+/u).length <= 160, 'Permanent rules must stay concise');
+    assert.ok(estimateTokenCount(GAME_MASTER_CONTRACT) < 320, 'Permanent policy must remain bounded');
+    assert.doesNotMatch(payload, /fleeing|enemy|combat|replacement hooks|punishment|reset availability|world-stall/i);
+});
+
+test('detailed behavior checks stay in the private planner rather than the story injection', () => {
+    const payload = buildPromptPayload(stateWithFacts(), { guidanceUsable: true });
+    for (const detail of [/replacement hooks/, /rigid compulsory availability/, /unsupported time skips/, /sleep, rest, or routine/, /decorative motion/]) {
+        assert.match(AGENCY_AUDIT_RULE, detail);
+        assert.doesNotMatch(payload, detail);
+    }
+    assert.ok(!payload.includes(PLANNER_AGENCY_RULE));
+    assert.ok(!payload.includes(ACTOR_AGENCY_RULE));
+    assert.ok(!payload.includes(AGENCY_AUDIT_RULE));
 });
 
 test('fresh facts augment rules; unavailable facts never leak through a rules-only snapshot', () => {
