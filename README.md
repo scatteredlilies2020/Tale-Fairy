@@ -64,6 +64,8 @@ The 0.13.12 matching format starts a new cache history as replies are generated;
 
 Rapid retries keep plot injection active even while background planning is intentionally idle. In 0.13.13, reply verification saves no longer hold up the host's reply-completion handler, duplicate transcript notifications preserve active planning and its queued successor, and delayed cancellation requests cannot stop a newer planner run. New user input or Continue resumes planning; repeatedly replacing the same reply still costs zero new planner calls.
 
+Since 0.13.14, **Planner** and **Story context** have separate status indicators. Context preparation, request dispatch, confirmation, and warnings never stop the planner's progress timer or change its controls. “Request sent” only records outgoing context, not a completed reply. The story-context indicator is page-local: refreshing or syncing saved history does not present an old request as newly verified.
+
 ## Scope
 
 ### Lightweight planning

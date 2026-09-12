@@ -36,7 +36,7 @@ import { buildPlotAnchor, cachedGenerationContext, generationContextEntries, GEN
 import { getWorldInfoSettings, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.13.13';
+const RUNTIME_VERSION = '0.13.14';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -67,6 +67,8 @@ let lastAnalysisError = '';
 let pendingRequestVerification = null;
 let generationGuideSelection = null;
 let activeGenerationType = '';
+// Page-local only: synced request history is not proof of a new request.
+let injectionStatus = 'No request verified on this page';
 let uiMountPromise = null;
 let uiMountObserver = null;
 let uiMountTimeout = null;
@@ -311,14 +313,14 @@ function installDetachedPlannerTransport() {
                         model: request.model,
                     });
                     recordRuntimeStage('provider-bound-proof-saved', { generationType: String(request?.type || '') });
-                    renderAnalysisActivity('Exact provider-bound injection recorded', false);
+                    renderInjectionActivity('Context verified in outgoing request');
                 } else if (roleplayRequest && enabled && generationGuideSelection?.skipped) {
                     rememberSkippedRequest({
                         provider: request.chat_completion_source || currentContext().mainApi,
                         model: request.model,
                     });
                     recordRuntimeStage('provider-bound-skip-saved', { generationType: String(request?.type || '') });
-                    renderAnalysisActivity('No fresh usable causal context · no injection', false);
+                    renderInjectionActivity('No fresh usable causal context · no injection');
                 }
             } catch (error) {
                 recordRuntimeStage('provider-bound-proof-error', {
@@ -332,14 +334,11 @@ function installDetachedPlannerTransport() {
             // reject the provider request.
             const response = plannerNativeFetch(input, outboundInit);
             recordRuntimeStage('network-dispatched', { generationType: String(request?.type || '') });
-            queueMicrotask(() => {
-                try {
-                    if (!guidanceBlock || !getSettings().enabled) return;
-                    renderAnalysisActivity('Injection observed after network dispatch', false);
-                } catch (error) {
-                    console.warn(`[${EXTENSION_ID}] Passive injection verification failed without affecting generation.`, error);
-                }
-            });
+            try {
+                if (guidanceBlock && getSettings().enabled) renderInjectionActivity('Context included · request sent; reply not yet confirmed');
+            } catch (error) {
+                console.warn(`[${EXTENSION_ID}] Passive injection verification failed without affecting generation.`, error);
+            }
             return response;
         }
         if (!detachedPlannerEnabled) return plannerNativeFetch(input, init);
@@ -730,7 +729,7 @@ function prepareGenerationGuide(state, type) {
     const archived = cachedGenerationContext(context.chatMetadata?.[GENERATION_CONTEXT_KEY], inputKey, chatId);
     if (archived) {
         generationGuideSelection = { ...archived.selection, chatId, inputKey, replacement, regeneration: replacement, payload: archived.payload, reused: true };
-        renderAnalysisActivity('Reused plot context · no new planner calls', false);
+        renderInjectionActivity('Cached plot context ready · no new planner calls');
         return;
     }
     // Legacy request archives cannot prove card/lore inputs. Reconstruct a
@@ -999,7 +998,7 @@ function rememberSkippedRequest({ provider = '', model = '' } = {}) {
 
 function reportNonBlockingInjectionFailure(message, error) {
     console.warn(`[${EXTENSION_ID}] ${message} Generation will continue without Tale Fairy blocking it.`, error);
-    try { renderAnalysisActivity(`${message} · generation continued`, false); }
+    try { renderInjectionActivity(`${message} · generation continued`); }
     catch { /* Verification UI must never affect generation. */ }
 }
 
@@ -1010,7 +1009,7 @@ function ensureChatCompletionRequestGuidance(eventData) {
         const hasGuidance = payload.includes('<living-world-guide>');
         const inserted = ensureGuidanceInChat(eventData.chat, payload, requestInjectionOptions());
         if (!hasGuidance) return;
-        if (inserted) renderAnalysisActivity('Guidance inserted into request', false);
+        if (inserted) renderInjectionActivity('Context added to draft request');
         if (!chatHasCurrentGuidance(eventData.chat, payload)) throw new Error('Current guidance was absent after chat insertion.');
     } catch (error) {
         reportNonBlockingInjectionFailure('Tale Fairy could not place guidance in the chat request', error);
@@ -1027,7 +1026,7 @@ function ensureTextCompletionRequestGuidance(eventData) {
         if (!textHasCurrentGuidance(eventData.prompt, payload)) throw new Error('Current guidance was absent after text insertion.');
         rememberVerifiedRequest(extractTaleFairyContext(eventData.prompt), { provider: currentContext().mainApi });
         recordRuntimeStage('final-text-payload');
-        renderAnalysisActivity('Injection verified in the final text payload', false);
+        renderInjectionActivity('Context verified in outgoing text request');
     } catch (error) {
         reportNonBlockingInjectionFailure('Tale Fairy could not verify the final text payload', error);
     }
@@ -1046,7 +1045,7 @@ function ensureProviderChatRequestGuidance(generateData) {
             model: generateData.model,
         });
         recordRuntimeStage('final-provider-payload', { generationType: String(generateData.type || '') });
-        renderAnalysisActivity('Injection verified in the final provider payload', false);
+        renderInjectionActivity('Context verified in outgoing request');
     } catch (error) {
         reportNonBlockingInjectionFailure('Tale Fairy could not verify the final provider payload', error);
     }
@@ -1080,7 +1079,7 @@ function confirmReturnedReplyUsedGuidance() {
     // delays scheduling and lets an older reply clear a newer swipe's packet.
     scheduleVerificationPersistence(context);
     renderBoard(state);
-    renderAnalysisActivity(pending.injectionDecision === 'skip'
+    renderInjectionActivity(pending.injectionDecision === 'skip'
         ? 'No Tale Fairy context was used for the returned reply'
         : pending.reusedContext
             ? 'Reused plot context confirmed · no new planner calls'
@@ -1088,7 +1087,7 @@ function confirmReturnedReplyUsedGuidance() {
             ? 'Plot-specific context confirmed in the story request'
         : pending.dynamicContextIncluded === false
             ? 'GM rules confirmed in returned reply; no world facts were included'
-            : 'GM rules and causal context confirmed in returned reply', false);
+            : 'GM rules and causal context confirmed in returned reply');
     return true;
 }
 
@@ -1157,6 +1156,13 @@ function elapsedLabel(milliseconds) {
 function clearAnalysisPhase() {
     if (analysisPhaseTimer) clearInterval(analysisPhaseTimer);
     analysisPhaseTimer = null;
+}
+
+function renderInjectionActivity(message = injectionStatus) {
+    injectionStatus = message;
+    const status = document.querySelector(`#${EXTENSION_ID}-settings [data-role="injection-status"]`);
+    if (status) status.textContent = message;
+    // Never touch the planner timer or its Stop/Guide/Rebuild controls here.
 }
 
 function renderAnalysisActivity(message, running = false) {
@@ -2576,6 +2582,7 @@ async function mountUI() {
     root.classList.toggle('is-expanded', Boolean(s.showDirectorNotes));
     refreshControls(root);
     renderAnalysisActivity(analysisPromise ? 'Analyzing…' : 'Ready', Boolean(analysisPromise));
+    renderInjectionActivity();
     renderBoard();
     void upgradeLegacyPlanIfNeeded();
     return true;
@@ -2642,6 +2649,8 @@ function refreshControls(root = document.querySelector(`#${EXTENSION_ID}-setting
 
 export async function livingWorldGuideGenerateInterceptor(_chat, _contextSize, _abort, type) {
     activeGenerationType = String(type || '');
+    renderInjectionActivity(!getSettings().enabled ? 'Disabled'
+        : isStoryGeneration(type) ? 'Preparing plot context' : 'Not used for this request type');
     const context = currentContext();
     if (!isStoryGeneration(activeGenerationType) || !getSettings().enabled) {
         updatePrompt(loadState(context.chatMetadata));
@@ -2748,6 +2757,7 @@ if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPE
     activeGenerationType = '';
     recordRuntimeStage('generation-stopped');
     clearTranscriptRefresh();
+    if (pendingRequestVerification) renderInjectionActivity('Generation stopped · reply not confirmed');
     pendingRequestVerification = null;
     generationGuideSelection = null;
     renderBoard();
@@ -2870,6 +2880,7 @@ for (const event of [event_types.WORLDINFO_UPDATED, event_types.WORLDINFO_SETTIN
 eventSource.on(event_types.CHAT_CHANGED, () => {
     clearAutomaticReplyRepair();
     activeGenerationType = '';
+    renderInjectionActivity('No request verified in this chat on this page');
     clearTranscriptRefresh();
     pendingRequestVerification = null;
     generationGuideSelection = null;

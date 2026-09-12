@@ -168,6 +168,7 @@ test('normal to quiet to normal interceptor clears host prompts without AI calls
         getSettings: () => ({ enabled: true }), loadState, isStoryGeneration,
         updatePrompt: state => { payload = buildPromptPayload(state, { generationType: sandbox.activeGenerationType }); },
         prepareAuthorContract: state => state, prepareGenerationGuide: () => {}, renderBoard: () => {},
+        renderInjectionActivity: () => {},
     };
     vm.runInNewContext(runtimeFunction('livingWorldGuideGenerateInterceptor'), sandbox);
     for (const type of ['normal', 'quiet', 'impersonate', 'normal']) {
@@ -185,7 +186,7 @@ test('final request hooks remove GM material from quiet/impersonation and leave 
         containsPlannerMarker: value => requestContainsMarker(value, marker),
         requestInjectionOptions: () => ({ role: 'user', depth: 1, inlineLatestUser: true }),
         ensureGuidanceInChat, ensureGuidanceInText, chatHasCurrentGuidance, textHasCurrentGuidance, extractTaleFairyContext,
-        rememberVerifiedRequest: () => { proofs++; }, recordRuntimeStage: () => {}, renderAnalysisActivity: () => {},
+        rememberVerifiedRequest: () => { proofs++; }, recordRuntimeStage: () => {}, renderInjectionActivity: () => {},
         currentContext: () => ({ mainApi: 'test' }), reportNonBlockingInjectionFailure: message => assert.fail(message),
     };
     vm.runInNewContext(['ensureChatCompletionRequestGuidance', 'ensureProviderChatRequestGuidance', 'ensureTextCompletionRequestGuidance'].map(runtimeFunction).join('\n'), sandbox);
@@ -250,13 +251,61 @@ function transportHarness() {
         requestInjectionOptions: () => ({ role: 'user', depth: 1, inlineLatestUser: true }),
         plannerNativeFetch: async (input, init) => { requests.push({ input, init }); return 'provider-response'; },
         rememberVerifiedRequest: block => proofs.push(block), rememberSkippedRequest: () => assert.fail('Unexpected skip'),
-        recordRuntimeStage: () => {}, renderAnalysisActivity: () => {}, queueMicrotask: callback => callback(),
+        recordRuntimeStage: () => {}, renderInjectionActivity: () => {}, queueMicrotask: callback => callback(),
         reportNonBlockingInjectionFailure: message => assert.fail(message),
     };
     vm.runInNewContext(runtimeFunction('installDetachedPlannerTransport'), sandbox);
     sandbox.installDetachedPlannerTransport();
     return { sandbox, settings, requests, proofs, marker };
 }
+
+test('outbound injection updates its own status without clearing planner progress or disabling Stop', async () => {
+    const { sandbox, requests } = transportHarness();
+    const planner = { textContent: '' }, injection = { textContent: '' };
+    const disabled = new Map();
+    const clearedTimers = [];
+    let mounted = true;
+    const root = { querySelector: selector => selector === '[data-role="analysis-status"]' ? planner
+        : { toggleAttribute: (_name, value) => disabled.set(selector, value) } };
+    Object.assign(sandbox, {
+        EXTENSION_ID: 'test', analysisPhaseTimer: 42, injectionStatus: 'No request verified on this page',
+        clearInterval: timer => clearedTimers.push(timer),
+        document: { querySelector: selector => !mounted ? null : selector.includes('injection-status') ? injection : root },
+    });
+    vm.runInNewContext(['clearAnalysisPhase', 'renderAnalysisActivity', 'renderInjectionActivity'].map(runtimeFunction).join('\n'), sandbox);
+    sandbox.renderAnalysisActivity('Waiting for planner model · 12s', true);
+    const controlsBefore = [...disabled];
+    await sandbox.fetch('/api/backends/chat-completions/generate', {
+        body: JSON.stringify({ type: 'normal', messages: [{ role: 'user', content: 'I observe.' }] }),
+    });
+    assert.equal(requests.length, 1);
+    assert.equal(injection.textContent, 'Context included · request sent; reply not yet confirmed');
+    assert.equal(planner.textContent, 'Waiting for planner model · 12s');
+    assert.equal(sandbox.analysisPhaseTimer, 42);
+    assert.deepEqual(clearedTimers, []);
+    assert.deepEqual([...disabled], controlsBefore);
+    assert.equal(disabled.get('[data-action="stop"]'), false);
+    // Status survives a late drawer mount, but not a new page's initialization.
+    mounted = false;
+    sandbox.renderInjectionActivity('Cached plot context ready');
+    mounted = true;
+    sandbox.renderInjectionActivity();
+    assert.equal(injection.textContent, 'Cached plot context ready');
+    sandbox.renderAnalysisActivity('Updated', false);
+    assert.equal(injection.textContent, 'Cached plot context ready');
+    assert.deepEqual(clearedTimers, [42]);
+});
+
+test('injection preparation, verification and warnings never use the planner status renderer', () => {
+    for (const name of ['installDetachedPlannerTransport', 'prepareGenerationGuide', 'reportNonBlockingInjectionFailure',
+        'ensureChatCompletionRequestGuidance', 'ensureProviderChatRequestGuidance', 'ensureTextCompletionRequestGuidance',
+        'confirmReturnedReplyUsedGuidance']) {
+        assert.doesNotMatch(runtimeFunction(name), /renderAnalysisActivity\(/, name);
+        assert.match(runtimeFunction(name), /renderInjectionActivity\(/, name);
+    }
+    assert.doesNotMatch(source, /Injection observed after network dispatch/);
+    assert.match(source, /let injectionStatus = 'No request verified on this page'/);
+});
 
 test('final fetch boundary cannot re-add GM rules to non-story or disabled requests', async () => {
     const { sandbox, settings, requests, proofs } = transportHarness();

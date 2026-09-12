@@ -20,7 +20,7 @@ test('actual reply confirmation updates proof synchronously and defers disk I/O'
         pendingRequestVerification: pending, newestProviderBoundVerification: () => pending,
         cachedProviderBoundVerification: () => null, returnedReplyMatchesVerification: () => true,
         messagesFromChat: value => value, cacheProviderBoundVerification() {}, renderBoard() {},
-        renderAnalysisActivity: value => statuses.push(value),
+        renderInjectionActivity: value => statuses.push(value),
         setTimeout: callback => timers.push(callback), console, EXTENSION_ID: 'test',
     };
     vm.createContext(scope);

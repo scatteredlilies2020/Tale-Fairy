@@ -34,7 +34,7 @@ export function generationHarness(messages, state = stateApi.defaultState(), met
         analysisRequestFingerprint: '', analysisRetryTimer: null, analysisRetryAttempt: 0,
         generationRevision: 0, analysisStopSequence: 0, transcriptRefreshTimer: null,
         replyRepairInFlight: false,
-        renderAnalysisActivity: status => statuses.push(status), renderBoard() {}, updatePrompt() {},
+        renderAnalysisActivity: status => statuses.push(status), renderInjectionActivity: status => statuses.push(status), renderBoard() {}, updatePrompt() {},
         recordRuntimeStage() {}, scheduleVerificationPersistence() {}, saveSettingsDebounced() {},
         cancelDetachedPlannerJobs: async () => {}, clearAutomaticReplyRepair() {},
         confirmReturnedReplyUsedGuidance: async () => {}, classifyAssistantReply: () => ({ unusable: false }),
