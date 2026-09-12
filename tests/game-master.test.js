@@ -8,6 +8,7 @@ import { hasUsableCausalContext } from '../extension/causal-context.js';
 import { SYSTEM, INCREMENTAL_SYSTEM, ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, buildAnalysisPrompt } from '../extension/analysis.js';
 import { ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, chatHasCurrentGuidance, textHasCurrentGuidance, requestContainsMarker } from '../extension/request-injection.js';
 import { estimateTokenCount } from '../extension/token-budget.js';
+import { generationHarness } from './helpers/generation-harness.js';
 
 const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
 function runtimeFunction(name) {
@@ -96,7 +97,7 @@ test('both planner passes retain agency and actor memory instructions in their f
     assert.doesNotMatch(source, /latestUserAction\.match\([^\n]*observe/);
 });
 
-test('rules-only replacement stays rules-only despite newly available planner facts', () => {
+test('legacy rules-only replacement gains a local plot anchor, never discarded planner facts', () => {
     const messages = [{ is_user: true, mes: 'I observe.' }, { is_user: false, mes: 'The merchant closes her shop.' }];
     const state = stateWithFacts();
     const archived = {
@@ -106,16 +107,12 @@ test('rules-only replacement stays rules-only despite newly available planner fa
         ...guidanceSnapshot(state),
     };
     state.lastRequestVerification = archived;
-    const sandbox = {
-        currentContext: () => ({ chat: messages, getCurrentChatId: () => 'story' }),
-        messagesFromChat: value => value, generationRetrySource, isReplacementVerificationCurrent,
-        hasUsableCausalContext, isDirectionCurrent: () => true, isGuidanceUsable: () => true,
-        selectSituationalOpenings: () => [], sampleDirectorSignals: () => ({}), generationGuideSelection: null,
-    };
-    vm.runInNewContext(runtimeFunction('prepareGenerationGuide'), sandbox);
-    sandbox.prepareGenerationGuide(state, 'swipe');
-    assert.equal(sandbox.generationGuideSelection.usable, false);
-    assert.equal(buildPromptPayload(state, { guidanceUsable: sandbox.generationGuideSelection.usable }), archived.guidanceBlock);
+    const h = generationHarness(messages, state);
+    const selection = h.prepare('swipe');
+    assert.equal(selection.usable, false);
+    assert.match(selection.payload, /<plot-anchor>/);
+    assert.match(selection.payload, /I observe/);
+    assert.doesNotMatch(selection.payload, /merchant|delivery/);
     const saved = loadState(JSON.parse(JSON.stringify(saveState({}, state))));
     assert.equal(saved.lastRequestVerification.dynamicContextIncluded, false);
     assert.deepEqual(saved.lastRequestVerification.causalContext.conditions, []);
@@ -124,22 +121,18 @@ test('rules-only replacement stays rules-only despite newly available planner fa
 test('a fresh archived causal slice is reused, not facts from discarded prose', () => {
     const messages = [{ is_user: true, mes: 'I observe.' }, { is_user: false, mes: 'Discarded prose.' }];
     const state = stateWithFacts();
-    state.lastRequestVerification = {
-        status: 'confirmed', injectionDecision: 'inject', guidanceBlock: 'verified', chatId: 'story',
-        sourceFingerprint: fingerprintMessages(messages.slice(0, 1)), responseMessageCount: 2,
-        ...guidanceSnapshot(state, { guidanceUsable: true }),
-    };
+    state.lastInject = true;
+    state.sourceMessageCount = 1;
+    state.lastAnalysisFingerprint = fingerprintMessages(messages.slice(0, 1));
+    const h = generationHarness(messages.slice(0, 1), state);
+    const original = h.prepare('normal').payload;
+    h.context.chat.push(messages[1]);
     state.causalContext = { ...state.causalContext, conditions: [{ ...state.causalContext.conditions[0], condition: 'has returned in discarded prose' }] };
-    const sandbox = {
-        currentContext: () => ({ chat: messages, getCurrentChatId: () => 'story' }),
-        messagesFromChat: value => value, generationRetrySource, isReplacementVerificationCurrent,
-        hasUsableCausalContext, isDirectionCurrent, isGuidanceUsable,
-        selectSituationalOpenings: () => [], sampleDirectorSignals: () => ({}), generationGuideSelection: null,
-    };
-    vm.runInNewContext(runtimeFunction('prepareGenerationGuide'), sandbox);
-    sandbox.prepareGenerationGuide(state, 'regenerate');
-    assert.equal(sandbox.generationGuideSelection.usable, true);
-    const payload = buildPromptPayload(state, { guidanceUsable: true, ...sandbox.generationGuideSelection });
+    h.context.updateChatMetadata(saveState(h.context.chatMetadata, state));
+    const selection = h.prepare('regenerate');
+    assert.equal(selection.usable, true);
+    const payload = buildPromptPayload(state, { cachedPayload: selection.payload });
+    assert.equal(payload, original);
     assert.match(payload, /away making a delivery/);
     assert.doesNotMatch(payload, /returned in discarded prose/);
 });

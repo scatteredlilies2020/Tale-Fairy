@@ -14,6 +14,7 @@ function harness(jobs, overrides = {}) {
     const context = { chat, chatMetadata: {}, getCurrentChatId: () => 'chat' };
     const scope = {
         detachedPlannerRecovering: false, analysisPromise: null, analysisStopSequence: 0,
+        replacementPlanningDeferred: () => false,
         getSettings: () => ({ enabled: true }), currentContext: () => context,
         messagesFromChat: value => value, detachedPlannerJobs: async () => jobs,
         isAnalysisSourceCurrent: fingerprint => fingerprint === 'snapshot',
@@ -76,6 +77,21 @@ test('stopping or switching chats while acknowledging recovery never starts a ne
         assert.equal(h.calls.length, 0);
         assert.equal(h.saved.length, 0);
     }
+});
+
+test('replacement deferral blocks retained jobs, including jobs returned after cancellation', async () => {
+    const h = harness([invalidJob], { replacementPlanningDeferred: () => true });
+    await h.run();
+    assert.equal(h.calls.length, 0);
+    assert.equal(h.saved.length, 0);
+    const late = harness([]);
+    late.scope.detachedPlannerJobs = async () => {
+        late.scope.analysisStopSequence++;
+        return [{ ...invalidJob, text: 'valid' }];
+    };
+    await late.run();
+    assert.equal(late.calls.length, 0);
+    assert.equal(late.saved.length, 0);
 });
 
 test('runtime uses one content correction, not a second chain of output-mode retries', () => {

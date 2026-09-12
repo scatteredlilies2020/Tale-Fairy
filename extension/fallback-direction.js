@@ -1,4 +1,5 @@
-import { applyPlannerAuthorLayer, defaultState, normalizeState } from './state.js?v=0.13.9';
+import { applyPlannerAuthorLayer, defaultState, normalizeState } from './state.js?v=0.13.11';
+import { relevantExcerpt } from './evidence-selection.js?v=0.13.9';
 
 function statusFields(value) {
     const fields = {};
@@ -18,7 +19,7 @@ function cleanClause(value, limit = 220) {
         .slice(0, limit);
 }
 
-function fallbackCausalConditions({ currentBeat = '', location = '', time = '' } = {}) {
+function fallbackCausalConditions({ currentBeat = '', location = '', time = '', messages = [] } = {}) {
     const conditions = [];
     const beat = cleanClause(currentBeat);
     const place = cleanClause(location, 120);
@@ -58,14 +59,17 @@ function fallbackCausalConditions({ currentBeat = '', location = '', time = '' }
         });
     }
     if (!conditions.length) {
+        const user = [...messages].reverse().find(message => message.is_user && message.mes);
+        const assistant = [...messages].reverse().find(message => !message.is_user && message.mes);
+        const source = user || assistant;
         conditions.push({
-            id: 'fallback-ongoing-world',
-            kind: 'system',
-            subject: 'The ongoing roleplay situation',
-            condition: 'is already in progress at the transcript opening; its latest established activity, relationships, and constraints remain causally active rather than resetting with the chat',
+            id: 'fallback-transcript-excerpt',
+            kind: 'situation',
+            subject: user ? 'Latest user contribution' : 'Latest accepted scene',
+            condition: source ? `Source excerpt (not an assumed outcome): ${cleanClause(relevantExcerpt(source.mes, 75, assistant?.mes || ''), 230)}` : 'No plot facts have been supplied yet; do not invent prior events.',
             disclosure: 'open',
             confidence: 'established',
-            relevance: 'A chat opening is an in-medias-res observation of the world, not the beginning of that world.',
+            relevance: 'Continue from this actual transcript contribution, without treating a request or intention as a completed outcome.',
         });
     }
     return conditions;
@@ -108,7 +112,7 @@ export function createSafetyFallbackState(state, {
     // beginning of the world. If the planner fails, retain a minimal causal
     // slice grounded exclusively in the authoritative transcript status.
     next.causalContext = {
-        conditions: fallbackCausalConditions({ currentBeat, location, time }),
+        conditions: fallbackCausalConditions({ currentBeat, location, time, messages }),
         inject: true,
         injectReason: 'A minimal in-medias-res causal slice was inferred from the authoritative transcript after planner failure.',
         basis: 'Transcript-grounded safety inference; no future event or player action was invented.',

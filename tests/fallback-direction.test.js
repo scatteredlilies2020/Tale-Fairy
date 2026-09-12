@@ -36,8 +36,8 @@ test('a headerless first exchange still represents an ongoing world', () => {
         messages, chatId: 'chat-1', fingerprint, turnCount: 1, reason: 'planner timed out',
     });
     assert.equal(state.causalContext.conditions.length, 1);
-    assert.equal(state.causalContext.conditions[0].id, 'fallback-ongoing-world');
-    assert.match(state.causalContext.conditions[0].condition, /already in progress/i);
+    assert.equal(state.causalContext.conditions[0].id, 'fallback-transcript-excerpt');
+    assert.match(state.causalContext.conditions[0].condition, /tavern door opens on an argument already underway/i);
     assert.equal(state.lastInject, true);
     assert.equal(isGuidanceUsable(state, messages, 'chat-1'), true);
 });

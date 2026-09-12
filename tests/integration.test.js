@@ -16,12 +16,12 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest, browser runtime, and detached plugin share the release version', () => {
-    assert.equal(manifest.version, '0.13.10');
-    assert.equal(manifest.js, 'extension/index.js?v=0.13.10');
-    assert.equal(manifest.css, 'extension/style.css?v=0.13.10');
+    assert.equal(manifest.version, '0.13.11');
+    assert.equal(manifest.js, 'extension/index.js?v=0.13.11');
+    assert.equal(manifest.css, 'extension/style.css?v=0.13.11');
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.13\.10'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.13\.10'/);
+    assert.match(pluginSource, /const VERSION = '0\.13\.11'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.13\.11'/);
 });
 
 test('live and recovered planner results bound diagnostic prose before strict validation', () => {
@@ -81,12 +81,12 @@ test('provider context exposes only clean relevant conditions', () => {
     assert.doesNotMatch(causalSource, /branchIndex|weighted random choice|NEXT-STEP EFFECT/);
     assert.match(stateSource, /formatCausalContext/);
     assert.match(stateSource, /if \(!enabled \|\| !isStoryGeneration\(generationType\)\) return ''/);
-    assert.match(stateSource, /\[GAME_MASTER_CONTRACT, dynamicPrompt\]/);
+    assert.match(stateSource, /\[GAME_MASTER_CONTRACT, plotAnchor, dynamicPrompt\]/);
 });
 
 test('generation archives and reuses the same causal slice for regeneration', () => {
     assert.match(source, /guidanceSnapshot\(state, guideSelectionOptions\(state, context\)\)/);
-    assert.match(source, /causalContext: \(archivedUsable \|\| archivedSkipped\) \? archived\.causalContext/);
+    assert.match(source, /payload: archived.payload, reused: true/);
     assert.doesNotMatch(source, /branchIndex|selectBeatBranchIndex/);
     const interceptor = source.slice(source.indexOf('export async function livingWorldGuideGenerateInterceptor'), source.indexOf('globalThis.livingWorldGuideGenerateInterceptor'));
     assert.doesNotMatch(interceptor, /await |analyzeNow\(/);

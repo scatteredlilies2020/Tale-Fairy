@@ -199,7 +199,7 @@ test('modern multi-turn lifecycle preserves memory, reviews on schedule, and fai
             assert.equal(fallback.plannerSchedule.turnsSinceFullReview, 12);
             assert.equal(plannerPassDecision({ state: fallback, messages: chat }).fullContextPass, true);
             const fallbackPrompt = buildPromptPayload(fallback, { guidanceUsable: isGuidanceUsable(fallback, chat, 'story') });
-            assert.match(fallbackPrompt, /ongoing roleplay situation/);
+            assert.match(fallbackPrompt, /source excerpt.*I compare ledger entry 12/i);
             assert.doesNotMatch(fallbackPrompt, /suspects the reserve report|falsified/);
             finish(modern(), true);
         } else {

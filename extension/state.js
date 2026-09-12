@@ -484,6 +484,7 @@ function normalizeRequestVerification(value) {
         status: value.status,
         injectionDecision,
         dynamicContextIncluded: injectionDecision === 'inject' && value.dynamicContextIncluded !== false && hasUsableCausalContext(value.causalContext),
+        reusedContext: value.reusedContext === true,
         runtimeVersion: text(value.runtimeVersion).slice(0, 40),
         verificationId: text(value.verificationId).slice(0, 100),
         guidanceBlock: injectionDecision === 'inject' ? text(value.guidanceBlock).slice(0, 12000) : '',
@@ -897,14 +898,15 @@ export function guidanceSnapshot(state, { guidanceUsable = false, causalContext 
     };
 }
 
-export function buildPromptPayload(state, { enabled = true, generationType = '', guidanceUsable = false, causalContext = null, sceneProfile = null, directorSample = null, mode = null } = {}) {
+export function buildPromptPayload(state, { enabled = true, generationType = '', guidanceUsable = false, causalContext = null, sceneProfile = null, directorSample = null, mode = null, plotAnchor = '', cachedPayload = '' } = {}) {
     if (!enabled || !isStoryGeneration(generationType)) return '';
+    if (cachedPayload) return cachedPayload;
     const s = normalizeState(state);
     const snapshot = guidanceSnapshot(s, { guidanceUsable, causalContext, sceneProfile });
     const selectedMode = directorSample?.mode || mode || s.mode;
     const dynamicPrompt = snapshot.dynamicContextIncluded
         ? formatCausalContext(snapshot.causalContext, { mode: selectedMode, sceneProfile: snapshot.sceneProfile, includeRules: false }) : '';
-    const statePrompt = [GAME_MASTER_CONTRACT, dynamicPrompt].filter(Boolean).join('\n');
+    const statePrompt = [GAME_MASTER_CONTRACT, plotAnchor, dynamicPrompt].filter(Boolean).join('\n');
     const guidancePrompt = `\n<living-world-guide>\n${statePrompt}\n</living-world-guide>`;
     return `<tale-fairy-context>${guidancePrompt}\n</tale-fairy-context>`;
 }
