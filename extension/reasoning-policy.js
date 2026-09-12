@@ -129,14 +129,22 @@ export function isReasoningControlError(error) {
 
 export function reasoningFallbackPayload(error, payload = {}) {
     if (!isMandatoryReasoningError(error)) return {};
+    const disabledEffort = value => ['none', 'off', 'disabled'].includes(String(value).toLowerCase());
     const fallback = { ...payload, include_reasoning: true };
-    if (!fallback.reasoning_effort || ['none', 'off', 'disabled'].includes(String(fallback.reasoning_effort).toLowerCase())) fallback.reasoning_effort = 'low';
+    if (!fallback.reasoning_effort || disabledEffort(fallback.reasoning_effort)) fallback.reasoning_effort = 'low';
     if (fallback.custom_include_body) {
         try {
             const body = JSON.parse(fallback.custom_include_body);
-            if (body.reasoning && typeof body.reasoning === 'object') body.reasoning = { ...body.reasoning, effort: body.reasoning.effort === 'none' ? 'low' : (body.reasoning.effort || 'low'), exclude: false };
+            // Custom endpoints forward this body verbatim, so changing only
+            // ST's top-level effort can leave a contradictory disable inside.
+            if (disabledEffort(body.reasoning_effort)) body.reasoning_effort = fallback.reasoning_effort;
+            if (body.reasoning && typeof body.reasoning === 'object') {
+                body.reasoning = { ...body.reasoning, effort: disabledEffort(body.reasoning.effort) ? 'low' : (body.reasoning.effort || 'low'), exclude: false };
+                if (body.reasoning.enabled === false) body.reasoning.enabled = true;
+            }
             if (body.thinking?.type === 'disabled') delete body.thinking;
             if ('enable_thinking' in body) body.enable_thinking = true;
+            if (body.chat_template_kwargs?.enable_thinking === false) body.chat_template_kwargs.enable_thinking = true;
             if ('think' in body && body.think === false) body.think = true;
             fallback.custom_include_body = JSON.stringify(body);
         } catch { delete fallback.custom_include_body; }

@@ -14,7 +14,7 @@ import { DEFAULT_INJECTION_ROLE, normalizeInjectionRole } from './injection-role
 import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.13.9';
 import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.13.9';
 import { normalizeModelListResponse } from './models.js?v=0.13.9';
-import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.13.9';
+import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.13.18';
 import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.13.9';
 import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.13.9';
 import { collectSummarySources } from './summary-context.js?v=0.13.9';
@@ -36,7 +36,7 @@ import { buildPlotAnchor, cachedGenerationContext, generationContextEntries, gen
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.13.17';
+const RUNTIME_VERSION = '0.13.18';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -2084,17 +2084,15 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
 async function requestAnalysis(prompt, externalSignal, detachedMeta, recovery = null) {
     const fullContextPass = detachedMeta?.fullContextPass === true;
     const bootstrapScan = detachedMeta?.bootstrapScan === true || detachedMeta?.rebuild === true;
+    // Bound the work, not the model's thinking mode. Every tier resolves the
+    // user's reasoning choice (including profile/preset inheritance) at send
+    // time; forcing Off breaks models that require reasoning.
     return requestAnalysisOnce(prompt, externalSignal, detachedMeta, {
         responseTokens: fullContextPass ? (bootstrapScan ? REBUILD_RESPONSE_TOKENS : REVIEW_RESPONSE_TOKENS) : INCREMENTAL_RESPONSE_TOKENS,
-        ...(fullContextPass && !bootstrapScan ? { reasoningMode: 'off', label: 'bounded story review', cacheNamespace: 'analysis-review-v12', allowValidationRepair: true } : {}),
+        ...(fullContextPass && !bootstrapScan ? { label: 'bounded story review', cacheNamespace: 'analysis-review-v12', allowValidationRepair: true } : {}),
         ...(fullContextPass ? {} : {
             systemPrompt: INCREMENTAL_SYSTEM_PROMPT,
             schema: INCREMENTAL_ANALYSIS_SCHEMA,
-            // Routine refresh is latency-sensitive and needs visible JSON, not
-            // a hidden chain of thought that can consume the entire response
-            // budget before the provider emits an answer. Full Rebuild still
-            // honors the configured/inherited reasoning level.
-            reasoningMode: 'off',
             // Invalid structured output still gets one focused repair pass.
             // A routine refresh must not discard an active world merely because
             // the first response omitted a required field.

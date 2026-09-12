@@ -41,11 +41,11 @@
           </label>
           <label>Routine planner input target (tokens)
             <input class="text_pole" type="number" data-setting="routine-budget" min="9000" max="30000" step="1000" value="10000">
-            <small>Default: 10,000, subject to the total ceiling. Every accepted reply; up to 4,096 output tokens, reasoning off. Larger inputs cost more but leave more space for evidence.</small>
+            <small>Default: 10,000, subject to the total ceiling. Every accepted reply; up to 4,096 output tokens, using your reasoning setting. Larger inputs cost more but leave more space for evidence.</small>
           </label>
           <label>Broad-review input target (tokens)
             <input class="text_pole" type="number" data-setting="review-budget" min="9000" max="30000" step="1000" value="14000">
-            <small>Default: 14,000, subject to the total ceiling. Up to 6,144 output tokens, reasoning off. All planning remains background-only.</small>
+            <small>Default: 14,000, subject to the total ceiling. Up to 6,144 output tokens, using your reasoning setting. All planning remains background-only.</small>
           </label>
           <label>Broad story review interval (assistant replies)
             <input class="text_pole" type="number" data-setting="full-review-interval" min="3" max="20" step="1" value="12">
@@ -116,7 +116,7 @@
             <option value="max">Maximum</option>
           </select>
         </label>
-        <small>Auto inherits the selected Connection Manager profile or its preset, then SillyTavern's active reasoning effort. Choose a level to override it for Tale Fairy only. Provider-specific controls are translated automatically.</small>
+        <small>Applies to every evaluation, including Re-evaluate and retry-plan repairs. Auto inherits the selected Connection Manager profile or its preset, then SillyTavern's active reasoning effort; otherwise the provider default is preserved. Choose a level to override it for Tale Fairy only. More reasoning can take longer; Off is not supported by every model.</small>
         <label>Planner temperature
           <div class="living-world-guide-temperature">
             <input type="range" data-setting="temperature-slider" min="0" max="2" step="0.05" value="1">

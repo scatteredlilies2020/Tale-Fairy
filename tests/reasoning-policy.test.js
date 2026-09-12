@@ -98,9 +98,40 @@ test('an explicit Kimi model is not mistaken for Qwen by a proxy route name', ()
     assert.deepEqual(JSON.parse(result.payload.custom_include_body), { reasoning_effort: 'low' });
 });
 
-test('mandatory reasoning fallback enables a provider-safe minimum', () => {
+test('mandatory reasoning fallback enables a low effort instead of Off', () => {
     const result = reasoningFallbackPayload(new Error('Reasoning is mandatory and cannot be disabled.'), { include_reasoning: false, reasoning_effort: 'none' });
     assert.deepEqual(result, { include_reasoning: true, reasoning_effort: 'low' });
+});
+
+test('mandatory fallback removes nested disable controls without changing unrelated options or its input', () => {
+    const body = {
+        reasoning_effort: 'none', reasoning: { effort: 'off', enabled: false, exclude: true },
+        chat_template_kwargs: { enable_thinking: false, custom_option: 'keep' },
+        enable_thinking: false, think: false, response_format: { type: 'json_object' },
+    };
+    const payload = { include_reasoning: false, reasoning_effort: 'none', custom_include_body: JSON.stringify(body) };
+    const before = structuredClone(payload);
+    const result = reasoningFallbackPayload(new Error('Reasoning is required.'), payload);
+    assert.equal(result.include_reasoning, true);
+    assert.equal(result.reasoning_effort, 'low');
+    assert.deepEqual(JSON.parse(result.custom_include_body), {
+        reasoning_effort: 'low', reasoning: { effort: 'low', enabled: true, exclude: false },
+        chat_template_kwargs: { enable_thinking: true, custom_option: 'keep' },
+        enable_thinking: true, think: true, response_format: { type: 'json_object' },
+    });
+    assert.deepEqual(payload, before);
+});
+
+test('mandatory fallback preserves enabled effort and handles invalid custom bodies', () => {
+    const error = new Error('Thinking must be enabled.');
+    const result = reasoningFallbackPayload(error, {
+        reasoning_effort: 'high', custom_include_body: JSON.stringify({ reasoning_effort: 'high', reasoning: { effort: 'high' } }),
+    });
+    assert.equal(result.reasoning_effort, 'high');
+    assert.equal(JSON.parse(result.custom_include_body).reasoning_effort, 'high');
+    assert.equal(JSON.parse(result.custom_include_body).reasoning.effort, 'high');
+    assert.deepEqual(reasoningFallbackPayload(error, { custom_include_body: '{' }), { include_reasoning: true, reasoning_effort: 'low' });
+    assert.deepEqual(reasoningFallbackPayload(new Error('Unsupported reasoning_effort'), result), {});
 });
 
 test('mandatory DeepSeek fallback relies on provider default instead of sending thinking enabled', () => {

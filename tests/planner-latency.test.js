@@ -66,7 +66,7 @@ test('actual Re-evaluate uses one lightweight request from an empty fallback and
     assert.equal(request.meta.bootstrapScan, false);
     assert.equal(request.meta.fullContextPass, false);
     assert.equal(request.spec.responseTokens, 4096);
-    assert.equal(request.spec.reasoningMode, 'off');
+    assert.equal(request.spec.reasoningMode, undefined, 'resolve the configured reasoning mode when sending');
     assert.equal(request.spec.schema, analysis.INCREMENTAL_ANALYSIS_SCHEMA);
     assert.equal(h.prompts[0].maxPromptTokens, 10000);
     assert.equal(h.prompts[0].recentContextTokens, 3000);
@@ -91,7 +91,7 @@ test('pre-reply repair and its recovered correction cannot promote empty state t
         assert.equal(h.requests.length, 1);
         assert.equal(h.requests[0].meta.bootstrapScan, false);
         assert.equal(h.requests[0].spec.responseTokens, 4096);
-        assert.equal(h.requests[0].spec.reasoningMode, 'off');
+        assert.equal(h.requests[0].spec.reasoningMode, undefined, 'repairs also honor configured reasoning');
         if (recovery) assert.equal(h.requests[0].spec.allowValidationRepair, false);
         h.requests[0].finish();
         await pending;
@@ -101,7 +101,8 @@ test('pre-reply repair and its recovered correction cannot promote empty state t
 
 test('real changed inputs or model selection replace a running reevaluation, not stale-cache reuse', async () => {
     for (const change of [h => { h.context.card = { scenario: 'The chest is now open.' }; }, h => { h.settings.analysisModel = 'different-model'; },
-        h => { h.settings.routineInputTokens = 12000; }, h => { h.context.chat[1].mes = 'I ask Mira about the window instead.'; }]) {
+        h => { h.settings.analysisReasoningMode = 'high'; }, h => { h.settings.routineInputTokens = 12000; },
+        h => { h.context.chat[1].mes = 'I ask Mira about the window instead.'; }]) {
         const h = harness();
         const first = h.scope.reevaluateGuideState();
         await h.settle();

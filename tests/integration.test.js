@@ -16,12 +16,12 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest, browser runtime, and detached plugin share the release version', () => {
-    assert.equal(manifest.version, '0.13.17');
-    assert.equal(manifest.js, 'extension/index.js?v=0.13.17');
-    assert.equal(manifest.css, 'extension/style.css?v=0.13.17');
+    assert.equal(manifest.version, '0.13.18');
+    assert.equal(manifest.js, 'extension/index.js?v=0.13.18');
+    assert.equal(manifest.css, 'extension/style.css?v=0.13.18');
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.13\.17'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.13\.17'/);
+    assert.match(pluginSource, /const VERSION = '0\.13\.18'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.13\.18'/);
 });
 
 test('planner input proof travels through normal saves and detached recovery', () => {
@@ -145,7 +145,8 @@ test('planner token budgets, retries, and nonblocking behavior remain compatible
     assert.match(source, /const INCREMENTAL_RESPONSE_TOKENS = 4096/);
     assert.match(source, /const REVIEW_RESPONSE_TOKENS = 6144/);
     assert.match(source, /bootstrapScan \? REBUILD_RESPONSE_TOKENS : REVIEW_RESPONSE_TOKENS/);
-    assert.match(source, /fullContextPass && !bootstrapScan \? \{ reasoningMode: 'off'/);
+    const requestTier = source.slice(source.indexOf('async function requestAnalysis('), source.indexOf('export async function analyzeNow('));
+    assert.doesNotMatch(requestTier, /reasoningMode:/, 'no evaluation tier silently overrides configured reasoning');
     assert.match(source, /cacheNamespace: 'analysis-incremental-v13'/);
     assert.match(source, /cacheNamespace: 'analysis-review-v12'/);
     assert.match(source, /fullReview: fullContextPass && \[8, 9, 12\]\.includes\(result\.contract_version\)/);
