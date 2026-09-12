@@ -15,6 +15,7 @@ function harness(jobs, overrides = {}) {
     const scope = {
         detachedPlannerRecovering: false, analysisPromise: null, analysisStopSequence: 0,
         replacementPlanningDeferred: () => false,
+        retryPlannerSourceMatches: (_context, meta) => meta.allowOneAssistantAppend === true,
         getSettings: () => ({ enabled: true }), currentContext: () => context,
         messagesFromChat: value => value, detachedPlannerJobs: async () => jobs,
         isAnalysisSourceCurrent: fingerprint => fingerprint === 'snapshot',
@@ -23,6 +24,7 @@ function harness(jobs, overrides = {}) {
         parseAnalysisResponse: text => { if (text === 'invalid') throw new Error('invalid actor'); return {}; },
         alignmentPromptFromMeta: () => '', console: { warn() {} }, EXTENSION_ID: 'test',
         loadState: () => ({ userNotes: [] }), rebuildState: () => ({ userNotes: [] }),
+        alignRetainedStateToTranscript: state => state,
         applyAnalysis: state => state, applyPlannerAuthorLayer: state => state,
         assistantTurnNumber: () => 1, fingerprintMessages: () => 'snapshot',
         reconcileStateWithContinuity: state => ({ state }), optionalContinuityContext: () => null,
@@ -92,6 +94,42 @@ test('replacement deferral blocks retained jobs, including jobs returned after c
     await late.run();
     assert.equal(late.calls.length, 0);
     assert.equal(late.saved.length, 0);
+});
+
+test('deferred retries recover only a pre-reply repair and do not import discarded Continuity facts', async () => {
+    let continuityReads = 0;
+    const retryMeta = { ...meta, allowOneAssistantAppend: true, analysisSelection: { plotInputsKey: 'pre-reply-input-proof' } };
+    const h = harness([
+        { ...invalidJob, id: 'future', text: 'valid' },
+        { ...invalidJob, id: 'pre-reply', text: 'valid', meta: retryMeta },
+    ], {
+        replacementPlanningDeferred: () => true,
+        optionalContinuityContext: () => { continuityReads++; return { discarded: true }; },
+    });
+    h.context.chat.push({ mes: 'Discarded reply.' });
+    assert.equal((await h.run()).recovered, true);
+    assert.equal(h.saved.length, 1);
+    assert.equal(h.calls.length, 0);
+    assert.equal(continuityReads, 0);
+    assert.equal(h.saved[0].analysisModel.plotInputsKey, 'pre-reply-input-proof');
+});
+
+test('repairing an invalid detached retry never evaluates or falls back to its discarded reply', async () => {
+    const retryMeta = { ...meta, allowOneAssistantAppend: true };
+    const sources = [];
+    const h = harness([{ ...invalidJob, meta: retryMeta }], {
+        replacementPlanningDeferred: () => true,
+        createSafetyFallbackState: (_state, options) => { sources.push(options.messages); return { fallback: true }; },
+    });
+    h.context.chat.push({ mes: 'Discarded reply.' });
+    await h.run();
+    assert.equal(h.calls.length, 1);
+    assert.equal(h.calls[0].messages.length, 1);
+    assert.equal(h.calls[0].allowOneAssistantAppend, true);
+    await h.run();
+    assert.equal(h.calls.length, 1);
+    assert.equal(sources.length, 1);
+    assert.equal(sources[0].length, 1);
 });
 
 test('runtime uses one content correction, not a second chain of output-mode retries', () => {

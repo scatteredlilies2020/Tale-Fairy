@@ -14,17 +14,23 @@ const source = readFileSync(new URL('../../extension/index.js', import.meta.url)
 export function generationHarness(messages, state = stateApi.defaultState(), metadata = {}) {
     const calls = [], statuses = [], timers = [], handlers = new Map();
     const settings = { enabled: true, mode: 'balanced' };
+    let chatMetadata = stateApi.saveState(metadata, state);
     const context = {
-        chat: messages, chatMetadata: stateApi.saveState(metadata, state),
+        chat: messages,
+        get chatMetadata() { return chatMetadata; },
+        set chatMetadata(value) { chatMetadata = value; },
         getCurrentChatId: () => 'story',
-        updateChatMetadata(value) { this.chatMetadata = value; },
+        updateChatMetadata(value, reset) { chatMetadata = reset ? { ...value } : { ...chatMetadata, ...value }; },
     };
     const names = ['GENERATION_STARTED', 'GENERATION_ENDED', 'GENERATION_STOPPED', 'MESSAGE_RECEIVED', 'MESSAGE_SENT', 'MESSAGE_EDITED', 'MESSAGE_UPDATED', 'MESSAGE_DELETED', 'MESSAGE_SWIPED', 'WORLDINFO_UPDATED', 'WORLDINFO_SETTINGS_UPDATED', 'CHARACTER_EDITED', 'PERSONA_CHANGED', 'PERSONA_UPDATED'];
     const scope = {
         ...stateApi, ...cacheApi, ...scheduleApi, ...coalescerApi,
         isStoryGeneration, sampleDirectorSignals, selectSituationalOpenings, createSafetyFallbackState,
-        currentContext: () => context, messagesFromChat: value => value,
+        // ST returns a new context with a snapshot reference to its metadata.
+        // updateChatMetadata replaces the host object, not that reference.
+        currentContext: () => ({ ...context }), messagesFromChat: value => value,
         getSettings: () => settings, getCharacterCardFields: () => context.card || {},
+        loadWorldInfo: async name => { scope.worldInfoCache.set(name, context.worlds?.[name] || { entries: {} }); },
         world_info: {}, selected_world_info: [], worldInfoCache: new Map(),
         extension_settings: {},
         getWorldInfoSettings: () => ({ world_info: {}, world_info_depth: 2 }), bootstrapContext: () => context.card || {},
@@ -37,6 +43,9 @@ export function generationHarness(messages, state = stateApi.defaultState(), met
         renderAnalysisActivity: status => statuses.push(status), renderInjectionActivity: status => statuses.push(status), renderBoard() {}, updatePrompt() {},
         recordRuntimeStage() {}, scheduleVerificationPersistence() {}, saveSettingsDebounced() {},
         cancelDetachedPlannerJobs: async () => {}, clearAutomaticReplyRepair() {},
+        recoverDetachedPlannerJobs: async () => ({ recovered: false, active: false }),
+        plannerStorage: () => null, plannerWasInterrupted: () => false, plannerFailedForSnapshot: () => false,
+        clearPromptManagerInjection() {}, promptManager: null, setExtensionPrompt() {}, PROMPT_KEY: 'test', stopAnalysis() {},
         confirmReturnedReplyUsedGuidance: async () => {}, classifyAssistantReply: () => ({ unusable: false }),
         prepareAuthorContract: value => value, scheduleAutomaticReplyRepair() {},
         analyzeNow: async options => { calls.push({ ...options, messages: structuredClone(options.messages) }); },
@@ -48,7 +57,7 @@ export function generationHarness(messages, state = stateApi.defaultState(), met
         DOMException, console,
     };
     vm.createContext(scope);
-    for (const name of ['guideSelectionOptions', 'generationInputs', 'replacementPlanningDeferred', 'deferReplacementPlanning', 'prepareGenerationGuide', 'queueLatestAnalysis', 'drainQueuedAnalysis', 'scheduleTranscriptRefresh', 'clearQueuedAnalysis', 'clearTranscriptRefresh', 'cancelAnalysisRetry', 'cancelRunningAnalysis', 'interruptAnalysis', 'verificationMatchesTranscript', 'invalidateChangedTranscriptVerification']) {
+    for (const name of ['guideSelectionOptions', 'generationInputs', 'warmPlotWorldInputs', 'replacementPlanningDeferred', 'retryPlannerSourceMatches', 'retryPlannerActive', 'plannerInputsMatch', 'bindResolvedNoteInputProof', 'buildGenerationPacket', 'archiveReadyPlannerContexts', 'deferReplacementPlanning', 'repairDeferredReplacementPlan', 'reevaluateGuideState', 'refreshCurrentPlanIfNeeded', 'resetState', 'rebuildPendingState', 'persistRebuildPending', 'prepareGenerationGuide', 'persist', 'queueLatestAnalysis', 'drainQueuedAnalysis', 'scheduleTranscriptRefresh', 'clearQueuedAnalysis', 'clearTranscriptRefresh', 'cancelAnalysisRetry', 'cancelRunningAnalysis', 'interruptAnalysis', 'verificationMatchesTranscript', 'invalidateChangedTranscriptVerification']) {
         const match = source.match(new RegExp(`(?:export )?(?:async )?function ${name}\\([^]*?^}`, 'm'));
         assert.ok(match, name);
         vm.runInContext(match[0].replace(/^export /u, ''), scope);

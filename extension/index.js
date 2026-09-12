@@ -32,11 +32,11 @@ import { formatHiddenMotives } from './scratchpad-format.js?v=0.13.9';
 import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.9';
 import { createSafetyFallbackState } from './fallback-direction.js?v=0.13.11';
 import { classifyAssistantReply } from './response-usability.js?v=0.13.9';
-import { buildPlotAnchor, cachedGenerationContext, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.13.15';
-import { getWorldInfoSettings, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
+import { buildPlotAnchor, cachedGenerationContext, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.13.16';
+import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.13.15';
+const RUNTIME_VERSION = '0.13.16';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -643,8 +643,9 @@ function guideSelectionOptions(state, context = currentContext()) {
             latestUserAction,
         };
     }
+    const directionReady = plannerInputsMatch(state, chat, context) && isDirectionCurrent(state, chat, chatId);
     return {
-        guidanceUsable: isGuidanceUsable(state, chat, chatId),
+        guidanceUsable: directionReady && isGuidanceUsable(state, chat, chatId),
         guideCandidates: null,
         guideIndex: 0,
         regeneration: false,
@@ -652,7 +653,7 @@ function guideSelectionOptions(state, context = currentContext()) {
         directorSample: sampleDirectorSignals(state.mode, state.plannerSeed),
         latestUserAction,
         causalContext: selectedCausalContext,
-        plotAnchor: buildPlotAnchor(chat, { state, stateCurrent: isDirectionCurrent(state, chat, chatId), bootstrap: bootstrapContext(context) }),
+        plotAnchor: buildPlotAnchor(chat, { state, stateCurrent: directionReady, bootstrap: bootstrapContext(context) }),
     };
 }
 
@@ -686,16 +687,115 @@ function replacementPlanningDeferred(context = currentContext()) {
         messagesFromChat(context.chat || []), String(context.getCurrentChatId?.() || ''), fingerprintMessages);
 }
 
-function deferReplacementPlanning(context = currentContext(), sourceMessages = null) {
+async function warmPlotWorldInputs(context = currentContext()) {
+    // Page reload clears ST's in-memory lore cache. Read the selected books
+    // before deciding a saved packet is incompatible; this is not an AI call.
+    await Promise.all(plotWorldNames(context, world_info, selected_world_info).map(async name => {
+        if (worldInfoCache.has(name)) return;
+        try { await loadWorldInfo(name); }
+        catch (error) { console.warn(`[${EXTENSION_ID}] Could not load plot input book ${name}`, error); }
+    }));
+}
+
+function retryPlannerSourceMatches(context, { fingerprint, messageCount, allowOneAssistantAppend } = {}) {
+    const pending = context.chatMetadata?.[REPLACEMENT_PENDING_KEY];
+    return Boolean(allowOneAssistantAppend && replacementPlanningDeferred(context)
+        && pending.messageCount === messageCount
+        && isAnalysisSourceCurrent(fingerprint, messageCount, messagesFromChat(context.chat || []), { allowOneAssistantAppend: true }));
+}
+
+function retryPlannerActive(context = currentContext()) {
+    return Boolean(analysisPromise && !analysisAbortController?.signal.aborted
+        && activeAnalysisIntent?.chatId === String(context.getCurrentChatId?.() || '')
+        && retryPlannerSourceMatches(context, { fingerprint: analysisRequestFingerprint,
+            messageCount: activeAnalysisMessageCount, allowOneAssistantAppend: activeAnalysisIntent?.allowOneAssistantAppend }));
+}
+
+function plannerInputsMatch(state, messages, context, metadata = context.chatMetadata) {
+    const chatId = String(context.getCurrentChatId?.() || '');
+    const inputs = generationInputs(context, state);
+    if (state.analysisModel?.plotInputsKey) return state.analysisModel.plotInputsKey === plotInputKey(chatId, [], inputs);
+    const inputKey = plotInputKey(chatId, messages, inputs);
+    const sourceKey = plotInputKey(chatId, messages);
+    const sourceFingerprint = fingerprintMessages(messages);
+    return !generationContextEntries(metadata?.[GENERATION_CONTEXT_KEY]).some(item =>
+        (item.sourceKey === sourceKey || item.sourceFingerprint === sourceFingerprint) && item.inputKey !== inputKey);
+}
+
+function bindResolvedNoteInputProof(next, previous, context = currentContext()) {
+    const chatId = String(context.getCurrentChatId?.() || '');
+    // The submitted note was part of this planner call. Recording its resolved
+    // form must not make that very result look stale; unrelated edits still do.
+    if (next.analysisModel?.plotInputsKey === plotInputKey(chatId, [], generationInputs(context, previous))) {
+        next.analysisModel = { ...next.analysisModel, plotInputsKey: plotInputKey(chatId, [], generationInputs(context, next)) };
+    }
+}
+
+// Pure packet construction: saving a completed plan must not replace the
+// selection already frozen for an in-flight story request.
+function buildGenerationPacket(state, messages, context, type = 'normal', currentDirectionReady = false) {
+    const chatId = String(context.getCurrentChatId?.() || '');
+    const inputKey = plotInputKey(chatId, messages, generationInputs(context, state));
+    const usable = currentDirectionReady && isGuidanceUsable(state, messages, chatId);
+    const replacement = type === 'swipe' || type === 'regenerate';
+    const latestUserAction = [...messages].reverse().find(message => message.is_user)?.mes || '';
+    const situations = usable ? selectSituationalOpenings(state.situationBoard, {
+        scene: state.scene, sceneProfile: state.sceneProfile, latestUserAction,
+    }) : [];
+    const selection = {
+        chatId, inputKey, candidates: [], index: 0, usable, skipped: false,
+        regeneration: replacement, replacement,
+        variationCue: currentDirectionReady ? state.plannerSeed : 0,
+        directorSample: sampleDirectorSignals(state.mode, currentDirectionReady ? state.plannerSeed : 0),
+        canonConstraints: usable ? state.canonConstraints : [],
+        sceneProfile: usable ? state.sceneProfile : null,
+        causalContext: usable ? { ...state.causalContext, optionalSituations: situations.slice(0, 1).map(item => ({ premise: item.premise, entry: item.entry })) } : null,
+        plotAnchor: buildPlotAnchor(messages, { state, stateCurrent: currentDirectionReady, bootstrap: bootstrapContext(context) }),
+    };
+    const payload = buildPromptPayload(state, { ...selection, guidanceUsable: usable, latestUserAction, generationType: type });
+    return JSON.parse(JSON.stringify({ version: 1, anchorVersion: PLOT_ANCHOR_VERSION, chatId, inputKey,
+        sourceFingerprint: fingerprintMessages(messages), sourceKey: plotInputKey(chatId, messages), payload, selection,
+        plannerState: currentDirectionReady ? { ...state, lastRequestVerification: null } : null,
+    }));
+}
+
+function archiveReadyPlannerContexts(metadata, states, context = currentContext()) {
+    const messages = messagesFromChat(context.chat || []);
+    const chatId = String(context.getCurrentChatId?.() || '');
+    let cache = metadata?.[GENERATION_CONTEXT_KEY];
+    const original = cache;
+    for (const state of states) {
+        if (!hasPlannerConditions(state.causalContext) || !state.sourceMessageCount) continue;
+        const source = messages.slice(0, state.sourceMessageCount);
+        if (!isGuidanceUsable(state, source, chatId)) continue;
+        const sources = [source];
+        // Ahead plans also support exactly one new user contribution. Archive
+        // that pre-reply input before the next completed plan can replace it.
+        if (messages[source.length]?.is_user) sources.push(messages.slice(0, source.length + 1));
+        for (const candidate of sources) {
+            if (!plannerInputsMatch(state, candidate, context, { ...metadata, [GENERATION_CONTEXT_KEY]: cache })) continue;
+            const key = plotInputKey(chatId, candidate, generationInputs(context, state));
+            const existing = cachedGenerationContext(cache, key, chatId);
+            if (existing?.selection.usable && hasPlannerConditions(existing.selection.causalContext)) continue;
+            cache = rememberGenerationContext(cache, buildGenerationPacket(state, candidate, context, 'normal', true));
+        }
+    }
+    return cache === original ? metadata : { ...metadata, [GENERATION_CONTEXT_KEY]: cache };
+}
+
+function deferReplacementPlanning(context = currentContext(), sourceMessages = null, { preserveSelection = false } = {}) {
     if (!getSettings().enabled) return;
     const messages = sourceMessages || generationRetrySource(messagesFromChat(context.chat || []), true);
     const chatId = String(context.getCurrentChatId?.() || '');
     const current = loadState(context.chatMetadata);
     const inputKey = plotInputKey(chatId, messages, generationInputs(context, current));
-    const archived = cachedGenerationContext(context.chatMetadata?.[GENERATION_CONTEXT_KEY], inputKey, chatId);
+    const previousPending = context.chatMetadata?.[REPLACEMENT_PENDING_KEY];
+    const previousSelection = generationGuideSelection;
+    let metadata = archiveReadyPlannerContexts(context.chatMetadata, [current], context);
+    const archived = cachedGenerationContext(metadata?.[GENERATION_CONTEXT_KEY], inputKey, chatId);
     // Roll back planner memory as well as the visible injection. Otherwise a
     // later routine pass could inherit entities/ledger facts from deleted prose.
-    if (!isDirectionCurrent(current, messages, chatId)) {
+    if (!isDirectionCurrent(current, messages, chatId) || !plannerInputsMatch(current, messages, context, metadata)) {
         const restored = archived?.plannerState ? { ...archived.plannerState } : createSafetyFallbackState(defaultState(), {
             messages, chatId, fingerprint: fingerprintMessages(messages), turnCount: assistantTurnNumber(messages),
             reason: 'replacement has no compatible saved planner state',
@@ -707,16 +807,55 @@ function deferReplacementPlanning(context = currentContext(), sourceMessages = n
             restored.sourceMessageCount = messages.length;
             restored.sourceChatId = chatId;
         }
-        context.updateChatMetadata(saveState(context.chatMetadata, { ...restored,
+        metadata = saveState(metadata, { ...restored,
             userNotes: current.userNotes, mode: current.mode, lastRequestVerification: current.lastRequestVerification,
-        }));
+        });
     }
-    context.updateChatMetadata({ ...context.chatMetadata, [REPLACEMENT_PENDING_KEY]: {
+    // ST replaces its metadata object; a second write from context.chatMetadata
+    // would restore the OLD planner. Commit rollback and marker atomically.
+    context.updateChatMetadata({ ...metadata, [REPLACEMENT_PENDING_KEY]: {
+        ...(previousPending?.chatId === chatId && previousPending.sourceKey === plotInputKey(chatId, messages) ? previousPending : {}),
         chatId, fingerprint: fingerprintMessages(messages), sourceKey: plotInputKey(chatId, messages), messageCount: messages.length,
     } });
-    interruptAnalysis('A replacement reuses its pre-response context.', 'Plot context ready · retries need no new planner calls');
-    void cancelDetachedPlannerJobs(chatId);
+    const keepRepair = retryPlannerActive(currentContext())
+        || (!analysisPromise && previousPending?.repairAttemptedKey === inputKey);
+    if (keepRepair) {
+        // A single missing-cache repair uses this exact pre-reply source. Fast
+        // swipes must not cancel it, including a detached job after a reload.
+        generationGuideSelection = null;
+        clearTranscriptRefresh();
+        clearQueuedAnalysis();
+    } else {
+        interruptAnalysis('A replacement reuses its pre-response context.', 'Retry source preserved · no per-retry planner calls');
+        void cancelDetachedPlannerJobs(chatId);
+    }
+    if (preserveSelection && previousSelection?.chatId === chatId && previousSelection.inputKey === inputKey) generationGuideSelection = previousSelection;
     scheduleVerificationPersistence(context);
+}
+
+async function repairDeferredReplacementPlan() {
+    let context = currentContext();
+    if (!getSettings().enabled || !replacementPlanningDeferred(context)) return loadState(context.chatMetadata);
+    if (retryPlannerActive(context)) return analysisPromise;
+    const messages = messagesFromChat(context.chat || []).slice(0, context.chatMetadata[REPLACEMENT_PENDING_KEY].messageCount);
+    deferReplacementPlanning(context, messages, { preserveSelection: true });
+    context = currentContext();
+    const state = loadState(context.chatMetadata);
+    const chatId = String(context.getCurrentChatId?.() || '');
+    const inputKey = plotInputKey(chatId, messages, generationInputs(context, state));
+    const packet = cachedGenerationContext(context.chatMetadata?.[GENERATION_CONTEXT_KEY], inputKey, chatId);
+    if (packet?.selection.usable && hasPlannerConditions(packet.selection.causalContext)) return state;
+    const pending = context.chatMetadata[REPLACEMENT_PENDING_KEY];
+    if (pending.repairAttemptedKey === inputKey) {
+        renderAnalysisActivity('Missing retry plan · automatic repair already attempted; Guide now can retry', false);
+        return state;
+    }
+    // One bounded migration/repair on chat load, not one evaluation per swipe.
+    // Persist the attempt before starting so refreshes cannot cause a call loop.
+    context.updateChatMetadata({ [REPLACEMENT_PENDING_KEY]: { ...pending, repairAttemptedKey: inputKey } });
+    scheduleVerificationPersistence(context);
+    renderAnalysisActivity('Repairing missing pre-reply plan once · generation will not wait', true);
+    return analyzeNow({ force: true, messages, allowOneAssistantAppend: true });
 }
 
 function prepareGenerationGuide(state, type) {
@@ -730,7 +869,8 @@ function prepareGenerationGuide(state, type) {
     const archived = cachedGenerationContext(context.chatMetadata?.[GENERATION_CONTEXT_KEY], inputKey, chatId);
     const reuseArchived = () => {
         generationGuideSelection = { ...archived.selection, chatId, inputKey, replacement, regeneration: replacement, payload: archived.payload, reused: true };
-        renderInjectionActivity(archived.selection.usable ? 'Cached plot context ready · no new planner calls' : 'Cached scene excerpts ready · planner context unavailable; no new planner calls');
+        renderInjectionActivity(archived.selection.usable && hasPlannerConditions(archived.selection.causalContext)
+            ? 'Cached plot context ready · no new planner calls' : 'Cached scene excerpts ready · planner context unavailable; no new planner calls');
     };
     if (archived?.selection.usable && hasPlannerConditions(archived.selection.causalContext)) {
         reuseArchived();
@@ -738,16 +878,10 @@ function prepareGenerationGuide(state, type) {
     }
     // Legacy request archives cannot prove card/lore inputs. Reconstruct a
     // local anchor rather than reusing unverified or post-response facts.
-    const priorCache = generationContextEntries(context.chatMetadata?.[GENERATION_CONTEXT_KEY]);
-    const sourceKey = plotInputKey(chatId, replacementMessages);
-    const sourceFingerprint = fingerprintMessages(replacementMessages);
     // New plans record the actual input dependencies. An older packet made
     // before a book loaded must not veto a later plan that used that book.
     // Legacy plans still need the conservative history check.
-    const changedInputs = state.analysisModel?.plotInputsKey
-        ? state.analysisModel.plotInputsKey !== plotInputKey(chatId, [], inputs)
-        : priorCache.some(item => (item.sourceKey === sourceKey || item.sourceFingerprint === sourceFingerprint) && item.inputKey !== inputKey);
-    const currentDirectionReady = !changedInputs && isDirectionCurrent(state, replacementMessages, chatId);
+    const currentDirectionReady = plannerInputsMatch(state, replacementMessages, context) && isDirectionCurrent(state, replacementMessages, chatId);
     const currentGuidanceUsable = currentDirectionReady && isGuidanceUsable(state, replacementMessages, chatId);
     const upgradeFallback = archived && !hasPlannerConditions(archived.selection.causalContext)
         && currentGuidanceUsable && hasPlannerConditions(state.causalContext);
@@ -755,35 +889,12 @@ function prepareGenerationGuide(state, type) {
     // may gain an already-ready, source-aligned plan, without making any call.
     // Refresh old fallback formatting locally too, so reloads do not preserve
     // the former chopped-sentence anchor forever.
-    if (archived && !upgradeFallback && (archived.selection.usable || archived.anchorVersion === PLOT_ANCHOR_VERSION)) {
+    if (archived && !upgradeFallback && archived.anchorVersion === PLOT_ANCHOR_VERSION) {
         reuseArchived();
         return;
     }
-    const selectedSituations = currentGuidanceUsable ? selectSituationalOpenings(state.situationBoard, {
-        scene: state.scene, sceneProfile: state.sceneProfile,
-        latestUserAction: [...replacementMessages].reverse().find(message => message.is_user)?.mes || '',
-    }) : [];
-    generationGuideSelection = {
-        chatId,
-        inputKey,
-        candidates: [], index: 0,
-        usable: currentGuidanceUsable,
-        skipped: false,
-        regeneration: replacement,
-        replacement,
-        variationCue: currentDirectionReady ? state.plannerSeed : 0,
-        directorSample: sampleDirectorSignals(state.mode, currentDirectionReady ? state.plannerSeed : 0),
-        canonConstraints: currentGuidanceUsable ? state.canonConstraints : [],
-        sceneProfile: currentGuidanceUsable ? state.sceneProfile : null,
-        causalContext: currentGuidanceUsable ? { ...state.causalContext, optionalSituations: selectedSituations.slice(0, 1).map(item => ({ premise: item.premise, entry: item.entry })) } : null,
-        plotAnchor: buildPlotAnchor(replacementMessages, { state, stateCurrent: currentDirectionReady, bootstrap: bootstrapContext(context) }),
-    };
-    const payload = buildPromptPayload(state, { generationType: type, ...guideSelectionOptions(state, context) });
-    const cache = JSON.parse(JSON.stringify({ version: 1, anchorVersion: PLOT_ANCHOR_VERSION, chatId, inputKey,
-        sourceFingerprint, sourceKey, payload, selection: generationGuideSelection,
-        plannerState: currentDirectionReady ? { ...state, lastRequestVerification: null } : null,
-    }));
-    generationGuideSelection.payload = payload;
+    const cache = buildGenerationPacket(state, replacementMessages, context, type, currentDirectionReady);
+    generationGuideSelection = { ...cache.selection, payload: cache.payload };
     context.updateChatMetadata({ ...context.chatMetadata, [GENERATION_CONTEXT_KEY]: rememberGenerationContext(context.chatMetadata?.[GENERATION_CONTEXT_KEY], cache) });
     scheduleVerificationPersistence(context);
     if (archived) renderInjectionActivity(currentGuidanceUsable
@@ -1127,7 +1238,8 @@ async function persist(state, guard = {}) {
         || chat.length === 0) {
         throw new DOMException('The chat changed before Tale Fairy could save its analysis.', 'AbortError');
     }
-    context.updateChatMetadata(saveState(context.chatMetadata, state));
+    const metadata = archiveReadyPlannerContexts(context.chatMetadata, [loadState(context.chatMetadata), state], context);
+    context.updateChatMetadata(saveState(metadata, state));
     updatePrompt(state);
     if (typeof context.saveMetadata === 'function') await context.saveMetadata();
 }
@@ -1329,6 +1441,9 @@ function drainQueuedAnalysis() {
         force: true,
         messages,
         allowOneUserAppend: true,
+        // The retry repair's source allowance must not follow its queued
+        // successor into a real continuation with a new accepted transcript.
+        allowOneAssistantAppend: false,
     });
 }
 
@@ -1486,7 +1601,6 @@ async function cancelDetachedPlannerJobs(chatId) {
 async function recoverDetachedPlannerJobs() {
     if (detachedPlannerRecovering || analysisPromise || !getSettings().enabled) return { active: false, recovered: false };
     const context = currentContext();
-    if (replacementPlanningDeferred(context)) return { active: false, recovered: false };
     const chatId = String(context.getCurrentChatId?.() || '');
     if (!chatId) return { active: false, recovered: false };
     const stopSequence = analysisStopSequence;
@@ -1497,8 +1611,11 @@ async function recoverDetachedPlannerJobs() {
         let active = false;
         let invalid = null;
         for (const job of jobs) {
-            if (analysisStopSequence !== stopSequence || replacementPlanningDeferred(currentContext())) return { active: false, recovered: false };
+            if (analysisStopSequence !== stopSequence) return { active: false, recovered: false };
             const meta = job.meta || {};
+            // Deferred retries may recover only their pre-reply repair, never
+            // an ahead plan whose source includes the discarded response.
+            if (replacementPlanningDeferred(currentContext()) && !retryPlannerSourceMatches(currentContext(), meta)) continue;
             const sourceCurrent = isAnalysisSourceCurrent(meta.fingerprint, meta.messageCount, chat, {
                 allowOneUserAppend: Boolean(meta.allowOneUserAppend),
                 allowOneAssistantAppend: Boolean(meta.allowOneAssistantAppend),
@@ -1523,7 +1640,7 @@ async function recoverDetachedPlannerJobs() {
                 invalid ||= { job, meta, error };
                 continue;
             }
-            const current = meta.rebuild ? rebuildState() : loadState(context.chatMetadata);
+            const current = meta.rebuild ? rebuildState() : alignRetainedStateToTranscript(loadState(currentContext().chatMetadata), chat.slice(0, Number(meta.messageCount) || chat.length));
             current.mode = meta.mode || getSettings().mode;
             let next = applyAnalysis(current, result, chat.slice(0, Number(meta.messageCount) || chat.length));
             next = applyPlannerAuthorLayer(next, {
@@ -1537,13 +1654,16 @@ async function recoverDetachedPlannerJobs() {
             next.continuityRevisionUsed = Number(meta.continuityRevision || 0);
             next.continuityMessageSignature = String(meta.continuityMessageSignature || '');
             next.continuityCoverageThrough = Number(meta.continuityCoverageThrough ?? -1);
-            next = reconcileStateWithContinuity(next, optionalContinuityContext(context, true)).state;
+            if (!meta.allowOneAssistantAppend) next = reconcileStateWithContinuity(next, optionalContinuityContext(context, true)).state;
             next.plannerSeed = Number(meta.plannerSeed) || 0;
             next.sourceChatId = chatId;
             next.analysisModel = meta.analysisSelection || {};
             const submittedNote = normalizeUserNote(meta.userNote);
             const resolvedNote = resolveUserNote(result, submittedNote);
-            if (resolvedNote) next.userNotes = [...next.userNotes, { ...resolvedNote, at: Date.now() }].slice(-12);
+            if (resolvedNote) {
+                next.userNotes = [...next.userNotes, { ...resolvedNote, at: Date.now() }].slice(-12);
+                bindResolvedNoteInputProof(next, current);
+            }
             next.noteNeedsClarification = Boolean(submittedNote && !resolvedNote);
             await persist(next, {
                 chatId,
@@ -1566,31 +1686,34 @@ async function recoverDetachedPlannerJobs() {
         if (invalid) {
             const latestContext = currentContext();
             const latestChat = messagesFromChat(latestContext.chat || []);
-            const fingerprint = fingerprintMessages(chat);
+            const { job, meta, error } = invalid;
+            const repairSource = meta.allowOneAssistantAppend ? chat.slice(0, meta.messageCount) : chat;
+            const fingerprint = fingerprintMessages(repairSource);
+            const sourceMatches = messages => isAnalysisSourceCurrent(fingerprint, repairSource.length, messages, { allowOneAssistantAppend: Boolean(meta.allowOneAssistantAppend) });
             if (!getSettings().enabled || analysisStopSequence !== stopSequence || analysisPromise
                 || String(latestContext.getCurrentChatId?.() || '') !== chatId
-                || fingerprintMessages(latestChat) !== fingerprint) return { active: false, recovered: false };
-            const { job, meta, error } = invalid;
+                || !sourceMatches(latestChat)) return { active: false, recovered: false };
             await acknowledgeDetachedPlannerRun(job.runKey, chatId);
             if (!getSettings().enabled || analysisStopSequence !== stopSequence || analysisPromise
                 || String(currentContext().getCurrentChatId?.() || '') !== chatId
-                || fingerprintMessages(messagesFromChat(currentContext().chat || [])) !== fingerprint) return { active: false, recovered: false };
+                || !sourceMatches(messagesFromChat(currentContext().chat || []))) return { active: false, recovered: false };
             if (claimPlannerRecoveryRepair(plannerStorage(), chatId, fingerprint)) {
                 renderAnalysisActivity('Correcting recovered planner response once', true);
                 // Rebuild the evidence from the current chat, never resend stale
                 // stored prompts. Keep this asynchronous and bounded across reloads.
-                const state = await analyzeNow({ force: true, messages: chat, note: meta.userNote,
-                    rebuild: Boolean(meta.rebuild), allowOneUserAppend: true,
+                const state = await analyzeNow({ force: true, messages: repairSource, note: meta.userNote,
+                    rebuild: Boolean(meta.rebuild), allowOneUserAppend: !meta.allowOneAssistantAppend,
+                    allowOneAssistantAppend: Boolean(meta.allowOneAssistantAppend),
                     recovery: { instruction: plannerValidationRepairInstruction(error), fullContextPass: meta.fullContextPass === true },
                 });
                 return { active: false, recovered: true, state };
             }
-            const fallback = createSafetyFallbackState(loadState(latestContext.chatMetadata), {
-                transcriptHead: chat.length === Number(meta.messageCount) ? meta.transcriptHead : null,
-                messages: chat, chatId, fingerprint, turnCount: assistantTurnNumber(chat),
+            const fallback = createSafetyFallbackState(alignRetainedStateToTranscript(loadState(latestContext.chatMetadata), repairSource), {
+                transcriptHead: repairSource.length === Number(meta.messageCount) ? meta.transcriptHead : null,
+                messages: repairSource, chatId, fingerprint, turnCount: assistantTurnNumber(repairSource),
                 seed: Number(meta.plannerSeed) || randomVariationNonce(), reason: analysisErrorMessage(error),
             });
-            await persist(fallback, { chatId, fingerprint, messageCount: chat.length });
+            await persist(fallback, { chatId, fingerprint, messageCount: repairSource.length, allowOneAssistantAppend: Boolean(meta.allowOneAssistantAppend) });
             clearPlannerFailed(plannerStorage(), chatId);
             clearPlannerPending(plannerStorage(), chatId);
             renderBoard(fallback);
@@ -2022,7 +2145,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
     let finalStatus = 'Updated';
     let plannerTranscriptHead = null;
     const runAnalysis = async () => {
-        const latestSaved = loadState(context.chatMetadata);
+        const latestSaved = loadState(currentContext().chatMetadata);
         const current = rebuild ? rebuildState(latestSaved) : latestSaved;
         current.mode = s.mode;
         current.plannerSchedule = normalizePlannerSchedule({ ...current.plannerSchedule, refreshInterval: s.fullReviewInterval });
@@ -2036,16 +2159,23 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
             url: s.analysisUrl,
         };
         if (waitForContinuity) showAnalysisPhase('Waiting for Continuity Memory', runId, startedAt);
-        const continuityState = waitForContinuity
+        // Continuity Memory may already summarize the discarded response.
+        // A pre-reply repair must not import that future into its source.
+        const continuityState = allowOneAssistantAppend ? null : waitForContinuity
             ? await optionalContinuityContextWhenReady(context, allowStaleContinuity, controller.signal)
             : optionalContinuityContext(context, allowStaleContinuity);
         const continuityContext = continuityState?.text ?? continuityState;
         controller.signal.throwIfAborted();
         showAnalysisPhase('Reading summaries and World Info', runId, startedAt);
-        const summarySources = await collectSummarySources(context, chat, {
+        // Global summaries, extension prompts, and mutable message extras can
+        // include the discarded reply. Use accepted transcript recaps and lore.
+        const summaryContext = allowOneAssistantAppend
+            ? { ...context, chat, chatMetadata: {}, extensionPrompts: {} }
+            : context;
+        const summarySources = await collectSummarySources(summaryContext, chat, {
             continuityContext,
             continuityEvidence: continuityState?.planningEvidence,
-            includeContinuity: s.continuityIntegration,
+            includeContinuity: s.continuityIntegration && !allowOneAssistantAppend,
             ownPromptKey: PROMPT_KEY,
             tokenBudget: plannerSummaryContextTokens,
             query: [...chat.slice(-4).map(message => message?.mes || ''), ...relevantActors(current.entities, chat.slice(-4).map(message => message?.mes || '').join('\n')).map(item => item.name)].join('\n'),
@@ -2096,7 +2226,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         // A bridge notification can arrive while the planner is running. The
         // direction still records the snapshot it actually used, while linked
         // factual entries immediately accept the latest canonical correction.
-        next = reconcileStateWithContinuity(next, optionalContinuityContext(context, true)).state;
+        if (!allowOneAssistantAppend) next = reconcileStateWithContinuity(next, optionalContinuityContext(context, true)).state;
         next.summaryEvidence = { ...lastSummaryAudit, scannedAt: Date.now() };
         next.continuityRevisionUsed = Number(continuityState?.revision || 0);
         next.continuityMessageSignature = String(continuityState?.messageSignature || '');
@@ -2104,7 +2234,10 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         next.plannerSeed = variationNonce;
         next.sourceChatId = chatId;
         next.analysisModel = analysisSelection;
-        if (resolvedNote) next.userNotes = [...next.userNotes, { ...resolvedNote, at: Date.now() }].slice(-12);
+        if (resolvedNote) {
+            next.userNotes = [...next.userNotes, { ...resolvedNote, at: Date.now() }].slice(-12);
+            bindResolvedNoteInputProof(next, current);
+        }
         next.noteNeedsClarification = Boolean(userNote && !resolvedNote);
         await persist(next, { chatId, fingerprint, messageCount: chat.length, allowOneUserAppend, allowOneAssistantAppend });
         await acknowledgeDetachedPlannerRun(detachedRunKey, chatId);
@@ -2135,17 +2268,18 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
                     const latestChatId = String(latestContext.getCurrentChatId?.() || '');
                     const sourceCurrent = latestChatId === chatId && isAnalysisSourceCurrent(fingerprint, chat.length, latestChat, { allowOneUserAppend, allowOneAssistantAppend });
                     if (sourceCurrent && latestChat.length) {
-                        const fallbackFingerprint = fingerprintMessages(latestChat);
-                        const fallback = createSafetyFallbackState(alignRetainedStateToTranscript(loadState(latestContext.chatMetadata), latestChat), {
-                            transcriptHead: latestChat.length === chat.length ? plannerTranscriptHead : null,
-                            messages: latestChat,
+                        const fallbackSource = allowOneAssistantAppend ? chat : latestChat;
+                        const fallbackFingerprint = fingerprintMessages(fallbackSource);
+                        const fallback = createSafetyFallbackState(alignRetainedStateToTranscript(loadState(latestContext.chatMetadata), fallbackSource), {
+                            transcriptHead: fallbackSource.length === chat.length ? plannerTranscriptHead : null,
+                            messages: fallbackSource,
                             chatId,
                             fingerprint: fallbackFingerprint,
-                            turnCount: assistantTurnNumber(latestChat),
+                            turnCount: assistantTurnNumber(fallbackSource),
                             seed: variationNonce,
                             reason: lastAnalysisError,
                         });
-                        await persist(fallback, { chatId, fingerprint: fallbackFingerprint, messageCount: latestChat.length });
+                        await persist(fallback, { chatId, fingerprint: fallbackFingerprint, messageCount: fallbackSource.length, allowOneAssistantAppend });
                         clearPlannerFailed(plannerStorage(), chatId);
                         cancelAnalysisRetry();
                         finalStatus = `Safety fallback ready · planner ${isPlannerTimeoutError(error) ? 'timed out' : 'output was unusable'}`;
@@ -2290,7 +2424,9 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const preparedSelection = generationGuideSelection?.chatId === chatId ? generationGuideSelection : null;
     const previewOptions = guideSelectionOptions(state, previewContext);
     const previewPayload = buildPromptPayload(state, { enabled: getSettings().enabled, generationType: activeGenerationType, ...previewOptions });
-    const previewDynamic = guidanceSnapshot(state, previewOptions).dynamicContextIncluded;
+    const previewDynamic = guidanceSnapshot(state, previewOptions).dynamicContextIncluded
+        && hasPlannerConditions(previewOptions.causalContext || state.causalContext);
+    const nextPacket = preparedSelection && cachedGenerationContext(previewContext.chatMetadata?.[GENERATION_CONTEXT_KEY], preparedSelection.inputKey, chatId);
     const previewKind = preparedSelection
         ? preparedSelection.replacement ? 'CURRENT REGENERATION REQUEST' : 'CURRENT GENERATION REQUEST'
         : 'NEXT NORMAL GENERATION';
@@ -2300,6 +2436,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         : `${previewSettings.injectionPosition} · ${previewSettings.injectionRole}`;
     const previewText = previewPayload
         ? `${previewKind} — ${generationPreviewDescription({ reused: preparedSelection?.reused, dynamic: previewDynamic,
+            prepared: Boolean(preparedSelection), nextReady: Boolean(nextPacket?.selection.usable && hasPlannerConditions(nextPacket.selection.causalContext)),
             deferred: !preparedSelection && replacementPlanningDeferred(previewContext), planning: Boolean(analysisPromise) })}.\nPlacement: ${previewPlacement}\n\n${previewPayload}`
         : !getSettings().enabled || !isStoryGeneration(activeGenerationType)
             ? 'TALE FAIRY INJECTION DISABLED — extension off or a non-story generation.'
@@ -2316,8 +2453,9 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     scratchpadText(board, 'scratchpad-notes', scratchpadList(state.userNotes, item => item?.text ? `[${String(item.kind || 'note').toUpperCase()}] ${item.text}` : '', ''), 'No user notes.');
 }
 async function resetState({ rebuilding = false } = {}) {
-    const context = currentContext();
+    let context = currentContext();
     context.updateChatMetadata({ ...context.chatMetadata, [GENERATION_CONTEXT_KEY]: null, [REPLACEMENT_PENDING_KEY]: null });
+    context = currentContext();
     if (rebuilding) {
         interruptAnalysis('A Full Rebuild replaced the previous Tale Fairy analysis.', 'Clearing old guide…');
     } else {
@@ -2353,11 +2491,25 @@ async function rebuildGuideState() {
 }
 
 async function reevaluateGuideState() {
-    const context = currentContext();
+    let context = currentContext();
+    const chatId = String(context.getCurrentChatId?.() || '');
+    await warmPlotWorldInputs(context);
+    context = currentContext();
+    if (String(context.getCurrentChatId?.() || '') !== chatId) return loadState(context.chatMetadata);
+    const replacement = replacementPlanningDeferred(context);
+    const messages = replacement ? messagesFromChat(context.chat || []).slice(0, context.chatMetadata[REPLACEMENT_PENDING_KEY].messageCount) : null;
+    if (replacement) {
+        deferReplacementPlanning(context, messages, { preserveSelection: true });
+        context = currentContext();
+    }
     const state = loadState(context.chatMetadata);
     state.plannerSchedule.manualRequested = true;
-    context.chatMetadata = saveState(context.chatMetadata, state);
-    return analyzeNow({ force: true });
+    const metadata = saveState(context.chatMetadata, state);
+    if (replacement) metadata[REPLACEMENT_PENDING_KEY] = { ...metadata[REPLACEMENT_PENDING_KEY],
+        repairAttemptedKey: plotInputKey(chatId, messages, generationInputs(context, state)) };
+    context.updateChatMetadata(metadata);
+    scheduleVerificationPersistence(context);
+    return analyzeNow({ force: true, messages, allowOneAssistantAppend: replacement });
 }
 
 function resetSettingsToDefaults(root = document.querySelector(`#${EXTENSION_ID}-settings`)) {
@@ -2433,16 +2585,25 @@ async function upgradeLegacyPlanIfNeeded() {
 }
 
 async function refreshCurrentPlanIfNeeded() {
-    const context = currentContext();
+    let context = currentContext();
+    const loadedChatId = String(context.getCurrentChatId?.() || '');
+    await warmPlotWorldInputs(context);
+    context = currentContext();
+    if (String(context.getCurrentChatId?.() || '') !== loadedChatId) return loadState(context.chatMetadata);
     if (replacementPlanningDeferred(context)) {
+        const recovered = await recoverDetachedPlannerJobs();
+        if (recovered.recovered) return recovered.state;
+        if (recovered.active || retryPlannerActive()) return loadState(currentContext().chatMetadata);
+        await repairDeferredReplacementPlan();
+        context = currentContext();
         const state = loadState(context.chatMetadata);
         updatePrompt(state);
-        renderAnalysisActivity('Plot context ready · retries reuse it; planning resumes on the next turn', false);
         return state;
     }
     const recovered = await recoverDetachedPlannerJobs();
     if (recovered.recovered) return recovered.state;
     if (recovered.active) return loadState(context.chatMetadata);
+    context = currentContext();
     const rawState = context.chatMetadata?.[STATE_KEY];
     const rawVersion = Math.max(0, Number(rawState?.version) || 0);
     const upgradePending = Boolean(rawState && ((rawVersion > 0 && rawVersion < STATE_VERSION) || rawState.canonBootstrapPending === true));
@@ -2469,7 +2630,7 @@ async function refreshCurrentPlanIfNeeded() {
         renderAnalysisActivity('Planner paused after unusable output · waiting for a new turn or Guide now', false);
         return state;
     }
-    const directionMissing = !isDirectionCurrent(state, messages, chatId);
+    const directionMissing = !plannerInputsMatch(state, messages, context) || !isDirectionCurrent(state, messages, chatId);
     const decision = interrupted
         ? { shouldRun: true, code: 'interrupted', reason: 'A previously interrupted planner run must be recovered.' }
         : directionMissing
@@ -2803,7 +2964,7 @@ if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPE
 eventSource.on(event_types.MESSAGE_RECEIVED, () => {
     const receivedChatId = String(currentContext().getCurrentChatId?.() || '');
     const supersededIntent = analysisPromise ? activeAnalysisIntent : null;
-    generationRevision++;
+    if (!retryPlannerActive()) generationRevision++;
     confirmReturnedReplyUsedGuidance();
     generationGuideSelection = null;
     const context = currentContext();
@@ -2875,7 +3036,7 @@ for (const event of [event_types.MESSAGE_EDITED, event_types.MESSAGE_UPDATED, ev
             const key = plotInputKey(chatId, messages, generationInputs(context, loadState(context.chatMetadata)));
             if (cachedGenerationContext(context.chatMetadata?.[GENERATION_CONTEXT_KEY], key, chatId)) {
                 deferReplacementPlanning(context, messages);
-                updatePrompt(loadState(context.chatMetadata));
+                updatePrompt(loadState(currentContext().chatMetadata));
                 renderBoard();
                 return;
             }
@@ -2888,7 +3049,7 @@ eventSource.on(event_types.MESSAGE_SWIPED, messageId => {
     clearTranscriptRefresh();
     const context = currentContext();
     deferReplacementPlanning(context);
-    const state = loadState(context.chatMetadata);
+    const state = loadState(currentContext().chatMetadata);
     updatePrompt(state);
     renderBoard(state);
     // A discarded wording never advances clocks or spends a planner call.

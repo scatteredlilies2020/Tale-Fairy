@@ -12,6 +12,8 @@ test('startup preview explains missing or deferred planner context instead of im
     assert.match(generationPreviewDescription(), /Opening this preview does not run an evaluation/);
     assert.match(generationPreviewDescription({ deferred: true }), /Planning is deferred after a retry/);
     assert.match(generationPreviewDescription({ planning: true }), /planner works in the background/);
+    assert.match(generationPreviewDescription({ planning: true, deferred: true }), /planner works in the background/);
+    assert.match(generationPreviewDescription({ prepared: true, nextReady: true }), /now cached for the next retry/);
     assert.match(generationPreviewDescription({ reused: true }), /no planner context in this packet/);
     assert.match(generationPreviewDescription({ reused: true, dynamic: true }), /Reused plot anchor and causal context/);
 });
@@ -39,6 +41,234 @@ function readyPlan(messages = input()) {
         disclosure: 'open', confidence: 'established', relevance: 'The user asks about the letter.' }];
     return state;
 }
+
+test('completed plans enter retry history before a newer ahead plan overwrites them', async () => {
+    const h = generationHarness(input());
+    const fallback = h.prepare();
+    h.context.chat.push({ is_user: false, mes: 'Discarded: Mira burns the letter.' });
+    await h.scope.persist(readyPlan(), { chatId: 'story', fingerprint: fingerprintMessages(input()), messageCount: 2, allowOneAssistantAppend: true });
+    assert.equal(h.scope.generationGuideSelection, fallback, 'a late plan must not alter the in-flight request');
+    const future = readyPlan(h.context.chat);
+    future.contextLedger = 'The letter has burned.';
+    future.causalContext.conditions[0].condition = 'has burned the letter';
+    await h.scope.persist(future);
+    const reopened = generationHarness(structuredClone(h.context.chat), h.state(), structuredClone(h.context.chatMetadata));
+    for (const type of ['regenerate', 'swipe']) {
+        await reopened.emit('GENERATION_STARTED', type);
+        const packet = reopened.prepare(type);
+        assert.equal(packet.usable, true);
+        assert.equal(packet.reused, true);
+        assert.match(packet.payload, /knows the sender/);
+        assert.doesNotMatch(packet.payload, /burns|has burned/);
+        assert.equal(reopened.state().sourceMessageCount, 2);
+    }
+    assert.equal(h.calls.length + reopened.calls.length, 0);
+});
+
+test('legacy saved plan is archived before its first ahead refresh, even without a request packet', async () => {
+    const h = generationHarness(input(), readyPlan());
+    h.context.chat.push({ is_user: false, mes: 'Discarded future.' });
+    await h.scope.persist(readyPlan(h.context.chat));
+    await h.emit('GENERATION_STARTED', 'regenerate');
+    assert.equal(h.prepare('regenerate').usable, true);
+    assert.equal(h.prepare('regenerate').reused, true);
+    assert.equal(h.calls.length, 0);
+});
+
+test('ahead plan archives its one-user-append input and rejects changed dependencies', async () => {
+    const source = input().slice(0, 1);
+    const h = generationHarness(source, readyPlan(source));
+    h.context.chat.push(input()[1], { is_user: false, mes: 'Discarded future.' });
+    await h.scope.persist(readyPlan(h.context.chat));
+    assert.equal(h.prepare('regenerate').usable, true);
+    const other = generationHarness(input(), readyPlan());
+    const stale = readyPlan();
+    stale.analysisModel.plotInputsKey = 'not-a-real-proof';
+    await other.scope.persist(stale);
+    assert.equal(generationContextEntries(other.context.chatMetadata[GENERATION_CONTEXT_KEY]).length, 1, 'only the compatible previous state can enter history');
+    other.context.card = { scenario: 'The letter was never sealed.' };
+    assert.equal(other.prepare().usable, false);
+});
+
+test('a stranded retry gets one source-bound repair, not a new evaluation on every swipe or reload', async () => {
+    const h = generationHarness(input());
+    h.prepare();
+    h.context.chat.push({ is_user: false, mes: 'Discarded: Mira burns the letter.' });
+    await h.emit('GENERATION_STARTED', 'regenerate');
+    const frozen = h.prepare('regenerate');
+    await h.scope.refreshCurrentPlanIfNeeded();
+    assert.equal(h.calls.length, 1);
+    assert.deepEqual(h.calls[0].messages, input());
+    assert.equal(h.calls[0].allowOneAssistantAppend, true);
+    assert.notEqual(h.calls[0].rebuild, true);
+    assert.equal(h.scope.generationGuideSelection, frozen);
+    assert.doesNotMatch(h.state().contextLedger, /burn/);
+    const controller = new AbortController();
+    h.scope.analysisAbortController = controller;
+    h.scope.analysisPromise = Promise.resolve();
+    h.scope.analysisRequestFingerprint = fingerprintMessages(input());
+    h.scope.activeAnalysisMessageCount = 2;
+    h.scope.activeAnalysisIntent = { chatId: 'story', allowOneAssistantAppend: true };
+    const revision = h.scope.generationRevision;
+    for (let i = 0; i < 20; i++) {
+        await h.emit('GENERATION_STARTED', i % 2 ? 'swipe' : 'regenerate');
+        h.context.chat.pop();
+        await h.emit('MESSAGE_DELETED');
+        h.prepare('regenerate');
+        h.context.chat.push({ is_user: false, mes: `Discarded attempt ${i}.` });
+        await h.emit('MESSAGE_SWIPED');
+        await h.emit('MESSAGE_UPDATED');
+        await h.emit('MESSAGE_RECEIVED');
+        await h.emit('GENERATION_STOPPED');
+        await h.emit('GENERATION_ENDED');
+    }
+    await h.flush();
+    assert.equal(controller.signal.aborted, false);
+    assert.equal(h.scope.generationRevision, revision);
+    assert.equal(h.calls.length, 1);
+    const restored = generationHarness(structuredClone(h.context.chat), h.state(), structuredClone(h.context.chatMetadata));
+    await restored.scope.refreshCurrentPlanIfNeeded();
+    assert.equal(restored.calls.length, 0, 'a failed/interrupted repair cannot loop just by reloading');
+    await h.scope.persist(readyPlan(), { chatId: 'story', fingerprint: fingerprintMessages(input()), messageCount: 2, allowOneAssistantAppend: true });
+    assert.equal(h.prepare('regenerate').usable, true);
+    assert.match(h.prepare('swipe').payload, /knows the sender/);
+    const completed = generationHarness(structuredClone(h.context.chat), h.state(), structuredClone(h.context.chatMetadata));
+    await completed.scope.refreshCurrentPlanIfNeeded();
+    assert.equal(completed.calls.length, 0);
+    assert.equal(completed.prepare('swipe').reused, true);
+});
+
+test('Guide now after a retry evaluates the pre-reply input and really saves its manual flag', async () => {
+    const h = generationHarness(input());
+    h.context.chat.push({ is_user: false, mes: 'Discarded future.' });
+    await h.emit('GENERATION_STARTED', 'swipe');
+    await h.scope.reevaluateGuideState();
+    assert.equal(h.calls.length, 1);
+    assert.deepEqual(h.calls[0].messages, input());
+    assert.equal(h.calls[0].allowOneAssistantAppend, true);
+    assert.equal(h.state().plannerSchedule.manualRequested, true);
+    assert.ok(h.context.chatMetadata[REPLACEMENT_PENDING_KEY].repairAttemptedKey);
+    const restored = generationHarness(structuredClone(h.context.chat), h.state(), structuredClone(h.context.chatMetadata));
+    await restored.scope.refreshCurrentPlanIfNeeded();
+    assert.equal(restored.calls.length, 0, 'reloading a manual retry repair must not trigger another automatic evaluation');
+});
+
+test('a retry repair queues a normal continuation without carrying its discarded-reply allowance', async () => {
+    const h = generationHarness(input());
+    h.context.chat.push({ is_user: false, mes: 'Accepted reply.' });
+    await h.emit('GENERATION_STARTED', 'regenerate');
+    h.scope.analysisPromise = Promise.resolve();
+    h.scope.activeAnalysisIntent = { chatId: 'story', allowOneAssistantAppend: true };
+    h.context.chat.push({ is_user: true, mes: 'I continue with the accepted reply.' });
+    await h.emit('MESSAGE_SENT');
+    assert.ok(h.scope.queuedAnalysisIntent);
+    h.scope.analysisPromise = null;
+    h.scope.drainQueuedAnalysis();
+    assert.equal(h.calls.length, 1);
+    assert.equal(h.calls[0].messages.length, 4);
+    assert.equal(h.calls[0].allowOneAssistantAppend, false);
+    assert.equal(h.calls[0].allowOneUserAppend, true);
+});
+
+test('normal startup retains matching input proof but refreshes real changed card dependencies', async () => {
+    const h = generationHarness(input(), readyPlan());
+    const state = h.state();
+    state.analysisModel.plotInputsKey = plotInputKey('story', [], h.scope.generationInputs(h.context, state));
+    h.context.updateChatMetadata(saveState(h.context.chatMetadata, state));
+    await h.scope.refreshCurrentPlanIfNeeded();
+    assert.equal(h.calls.length, 0);
+    h.context.card = { scenario: 'The sender identity has changed.' };
+    await h.scope.refreshCurrentPlanIfNeeded();
+    assert.equal(h.calls.length, 1);
+    assert.notEqual(h.calls[0].rebuild, true);
+});
+
+test('warming unchanged lore after a page reload reuses saved context without planner calls', async () => {
+    const h = generationHarness(input(), readyPlan());
+    h.scope.selected_world_info = ['Story lore'];
+    await h.scope.warmPlotWorldInputs();
+    const state = readyPlan();
+    state.analysisModel.plotInputsKey = plotInputKey('story', [], h.scope.generationInputs(h.context, state));
+    await h.scope.persist(state);
+    h.context.chat.push({ is_user: false, mes: 'Discarded future.' });
+    await h.emit('GENERATION_STARTED', 'regenerate');
+    const restored = generationHarness(structuredClone(h.context.chat), h.state(), structuredClone(h.context.chatMetadata));
+    restored.scope.selected_world_info = ['Story lore'];
+    await restored.scope.refreshCurrentPlanIfNeeded();
+    assert.equal(restored.calls.length, 0);
+    assert.equal(restored.prepare('regenerate').usable, true);
+});
+
+test('resolved note does not invalidate its own planner result, but real concurrent edits still do', () => {
+    const h = generationHarness(input(), readyPlan());
+    const previous = h.state();
+    const next = structuredClone(previous);
+    next.analysisModel.plotInputsKey = plotInputKey('story', [], h.scope.generationInputs(h.context, previous));
+    next.userNotes.push({ text: 'Keep the letter sealed.', kind: 'instruction' });
+    h.scope.bindResolvedNoteInputProof(next, previous);
+    assert.equal(h.scope.plannerInputsMatch(next, input(), h.context), true);
+    const changed = structuredClone(next);
+    h.context.card = { scenario: 'A real changed setting.' };
+    h.scope.bindResolvedNoteInputProof(changed, previous);
+    assert.equal(h.scope.plannerInputsMatch(changed, input(), h.context), false);
+});
+
+test('reported ledger entities become readable bounded prose, never executable markup', () => {
+    const scene = '<div>Condition: south-road bandits cleared before nightfall, folk kept whole&#x20;</div>'
+        + '\n&#x20;— status: fulfilled, band returned intact, Matz\'s mule recovered&#32;\n&#x20;\n'
+        + 'Witnessed by Berren, Toma, Oddo &bull; entry pending final count\n&#x20;\n'
+        + '<p>Heiter gestures at her flat pouch. &ldquo;If you would?&rdquo; The keg makes the best first impression.</p>';
+    const excerpt = plotExcerpt(scene, 180, 'I smile and open the purse then come up the loot we have');
+    assert.doesNotMatch(excerpt, /&#|&bull;|&ldquo;|<div|<p>|\n{3}/);
+    assert.match(excerpt, /Oddo • entry pending final count/);
+    assert.match(excerpt, /“If you would\?”/);
+    assert.ok(estimateTokenCount(excerpt) <= 180);
+    const html = plotExcerpt('&lt;script&gt;bad()&lt;/script&gt;<style>.bad{}</style><p>Mira waits.</p>', 50);
+    assert.equal(html, 'Mira waits.');
+    assert.doesNotThrow(() => plotExcerpt('&#x110000; &#xD800; &#0;', 50));
+    assert.match(generationPreviewDescription({ prepared: true }), /Guide now can repair/);
+    assert.doesNotMatch(generationPreviewDescription({ prepared: true }), /Opening this preview/);
+});
+
+test('reset and Full Rebuild cannot resurrect retry history through stale host metadata', async () => {
+    for (const rebuilding of [false, true]) {
+        const h = generationHarness(input(), readyPlan(), { unrelated: { keep: true } });
+        h.prepare();
+        h.context.chat.push({ is_user: false, mes: 'A reply.' });
+        await h.emit('GENERATION_STARTED', 'regenerate');
+        await h.scope.resetState({ rebuilding });
+        assert.equal(h.context.chatMetadata[GENERATION_CONTEXT_KEY], null);
+        assert.equal(h.context.chatMetadata[REPLACEMENT_PENDING_KEY], null);
+        assert.deepEqual(h.context.chatMetadata.unrelated, { keep: true });
+        assert.equal(Boolean(h.context.chatMetadata.livingWorldGuide?.canonBootstrapPending), rebuilding);
+    }
+});
+
+test('retry repair guards reject discarded-reply jobs, real source edits, and other chats', async () => {
+    const h = generationHarness(input());
+    h.context.chat.push({ is_user: false, mes: 'Discarded reply.' });
+    await h.emit('GENERATION_STARTED', 'regenerate');
+    const meta = { fingerprint: fingerprintMessages(input()), messageCount: 2, allowOneAssistantAppend: true };
+    assert.equal(h.scope.retryPlannerSourceMatches(h.context, meta), true);
+    assert.equal(h.scope.retryPlannerSourceMatches(h.context, { ...meta, messageCount: 3, fingerprint: fingerprintMessages(h.context.chat) }), false);
+    h.context.chat[0].mes = 'Real edit to the accepted scene.';
+    assert.equal(h.scope.retryPlannerSourceMatches(h.context, meta), false);
+    h.context.chat[0] = input()[0];
+    h.context.getCurrentChatId = () => 'different';
+    assert.equal(h.scope.retryPlannerSourceMatches(h.context, meta), false);
+});
+
+test('old safety-fallback formatting refreshes even if its minimal conditions were usable', () => {
+    const state = createSafetyFallbackState(defaultState(), { messages: input(), chatId: 'story', fingerprint: fingerprintMessages(input()) });
+    const h = generationHarness(input(), state);
+    h.prepare();
+    const packet = h.context.chatMetadata[GENERATION_CONTEXT_KEY].entries[0];
+    assert.equal(packet.selection.usable, true);
+    packet.anchorVersion = 2;
+    packet.payload = '<plot-anchor>Leaked &#x20; entities</plot-anchor>';
+    assert.doesNotMatch(h.prepare().payload, /Leaked|&#x20;/);
+    assert.equal(h.calls.length, 0);
+});
 
 for (const type of ['normal', 'swipe', 'regenerate']) test(`${type} upgrades a cached fallback from a ready matching plan, then reuses it`, async () => {
     const h = generationHarness(input());

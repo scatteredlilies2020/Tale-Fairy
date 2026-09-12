@@ -6,17 +6,20 @@ import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0
 export const GENERATION_CONTEXT_KEY = 'taleFairyGenerationContext';
 export const REPLACEMENT_PENDING_KEY = 'taleFairyReplacementPending';
 export const GENERATION_CACHE_LIMIT = 12;
-export const PLOT_ANCHOR_VERSION = 2;
+export const PLOT_ANCHOR_VERSION = 3;
 
 export function hasPlannerConditions(context) {
     return (context?.conditions || []).some(item => item.condition && !String(item.id || '').startsWith('fallback-'));
 }
 
-export function generationPreviewDescription({ reused = false, dynamic = false, deferred = false, planning = false } = {}) {
+export function generationPreviewDescription({ reused = false, dynamic = false, deferred = false, planning = false, prepared = false, nextReady = false } = {}) {
     if (dynamic) return reused ? 'Reused plot anchor and causal context · no new planner calls' : 'Plot anchor and relevant causal context';
+    if (prepared && nextReady) return 'This request used scene excerpts only; a completed planner context is now cached for the next retry';
+    if (prepared && planning) return 'This request contains scene excerpts only; the missing planner context is being prepared for a later request';
+    if (prepared) return 'This request contains scene excerpts only · no usable plan was saved for its pre-reply input. Guide now can repair this without a Full Rebuild';
+    if (planning) return 'Scene excerpts only while the planner works in the background; generation will not wait';
     if (reused) return 'Reused scene excerpts only · no planner context in this packet; no new planner calls';
     if (deferred) return 'Scene excerpts only for a new continuation. Planning is deferred after a retry; swipe/Regenerate reuse their saved pre-reply context. A new user contribution or Continue resumes planning';
-    if (planning) return 'Scene excerpts only while the planner works in the background; generation will not wait';
     return 'Scene excerpts only · no matching planner context is ready. Opening this preview does not run an evaluation';
 }
 
@@ -123,12 +126,23 @@ export function replacementPendingForMessages(pending, messages, chatId, fingerp
 // Formatting is presentation, while paragraph boundaries and nearby clauses
 // carry meaning (especially qualifications and pronoun antecedents).
 export function plotExcerpt(value, budget, query = '') {
-    const text = String(value || '').replace(/\r\n?/gu, '\n')
+    const entities = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', ensp: ' ', emsp: ' ', thinsp: ' ',
+        bull: '•', middot: '·', ndash: '–', mdash: '—', hellip: '…', lsquo: '‘', rsquo: '’', ldquo: '“', rdquo: '”' };
+    // Decode presentation only; never execute HTML or modify the cache's raw
+    // transcript identity. Unknown entities remain literal text.
+    const decoded = String(value || '').replace(/&(#x[\da-f]+|#\d+|[a-z]+);/giu, (raw, entity) => {
+        if (!entity.startsWith('#')) return entities[entity.toLowerCase()] ?? raw;
+        const code = entity[1].toLowerCase() === 'x' ? parseInt(entity.slice(2), 16) : Number(entity.slice(1));
+        return code > 0 && code <= 0x10ffff && !(code >= 0xd800 && code <= 0xdfff) ? String.fromCodePoint(code) : raw;
+    });
+    const text = decoded.replace(/\r\n?/gu, '\n')
         .replace(/^\s*(?:`{3,}|~{3,})[^\n]*$/gmu, '')
-        .replace(/<[^>]*>/gu, ' ')
+        .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/giu, '')
+        .replace(/<\/?(?:br|p|div|li|tr|h[1-6])\b[^>]*>/giu, '\n')
+        .replace(/<\/?[a-z][^>]*>/giu, ' ')
         .replace(/^\s{0,3}(?:#{1,6}\s+|>\s?)/gmu, '')
         .replace(/[*`]/gu, '').replace(/\b_([^_\n]+)_\b/gu, '$1')
-        .replace(/[^\S\n]+/gu, ' ').trim();
+        .replace(/[^\S\n]+/gu, ' ').replace(/ *\n */gu, '\n').replace(/\n{3,}/gu, '\n\n').trim();
     const escape = value => value.replaceAll('<', '&lt;').replaceAll('>', '&gt;');
     if (estimateTokenCount(text) <= budget) return escape(text);
     const segmenter = new Intl.Segmenter(undefined, { granularity: 'sentence' });
