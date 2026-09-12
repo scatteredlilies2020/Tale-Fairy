@@ -79,3 +79,31 @@ test('broad reviews are not bootstrap rebuilds and configured intervals are boun
     assert.equal(normalizePlannerSchedule({ refreshInterval: 2 }).refreshInterval, 3);
     assert.equal(normalizePlannerSchedule({ refreshInterval: 7.9 }).refreshInterval, 7);
 });
+
+test('reevaluation and retry repair stay lightweight even with an empty fallback or pending bootstrap', () => {
+    for (const initial of [{}, { contextLedger: '', lastAnalyzedAt: 10 }, { canonBootstrapPending: true, scene: { status: 'uninitialized' } }]) {
+        for (const requested of [{ sceneRefresh: true }, { state: { ...initial, plannerSchedule: { manualRequested: true } } }]) {
+            const options = { state: initial, ...requested };
+            const pass = plannerPassDecision(options);
+            assert.equal(pass.fullContextPass, false);
+            assert.equal(pass.bootstrapScan, false);
+            assert.equal(plannerPassDecision({ ...options, rebuild: true }).bootstrapScan, true);
+        }
+    }
+    assert.equal(plannerPassDecision({ state: state(), manual: true }).fullContextPass, true, 'author notes still allow broader review');
+});
+
+test('an analyzed scene with an empty optional ledger does not bootstrap repeatedly', () => {
+    const current = { ...state(), contextLedger: '', lastAnalyzedAt: 10, scene: { status: 'Tea in the library' } };
+    assert.equal(plannerPassDecision({ state: current }).fullContextPass, false);
+    assert.equal(plannerPassDecision({ state: { ...current, canonBootstrapPending: true } }).bootstrapScan, true);
+});
+
+test('successful quick reevaluation clears manual demand without resetting the broad review clock', () => {
+    const pending = { manualRequested: true, turnsSinceFullReview: 9, lastFullReviewTurn: 2 };
+    const completed = markPlannerCompleted(pending, { manualCompleted: true, turnCount: 11 });
+    assert.equal(completed.manualRequested, false);
+    assert.equal(completed.turnsSinceFullReview, 9);
+    assert.equal(completed.lastFullReviewTurn, 2);
+    assert.equal(markPlannerCompleted(pending).manualRequested, true, 'fallback cannot claim successful manual completion');
+});

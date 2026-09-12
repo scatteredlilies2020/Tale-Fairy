@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { claimPlannerRecoveryRepair } from '../extension/planner-lifecycle.js';
+import { applyPlannerAuthorLayer, defaultState } from '../extension/state.js';
 
 const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
 const recovery = source.slice(source.indexOf('async function recoverDetachedPlannerJobs('), source.indexOf('async function negotiatePlannerOutput('));
@@ -138,4 +139,17 @@ test('runtime uses one content correction, not a second chain of output-mode ret
     const failure = source.slice(source.indexOf('const willRetry ='), source.indexOf('const willRetry =') + 3000);
     assert.match(failure, /!recovery/);
     assert.ok(failure.indexOf('acknowledgeDetachedPlannerRun(') < failure.indexOf('createSafetyFallbackState('));
+});
+
+test('successful detached quick reevaluation clears manual demand but preserves the broad review clock', async () => {
+    const state = defaultState();
+    state.plannerSchedule = { ...state.plannerSchedule, manualRequested: true, turnsSinceFullReview: 7 };
+    const h = harness([{ ...invalidJob, text: 'valid', meta: { ...meta, fullContextPass: false } }], {
+        loadState: () => state, applyPlannerAuthorLayer,
+        parseAnalysisResponse: () => ({ contract_version: 13 }),
+    });
+    await h.run();
+    assert.equal(h.saved.length, 1);
+    assert.equal(h.saved[0].plannerSchedule.manualRequested, false);
+    assert.equal(h.saved[0].plannerSchedule.turnsSinceFullReview, 7);
 });

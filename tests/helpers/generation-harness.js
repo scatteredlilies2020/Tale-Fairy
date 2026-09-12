@@ -37,7 +37,7 @@ export function generationHarness(messages, state = stateApi.defaultState(), met
         generationGuideSelection: null, activeGenerationType: '', pendingRequestVerification: null,
         analysisPromise: null, activeAnalysisIntent: null, activeAnalysisMessageCount: 0,
         queuedAnalysisIntent: null, analysisAbortController: null, analysisRunId: 0,
-        analysisRequestFingerprint: '', analysisRetryTimer: null, analysisRetryAttempt: 0,
+        analysisRequestFingerprint: '', analysisRequestInputKey: '', analysisRetryTimer: null, analysisRetryAttempt: 0,
         generationRevision: 0, analysisStopSequence: 0, transcriptRefreshTimer: null,
         replyRepairInFlight: false,
         renderAnalysisActivity: status => statuses.push(status), renderInjectionActivity: status => statuses.push(status), renderBoard() {}, updatePrompt() {},

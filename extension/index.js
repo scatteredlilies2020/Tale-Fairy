@@ -5,10 +5,10 @@ import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
 import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.13.10';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.13.11';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.13.17';
 import { isStoryGeneration } from './game-master.js?v=0.13.9';
 import { selectSituationalOpenings } from './situations.js?v=0.13.9';
-import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.13.9';
+import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.13.17';
 import { resolveInjectionPlacement } from './injection-placement.js?v=0.13.9';
 import { DEFAULT_INJECTION_ROLE, normalizeInjectionRole } from './injection-role.js?v=0.13.9';
 import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.13.9';
@@ -36,7 +36,7 @@ import { buildPlotAnchor, cachedGenerationContext, generationContextEntries, gen
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.13.16';
+const RUNTIME_VERSION = '0.13.17';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -53,6 +53,7 @@ let settings = null;
 let analysisPromise = null;
 let analysisAbortController = null;
 let analysisRequestFingerprint = '';
+let analysisRequestInputKey = '';
 let analysisRunId = 0;
 let analysisRetryTimer = null;
 let analysisRetryAttempt = 0;
@@ -1351,6 +1352,7 @@ function cancelRunningAnalysis(reason, status) {
     // then await the real handoff instead of mistaking our own lock for one
     // held by another page.
     analysisRequestFingerprint = '';
+    analysisRequestInputKey = '';
     if (status) renderAnalysisActivity(status, false);
     return true;
 }
@@ -1648,6 +1650,7 @@ async function recoverDetachedPlannerJobs() {
                 fingerprint: String(meta.fingerprint || ''),
                 seedRequiredDevelopment: !meta.rebuild,
                 fullReview: meta.fullContextPass === true && [8, 9, 12].includes(result.contract_version),
+                manualCompleted: true,
                 messages: chat.slice(0, Number(meta.messageCount) || chat.length),
             });
             next.summaryEvidence = { ...(meta.summaryEvidence || {}), scannedAt: Date.now() };
@@ -2115,9 +2118,25 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
     const fingerprint = fingerprintMessages(chat);
     const chatId = String(context.getCurrentChatId?.() || '');
     if (!force && !userNote && !rebuild && !state.canonBootstrapPending && isGuidanceUsable(state, chat, chatId)) { updatePrompt(state); return state; }
+    const pass = plannerPassDecision({ state, messages: chat, rebuild,
+        manual: Boolean(userNote) || recovery?.fullContextPass === true,
+        sceneRefresh: allowOneAssistantAppend || (!userNote && state.plannerSchedule.manualRequested),
+        refreshInterval: s.fullReviewInterval });
+    const requestInputKey = plotInputKey(chatId, chat, {
+        inputs: generationInputs(context, state), note: userNote, rebuild, recovery,
+        allowOneUserAppend, allowOneAssistantAppend, allowStaleContinuity, waitForContinuity,
+        fullContextPass: pass.fullContextPass, bootstrapScan: pass.bootstrapScan,
+        // UI changes do not restart a request; actual provider/budget changes do.
+        settings: Object.fromEntries(['analysisSource', 'analysisProvider', 'analysisProfileId', 'analysisModel', 'analysisUrl',
+            'analysisSecretId', 'analysisReasoningMode', 'analysisTemperature', 'maxPromptTokens', 'routineInputTokens',
+            'reviewInputTokens', 'recentContextTokens', 'summaryContextTokens', 'messageTokenLimit', 'continuityIntegration']
+            .map(key => [key, s[key]])),
+    });
     let previousAnalysisPromise = null;
     if (analysisPromise) {
-        if (!force && !userNote && !rebuild && analysisRequestFingerprint === fingerprint) return analysisPromise;
+        // Force bypasses a completed cache, not identical work already running.
+        // Repeated clicks must not throw away the provider's progress.
+        if (!analysisAbortController?.signal.aborted && analysisRequestInputKey === requestInputKey) return analysisPromise;
         previousAnalysisPromise = analysisPromise;
         clearQueuedAnalysis();
         cancelRunningAnalysis('A newer Tale Fairy analysis replaced this request.', 'Restarting…');
@@ -2131,6 +2150,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
     const controller = new AbortController();
     analysisAbortController = controller;
     analysisRequestFingerprint = fingerprint;
+    analysisRequestInputKey = requestInputKey;
     activeAnalysisIntent = normalizePlannerIntent({
         chatId,
         note,
@@ -2149,7 +2169,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         const current = rebuild ? rebuildState(latestSaved) : latestSaved;
         current.mode = s.mode;
         current.plannerSchedule = normalizePlannerSchedule({ ...current.plannerSchedule, refreshInterval: s.fullReviewInterval });
-        const { fullContextPass, bootstrapScan } = plannerPassDecision({ state: current, messages: chat, rebuild, manual: Boolean(userNote) || recovery?.fullContextPass === true });
+        const { fullContextPass, bootstrapScan } = pass;
         const budgets = plannerBudgets(s, { bootstrapScan, fullContextPass });
         const { input: plannerMaxPromptTokens, recent: plannerRecentContextTokens, summary: plannerSummaryContextTokens } = budgets;
         const analysisSelection = {
@@ -2222,7 +2242,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
             return current;
         }
         let next = applyAnalysis(alignRetainedStateToTranscript(current, chat), result, chat);
-        next = applyPlannerAuthorLayer(next, { turnCount: assistantTurnNumber(chat), fingerprint, seedRequiredDevelopment: !rebuild, fullReview: fullContextPass && [8, 9, 12].includes(result.contract_version), messages: chat });
+        next = applyPlannerAuthorLayer(next, { turnCount: assistantTurnNumber(chat), fingerprint, seedRequiredDevelopment: !rebuild, fullReview: fullContextPass && [8, 9, 12].includes(result.contract_version), manualCompleted: true, messages: chat });
         // A bridge notification can arrive while the planner is running. The
         // direction still records the snapshot it actually used, while linked
         // factual entries immediately accept the latest canonical correction.
@@ -2313,6 +2333,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
             if (runId !== analysisRunId) return;
             analysisAbortController = null;
             analysisRequestFingerprint = '';
+            analysisRequestInputKey = '';
             clearPlannerPending(plannerStorage(), chatId);
             renderAnalysisActivity(finalStatus, false);
         });

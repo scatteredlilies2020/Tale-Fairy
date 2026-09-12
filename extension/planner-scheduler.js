@@ -24,7 +24,7 @@ export function markAssistantTurn(schedule, responseKey = '') {
     return { ...value, turnsSincePlanner: value.turnsSincePlanner + 1, turnsSinceFullReview: value.turnsSinceFullReview + 1, lastCountedResponseKey: key || value.lastCountedResponseKey };
 }
 
-export function markPlannerCompleted(schedule, { turnCount = 0, fingerprint = '', fullReview = false, messages = [] } = {}) {
+export function markPlannerCompleted(schedule, { turnCount = 0, fingerprint = '', fullReview = false, manualCompleted = false, messages = [] } = {}) {
     const value = normalizePlannerSchedule(schedule);
     return {
         ...value, turnsSincePlanner: 0, lastPlannerTurn: Math.max(0, Number(turnCount) || 0), lastPlannerFingerprint: String(fingerprint || ''),
@@ -32,7 +32,7 @@ export function markPlannerCompleted(schedule, { turnCount = 0, fingerprint = ''
         turnsSinceFullReview: fullReview ? 0 : value.turnsSinceFullReview,
         lastFullReviewTurn: fullReview ? Math.max(0, Number(turnCount) || 0) : value.lastFullReviewTurn,
         lastReviewedUserKey: fullReview ? plannerUserKey(messages) : value.lastReviewedUserKey,
-        pendingReason: '', refreshReason: fullReview ? 'Full story review is fresh.' : 'Active world context is fresh.', manualRequested: fullReview ? false : value.manualRequested,
+        pendingReason: '', refreshReason: fullReview ? 'Full story review is fresh.' : 'Active world context is fresh.', manualRequested: fullReview || manualCompleted ? false : value.manualRequested,
     };
 }
 
@@ -70,9 +70,17 @@ export function plannerRefreshDecision({ state, messages = [], event = 'turn', m
 
 /** Select the cost tier, not whether generation should wait. Fresh per-response
  * guidance remains asynchronous; broader reviews use an independent clock. */
-export function plannerPassDecision({ state, messages = [], rebuild = false, manual = false, refreshInterval } = {}) {
-    const bootstrapScan = Boolean(rebuild || state?.canonBootstrapPending || state?.scene?.status === 'uninitialized' || !state?.contextLedger);
+export function plannerPassDecision({ state, messages = [], rebuild = false, manual = false, sceneRefresh = false, refreshInterval } = {}) {
     const schedule = normalizePlannerSchedule({ ...state?.plannerSchedule, ...(refreshInterval === undefined ? {} : { refreshInterval }) });
+    // Re-evaluate/repair means refresh this scene, not reconstruct the whole
+    // story. Contract 13 can establish current conditions even with no ledger.
+    // An explicit Full Rebuild still wins and has its own larger budget.
+    if (!rebuild && (sceneRefresh || (schedule.manualRequested && !manual))) {
+        return { fullContextPass: false, bootstrapScan: false, reason: 'Quick current-scene reevaluation.' };
+    }
+    // An optional empty ledger after an analyzed/fallback scene is not proof
+    // that the chat needs initialization again on every subsequent turn.
+    const bootstrapScan = Boolean(rebuild || state?.canonBootstrapPending || state?.scene?.status === 'uninitialized' || (!state?.contextLedger && !state?.lastAnalyzedAt));
     const decision = plannerRefreshDecision({ state: { ...state, plannerSchedule: schedule }, messages, manual });
     return { fullContextPass: bootstrapScan || decision.shouldRun, bootstrapScan, reason: bootstrapScan ? 'Initialize factual story context.' : decision.reason };
 }

@@ -1,7 +1,7 @@
 import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.13.9';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
-import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js?v=0.13.9';
+import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js?v=0.13.17';
 import { defaultCausalContext, defaultSceneProfile, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, normalizeSceneProfile } from './causal-context.js?v=0.13.9';
 import { normalizeDirectorSample } from './director-sampling.js?v=0.13.9';
 import { defaultOffscreenWorld, normalizeOffscreenWorld, offscreenWorldForPrompt } from './offscreen-world.js?v=0.13.9';
@@ -732,10 +732,10 @@ export function clearState(metadata) {
     return next;
 }
 
-export function applyPlannerAuthorLayer(state, { turnCount = 0, fingerprint = '', seedRequiredDevelopment = true, fullReview = false, messages = [] } = {}) {
+export function applyPlannerAuthorLayer(state, { turnCount = 0, fingerprint = '', seedRequiredDevelopment = true, fullReview = false, manualCompleted = false, messages = [] } = {}) {
     const next = normalizeState(state);
     const turn = Math.max(0, Number(turnCount) || next.turnCount);
-    next.plannerSchedule = markPlannerCompleted(next.plannerSchedule, { turnCount: turn, fingerprint, fullReview, messages });
+    next.plannerSchedule = markPlannerCompleted(next.plannerSchedule, { turnCount: turn, fingerprint, fullReview, manualCompleted, messages });
     return next;
 }
 
