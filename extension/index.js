@@ -1,4 +1,4 @@
-import { eventSource, event_types, extension_prompt_roles, extension_prompt_types, generateRaw, setExtensionPrompt, getRequestHeaders, getCharacterCardFields, saveSettingsDebounced } from '/script.js';
+import { eventSource, event_types, extension_prompt_roles, extension_prompt_types, generateRaw, Generate, setExtensionPrompt, getRequestHeaders, getCharacterCardFields, saveSettingsDebounced } from '/script.js';
 import { getContext } from '/scripts/st-context.js';
 import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
@@ -31,6 +31,7 @@ import { hasUsableCausalContext } from './causal-context.js?v=0.13.9';
 import { formatHiddenMotives } from './scratchpad-format.js?v=0.13.9';
 import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.9';
 import { createSafetyFallbackState } from './fallback-direction.js?v=0.13.9';
+import { classifyAssistantReply } from './response-usability.js?v=0.13.9';
 
 const EXTENSION_ID = 'living-world-guide';
 const RUNTIME_VERSION = '0.13.9';
@@ -77,6 +78,8 @@ const detachedPlannerJobIds = new Map();
 const plannerNativeFetch = globalThis.fetch?.taleFairyNativeFetch || globalThis.fetch.bind(globalThis);
 let detachedPlannerEnabled = false;
 let detachedPlannerRecovering = false;
+let replyRepairTimer = null;
+let replyRepairInFlight = false;
 // Reasoning providers may count hidden thinking against this ceiling. The
 // planner prompt and schema separately target a concise visible JSON result.
 const INCREMENTAL_RESPONSE_TOKENS = 2304;
@@ -700,6 +703,66 @@ function prepareGenerationGuide(state, type) {
 
 function assistantTurnNumber(messages = []) {
     return messages.reduce((count, message) => count + (message?.is_user ? 0 : 1), 0);
+}
+
+function clearAutomaticReplyRepair() {
+    if (replyRepairTimer) clearTimeout(replyRepairTimer);
+    replyRepairTimer = null;
+}
+
+function scheduleAutomaticReplyRepair({ chatId = '', responseKey = '', reason = '' } = {}) {
+    clearAutomaticReplyRepair();
+    if (!chatId || !responseKey || replyRepairInFlight) return;
+    replyRepairTimer = setTimeout(async () => {
+        replyRepairTimer = null;
+        if (replyRepairInFlight) return;
+
+        const context = currentContext();
+        const activeChatId = String(context.getCurrentChatId?.() || '');
+        if (activeChatId !== String(chatId)) return;
+        const messages = messagesFromChat(context.chat || []);
+        const activeResponseKey = `${activeChatId}:${assistantTurnNumber(messages)}`;
+        const verdict = classifyAssistantReply(messages);
+        const state = loadState(context.chatMetadata);
+        if (activeResponseKey !== responseKey
+            || !verdict.unusable
+            || state.replyRepair.attemptedResponseKey !== responseKey
+            || !getSettings().enabled) return;
+
+        // Make the one-shot marker durable before asking the host to mutate the
+        // latest assistant turn. The in-memory metadata is authoritative, but
+        // saving here also prevents a reload from losing the loop guard.
+        try {
+            await context.saveMetadata?.();
+        } catch (error) {
+            console.warn(`[${EXTENSION_ID}] Could not persist automatic reply repair marker`, error);
+        }
+
+        const currentContextAfterSave = currentContext();
+        const currentChatAfterSave = String(currentContextAfterSave.getCurrentChatId?.() || '');
+        const currentMessagesAfterSave = messagesFromChat(currentContextAfterSave.chat || []);
+        const currentKeyAfterSave = `${currentChatAfterSave}:${assistantTurnNumber(currentMessagesAfterSave)}`;
+        if (currentChatAfterSave !== String(chatId)
+            || currentKeyAfterSave !== responseKey
+            || !classifyAssistantReply(currentMessagesAfterSave).unusable
+            || !getSettings().enabled) return;
+        if (typeof Generate !== 'function') {
+            console.warn(`[${EXTENSION_ID}] Automatic reply repair is unavailable because Generate() is not exposed by SillyTavern.`);
+            return;
+        }
+
+        replyRepairInFlight = true;
+        recordRuntimeStage('reply-repair-started', { responseKey, reason });
+        try {
+            await Generate('regenerate');
+            recordRuntimeStage('reply-repair-finished', { responseKey, reason });
+        } catch (error) {
+            console.warn(`[${EXTENSION_ID}] Automatic reply repair failed; keeping the original response`, error);
+            recordRuntimeStage('reply-repair-failed', { responseKey, reason, error: String(error?.message || error || '') });
+        } finally {
+            replyRepairInFlight = false;
+        }
+    }, 0);
 }
 
 function prepareAuthorContract(state, type = '') {
@@ -2522,6 +2585,7 @@ eventSource.on(event_types.CHAT_COMPLETION_PROMPT_READY, ensureChatCompletionReq
 eventSource.on(event_types.CHAT_COMPLETION_SETTINGS_READY, ensureProviderChatRequestGuidance);
 eventSource.on(event_types.GENERATE_AFTER_COMBINE_PROMPTS, ensureTextCompletionRequestGuidance);
 eventSource.on(event_types.GENERATION_STARTED, type => {
+    clearAutomaticReplyRepair();
     activeGenerationType = String(type || '');
     updatePrompt(loadState(currentContext().chatMetadata));
     recordRuntimeStage('generation-started', { generationType: activeGenerationType });
@@ -2544,6 +2608,7 @@ eventSource.on(event_types.GENERATION_ENDED, () => {
 });
 
 if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPED, () => {
+    clearAutomaticReplyRepair();
     activeGenerationType = '';
     recordRuntimeStage('generation-stopped');
     clearTranscriptRefresh();
@@ -2581,6 +2646,23 @@ eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
     context.updateChatMetadata(saveState(context.chatMetadata, state));
     updatePrompt(state);
     renderBoard(state);
+    const unusableReply = classifyAssistantReply(messages);
+    if (getSettings().enabled
+        && unusableReply.unusable
+        && !replyRepairInFlight
+        && state.replyRepair.attemptedResponseKey !== responseKey) {
+        state.replyRepair = {
+            attemptedResponseKey: responseKey,
+            reason: unusableReply.reason,
+            attemptedAt: Date.now(),
+        };
+        context.updateChatMetadata(saveState(context.chatMetadata, state));
+        scheduleAutomaticReplyRepair({
+            chatId: String(context.getCurrentChatId?.() || ''),
+            responseKey,
+            reason: unusableReply.reason,
+        });
+    }
     // Every accepted reply schedules its successor. If chat advances while
     // planning, retain only one catch-up request for the newest transcript.
     // This also covers missing provider verification and replacement replies.
@@ -2614,6 +2696,7 @@ for (const event of [event_types.MESSAGE_EDITED, event_types.MESSAGE_UPDATED, ev
     });
 }
 eventSource.on(event_types.MESSAGE_SWIPED, messageId => {
+    clearAutomaticReplyRepair();
     clearTranscriptRefresh();
     const context = currentContext();
     const chatId = String(context.getCurrentChatId?.() || '');
@@ -2628,6 +2711,7 @@ eventSource.on(event_types.MESSAGE_SWIPED, messageId => {
     // Newly generated replacements reuse the archived response contract.
 });
 eventSource.on(event_types.CHAT_CHANGED, () => {
+    clearAutomaticReplyRepair();
     activeGenerationType = '';
     clearTranscriptRefresh();
     pendingRequestVerification = null;

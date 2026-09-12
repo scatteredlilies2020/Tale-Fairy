@@ -48,6 +48,7 @@ export function defaultState() {
         situationBoard: defaultSituationBoard(),
         responseAudit: { applicable: false, movementFit: 'not-applicable', repetition: 'none', unjustifiedEscalation: false, playerControl: false, continuityDrift: false, patterns: [], summary: '', stateChange: '' },
         responsePatternMemory: [],
+        replyRepair: { attemptedResponseKey: '', reason: '', attemptedAt: 0 },
         horizonRadar: { status: 'none', seeds: [], audit: '' },
         hiddenMotives: { status: 'none', items: [], audit: '' },
         narrativeLayers: { immediateAction: '', localActivity: '', situation: '', widerWorld: '', durableTrajectory: '', activityRole: 'routine', temporalScope: 'action' },
@@ -647,6 +648,11 @@ export function normalizeState(input = {}) {
         situationBoard: normalizeSituationBoard(value.situationBoard ?? value.situation_board),
         responseAudit: normalizeResponseAudit(value.responseAudit ?? value.response_audit),
         responsePatternMemory: cap(value.responsePatternMemory ?? value.response_pattern_memory, 12).map(item => clippedText(item, 140)).filter(Boolean),
+        replyRepair: {
+            attemptedResponseKey: text(value.replyRepair?.attemptedResponseKey ?? value.reply_repair?.attempted_response_key).slice(0, 180),
+            reason: text(value.replyRepair?.reason ?? value.reply_repair?.reason).slice(0, 120),
+            attemptedAt: Math.max(0, Number(value.replyRepair?.attemptedAt ?? value.reply_repair?.attempted_at) || 0),
+        },
         horizonRadar: normalizeHorizonRadar(value.horizonRadar ?? value.horizon_radar),
         hiddenMotives: normalizeHiddenMotives(value.hiddenMotives ?? value.hidden_motives),
         narrativeLayers: chronologyAuditUpgrade
