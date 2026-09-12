@@ -16,12 +16,12 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest, browser runtime, and detached plugin share the release version', () => {
-    assert.equal(manifest.version, '0.13.9');
-    assert.equal(manifest.js, 'extension/index.js?v=0.13.9');
-    assert.equal(manifest.css, 'extension/style.css?v=0.13.9');
+    assert.equal(manifest.version, '0.13.10');
+    assert.equal(manifest.js, 'extension/index.js?v=0.13.10');
+    assert.equal(manifest.css, 'extension/style.css?v=0.13.10');
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.13\.9'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.13\.9'/);
+    assert.match(pluginSource, /const VERSION = '0\.13\.10'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.13\.10'/);
 });
 
 test('live and recovered planner results bound diagnostic prose before strict validation', () => {
@@ -129,7 +129,8 @@ test('planner token budgets, retries, and nonblocking behavior remain compatible
     assert.match(template, /data-setting="routine-budget"/);
     assert.match(template, /data-setting="review-budget"/);
     assert.ok(source.indexOf('lastSummaryAudit = plannerEvidenceAudit(plannerPrompt') > source.indexOf('const plannerPrompt = await buildTokenBudgetedAnalysisPrompt'));
-    assert.match(source, /const REVIEW_RESPONSE_TOKENS = 4096/);
+    assert.match(source, /const INCREMENTAL_RESPONSE_TOKENS = 4096/);
+    assert.match(source, /const REVIEW_RESPONSE_TOKENS = 6144/);
     assert.match(source, /bootstrapScan \? REBUILD_RESPONSE_TOKENS : REVIEW_RESPONSE_TOKENS/);
     assert.match(source, /fullContextPass && !bootstrapScan \? \{ reasoningMode: 'off'/);
     assert.match(source, /cacheNamespace: 'analysis-incremental-v13'/);

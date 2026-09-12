@@ -1,6 +1,18 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from '../extension/planner-lifecycle.js';
+import { claimPlannerRecoveryRepair, clearPlannerRecoveryRepair, clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from '../extension/planner-lifecycle.js';
+
+test('recovered correction is bounded across reloads and reset for a fresh user evaluation', () => {
+    const values = new Map();
+    const storage = { getItem: key => values.get(key), setItem: (key, value) => values.set(key, value), removeItem: key => values.delete(key) };
+    assert.equal(claimPlannerRecoveryRepair(storage, 'chat', 'snapshot'), true);
+    assert.equal(claimPlannerRecoveryRepair({ ...storage }, 'chat', 'snapshot'), false);
+    assert.equal(claimPlannerRecoveryRepair(storage, 'chat', 'new snapshot'), true);
+    clearPlannerRecoveryRepair(storage, 'chat');
+    assert.equal(claimPlannerRecoveryRepair(storage, 'chat', 'new snapshot'), true);
+    assert.equal(claimPlannerRecoveryRepair(null, 'chat', 'snapshot'), false);
+    assert.equal(claimPlannerRecoveryRepair({ getItem() { throw new Error('denied'); } }, 'chat', 'snapshot'), false);
+});
 
 test('a replacement waits until the cancelled local planner has settled', async () => {
     let settlePrevious;

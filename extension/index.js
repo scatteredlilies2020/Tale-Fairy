@@ -4,7 +4,7 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.13.9';
+import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.13.10';
 import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.13.9';
 import { isStoryGeneration } from './game-master.js?v=0.13.9';
 import { selectSituationalOpenings } from './situations.js?v=0.13.9';
@@ -25,7 +25,7 @@ import { relevantActors } from './evidence-selection.js?v=0.13.9';
 import { completionText } from './completion-response.js?v=0.13.9';
 import { sampleDirectorSignals } from './director-sampling.js?v=0.13.9';
 import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, plannerValidationRepairInstruction, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.13.9';
-import { clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.11.106';
+import { claimPlannerRecoveryRepair, clearPlannerRecoveryRepair, clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.13.10';
 import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.13.9';
 import { hasUsableCausalContext } from './causal-context.js?v=0.13.9';
 import { formatHiddenMotives } from './scratchpad-format.js?v=0.13.9';
@@ -34,7 +34,7 @@ import { createSafetyFallbackState } from './fallback-direction.js?v=0.13.9';
 import { classifyAssistantReply } from './response-usability.js?v=0.13.9';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.13.9';
+const RUNTIME_VERSION = '0.13.10';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -82,9 +82,11 @@ let replyRepairTimer = null;
 let replyRepairInFlight = false;
 // Reasoning providers may count hidden thinking against this ceiling. The
 // planner prompt and schema separately target a concise visible JSON result.
-const INCREMENTAL_RESPONSE_TOKENS = 2304;
+// Include enough room for the required audit and actor deltas. A 2,304-token
+// cap truncated real routine responses, so retrying only repeated the failure.
+const INCREMENTAL_RESPONSE_TOKENS = 4096;
 const REBUILD_RESPONSE_TOKENS = 16384;
-const REVIEW_RESPONSE_TOKENS = 4096;
+const REVIEW_RESPONSE_TOKENS = 6144;
 const PLANNER_MAX_AUTO_RETRIES = 2;
 const UI_MOUNT_TIMEOUT_MS = 30000;
 const LEGACY_UPGRADE_MAX_ATTEMPTS = 1;
@@ -1316,7 +1318,7 @@ function parseAnalysisResponse(value, prompt = '') {
         const rawResult = value && typeof value === 'object' && !Array.isArray(value) && ([2, 8, 9, 10, 11, 12, 13].includes(value.contract_version) || value.scene)
             ? value
             : extractJson(completionText(value));
-        const result = normalizeAnalysisDiagnostics(abstractIncrementalVisibleBranches(rawResult));
+        const result = normalizeAnalysisActorUpdates(normalizeAnalysisDiagnostics(abstractIncrementalVisibleBranches(rawResult)));
         const validation = validateAnalysisResult(result);
         if (!validation.valid) {
             const validationErrors = validation.errors.slice(0, 16);
@@ -1376,11 +1378,13 @@ async function recoverDetachedPlannerJobs() {
     const context = currentContext();
     const chatId = String(context.getCurrentChatId?.() || '');
     if (!chatId) return { active: false, recovered: false };
+    const stopSequence = analysisStopSequence;
     detachedPlannerRecovering = true;
     try {
         const chat = messagesFromChat(context.chat || []);
         const jobs = await detachedPlannerJobs(chatId);
         let active = false;
+        let invalid = null;
         for (const job of jobs) {
             const meta = job.meta || {};
             const sourceCurrent = isAnalysisSourceCurrent(meta.fingerprint, meta.messageCount, chat, {
@@ -1402,22 +1406,10 @@ async function recoverDetachedPlannerJobs() {
             } catch (error) {
                 await acknowledgeDetachedPlannerJob(job.id).catch(() => {});
                 console.warn(`[${EXTENSION_ID}] A retained planner result was invalid`, error);
-                const fallbackFingerprint = fingerprintMessages(chat);
-                const fallback = createSafetyFallbackState(loadState(context.chatMetadata), {
-                    transcriptHead: chat.length === Number(meta.messageCount) ? meta.transcriptHead : null,
-                    messages: chat,
-                    chatId,
-                    fingerprint: fallbackFingerprint,
-                    turnCount: assistantTurnNumber(chat),
-                    seed: Number(meta.plannerSeed) || randomVariationNonce(),
-                    reason: analysisErrorMessage(error),
-                });
-                await persist(fallback, { chatId, fingerprint: fallbackFingerprint, messageCount: chat.length });
-                clearPlannerFailed(plannerStorage(), chatId);
-                clearPlannerPending(plannerStorage(), chatId);
-                renderBoard(fallback);
-                renderAnalysisActivity('Safety fallback ready · retained planner result was unusable', false);
-                return { active: false, recovered: true, fallback: true, state: fallback };
+                // A different attempt may already be valid or still running.
+                // Never let an earlier invalid response overwrite its result.
+                invalid ||= { job, meta, error };
+                continue;
             }
             const current = meta.rebuild ? rebuildState() : loadState(context.chatMetadata);
             current.mode = meta.mode || getSettings().mode;
@@ -1455,7 +1447,44 @@ async function recoverDetachedPlannerJobs() {
             renderAnalysisActivity('Recovered planner result completed while this page was unavailable', false);
             return { active: false, recovered: true, state: next };
         }
-        if (active) renderAnalysisActivity('Planner continuing on the SillyTavern server', true);
+        if (active) {
+            renderAnalysisActivity('Planner continuing on the SillyTavern server', true);
+            return { active: true, recovered: false };
+        }
+        if (invalid) {
+            const latestContext = currentContext();
+            const latestChat = messagesFromChat(latestContext.chat || []);
+            const fingerprint = fingerprintMessages(chat);
+            if (!getSettings().enabled || analysisStopSequence !== stopSequence || analysisPromise
+                || String(latestContext.getCurrentChatId?.() || '') !== chatId
+                || fingerprintMessages(latestChat) !== fingerprint) return { active: false, recovered: false };
+            const { job, meta, error } = invalid;
+            await acknowledgeDetachedPlannerRun(job.runKey, chatId);
+            if (!getSettings().enabled || analysisStopSequence !== stopSequence || analysisPromise
+                || String(currentContext().getCurrentChatId?.() || '') !== chatId
+                || fingerprintMessages(messagesFromChat(currentContext().chat || [])) !== fingerprint) return { active: false, recovered: false };
+            if (claimPlannerRecoveryRepair(plannerStorage(), chatId, fingerprint)) {
+                renderAnalysisActivity('Correcting recovered planner response once', true);
+                // Rebuild the evidence from the current chat, never resend stale
+                // stored prompts. Keep this asynchronous and bounded across reloads.
+                const state = await analyzeNow({ force: true, messages: chat, note: meta.userNote,
+                    rebuild: Boolean(meta.rebuild), allowOneUserAppend: true,
+                    recovery: { instruction: plannerValidationRepairInstruction(error), fullContextPass: meta.fullContextPass === true },
+                });
+                return { active: false, recovered: true, state };
+            }
+            const fallback = createSafetyFallbackState(loadState(latestContext.chatMetadata), {
+                transcriptHead: chat.length === Number(meta.messageCount) ? meta.transcriptHead : null,
+                messages: chat, chatId, fingerprint, turnCount: assistantTurnNumber(chat),
+                seed: Number(meta.plannerSeed) || randomVariationNonce(), reason: analysisErrorMessage(error),
+            });
+            await persist(fallback, { chatId, fingerprint, messageCount: chat.length });
+            clearPlannerFailed(plannerStorage(), chatId);
+            clearPlannerPending(plannerStorage(), chatId);
+            renderBoard(fallback);
+            renderAnalysisActivity('Safety fallback ready · retained planner result was unusable', false);
+            return { active: false, recovered: true, fallback: true, state: fallback };
+        }
         return { active, recovered: false };
     } catch (error) {
         console.warn(`[${EXTENSION_ID}] Detached planner recovery check failed`, error);
@@ -1465,7 +1494,7 @@ async function recoverDetachedPlannerJobs() {
     }
 }
 
-async function negotiatePlannerOutput(run, modes, label, signal, cacheKey = '', { retryInvalidOutput = true } = {}) {
+async function negotiatePlannerOutput(run, modes, label, signal, cacheKey = '', { retryInvalidOutput = false } = {}) {
     return negotiateOutputModes({
         run,
         modes,
@@ -1639,7 +1668,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
         const requestedReasoningMode = requestSpec.reasoningMode || '';
         const requestLabel = requestSpec.label || 'planner';
         const cacheNamespace = requestSpec.cacheNamespace || 'analysis';
-        let repairInstruction = '';
+        let repairInstruction = requestSpec.repairInstruction || '';
         let repairAttempted = false;
         const withValidationRepair = async (run, label) => {
             try {
@@ -1648,6 +1677,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
                 controller.signal.throwIfAborted();
                 if (requestSpec.allowValidationRepair === false || !(error instanceof AnalysisValidationError) || repairAttempted) throw error;
                 repairAttempted = true;
+                claimPlannerRecoveryRepair(plannerStorage(), detachedMeta?.chatId, detachedMeta?.fingerprint);
                 repairInstruction = plannerValidationRepairInstruction(error);
                 console.warn(`[${EXTENSION_ID}] ${label} violated the planner contract; requesting one corrected replacement`, error);
                 return run();
@@ -1813,7 +1843,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
     }
 }
 
-async function requestAnalysis(prompt, externalSignal, detachedMeta) {
+async function requestAnalysis(prompt, externalSignal, detachedMeta, recovery = null) {
     const fullContextPass = detachedMeta?.fullContextPass === true;
     const bootstrapScan = detachedMeta?.bootstrapScan === true || detachedMeta?.rebuild === true;
     return requestAnalysisOnce(prompt, externalSignal, detachedMeta, {
@@ -1834,10 +1864,11 @@ async function requestAnalysis(prompt, externalSignal, detachedMeta) {
             label: 'incremental planner',
             cacheNamespace: 'analysis-incremental-v13',
         }),
+        ...(recovery ? { repairInstruction: recovery.instruction, allowValidationRepair: false } : {}),
     });
 }
 
-export async function analyzeNow({ note = null, force = false, messages = null, rebuild = false, allowOneUserAppend = false, allowOneAssistantAppend = false, allowStaleContinuity = false, waitForContinuity = false, retryAttempt = 0 } = {}) {
+export async function analyzeNow({ note = null, force = false, messages = null, rebuild = false, allowOneUserAppend = false, allowOneAssistantAppend = false, allowStaleContinuity = false, waitForContinuity = false, retryAttempt = 0, recovery = null } = {}) {
     const context = currentContext();
     const s = getSettings();
     if (!s.enabled) return loadState(context.chatMetadata);
@@ -1856,6 +1887,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         clearQueuedAnalysis();
         cancelRunningAnalysis('A newer Tale Fairy analysis replaced this request.', 'Restarting…');
     }
+    if (!recovery && !retryAttempt) clearPlannerRecoveryRepair(plannerStorage(), chatId);
     const revision = ++generationRevision;
     const runId = ++analysisRunId;
     const detachedRunKey = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${runId}-${randomVariationNonce()}`;
@@ -1882,7 +1914,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         const current = rebuild ? rebuildState(latestSaved) : latestSaved;
         current.mode = s.mode;
         current.plannerSchedule = normalizePlannerSchedule({ ...current.plannerSchedule, refreshInterval: s.fullReviewInterval });
-        const { fullContextPass, bootstrapScan } = plannerPassDecision({ state: current, messages: chat, rebuild, manual: Boolean(userNote) });
+        const { fullContextPass, bootstrapScan } = plannerPassDecision({ state: current, messages: chat, rebuild, manual: Boolean(userNote) || recovery?.fullContextPass === true });
         const budgets = plannerBudgets(s, { bootstrapScan, fullContextPass });
         const { input: plannerMaxPromptTokens, recent: plannerRecentContextTokens, summary: plannerSummaryContextTokens } = budgets;
         const analysisSelection = {
@@ -1936,7 +1968,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
             continuityMessageSignature: String(continuityState?.messageSignature || ''),
             continuityCoverageThrough: Number(continuityState?.coverageThrough ?? -1),
             transcriptHead: plannerTranscriptHead,
-        });
+        }, recovery);
         controller.signal.throwIfAborted();
         showAnalysisPhase('Validating and saving planner result', runId, startedAt);
         const resolvedNote = resolveUserNote(result, userNote);
@@ -1977,8 +2009,11 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
             const stopped = controller.signal.aborted;
             if (!stopped) lastAnalysisError = analysisErrorMessage(error);
             const retryable = !(error instanceof AnalysisValidationError) && shouldRetryPlannerError(error, stopped);
-            const willRetry = !stopped && retryable && analysisRetryAttempt < PLANNER_MAX_AUTO_RETRIES;
+            const willRetry = !recovery && !stopped && retryable && analysisRetryAttempt < PLANNER_MAX_AUTO_RETRIES;
             if (!stopped && !willRetry && error?.name !== 'PlannerBusyInAnotherTabError') {
+                // These attempts were handled live. They must not be recovered
+                // again as if they completed while the page was unavailable.
+                await acknowledgeDetachedPlannerRun(detachedRunKey, chatId);
                 console.warn(`[${EXTENSION_ID}] Planner result was unusable; preparing a transcript-bound safety fallback`, error);
                 try {
                     const latestContext = currentContext();

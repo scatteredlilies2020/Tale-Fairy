@@ -31,6 +31,39 @@ const HORIZON_ROUTE_STOPWORDS = new Set([
 
 const text = maxLength => ({ type: 'string', maxLength });
 const strings = (maxItems, maxLength) => ({ type: 'array', maxItems, items: text(maxLength) });
+const ACTOR_DESCRIPTION_FIELDS = ['state', 'location', 'perspective', 'motivation', 'knowledge', 'constraints', 'agenda', 'window'];
+const ACTOR_UPDATE_RULES = 'Actor updates are partial factual changes, not complete biographies. Each actor update needs op (upsert or retire) and name. Use strings for state, location, perspective, motivation, knowledge, constraints, agenda, and window; use "" for unknown or unchanged fields, including motivation and agenda. Blank fields preserve saved facts; never invent motives, knowledge, or plans to fill them. Retire needs only identity; leave descriptive fields blank. Empty actor_updates means no actor changes. For every enum in the schema, copy one allowed label exactly; never substitute a synonym or descriptive phrase. In full reviews, current.activity_role is incidental, routine, developmental, central, or transition; current.temporal_scope is moment, action, activity, scene, or extended.';
+
+// Missing descriptions mean no new evidence. Normalize only lossless text
+// representations, never identities, operations, objects, or causal claims.
+export function normalizeAnalysisActorUpdates(result) {
+    if (![8, 9, 10, 11, 12, 13].includes(result?.contract_version) || !Array.isArray(result?.actor_updates)) return result;
+    return { ...result, actor_updates: result.actor_updates.map(actor => {
+        if (!actor || typeof actor !== 'object' || Array.isArray(actor)) return actor;
+        const normalized = { ...actor };
+        for (const key of ACTOR_DESCRIPTION_FIELDS) {
+            const value = actor[key];
+            if (value == null) normalized[key] = '';
+            else if (Array.isArray(value) && value.every(item => typeof item === 'string')) normalized[key] = value.join('\n');
+        }
+        return normalized;
+    }) };
+}
+
+function validateActorUpdates(actors, errors) {
+    if (!Array.isArray(actors)) { errors.push('actor_updates must be an array'); return; }
+    for (const [index, actor] of actors.entries()) {
+        if (!actor || typeof actor !== 'object' || Array.isArray(actor)) {
+            errors.push(`actor_updates[${index}] must be an object`);
+            continue;
+        }
+        for (const key of ['op', 'name', ...ACTOR_DESCRIPTION_FIELDS]) {
+            if (typeof actor[key] !== 'string') errors.push(`actor_updates[${index}].${key} must be a string`);
+        }
+        if (!['upsert', 'retire'].includes(actor.op)) errors.push(`actor_updates[${index}].op is invalid`);
+        if (typeof actor.name !== 'string' || !actor.name.trim()) errors.push(`actor_updates[${index}].name must be non-empty`);
+    }
+}
 const ROUTE_LANES = ['immediate', 'character', 'relationship-institution', 'lore-world', 'original', 'long-range', 'extra'];
 const REQUIRED_ROUTE_LANES = ROUTE_LANES.slice(0, 6);
 const ROUTE_SCALES = ['scene', 'days', 'arc', 'months-years', 'open-ended'];
@@ -499,7 +532,8 @@ function validateBeatAnalysisResult(result, { requireHorizon = true, requireOffs
         if (result?.hidden_motives?.status !== 'none' && !liveMotives.length) errors.push('hidden_motives.status must be none when no hypotheses remain');
     }
     requiredStrings(result?.world, ['identity', 'baseline', 'confidence'], 'world');
-    for (const key of ['thread_updates', 'actor_updates', 'canon_updates']) if (!Array.isArray(result?.[key])) errors.push(`${key} must be an array`);
+    for (const key of ['thread_updates', 'canon_updates']) if (!Array.isArray(result?.[key])) errors.push(`${key} must be an array`);
+    validateActorUpdates(result?.actor_updates, errors);
     for (const key of ['applicable', 'unjustified_escalation', 'player_control', 'continuity_drift']) if (typeof result?.response_audit?.[key] !== 'boolean') errors.push(`response_audit.${key} must be a boolean`);
     if (!Array.isArray(result?.response_audit?.patterns)) errors.push('response_audit.patterns must be an array');
     if (typeof result?.current?.loop !== 'boolean') errors.push('current.loop must be a boolean');
@@ -514,7 +548,7 @@ function validateBeatAnalysisResult(result, { requireHorizon = true, requireOffs
     };
     for (const [path, values] of Object.entries(allowed)) {
         const [group, key] = path.split('.');
-        if (!values.includes(result?.[group]?.[key])) errors.push(`${path} is invalid`);
+        if (!values.includes(result?.[group]?.[key])) errors.push(`${path} is invalid; use exactly one of: ${values.join(', ')}`);
     }
     for (const key of ['variant_rules', 'rp_changes', 'signatures', 'forces']) if (!Array.isArray(result?.world?.[key])) errors.push(`world.${key} must be an array`);
     if (typeof result?.ledger !== 'string') errors.push('ledger must be a string');
@@ -566,21 +600,13 @@ function validateIncrementalAnalysisResult(result, { requireOffscreen = true } =
     if (new Set(motiveIds).size !== motiveIds.length) errors.push('hidden motives must use distinct ids');
     if (result?.hidden_motives?.status === 'none' && liveMotives.length) errors.push('hidden_motives.status cannot be none while hypotheses remain');
     if (result?.contract_version !== 13 && result?.hidden_motives?.status !== 'none' && !liveMotives.length) errors.push('hidden_motives.status must be none when no hypotheses remain');
-    if (!Array.isArray(result?.actor_updates)) errors.push('actor_updates must be an array');
-    for (const [index, actor] of asArray(result?.actor_updates).entries()) {
-        for (const key of ['op', 'name', 'state', 'location', 'perspective', 'motivation', 'knowledge', 'constraints', 'agenda', 'window']) {
-            if (typeof actor?.[key] !== 'string') errors.push(`actor_updates[${index}].${key} must be a string`);
-        }
-        if (!['upsert', 'retire'].includes(actor?.op)) errors.push(`actor_updates[${index}].op is invalid`);
-        if (!actor?.name?.trim()) errors.push(`actor_updates[${index}].name must be non-empty`);
-        if (actor?.op !== 'retire' && (!actor?.motivation?.trim() || !actor?.agenda?.trim())) errors.push(`actor_updates[${index}] must include motivation and agenda`);
-    }
+    validateActorUpdates(result?.actor_updates, errors);
     const allowed = {
         frame: ['grounded', 'heightened', 'surreal'], phase: ['establishing', 'developing', 'turning', 'landing', 'aftermath', 'transition'],
         emotional_direction: ['preserve', 'brighten', 'darken', 'release', 'intensify'], pressure: ['none', 'latent', 'active', 'high', 'saturated'],
         intrusion: ['closed', 'incidental', 'socially-open', 'dramatically-open', 'primed'], novelty_ceiling: ['none', 'incidental', 'context-native', 'meaningful', 'major'],
     };
-    for (const [key, values] of Object.entries(allowed)) if (!values.includes(result?.current?.[key])) errors.push(`current.${key} is invalid`);
+    for (const [key, values] of Object.entries(allowed)) if (!values.includes(result?.current?.[key])) errors.push(`current.${key} is invalid; use exactly one of: ${values.join(', ')}`);
     if (typeof result?.ledger !== 'string') errors.push('ledger must be a string');
     if (typeof result?.audit !== 'string') errors.push('audit must be a string');
     if (!Object.hasOwn(result || {}, 'note_resolution')) errors.push('note_resolution must be present');
@@ -2682,11 +2708,13 @@ Stay a step ahead only in the private horizon, motive, and offscreen boards. The
 const KNOWLEDGE_AND_AUDIT_RULES = `For each condition, known_by lists only evidenced knowers and learned_from gives their in-world learning route, not private planner reasoning. Use [] and an empty string when not established; do not invent knowledge or grant it to the player. A suspected fact stays a belief held by its subject, not objective truth. On every pass, response_audit evaluates only the newest assistant reply: state_change describes the supported before-to-after difference, or explicitly says no meaningful change was observed. Evaluate task progress, NPC stance, shared understanding, options, and circumstances, not gesture counts or decorative motion. Rest, silence, routine, and scene landings are legitimate; never manufacture escalation or player feelings to satisfy an audit. Patterns are concrete observed repetition, not speculative criticisms. With no assistant reply, set applicable=false, movement_fit=not-applicable, empty state_change, and no flags. The audit informs the next selection, not automatic retries or imposed outcomes. ${AGENCY_AUDIT_RULE}`;
 
 export const ANALYSIS_OUTPUT_CONTRACT = `Return exactly: contract_version=12, current, context, situations, offscreen, response_audit, horizon, hidden_motives, world, thread_updates, actor_updates, canon_updates, ledger, note_resolution, audit.
+${ACTOR_UPDATE_RULES}
 context={conditions,inject,inject_reason,basis}; inject=true. conditions has 1–6 items, each {id,kind,subject,condition,disclosure,confidence,relevance,known_by,learned_from}. kind is ${CAUSAL_KINDS.join(', ')}. disclosure is open, limited, or private. confidence is established, strong, or tentative. Describe current causes only, never future actions or planned events. At least one condition must not be tentative. ${KNOWLEDGE_AND_AUDIT_RULES}
 situations has 0–6 optional setting-native circumstances, each {op,id,type,premise,cause,entry,scope,persistence,status,origin}. Use cause -> present circumstance -> possible interaction. These are never required events, objectives, outcomes, reveals, or player instructions. Original or consequential situations remain optional and non-canon until manifested. Return zero when none fit; use op=retire when contradicted or no longer relevant.
 offscreen={subjects,elapsed,settled_through,audit} is the complete bounded deferred-debt board. Preserve unseen subjects and settled history; update last_seen_turn only when settling relevant debt. current records the exact current scene. response_audit privately evaluates the prior assistant response. horizon and hidden_motives remain private optional hypotheses. world and updates contain factual state only. Empty update arrays mean no factual change. No other keys.`;
 
 export const INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT = `Return exactly contract_version=13 plus current, context, situations, offscreen, response_audit, thread_updates, hidden_motives, actor_updates, ledger, note_resolution, and audit.
+${ACTOR_UPDATE_RULES}
 context contains 1–6 currently relevant present causal conditions using {id,kind,subject,condition,disclosure,confidence,relevance,known_by,learned_from}, inject=true, inject_reason, and basis. At least one condition is established or strong; tentative items remain private. Conditions may name real subjects but never prescribe actions, events, dialogue, revelations, or outcomes. ${KNOWLEDGE_AND_AUDIT_RULES} offscreen.subjects and hidden_motives.items contain only changed records; omitted ids and empty arrays preserve prior records. Use stable ids and change=retire to remove a disproven motive. Usually select 1–3 useful conditions; keep prose concise. Updates contain factual changes only. No other keys.`;
 
 export const INCREMENTAL_SYSTEM = `You are Tale Fairy, a private active-world simulator for another model that writes the roleplay. Return only JSON matching the schema. ${PLANNER_AGENCY_RULE} ${ACTOR_AGENCY_RULE}

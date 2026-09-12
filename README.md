@@ -52,6 +52,8 @@ Alternatively, copy this folder into SillyTavern's `public/scripts/extensions/th
 
 The planner returns structured JSON. If a provider rejects native JSON schema, the extension retries with an exact-shape JSON prompt, and invalid structured output receives one focused repair pass. The transcript begins observation, not the world: even a new chat is treated as in medias res. If background planning still fails, Tale Fairy immediately supplies a minimal causal slice grounded in the authoritative transcript status rather than presenting an empty world. **Stop analysis** cancels background planning.
 
+Actor updates are partial changes, not complete biographies: unknown/unchanged descriptions may be blank. Missing/null descriptions are treated as unchanged, and lists of strings are joined without inventing facts. Invalid identities, malformed facts, and stale transcript results are still rejected. A normal evaluation uses one model call; content validation can add one corrective call, not repeated output-format attempts. Provider capability/connection failures can still trigger separate retries. Recovered invalid results defer to successful or running attempts and receive at most one correction per chat snapshot across reloads; terminal failures are acknowledged so they do not repeatedly resurface.
+
 Browser-independent planning requires the bundled `plugin` directory to be installed as a SillyTavern server plugin and SillyTavern to be restarted. For a source checkout installed at `public/scripts/extensions/third-party/Tale-Fairy`, link `plugins/tale-fairy` to Tale Fairy's `plugin` directory. The extension checks `/api/plugins/tale-fairy/health` at startup and falls back to ordinary in-page requests when the server plugin is unavailable.
 
 Before the provider request is sent, Tale Fairy atomically replaces stale Tale Fairy material and verifies that the assembled payload contains exactly the current GM rules and any eligible dynamic context. If SillyTavern's normal extension-prompt path omitted it, Tale Fairy repairs the request in place. The `<tale-fairy-context>` and inner `<living-world-guide>` blocks are therefore visible in Prompt Inspector for the roleplay request. The Scratchpad distinguishes rules-only requests from rules plus fresh world facts. A rules-only reply stays rules-only on regeneration, even if planning has since completed.
@@ -64,8 +66,8 @@ Routine replies use **one background update**, not separate planning and critiqu
 
 | Pass | Default input target, including instructions and schema | Raw-context ceiling | Summary-pool ceiling | Output ceiling |
 | --- | ---: | ---: | ---: | ---: |
-| Routine update | 10,000 tokens, configurable | 3,000 | 1,200 | 2,304 |
-| Bounded story review | 14,000 tokens, configurable | 4,500 | 2,400 | 4,096 |
+| Routine update | 10,000 tokens, configurable | 3,000 | 1,200 | 4,096 |
+| Bounded story review | 14,000 tokens, configurable | 4,500 | 2,400 | 6,144 |
 | Initialization / explicit rebuild | Configured total ceiling (default 16,000) | Configured (default 6,000) | Configured (default 4,000) | 16,384 |
 
 Every input target is capped by the saved total input ceiling. Lower raw/summary settings also cap each pass; final fitting may reduce evidence further. These larger routine/review defaults can increase API input cost. Existing total-budget choices are preserved.

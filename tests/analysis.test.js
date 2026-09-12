@@ -4,13 +4,20 @@ import { readFileSync } from 'node:fs';
 import {
     ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, ANALYSIS_SCHEMA_VALUE, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_ANALYSIS_SCHEMA_VALUE, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT,
     INCREMENTAL_SYSTEM, MODE_INSTRUCTIONS, SYSTEM, applyAnalysis, buildAnalysisPrompt,
-    alignRetainedStateToTranscript, extractJson, normalizeAnalysisDiagnostics, transcriptHeadAlignmentErrors, validateAnalysisResult,
+    abstractIncrementalVisibleBranches, alignRetainedStateToTranscript, extractJson, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, transcriptHeadAlignmentErrors, validateAnalysisResult,
 } from '../extension/analysis.js';
 import { applyPlannerAuthorLayer, buildPromptPayload, defaultState, fingerprintMessages, isGuidanceUsable, loadState, saveState, stateForPrompt } from '../extension/state.js';
 import { estimateTokenCount } from '../extension/token-budget.js';
 import { fitPromptToBudget } from '../extension/prompt-budget.js';
 import { markAssistantTurn, plannerPassDecision } from '../extension/planner-scheduler.js';
 import { createSafetyFallbackState } from '../extension/fallback-direction.js';
+import { completionText } from '../extension/completion-response.js';
+
+// Exercise the actual browser parser without importing SillyTavern's UI.
+const runtimeSource = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
+const parserSource = runtimeSource.slice(runtimeSource.indexOf('function parseAnalysisResponse('), runtimeSource.indexOf('async function acknowledgeDetachedPlannerJob('));
+class TestValidationError extends Error {}
+const parseRuntimeResponse = new Function('extractJson', 'completionText', 'normalizeAnalysisActorUpdates', 'normalizeAnalysisDiagnostics', 'abstractIncrementalVisibleBranches', 'validateAnalysisResult', 'transcriptHeadAlignmentErrors', 'AnalysisValidationError', `${parserSource}; return parseAnalysisResponse;`)(extractJson, completionText, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, abstractIncrementalVisibleBranches, validateAnalysisResult, transcriptHeadAlignmentErrors, TestValidationError);
 
 const current = {
     frame: 'grounded', frame_basis: 'The cabinet is reviewing a reserve report.', status: 'Mira is questioning the figures.',
@@ -57,6 +64,52 @@ function modern(incrementalPass = false, overrides = {}) {
     };
 }
 const messages = [{ is_user: false, name: 'Narrator', mes: 'The reserve totals do not match the latest shipments.' }, { is_user: true, name: 'Ari', mes: 'I ask Mira what she thinks.' }];
+
+test('live parser accepts sparse third-actor updates on the first response without inventing facts', () => {
+    for (const routine of [false, true]) {
+        const original = modern(routine, { actor_updates: [
+            { op: 'upsert', name: 'Ari' }, { op: 'upsert', name: 'Clerk' },
+            { op: 'upsert', name: 'Mira', perspective: null, knowledge: ['Saw the report.', 'Compared shipments.'] },
+        ] });
+        const unchanged = structuredClone(original);
+        let calls = 0;
+        const request = () => { calls++; return JSON.stringify(original); };
+        const parsed = parseRuntimeResponse(request());
+        assert.equal(calls, 1);
+        assert.equal(parsed.actor_updates[2].motivation, '');
+        assert.equal(parsed.actor_updates[2].agenda, '');
+        assert.equal(parsed.actor_updates[2].knowledge, 'Saw the report.\nCompared shipments.');
+        assert.deepEqual(original, unchanged);
+        assert.deepEqual(normalizeAnalysisActorUpdates(parsed), parsed);
+        const prior = parseRuntimeResponse(modern(false, { actor_updates: [{ op: 'upsert', name: 'Mira', motivation: 'Keep her delivery promise.', constraints: 'Declined personal questions.', agenda: 'Make the delivery.' }] }));
+        const state = applyAnalysis(applyAnalysis(defaultState(), prior, messages), parsed, messages);
+        const saved = loadState(JSON.parse(JSON.stringify(saveState({}, state))));
+        const mira = saved.entities.find(actor => actor.name === 'Mira');
+        assert.equal(mira.motivation, 'Keep her delivery promise.');
+        assert.equal(mira.constraints, 'Declined personal questions.');
+        assert.equal(mira.agenda, 'Make the delivery.');
+        const retired = parseRuntimeResponse(modern(routine, { actor_updates: [{ op: 'retire', name: 'Mira' }] }));
+        assert.equal(applyAnalysis(saved, retired, messages).entities.some(actor => actor.name === 'Mira'), false);
+    }
+});
+
+test('actor normalization does not conceal malformed facts, identities, or causal context', () => {
+    for (const routine of [false, true]) {
+        for (const patch of [{ name: 7 }, { name: '' }, { op: 'invent' }, { motivation: {} }, { motivation: false }, { knowledge: ['fact', 3] }]) {
+            assert.throws(() => parseRuntimeResponse(modern(routine, { actor_updates: [{ op: 'upsert', name: 'Mira', ...patch }] })), TestValidationError);
+        }
+        for (const actor_updates of [null, {}, [null], [[]]]) {
+            assert.throws(() => parseRuntimeResponse(modern(routine, { actor_updates })), TestValidationError);
+        }
+        assert.throws(() => parseRuntimeResponse(modern(routine, { context: { conditions: [{ condition: 'Unsupported' }] } })), TestValidationError);
+    }
+});
+
+test('invalid category labels remain rejected with actionable correction instructions', () => {
+    const result = modern(false, { current: { ...current, activity_role: 'supporting' } });
+    assert.match(validateAnalysisResult(result).errors.join('; '), /current.activity_role is invalid; use exactly one of: incidental, routine, developmental, central, transition/);
+    assert.match(ANALYSIS_OUTPUT_CONTRACT, /copy one allowed label exactly/);
+});
 
 test('accepted disengagement and personality boundaries survive full/routine updates, blanks, and reload', () => {
     const departure = {

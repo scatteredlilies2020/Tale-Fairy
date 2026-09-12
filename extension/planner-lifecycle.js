@@ -12,6 +12,24 @@ export async function waitForPlannerHandoff(previousPromise, signal) {
 
 const PENDING_PREFIX = 'living-world-guide:pending:';
 const FAILED_PREFIX = 'living-world-guide:failed:';
+const RECOVERY_REPAIR_PREFIX = 'living-world-guide:recovery-repair:';
+
+// A recovered response can receive one corrective request, not one per reload.
+// If storage is unavailable, decline automatic repair rather than risk a loop.
+export function claimPlannerRecoveryRepair(storage, chatId, fingerprint) {
+    if (!storage || !chatId || !fingerprint) return false;
+    try {
+        const key = `${RECOVERY_REPAIR_PREFIX}${encodeURIComponent(chatId)}`;
+        if (storage.getItem(key) === fingerprint) return false;
+        storage.setItem(key, fingerprint);
+        return true;
+    } catch { return false; }
+}
+
+export function clearPlannerRecoveryRepair(storage, chatId) {
+    if (!storage || !chatId) return;
+    try { storage.removeItem(`${RECOVERY_REPAIR_PREFIX}${encodeURIComponent(chatId)}`); } catch { /* best effort */ }
+}
 
 function pendingKey(chatId) {
     return `${PENDING_PREFIX}${encodeURIComponent(String(chatId || ''))}`;
