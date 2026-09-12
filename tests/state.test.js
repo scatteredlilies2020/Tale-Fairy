@@ -76,9 +76,9 @@ test('knowledge routes survive storage without promoting beliefs or leaking priv
 
 test('quiet-scene guidance values meaningful progress without forcing conflict or player emotions', () => {
     const output = formatCausalContext({ conditions: [{ ...conditions[0], subject: 'Lucia', condition: 'is finishing the shared tea ritual', disclosure: 'open' }], inject: true }, { sceneProfile: { phase: 'landing', intrusion: 'closed', noveltyCeiling: 'none' } });
-    assert.match(output, /meaningfully, even during rest or inactivity/);
-    assert.match(output, /not repetitive description/);
-    assert.match(output, /quiet progress needs no interruption or new conflict/);
+    assert.match(output, /CAUSAL ROLE: Tale Fairy supplies relevant underlying conditions/i);
+    assert.match(output, /active instructions and writing model choose the prose, rhythm/i);
+    assert.doesNotMatch(output, /meaningfully, even during rest or inactivity|quiet progress needs no interruption or new conflict/i);
     assert.match(output, /Never author the player character's choices, dialogue, consent, thoughts, feelings/);
     assert.match(output, /Explicit user\/OOC instructions and established facts take priority/);
 });
@@ -89,10 +89,8 @@ test('formatter exposes natural-language causes without internal metadata', () =
     assert.match(output, /Grain reserves are falling faster than reported\./);
     assert.doesNotMatch(output, /Merchants|confidence|relevance|"id"|mira/);
     assert.match(output, /writing model chooses every concrete action/i);
-    assert.match(output, /self-propelling movement/i);
-    assert.match(output, /every reply changes the current situation/i);
-    assert.match(output, /Develop what is underway/i);
-    assert.match(output, /lasting change in circumstances, understanding, relationships, or possibilities/i);
+    assert.match(output, /active instructions and writing model choose the prose, rhythm/i);
+    assert.doesNotMatch(output, /self-propelling movement|every reply changes the current situation|Develop what is underway|lasting change in circumstances/i);
     assert.doesNotMatch(output, /question|interrogat/i);
 });
 
@@ -142,7 +140,8 @@ test('scene profile bounds outside pressure and preserves explicit OOC authority
     const payload = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
     assert.match(payload, /Keep outside pressure silent or subtextual/i);
     assert.match(payload, /Develop the established activity and causes; no separate plot element/i);
-    assert.match(payload, /quiet progress needs no interruption or new conflict/i);
+    assert.match(payload, /active instructions and writing model choose the prose, rhythm/i);
+    assert.doesNotMatch(payload, /quiet progress needs no interruption or new conflict/i);
     assert.match(payload, /Explicit user\/OOC instructions and established facts take priority/i);
     assert.doesNotMatch(payload, /combat|bureaucratic|opposition may be/i);
 });

@@ -73,8 +73,9 @@ test('planner contracts return active world conditions rather than future branch
 test('provider context exposes only clean relevant conditions', () => {
     assert.match(causalSource, /RELEVANT UNDERLYING CONDITIONS/);
     assert.match(causalSource, /causal context, not required events or predetermined outcomes/i);
-    assert.match(gmSource, /SELF-PROPELLING MOVEMENT/);
-    assert.match(gmSource, /Every reply changes the current situation/i);
+    assert.match(gmSource, /CAUSAL ROLE: Tale Fairy supplies relevant underlying conditions/i);
+    assert.match(gmSource, /active instructions and writing model choose the prose, rhythm/i);
+    assert.doesNotMatch(gmSource, /SELF-PROPELLING MOVEMENT|Every reply changes the current situation/i);
     assert.doesNotMatch(causalSource, /question|interrogat/i);
     assert.match(causalSource, /confidence !== 'tentative'/);
     assert.doesNotMatch(causalSource, /branchIndex|weighted random choice|NEXT-STEP EFFECT/);

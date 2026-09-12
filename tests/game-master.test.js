@@ -27,22 +27,19 @@ function stateWithFacts() {
     return state;
 }
 
-test('permanent rules are lean, genre-neutral, and require meaningful change even during inactivity', () => {
+test('permanent rules are lean, genre-neutral, and leave pacing to active instructions', () => {
     const payload = buildPromptPayload(defaultState());
     assert.ok(payload.includes(GAME_MASTER_CONTRACT));
     for (const rule of [
         /without awaiting player direction/,
         /freedom to engage or disengage/,
-        /Every reply changes the current situation meaningfully, even during rest or inactivity/,
-        /lasting change in circumstances, understanding, relationships, or possibilities/,
-        /not repetitive description/,
-        /quiet progress needs no interruption or new conflict/,
-        /Leave room for meaningful player decisions/,
+        /CAUSAL ROLE: Tale Fairy supplies relevant underlying conditions and preserves open outcomes/,
+        /active instructions and writing model choose the prose, rhythm, concrete actions, movement, and consequences/,
         /Never author the player character's choices/,
         /within viewpoint knowledge/,
-        /time passage proportionate to the player's action/,
         /Explicit user\/OOC instructions and established facts take priority/,
     ]) assert.match(payload, rule);
+    assert.doesNotMatch(payload, /Every reply changes the current situation meaningfully|Match the scene's tone and pace|time passage proportionate/i);
     assert.equal(payload.match(/GAME MASTER RESPONSIBILITY/g)?.length, 1);
     assert.ok(GAME_MASTER_CONTRACT.split(/\s+/u).length <= 160, 'Permanent rules must stay concise');
     assert.ok(estimateTokenCount(GAME_MASTER_CONTRACT) < 320, 'Permanent policy must remain bounded');

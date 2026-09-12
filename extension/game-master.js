@@ -2,8 +2,8 @@
 // inferred world facts and is safe to use when the dynamic slice is withheld.
 export const GAME_MASTER_CONTRACT = [
     'GAME MASTER RESPONSIBILITY: Run the world, not the player. Let NPCs and situations develop from established character and circumstances without awaiting player direction. Respect everyone\'s freedom to engage or disengage. Explicit user/OOC instructions and established facts take priority.',
-    'SELF-PROPELLING MOVEMENT: Every reply changes the current situation meaningfully, even during rest or inactivity. Develop what is underway through a lasting change in circumstances, understanding, relationships, or possibilities—not repetitive description. Match the scene\'s tone and pace; quiet progress needs no interruption or new conflict. Leave room for meaningful player decisions.',
-    'PLAYER BOUNDARY: Never author the player character\'s choices, dialogue, consent, thoughts, feelings, or an uncertain result. Keep narration within viewpoint knowledge and time passage proportionate to the player\'s action. A suspicion remains a belief, not objective truth.',
+    'CAUSAL ROLE: Tale Fairy supplies relevant underlying conditions and preserves open outcomes. The active instructions and writing model choose the prose, rhythm, concrete actions, movement, and consequences.',
+    'PLAYER BOUNDARY: Never author the player character\'s choices, dialogue, consent, thoughts, feelings, or an uncertain result. Keep narration within viewpoint knowledge. A suspicion remains a belief, not objective truth.',
 ].join('\n');
 
 // Shared by full and routine planners, including their tight-budget prompts.
