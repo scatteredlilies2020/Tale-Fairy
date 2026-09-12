@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generationHarness } from './helpers/generation-harness.js';
-import { buildPlotAnchor, cachedGenerationContext, GENERATION_CACHE_LIMIT, GENERATION_CONTEXT_KEY, generationContextEntries, plotInputKey, REPLACEMENT_PENDING_KEY } from '../extension/generation-context.js';
+import { buildPlotAnchor, cachedGenerationContext, GENERATION_CACHE_LIMIT, GENERATION_CONTEXT_KEY, generationContextEntries, plotCardInputs, plotInputKey, plotWorldNames, REPLACEMENT_PENDING_KEY } from '../extension/generation-context.js';
 import { buildPromptPayload, defaultState, fingerprintMessages, saveState } from '../extension/state.js';
 import { createSafetyFallbackState } from '../extension/fallback-direction.js';
 
@@ -90,7 +90,7 @@ test('cache is bounded, isolated by chat, and changes with story/card/lore/autho
         () => { h.context.chat[0].mes = 'The letter is now open.'; },
         () => { h.context.card = { scenario: 'The letter has been destroyed.' }; },
         () => { h.context.chatMetadata.note_prompt = 'Keep the letter sealed.'; },
-        async () => { await h.emit('WORLDINFO_UPDATED'); },
+        async () => { h.scope.selected_world_info = ['Active lore']; h.scope.worldInfoCache.set('Active lore', { entries: {} }); await h.emit('WORLDINFO_UPDATED'); },
     ]) {
         await change();
         assert.notEqual(h.prepare().reused, true);
@@ -178,4 +178,127 @@ test('cached injection stays disabled for non-story calls and appears exactly on
     assert.equal(buildPromptPayload(h.state(), { cachedPayload, enabled: false }), '');
     assert.equal(cachedPayload.match(/<plot-anchor>/gu).length, 1);
     assert.equal(cachedPayload.match(/GAME MASTER RESPONSIBILITY/gu).length, 1);
+});
+
+for (const type of ['swipe', 'regenerate']) test(`${type} tolerates surrounding whitespace and line endings through edit/update events`, async () => {
+    const messages = input();
+    messages[1].mes += '\nI wait for her answer.';
+    const h = generationHarness(messages);
+    const original = h.prepare().payload;
+    h.context.chat.push({ is_user: false, mes: 'Discarded attempt.' });
+    h.context.chat[1].mes = `  ${h.context.chat[1].mes.replaceAll('\n', '\r\n')}  \r\n`;
+    await h.emit('MESSAGE_EDITED', 1);
+    await h.emit('MESSAGE_UPDATED', 1);
+    await h.flush();
+    assert.equal(h.calls.length, 0);
+    await h.emit('GENERATION_STARTED', type);
+    if (type === 'regenerate') { h.context.chat.pop(); await h.emit('MESSAGE_DELETED'); }
+    assert.equal(h.prepare(type).reused, true);
+    assert.equal(h.prepare(type).payload, original);
+    await h.flush();
+    assert.equal(h.calls.length, 0);
+});
+
+test('same-content notifications and unrelated lore/character updates preserve the current packet', async () => {
+    const h = generationHarness(input());
+    h.scope.selected_world_info = ['Harbor'];
+    h.scope.worldInfoCache.set('Harbor', { entries: { 1: { content: 'The harbor is closed.' } } });
+    const original = h.prepare().payload;
+    for (const event of ['WORLDINFO_UPDATED', 'WORLDINFO_SETTINGS_UPDATED', 'CHARACTER_EDITED', 'PERSONA_CHANGED', 'PERSONA_UPDATED']) {
+        h.scope.worldInfoCache.set('Unrelated', { entries: { 1: { content: event } } });
+        h.scope.world_info.charLore = [{ name: 'Other character', extraBooks: [event] }];
+        await h.emit(event, 'Unrelated');
+        assert.ok(h.scope.generationGuideSelection, event);
+        assert.equal(h.prepare().reused, true, event);
+        assert.equal(h.prepare().payload, original);
+    }
+    // Saving an identical relevant book also remains a hit.
+    h.scope.worldInfoCache.set('Harbor', JSON.parse(JSON.stringify(h.scope.worldInfoCache.get('Harbor'))));
+    await h.emit('WORLDINFO_UPDATED', 'Harbor');
+    assert.equal(h.prepare().reused, true);
+    // Actual available lore content and scan settings still invalidate.
+    h.scope.worldInfoCache.set('Harbor', { entries: { 1: { content: 'The harbor is open.' } } });
+    await h.emit('WORLDINFO_UPDATED', 'Harbor');
+    assert.equal(h.scope.generationGuideSelection, null);
+    assert.notEqual(h.prepare().reused, true);
+    h.scope.getWorldInfoSettings = () => ({ world_info_depth: 8 });
+    await h.emit('WORLDINFO_SETTINGS_UPDATED');
+    assert.notEqual(h.prepare().reused, true);
+});
+
+test('lore dependencies cover global, chat, persona, character, extra and group-member books', () => {
+    const context = {
+        characterId: 0, characters: [
+            { avatar: 'Mira.png', data: { extensions: { world: 'Mira book' } } },
+            { avatar: 'Zog.png', data: { extensions: { world: 'Zog book' } } },
+        ],
+        chatMetadata: { world_info: 'Chat book' }, powerUserSettings: { persona_description_lorebook: 'Persona book' },
+    };
+    const links = { charLore: [{ name: 'Mira', extraBooks: ['Mira extra'] }, { name: 'Unrelated', extraBooks: ['Not used'] }] };
+    assert.deepEqual(plotWorldNames(context, links, ['Global']), ['Chat book', 'Global', 'Mira book', 'Mira extra', 'Persona book']);
+    context.groupId = 'group'; context.groups = [{ id: 'group', members: ['Mira.png', 'Zog.png'] }];
+    assert.ok(plotWorldNames(context, links).includes('Zog book'));
+});
+
+test('raw cards ignore expanded macros and cosmetic metadata but detect real card/persona changes', async () => {
+    const h = generationHarness(input());
+    h.context.characterId = 0;
+    h.context.characters = [{ name: 'Mira', avatar: 'Mira.png', description: 'At {{time}}, Mira guards the letter.', data: {} }];
+    h.context.powerUserSettings = { persona_description: 'A courier.' };
+    h.scope.getCharacterCardFields = () => { throw new Error('Must not expand time/random macros for the cache key'); };
+    h.prepare();
+    h.context.characters[0].data.character_version = 'cosmetic update';
+    await h.emit('CHARACTER_EDITED');
+    assert.equal(h.prepare().reused, true);
+    h.context.characters[0].description = 'Mira has lost the letter.';
+    await h.emit('CHARACTER_EDITED');
+    assert.notEqual(h.prepare().reused, true);
+    h.context.powerUserSettings.persona_description = 'The letter sender.';
+    await h.emit('PERSONA_UPDATED');
+    assert.notEqual(h.prepare().reused, true);
+    assert.equal(plotCardInputs(h.context).persona, 'The letter sender.');
+});
+
+test('whitespace matching never ignores negation, numbers, internal spacing or paragraph changes', async () => {
+    const original = [{ is_user: true, mes: 'I do not deliver letter 12.\nMira waits.' }];
+    const key = plotInputKey('story', original);
+    for (const mes of ['I do deliver letter 12.\nMira waits.', 'I do not deliver letter 13.\nMira waits.',
+        'I do not deliver letter 12. Mira waits.', 'I do not deliver  letter 12.\nMira waits.']) {
+        assert.notEqual(plotInputKey('story', [{ is_user: true, mes }]), key);
+    }
+    const h = generationHarness(input()); h.prepare();
+    h.context.chat.push({ is_user: false, mes: 'Discarded.' });
+    h.context.chat[1].mes = 'I do not ask about the letter.';
+    await h.emit('MESSAGE_EDITED', 1);
+    await h.flush();
+    assert.equal(h.calls.length, 1);
+    assert.notEqual(h.prepare('regenerate').reused, true);
+});
+
+test('referenced plot variables invalidate reuse, unrelated counters do not', () => {
+    const h = generationHarness(input());
+    h.context.card = { description: 'Mira carries {{getvar::letter}} for {{getglobalvar::recipient}}.' };
+    h.context.chatMetadata.variables = { letter: 'sealed', unrelated: 1 };
+    h.scope.extension_settings.variables = { global: { recipient: 'the captain' } };
+    h.prepare();
+    h.context.chatMetadata.variables.unrelated++;
+    assert.equal(h.prepare().reused, true);
+    h.context.chatMetadata.variables.letter = 'opened';
+    assert.notEqual(h.prepare().reused, true);
+    h.scope.extension_settings.variables.global.recipient = 'the mayor';
+    assert.notEqual(h.prepare().reused, true);
+});
+
+test('whitespace rollback rebinds restored memory without mutating the saved snapshot', async () => {
+    const state = createSafetyFallbackState(defaultState(), { messages: input(), chatId: 'story', fingerprint: fingerprintMessages(input()) });
+    state.contextLedger = 'Mira guards the letter.';
+    const h = generationHarness(input(), state); h.prepare();
+    const packet = generationContextEntries(h.context.chatMetadata[GENERATION_CONTEXT_KEY])[0];
+    const before = JSON.stringify(packet);
+    h.context.chat[1].mes += '  ';
+    h.context.chat.push({ is_user: false, mes: 'Discarded.' });
+    await h.emit('GENERATION_STARTED', 'swipe');
+    assert.equal(h.state().contextLedger, state.contextLedger);
+    assert.equal(h.state().lastAnalysisFingerprint, fingerprintMessages(h.context.chat.slice(0, -1)));
+    assert.equal(JSON.stringify(packet), before);
 });

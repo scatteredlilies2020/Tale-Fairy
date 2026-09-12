@@ -32,11 +32,11 @@ import { formatHiddenMotives } from './scratchpad-format.js?v=0.13.9';
 import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.9';
 import { createSafetyFallbackState } from './fallback-direction.js?v=0.13.11';
 import { classifyAssistantReply } from './response-usability.js?v=0.13.9';
-import { buildPlotAnchor, cachedGenerationContext, generationContextEntries, GENERATION_CONTEXT_KEY, plotInputKey, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.13.11';
-import { selected_world_info, world_info } from '/scripts/world-info.js';
+import { buildPlotAnchor, cachedGenerationContext, generationContextEntries, GENERATION_CONTEXT_KEY, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.13.12';
+import { getWorldInfoSettings, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.13.11';
+const RUNTIME_VERSION = '0.13.12';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -658,17 +658,23 @@ function guideSelectionOptions(state, context = currentContext()) {
 }
 
 function generationInputs(context, state) {
-    let card = {};
-    try { card = getCharacterCardFields?.() || context.getCharacterCardFields?.() || {}; } catch { /* older hosts */ }
+    let card = plotCardInputs(context, null);
+    if (!card) {
+        try { card = getCharacterCardFields?.() || context.getCharacterCardFields?.() || {}; } catch { card = {}; }
+    }
+    const { world_info: _allBookLinks, world_info_overflow_alert: _notificationOnly, ...worldSettings } = getWorldInfoSettings();
+    const worlds = plotWorldNames(context, world_info, selected_world_info);
+    const worldData = worlds.map(name => worldInfoCache.get(name));
     return {
         card,
+        variables: plotVariableInputs([card, context.chatMetadata?.note_prompt, worldData], context.chatMetadata?.variables, extension_settings.variables?.global),
         group: context.groupId ? context.groups?.find(group => String(group.id) === String(context.groupId))?.members : null,
         scenario: context.chatMetadata?.scenario,
         authorNote: context.chatMetadata?.note_prompt,
-        world: context.chatMetadata?.world_info,
-        worldSettings: world_info,
-        selectedWorlds: selected_world_info,
-        revision: getSettings().plotContextRevision || 0,
+        worldSettings,
+        // Only books available to this chat matter. Fingerprint actual content,
+        // not editor notifications or links belonging to other characters.
+        worlds: worlds.map((name, index) => [name, worldInfoCache.has(name) ? plotInputKey(name, [], worldData[index]) : 'not-loaded']),
         mode: getSettings().mode,
         // Pending author requests matter; planner diagnostics and note-resolution
         // timestamps do not invalidate a packet during regeneration.
@@ -691,16 +697,23 @@ function deferReplacementPlanning(context = currentContext(), sourceMessages = n
     // Roll back planner memory as well as the visible injection. Otherwise a
     // later routine pass could inherit entities/ledger facts from deleted prose.
     if (!isDirectionCurrent(current, messages, chatId)) {
-        const restored = archived?.plannerState || createSafetyFallbackState(defaultState(), {
+        const restored = archived?.plannerState ? { ...archived.plannerState } : createSafetyFallbackState(defaultState(), {
             messages, chatId, fingerprint: fingerprintMessages(messages), turnCount: assistantTurnNumber(messages),
             reason: 'replacement has no compatible saved planner state',
         });
+        if (archived?.plannerState) {
+            // The normalized cache key proves the same input despite harmless
+            // whitespace. Rebind the restored memory to the current transcript.
+            restored.lastAnalysisFingerprint = fingerprintMessages(messages);
+            restored.sourceMessageCount = messages.length;
+            restored.sourceChatId = chatId;
+        }
         context.updateChatMetadata(saveState(context.chatMetadata, { ...restored,
             userNotes: current.userNotes, mode: current.mode, lastRequestVerification: current.lastRequestVerification,
         }));
     }
     context.updateChatMetadata({ ...context.chatMetadata, [REPLACEMENT_PENDING_KEY]: {
-        chatId, fingerprint: fingerprintMessages(messages), messageCount: messages.length,
+        chatId, fingerprint: fingerprintMessages(messages), sourceKey: plotInputKey(chatId, messages), messageCount: messages.length,
     } });
     interruptAnalysis('A replacement reuses its pre-response context.', 'Replacement · no new planner calls');
     void cancelDetachedPlannerJobs(chatId);
@@ -716,14 +729,14 @@ function prepareGenerationGuide(state, type) {
     const inputKey = plotInputKey(chatId, replacementMessages, generationInputs(context, state));
     const archived = cachedGenerationContext(context.chatMetadata?.[GENERATION_CONTEXT_KEY], inputKey, chatId);
     if (archived) {
-        generationGuideSelection = { ...archived.selection, chatId, replacement, regeneration: replacement, payload: archived.payload, reused: true };
+        generationGuideSelection = { ...archived.selection, chatId, inputKey, replacement, regeneration: replacement, payload: archived.payload, reused: true };
         renderAnalysisActivity('Reused plot context · no new planner calls', false);
         return;
     }
     // Legacy request archives cannot prove card/lore inputs. Reconstruct a
     // local anchor rather than reusing unverified or post-response facts.
     const priorCache = generationContextEntries(context.chatMetadata?.[GENERATION_CONTEXT_KEY]);
-    const changedInputs = priorCache.some(item => item.sourceFingerprint === fingerprintMessages(replacementMessages) && item.inputKey !== inputKey);
+    const changedInputs = priorCache.some(item => (item.sourceKey === plotInputKey(chatId, replacementMessages) || item.sourceFingerprint === fingerprintMessages(replacementMessages)) && item.inputKey !== inputKey);
     const currentDirectionReady = !changedInputs && isDirectionCurrent(state, replacementMessages, chatId);
     const currentGuidanceUsable = currentDirectionReady && isGuidanceUsable(state, replacementMessages, chatId);
     const selectedSituations = currentGuidanceUsable ? selectSituationalOpenings(state.situationBoard, {
@@ -732,6 +745,7 @@ function prepareGenerationGuide(state, type) {
     }) : [];
     generationGuideSelection = {
         chatId,
+        inputKey,
         candidates: [], index: 0,
         usable: currentGuidanceUsable,
         skipped: false,
@@ -746,7 +760,7 @@ function prepareGenerationGuide(state, type) {
     };
     const payload = buildPromptPayload(state, { generationType: type, ...guideSelectionOptions(state, context) });
     const cache = JSON.parse(JSON.stringify({ version: 1, chatId, inputKey,
-        sourceFingerprint: fingerprintMessages(replacementMessages), payload, selection: generationGuideSelection,
+        sourceFingerprint: fingerprintMessages(replacementMessages), sourceKey: plotInputKey(chatId, replacementMessages), payload, selection: generationGuideSelection,
         plannerState: currentDirectionReady ? { ...state, lastRequestVerification: null } : null,
     }));
     generationGuideSelection.payload = payload;
@@ -2810,9 +2824,9 @@ if (event_types.MESSAGE_SENT) eventSource.on(event_types.MESSAGE_SENT, () => {
 });
 for (const event of [event_types.MESSAGE_EDITED, event_types.MESSAGE_UPDATED, event_types.MESSAGE_DELETED]) {
     if (event) eventSource.on(event, () => {
-        if (event === event_types.MESSAGE_DELETED) {
+        if (event === event_types.MESSAGE_DELETED || event === event_types.MESSAGE_EDITED) {
             const context = currentContext();
-            const messages = messagesFromChat(context.chat || []);
+            const messages = generationRetrySource(messagesFromChat(context.chat || []), event === event_types.MESSAGE_EDITED);
             const chatId = String(context.getCurrentChatId?.() || '');
             const key = plotInputKey(chatId, messages, generationInputs(context, loadState(context.chatMetadata)));
             if (cachedGenerationContext(context.chatMetadata?.[GENERATION_CONTEXT_KEY], key, chatId)) {
@@ -2838,9 +2852,12 @@ eventSource.on(event_types.MESSAGE_SWIPED, messageId => {
 });
 for (const event of [event_types.WORLDINFO_UPDATED, event_types.WORLDINFO_SETTINGS_UPDATED, event_types.CHARACTER_EDITED, event_types.PERSONA_CHANGED, event_types.PERSONA_UPDATED]) {
     if (event) eventSource.on(event, () => {
-        getSettings().plotContextRevision = Date.now();
-        saveSettingsDebounced();
-        generationGuideSelection = null;
+        if (!generationGuideSelection) return;
+        const context = currentContext();
+        const chatId = String(context.getCurrentChatId?.() || '');
+        const messages = generationRetrySource(messagesFromChat(context.chat || []), generationGuideSelection.replacement);
+        const key = plotInputKey(chatId, messages, generationInputs(context, loadState(context.chatMetadata)));
+        if (generationGuideSelection.inputKey !== key) generationGuideSelection = null;
     });
 }
 eventSource.on(event_types.CHAT_CHANGED, () => {

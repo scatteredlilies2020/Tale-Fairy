@@ -6,6 +6,64 @@ export const GENERATION_CONTEXT_KEY = 'taleFairyGenerationContext';
 export const REPLACEMENT_PENDING_KEY = 'taleFairyReplacementPending';
 export const GENERATION_CACHE_LIMIT = 12;
 
+// Ignore transport line endings and surrounding whitespace, not punctuation,
+// internal spacing, paragraph boundaries, names, or actual story wording.
+export function normalizePlotText(value = '') {
+    return String(value).replace(/\r\n?/gu, '\n').trim();
+}
+
+export function plotCharacters(context) {
+    const characters = context.characters || [];
+    const group = context.groups?.find(item => String(item.id) === String(context.groupId));
+    return group ? (group.members || []).map(avatar => characters.find(item => item.avatar === avatar)).filter(Boolean)
+        : [characters[context.characterId]].filter(Boolean);
+}
+
+export function plotWorldNames(context, worldSettings = {}, selectedWorlds = []) {
+    const names = [...selectedWorlds, context.chatMetadata?.world_info, context.powerUserSettings?.persona_description_lorebook];
+    for (const character of plotCharacters(context)) {
+        names.push(character.data?.extensions?.world);
+        const fileName = character.avatar?.replace(/\.[^/.]+$/u, '');
+        names.push(...(worldSettings.charLore?.find(item => item.name === fileName)?.extraBooks || []));
+    }
+    return [...new Set(names.filter(name => typeof name === 'string' && name))].sort();
+}
+
+export function plotCardInputs(context, fallback = {}) {
+    const characters = plotCharacters(context);
+    const settings = context.powerUserSettings;
+    // Prefer raw fields: time/random macros must not change the cache key just
+    // because ST expanded the same unchanged card again for a retry.
+    if (!characters.length || !settings) return fallback;
+    return {
+        user: context.name1,
+        persona: settings.persona_description,
+        preferSystem: settings.prefer_character_prompt,
+        preferJailbreak: settings.prefer_character_jailbreak,
+        cards: characters.map(character => ({
+            name: character.name, description: character.description, personality: character.personality,
+            scenario: context.chatMetadata?.scenario || character.scenario,
+            examples: context.chatMetadata?.mes_example || character.mes_example,
+            system: context.chatMetadata?.system_prompt || character.data?.system_prompt,
+            jailbreak: character.data?.post_history_instructions,
+            depth: character.data?.extensions?.depth_prompt,
+            creatorNotes: character.data?.creator_notes,
+        })),
+    };
+}
+
+export function plotVariableInputs(source, local = {}, global = {}) {
+    const values = { local: Object.create(null), global: Object.create(null) };
+    // Track explicit variable dependencies without invalidating every retry for
+    // unrelated counters maintained by other extensions.
+    for (const match of JSON.stringify(source).matchAll(/\{\{(getvar|getglobalvar)::([^{}]+)\}\}/giu)) {
+        const scope = match[1].toLowerCase() === 'getvar' ? 'local' : 'global';
+        const name = match[2].trim();
+        values[scope][name] = (scope === 'local' ? local : global)[name] ?? null;
+    }
+    return values;
+}
+
 function stable(value) {
     if (Array.isArray(value)) return value.map(stable);
     if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map(key => [key, stable(value[key])]));
@@ -13,13 +71,13 @@ function stable(value) {
 }
 
 export function plotInputKey(chatId, messages, inputs = {}) {
-    const text = JSON.stringify(stable({ chatId, messages: messages.map(({ is_user, name, mes }) => ({ is_user: Boolean(is_user), name: name || '', mes: mes || '' })), inputs }));
+    const text = JSON.stringify(stable({ chatId, messages: messages.map(({ is_user, name, mes }) => ({ is_user: Boolean(is_user), name: name || '', mes: normalizePlotText(mes || '') })), inputs }));
     let a = 2166136261, b = 5381;
     for (let i = 0; i < text.length; i++) {
         a = Math.imul(a ^ text.charCodeAt(i), 16777619);
         b = Math.imul(b, 33) ^ text.charCodeAt(i);
     }
-    return `${text.length}:${a >>> 0}:${b >>> 0}`;
+    return `v2:${text.length}:${a >>> 0}:${b >>> 0}`;
 }
 
 export function cachedGenerationContext(cache, inputKey, chatId) {
@@ -41,9 +99,10 @@ export function rememberGenerationContext(history, packet) {
 export function replacementPendingForMessages(pending, messages, chatId, fingerprint) {
     if (!pending || pending.chatId !== chatId) return false;
     const count = pending.messageCount;
-    if (messages.length === count) return fingerprint(messages) === pending.fingerprint;
+    const matches = source => pending.sourceKey ? plotInputKey(chatId, source) === pending.sourceKey : fingerprint(source) === pending.fingerprint;
+    if (messages.length === count) return matches(messages);
     return messages.length === count + 1 && !messages.at(-1)?.is_user
-        && fingerprint(messages.slice(0, -1)) === pending.fingerprint;
+        && matches(messages.slice(0, -1));
 }
 
 function excerpt(value, budget, query = '') {
