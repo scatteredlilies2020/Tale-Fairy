@@ -1,10 +1,24 @@
-import { evidenceRelevance, relevantExcerpt } from './evidence-selection.js?v=0.13.9';
+import { evidenceRelevance } from './evidence-selection.js?v=0.13.9';
+import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.13.9';
 
 // Kept outside planner state: an asynchronous planner save must never replace
 // the immutable pre-response packet or the replacement lifecycle marker.
 export const GENERATION_CONTEXT_KEY = 'taleFairyGenerationContext';
 export const REPLACEMENT_PENDING_KEY = 'taleFairyReplacementPending';
 export const GENERATION_CACHE_LIMIT = 12;
+export const PLOT_ANCHOR_VERSION = 2;
+
+export function hasPlannerConditions(context) {
+    return (context?.conditions || []).some(item => item.condition && !String(item.id || '').startsWith('fallback-'));
+}
+
+export function generationPreviewDescription({ reused = false, dynamic = false, deferred = false, planning = false } = {}) {
+    if (dynamic) return reused ? 'Reused plot anchor and causal context · no new planner calls' : 'Plot anchor and relevant causal context';
+    if (reused) return 'Reused scene excerpts only · no planner context in this packet; no new planner calls';
+    if (deferred) return 'Scene excerpts only for a new continuation. Planning is deferred after a retry; swipe/Regenerate reuse their saved pre-reply context. A new user contribution or Continue resumes planning';
+    if (planning) return 'Scene excerpts only while the planner works in the background; generation will not wait';
+    return 'Scene excerpts only · no matching planner context is ready. Opening this preview does not run an evaluation';
+}
 
 // Ignore transport line endings and surrounding whitespace, not punctuation,
 // internal spacing, paragraph boundaries, names, or actual story wording.
@@ -105,10 +119,51 @@ export function replacementPendingForMessages(pending, messages, chatId, fingerp
         && matches(messages.slice(0, -1));
 }
 
-function excerpt(value, budget, query = '') {
-    return relevantExcerpt(String(value || '').replace(/<[^>]*>/gu, ' ').replace(/\s+/gu, ' ').trim(), budget, query)
-        .replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+// Keep a contiguous passage, not a bag of individually ranked sentences.
+// Formatting is presentation, while paragraph boundaries and nearby clauses
+// carry meaning (especially qualifications and pronoun antecedents).
+export function plotExcerpt(value, budget, query = '') {
+    const text = String(value || '').replace(/\r\n?/gu, '\n')
+        .replace(/^\s*(?:`{3,}|~{3,})[^\n]*$/gmu, '')
+        .replace(/<[^>]*>/gu, ' ')
+        .replace(/^\s{0,3}(?:#{1,6}\s+|>\s?)/gmu, '')
+        .replace(/[*`]/gu, '').replace(/\b_([^_\n]+)_\b/gu, '$1')
+        .replace(/[^\S\n]+/gu, ' ').trim();
+    const escape = value => value.replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+    if (estimateTokenCount(text) <= budget) return escape(text);
+    const segmenter = new Intl.Segmenter(undefined, { granularity: 'sentence' });
+    const units = text.split(/\n+/u).filter(Boolean).flatMap(paragraph => {
+        if (estimateTokenCount(paragraph) <= budget - 4) return [paragraph];
+        // A dotted date/decimal is not a sentence boundary, even when spaced.
+        const protectedText = paragraph.replace(/(?<=\d)\.(?=\s*\d)/gu, '\uE000');
+        return [...segmenter.segment(protectedText)].map(item => item.segment.replaceAll('\uE000', '.').trim());
+    });
+    let focus = 0, best = -1;
+    for (let index = 0; index < units.length; index++) {
+        const score = evidenceRelevance(units[index], query);
+        // With no matching terms, use the latest scene, not its opening header.
+        if (score >= best) { best = score; focus = index; }
+    }
+    let start = focus, end = focus;
+    const limit = Math.max(0, budget - 4);
+    const passage = (a, b) => units.slice(a, b + 1).join('\n');
+    // Expand only to immediate neighbors; never fill remaining space with
+    // unrelated high-ranked fragments from elsewhere in the reply.
+    while (start > 0 || end < units.length - 1) {
+        const before = start > 0 && estimateTokenCount(passage(start - 1, end)) <= limit;
+        const after = end < units.length - 1 && estimateTokenCount(passage(start, end + 1)) <= limit;
+        if (!before && !after) break;
+        if (before && (!after || /^(?:she|he|they|it|but|however|instead)\b/iu.test(units[start])
+            || evidenceRelevance(units[start - 1], query) > evidenceRelevance(units[end + 1], query))) start--;
+        else end++;
+    }
+    let selected = passage(start, end);
+    const clipped = estimateTokenCount(selected) > limit;
+    if (clipped) selected = truncateToTokenBudget(selected, limit).replace(/\s+\S*$/u, '');
+    return escape(`${start > 0 ? '… ' : ''}${selected}${clipped || end < units.length - 1 ? ' …' : ''}`);
 }
+
+const excerpt = plotExcerpt;
 
 export function buildPlotAnchor(messages = [], { state = {}, stateCurrent = false, bootstrap = {} } = {}) {
     const user = [...messages].reverse().find(message => message.is_user && message.mes);

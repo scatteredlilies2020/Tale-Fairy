@@ -32,11 +32,11 @@ import { formatHiddenMotives } from './scratchpad-format.js?v=0.13.9';
 import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.9';
 import { createSafetyFallbackState } from './fallback-direction.js?v=0.13.11';
 import { classifyAssistantReply } from './response-usability.js?v=0.13.9';
-import { buildPlotAnchor, cachedGenerationContext, generationContextEntries, GENERATION_CONTEXT_KEY, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.13.12';
+import { buildPlotAnchor, cachedGenerationContext, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.13.15';
 import { getWorldInfoSettings, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.13.14';
+const RUNTIME_VERSION = '0.13.15';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -725,19 +725,40 @@ function prepareGenerationGuide(state, type) {
     const messages = messagesFromChat(context.chat || []);
     const replacement = type === 'swipe' || type === 'regenerate';
     const replacementMessages = generationRetrySource(messages, replacement);
-    const inputKey = plotInputKey(chatId, replacementMessages, generationInputs(context, state));
+    const inputs = generationInputs(context, state);
+    const inputKey = plotInputKey(chatId, replacementMessages, inputs);
     const archived = cachedGenerationContext(context.chatMetadata?.[GENERATION_CONTEXT_KEY], inputKey, chatId);
-    if (archived) {
+    const reuseArchived = () => {
         generationGuideSelection = { ...archived.selection, chatId, inputKey, replacement, regeneration: replacement, payload: archived.payload, reused: true };
-        renderInjectionActivity('Cached plot context ready · no new planner calls');
+        renderInjectionActivity(archived.selection.usable ? 'Cached plot context ready · no new planner calls' : 'Cached scene excerpts ready · planner context unavailable; no new planner calls');
+    };
+    if (archived?.selection.usable && hasPlannerConditions(archived.selection.causalContext)) {
+        reuseArchived();
         return;
     }
     // Legacy request archives cannot prove card/lore inputs. Reconstruct a
     // local anchor rather than reusing unverified or post-response facts.
     const priorCache = generationContextEntries(context.chatMetadata?.[GENERATION_CONTEXT_KEY]);
-    const changedInputs = priorCache.some(item => (item.sourceKey === plotInputKey(chatId, replacementMessages) || item.sourceFingerprint === fingerprintMessages(replacementMessages)) && item.inputKey !== inputKey);
+    const sourceKey = plotInputKey(chatId, replacementMessages);
+    const sourceFingerprint = fingerprintMessages(replacementMessages);
+    // New plans record the actual input dependencies. An older packet made
+    // before a book loaded must not veto a later plan that used that book.
+    // Legacy plans still need the conservative history check.
+    const changedInputs = state.analysisModel?.plotInputsKey
+        ? state.analysisModel.plotInputsKey !== plotInputKey(chatId, [], inputs)
+        : priorCache.some(item => (item.sourceKey === sourceKey || item.sourceFingerprint === sourceFingerprint) && item.inputKey !== inputKey);
     const currentDirectionReady = !changedInputs && isDirectionCurrent(state, replacementMessages, chatId);
     const currentGuidanceUsable = currentDirectionReady && isGuidanceUsable(state, replacementMessages, chatId);
+    const upgradeFallback = archived && !hasPlannerConditions(archived.selection.causalContext)
+        && currentGuidanceUsable && hasPlannerConditions(state.causalContext);
+    // A completed usable packet stays immutable. A rules/excerpts-only packet
+    // may gain an already-ready, source-aligned plan, without making any call.
+    // Refresh old fallback formatting locally too, so reloads do not preserve
+    // the former chopped-sentence anchor forever.
+    if (archived && !upgradeFallback && (archived.selection.usable || archived.anchorVersion === PLOT_ANCHOR_VERSION)) {
+        reuseArchived();
+        return;
+    }
     const selectedSituations = currentGuidanceUsable ? selectSituationalOpenings(state.situationBoard, {
         scene: state.scene, sceneProfile: state.sceneProfile,
         latestUserAction: [...replacementMessages].reverse().find(message => message.is_user)?.mes || '',
@@ -758,13 +779,16 @@ function prepareGenerationGuide(state, type) {
         plotAnchor: buildPlotAnchor(replacementMessages, { state, stateCurrent: currentDirectionReady, bootstrap: bootstrapContext(context) }),
     };
     const payload = buildPromptPayload(state, { generationType: type, ...guideSelectionOptions(state, context) });
-    const cache = JSON.parse(JSON.stringify({ version: 1, chatId, inputKey,
-        sourceFingerprint: fingerprintMessages(replacementMessages), sourceKey: plotInputKey(chatId, replacementMessages), payload, selection: generationGuideSelection,
+    const cache = JSON.parse(JSON.stringify({ version: 1, anchorVersion: PLOT_ANCHOR_VERSION, chatId, inputKey,
+        sourceFingerprint, sourceKey, payload, selection: generationGuideSelection,
         plannerState: currentDirectionReady ? { ...state, lastRequestVerification: null } : null,
     }));
     generationGuideSelection.payload = payload;
     context.updateChatMetadata({ ...context.chatMetadata, [GENERATION_CONTEXT_KEY]: rememberGenerationContext(context.chatMetadata?.[GENERATION_CONTEXT_KEY], cache) });
     scheduleVerificationPersistence(context);
+    if (archived) renderInjectionActivity(currentGuidanceUsable
+        ? 'Cached fallback upgraded with ready planner context · no new planner calls'
+        : 'Cached scene excerpts refreshed locally · no new planner calls');
 }
 
 function assistantTurnNumber(messages = []) {
@@ -2030,6 +2054,8 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         });
         controller.signal.throwIfAborted();
         showAnalysisPhase(`Building ${Number(plannerMaxPromptTokens).toLocaleString()}-token ${fullContextPass ? 'full' : 'incremental'} planner input`, runId, startedAt);
+        // Kept with run metadata so detached recovery retains the same proof.
+        analysisSelection.plotInputsKey = plotInputKey(chatId, [], generationInputs(context, current));
         const plannerPrompt = await buildTokenBudgetedAnalysisPrompt(chat, current, noteInstruction(userNote), bootstrapContext(context), { recentContextTokens: plannerRecentContextTokens, messageTokenLimit: s.messageTokenLimit, summaryContextTokens: plannerSummaryContextTokens, summarySources, bootstrapScan, fullRebuild: rebuild, incremental: !fullContextPass, maxPromptTokens: plannerMaxPromptTokens, variationNonce });
         plannerTranscriptHead = transcriptHeadFromPrompt(plannerPrompt);
         lastSummaryAudit = plannerEvidenceAudit(plannerPrompt, summarySources, {
@@ -2273,7 +2299,8 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         ? `at-depth · ${previewSettings.injectionRole} · depth ${previewSettings.injectionDepth}`
         : `${previewSettings.injectionPosition} · ${previewSettings.injectionRole}`;
     const previewText = previewPayload
-        ? `${previewKind} — ${preparedSelection?.reused ? 'Reused plot context · no new planner calls' : previewDynamic ? 'Plot anchor and relevant causal context' : 'Transcript-grounded plot anchor; no unverified planner facts'}.\nPlacement: ${previewPlacement}\n\n${previewPayload}`
+        ? `${previewKind} — ${generationPreviewDescription({ reused: preparedSelection?.reused, dynamic: previewDynamic,
+            deferred: !preparedSelection && replacementPlanningDeferred(previewContext), planning: Boolean(analysisPromise) })}.\nPlacement: ${previewPlacement}\n\n${previewPayload}`
         : !getSettings().enabled || !isStoryGeneration(activeGenerationType)
             ? 'TALE FAIRY INJECTION DISABLED — extension off or a non-story generation.'
         : isDirectionCurrent(state, messagesFromChat(previewContext.chat || []), chatId) && !state.lastInject

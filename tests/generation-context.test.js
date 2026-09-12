@@ -1,11 +1,144 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { generationHarness } from './helpers/generation-harness.js';
-import { buildPlotAnchor, cachedGenerationContext, GENERATION_CACHE_LIMIT, GENERATION_CONTEXT_KEY, generationContextEntries, plotCardInputs, plotInputKey, plotWorldNames, REPLACEMENT_PENDING_KEY } from '../extension/generation-context.js';
+import { buildPlotAnchor, cachedGenerationContext, GENERATION_CACHE_LIMIT, GENERATION_CONTEXT_KEY, generationContextEntries, generationPreviewDescription, PLOT_ANCHOR_VERSION, plotExcerpt, plotCardInputs, plotInputKey, plotWorldNames, REPLACEMENT_PENDING_KEY } from '../extension/generation-context.js';
+import { estimateTokenCount } from '../extension/token-budget.js';
 import { buildPromptPayload, defaultState, fingerprintMessages, saveState } from '../extension/state.js';
 import { createSafetyFallbackState } from '../extension/fallback-direction.js';
 
 const input = () => [{ is_user: false, name: 'Mira', mes: 'Mira guards the sealed letter. She promised not to deliver it until dawn.' }, { is_user: true, mes: 'I ask Mira who sent the letter.' }];
+
+test('startup preview explains missing or deferred planner context instead of implying an evaluation failed', () => {
+    assert.match(generationPreviewDescription(), /Opening this preview does not run an evaluation/);
+    assert.match(generationPreviewDescription({ deferred: true }), /Planning is deferred after a retry/);
+    assert.match(generationPreviewDescription({ planning: true }), /planner works in the background/);
+    assert.match(generationPreviewDescription({ reused: true }), /no planner context in this packet/);
+    assert.match(generationPreviewDescription({ reused: true, dynamic: true }), /Reused plot anchor and causal context/);
+});
+
+test('reopening after a retry preserves deferred planning and distinguishes continuation from retry context', async () => {
+    const h = generationHarness(input(), readyPlan());
+    const cached = h.prepare().payload;
+    h.context.chat.push({ is_user: false, mes: 'Mira shows the seal.' });
+    await h.emit('GENERATION_STARTED', 'swipe');
+    const restored = generationHarness(structuredClone(h.context.chat), h.state(), JSON.parse(JSON.stringify(h.context.chatMetadata)));
+    assert.equal(restored.scope.replacementPlanningDeferred(), true);
+    const previewOptions = restored.scope.guideSelectionOptions(restored.state(), restored.context);
+    assert.equal(previewOptions.guidanceUsable, false, 'the new continuation cannot reuse pre-reply facts as a fresh plan');
+    assert.match(previewOptions.plotAnchor, /Mira shows the seal/);
+    assert.equal(restored.prepare('swipe').payload, cached, 'retry still uses the pre-reply packet');
+    assert.equal(restored.calls.length, 0);
+});
+
+function readyPlan(messages = input()) {
+    const state = createSafetyFallbackState(defaultState(), {
+        messages, chatId: 'story', fingerprint: fingerprintMessages(messages),
+    });
+    state.causalContext.conditions = [{ id: 'mira-letter', subject: 'Mira', kind: 'actor',
+        condition: 'knows the sender but promised to keep the letter sealed until dawn',
+        disclosure: 'open', confidence: 'established', relevance: 'The user asks about the letter.' }];
+    return state;
+}
+
+for (const type of ['normal', 'swipe', 'regenerate']) test(`${type} upgrades a cached fallback from a ready matching plan, then reuses it`, async () => {
+    const h = generationHarness(input());
+    const original = h.prepare().payload;
+    const state = readyPlan();
+    h.context.updateChatMetadata(saveState(h.context.chatMetadata, state));
+    if (type !== 'normal') {
+        h.context.chat.push({ is_user: false, mes: 'Discarded: the letter burned.' });
+        await h.emit('GENERATION_STARTED', type);
+    }
+    const upgraded = h.prepare(type);
+    assert.equal(upgraded.usable, true);
+    assert.notEqual(upgraded.payload, original);
+    assert.match(upgraded.payload, /knows the sender/);
+    assert.doesNotMatch(upgraded.payload, /letter burned/);
+    assert.ok(generationContextEntries(h.context.chatMetadata[GENERATION_CONTEXT_KEY]).at(-1).plannerState);
+    assert.equal(h.prepare(type).payload, upgraded.payload);
+    assert.equal(h.prepare(type).reused, true);
+    const restored = generationHarness(structuredClone(h.context.chat), h.state(), JSON.parse(JSON.stringify(h.context.chatMetadata)));
+    assert.equal(restored.prepare(type).payload, upgraded.payload);
+    await h.flush();
+    assert.equal(h.calls.length, 0);
+    assert.equal(restored.calls.length, 0);
+});
+
+test('transcript safety conditions remain upgradeable, but a completed planner packet stays immutable', () => {
+    const fallback = createSafetyFallbackState(defaultState(), { messages: input(), chatId: 'story', fingerprint: fingerprintMessages(input()) });
+    const h = generationHarness(input(), fallback);
+    const original = h.prepare().payload;
+    h.context.updateChatMetadata(saveState(h.context.chatMetadata, readyPlan()));
+    const upgraded = h.prepare().payload;
+    assert.notEqual(upgraded, original);
+    const later = readyPlan();
+    later.causalContext.conditions[0].condition = 'has changed in a later evaluation';
+    h.context.updateChatMetadata(saveState(h.context.chatMetadata, later));
+    assert.equal(h.prepare().payload, upgraded);
+    assert.equal(h.calls.length, 0);
+});
+
+test('old fallback formatting refreshes locally once without clearing other history', () => {
+    const h = generationHarness(input());
+    h.prepare();
+    const packet = h.context.chatMetadata[GENERATION_CONTEXT_KEY].entries[0];
+    delete packet.anchorVersion;
+    packet.payload = '<plot-anchor>Old chopped … fragments</plot-anchor>';
+    const refreshed = h.prepare().payload;
+    assert.doesNotMatch(refreshed, /Old chopped/);
+    assert.match(refreshed, /Mira guards the sealed letter/);
+    assert.equal(h.context.chatMetadata[GENERATION_CONTEXT_KEY].entries[0].anchorVersion, PLOT_ANCHOR_VERSION);
+    assert.equal(h.prepare().payload, refreshed);
+    assert.equal(h.prepare().reused, true);
+    assert.equal(h.calls.length, 0);
+});
+
+test('input proof admits a fresh plan after card changes but rejects plans built for other inputs', () => {
+    const h = generationHarness(input());
+    h.prepare();
+    h.context.card = { scenario: 'A newly supplied letter setting.' };
+    h.prepare();
+    const state = readyPlan();
+    h.context.updateChatMetadata(saveState(h.context.chatMetadata, state));
+    assert.equal(h.prepare().usable, false, 'legacy state cannot prove it read changed inputs');
+    state.analysisModel.plotInputsKey = plotInputKey('story', [], h.scope.generationInputs(h.context, state));
+    h.context.updateChatMetadata(saveState(h.context.chatMetadata, state));
+    assert.equal(h.prepare().usable, true, 'historical input versions do not veto a matching fresh plan');
+    h.context.card.scenario = 'Another changed setting.';
+    assert.equal(h.prepare().usable, false);
+    assert.equal(h.calls.length, 0);
+});
+
+test('a fully usable plan based on a discarded reply cannot upgrade a fallback', () => {
+    const h = generationHarness(input());
+    const original = h.prepare().payload;
+    h.context.chat.push({ is_user: false, mes: 'Discarded: the letter burned.' });
+    h.context.updateChatMetadata(saveState(h.context.chatMetadata, readyPlan(h.context.chat)));
+    assert.equal(h.prepare('swipe').payload, original);
+    assert.equal(h.prepare('regenerate').usable, false);
+});
+
+test('plot excerpts preserve coherent paragraphs, strip markup and keep dates intact', () => {
+    const scene = '```\nTime & Weather = Date: 04. 18.\n```\n\n' + 'The distant road is empty.\n\n'.repeat(30)
+        + '**Mira checks the purse. She promised to count the loot, but not distribute it.**\n\n'
+        + 'The market outside is closing.\n\n'.repeat(30);
+    const result = plotExcerpt(scene, 70, 'I open the purse and show the loot.');
+    assert.match(result, /Mira checks the purse\. She promised to count the loot, but not distribute it\./);
+    assert.doesNotMatch(result, /[*`]|Time & Weather|04\. …/);
+    assert.ok((result.match(/…/gu) || []).length <= 2, 'ellipsis only at excerpt boundaries');
+    assert.ok(estimateTokenCount(result) <= 70);
+    assert.equal(plotExcerpt('```\nDate: 04. 18.\n```\n**Mira waits.**', 70), 'Date: 04. 18.\n\nMira waits.');
+});
+
+test('no-overlap excerpts prefer the latest scene; long paragraphs and unpunctuated text remain bounded', () => {
+    const old = 'The old road winds north.\n\n'.repeat(60);
+    assert.match(plotExcerpt(old + 'Mira has reached the harbor.', 60, 'I listen.'), /reached the harbor/);
+    const long = 'The road winds north. '.repeat(80) + 'Mira holds the purse. She cannot open its seal. ' + 'The road winds north. '.repeat(80);
+    const result = plotExcerpt(long, 80, 'purse');
+    assert.match(result, /Mira holds the purse\.\nShe cannot open its seal\./);
+    assert.ok(estimateTokenCount(result) <= 80);
+    assert.ok(estimateTokenCount(plotExcerpt('word '.repeat(500), 35)) <= 35);
+});
 
 test('reply bookkeeping does not wait for a disk save or clear a newer swipe selection', async () => {
     const h = generationHarness(input());
