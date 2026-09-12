@@ -36,7 +36,7 @@ import { buildPlotAnchor, cachedGenerationContext, generationContextEntries, GEN
 import { getWorldInfoSettings, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.13.12';
+const RUNTIME_VERSION = '0.13.13';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -715,7 +715,7 @@ function deferReplacementPlanning(context = currentContext(), sourceMessages = n
     context.updateChatMetadata({ ...context.chatMetadata, [REPLACEMENT_PENDING_KEY]: {
         chatId, fingerprint: fingerprintMessages(messages), sourceKey: plotInputKey(chatId, messages), messageCount: messages.length,
     } });
-    interruptAnalysis('A replacement reuses its pre-response context.', 'Replacement · no new planner calls');
+    interruptAnalysis('A replacement reuses its pre-response context.', 'Plot context ready · retries need no new planner calls');
     void cancelDetachedPlannerJobs(chatId);
     scheduleVerificationPersistence(context);
 }
@@ -1052,7 +1052,7 @@ function ensureProviderChatRequestGuidance(generateData) {
     }
 }
 
-async function confirmReturnedReplyUsedGuidance() {
+function confirmReturnedReplyUsedGuidance() {
     const context = currentContext();
     const savedState = loadState(context.chatMetadata);
     const chatId = String(context.getCurrentChatId?.() || '');
@@ -1076,13 +1076,9 @@ async function confirmReturnedReplyUsedGuidance() {
     context.updateChatMetadata(saveState(context.chatMetadata, state));
     cacheProviderBoundVerification(state.lastRequestVerification);
     pendingRequestVerification = null;
-    if (typeof context.saveMetadata === 'function') {
-        try {
-            await context.saveMetadata();
-        } catch (error) {
-            console.warn(`[${EXTENSION_ID}] Could not persist request verification`, error);
-        }
-    }
+    // Keep host reply completion synchronous. Waiting for a disk save here
+    // delays scheduling and lets an older reply clear a newer swipe's packet.
+    scheduleVerificationPersistence(context);
     renderBoard(state);
     renderAnalysisActivity(pending.injectionDecision === 'skip'
         ? 'No Tale Fairy context was used for the returned reply'
@@ -1257,13 +1253,19 @@ function invalidateChangedTranscriptVerification(context, messages) {
 function scheduleTranscriptRefresh(reason, status = 'Refreshing…') {
     const context = currentContext();
     if (replacementPlanningDeferred(context)) return;
+    const messages = messagesFromChat(context.chat || []);
+    // Hosts can report the same transcript repeatedly during finalization.
+    // Do not abort a useful planner (or discard its queued successor) for a
+    // notification that has not changed its source.
+    if (activeAnalysisIntent?.chatId === String(context.getCurrentChatId?.() || '')
+        && analysisAbortController && !analysisAbortController.signal.aborted
+        && isAnalysisSourceCurrent(analysisRequestFingerprint, activeAnalysisMessageCount, messages, { allowOneUserAppend: true })) return;
     const hadRunningAnalysis = Boolean(analysisPromise);
     const chatId = String(context.getCurrentChatId?.() || '');
     generationRevision++;
     cancelRunningAnalysis(reason, status);
     if (hadRunningAnalysis) void cancelDetachedPlannerJobs(chatId);
     generationGuideSelection = null;
-    const messages = messagesFromChat(context.chat || []);
     const state = invalidateChangedTranscriptVerification(context, messages);
     updatePrompt(state);
     renderBoard(state);
@@ -1374,8 +1376,8 @@ function stopAnalysis() {
     const context = currentContext();
     const chatId = String(context.getCurrentChatId?.() || '');
     clearPlannerPending(plannerStorage(), chatId);
-    void cancelDetachedPlannerJobs(chatId);
     interruptAnalysis('Tale Fairy analysis stopped by the user.', 'Stopped');
+    void cancelDetachedPlannerJobs(chatId);
 }
 
 function plannerStorage() {
@@ -1436,8 +1438,13 @@ async function acknowledgeDetachedPlannerRun(runKey, chatId = '') {
 
 async function cancelDetachedPlannerJobs(chatId) {
     if (!chatId || !detachedPlannerEnabled) return;
+    const runId = analysisRunId;
+    const stopSequence = analysisStopSequence;
     try {
         const jobs = await detachedPlannerJobs(chatId);
+        // A slow listing from a previous swipe must not cancel the planner
+        // that has since resumed for a new turn (or a newer stop request).
+        if (runId !== analysisRunId || stopSequence !== analysisStopSequence) return;
         await Promise.allSettled(jobs
             .filter(job => job.status === 'queued' || job.status === 'processing')
             .map(job => plannerServerApi(`/planner-jobs/${encodeURIComponent(job.id)}`, { method: 'DELETE', body: '{}' })));
@@ -2397,7 +2404,7 @@ async function refreshCurrentPlanIfNeeded() {
     if (replacementPlanningDeferred(context)) {
         const state = loadState(context.chatMetadata);
         updatePrompt(state);
-        renderAnalysisActivity('Replacement context retained · planner waits for the next turn', false);
+        renderAnalysisActivity('Plot context ready · retries reuse it; planning resumes on the next turn', false);
         return state;
     }
     const recovered = await recoverDetachedPlannerJobs();
@@ -2756,11 +2763,11 @@ if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPE
         void queueLatestAnalysis({ chatId, allowStaleContinuity: true });
     }, 0);
 });
-eventSource.on(event_types.MESSAGE_RECEIVED, async () => {
+eventSource.on(event_types.MESSAGE_RECEIVED, () => {
     const receivedChatId = String(currentContext().getCurrentChatId?.() || '');
     const supersededIntent = analysisPromise ? activeAnalysisIntent : null;
     generationRevision++;
-    await confirmReturnedReplyUsedGuidance();
+    confirmReturnedReplyUsedGuidance();
     generationGuideSelection = null;
     const context = currentContext();
     if (String(context.getCurrentChatId?.() || '') !== receivedChatId) return;

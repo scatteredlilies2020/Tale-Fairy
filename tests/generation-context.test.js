@@ -7,6 +7,66 @@ import { createSafetyFallbackState } from '../extension/fallback-direction.js';
 
 const input = () => [{ is_user: false, name: 'Mira', mes: 'Mira guards the sealed letter. She promised not to deliver it until dawn.' }, { is_user: true, mes: 'I ask Mira who sent the letter.' }];
 
+test('reply bookkeeping does not wait for a disk save or clear a newer swipe selection', async () => {
+    const h = generationHarness(input());
+    let finishSave;
+    h.scope.confirmReturnedReplyUsedGuidance = () => new Promise(resolve => { finishSave = resolve; });
+    h.context.chat.push({ is_user: false, mes: 'Mira shows the seal.' });
+    const received = h.emit('MESSAGE_RECEIVED');
+    assert.equal(h.calls.length, 1, 'the accepted reply queues planning before persistence completes');
+    await h.emit('GENERATION_STARTED', 'swipe');
+    const selection = h.prepare('swipe');
+    finishSave();
+    await received;
+    assert.equal(h.scope.generationGuideSelection, selection);
+});
+
+test('duplicate transcript updates keep the active planner and its latest-turn queue alive', async () => {
+    const h = generationHarness(input());
+    const controller = new AbortController();
+    h.scope.analysisPromise = Promise.resolve();
+    h.scope.analysisAbortController = controller;
+    h.scope.analysisRequestFingerprint = fingerprintMessages(h.context.chat);
+    h.scope.activeAnalysisMessageCount = h.context.chat.length;
+    h.scope.activeAnalysisIntent = { chatId: 'story' };
+    const queued = h.scope.queuedAnalysisIntent = { chatId: 'story' };
+    for (let i = 0; i < 10; i++) await h.emit('MESSAGE_UPDATED');
+    assert.equal(controller.signal.aborted, false);
+    assert.equal(h.scope.queuedAnalysisIntent, queued);
+    assert.equal(h.scope.generationRevision, 0);
+    h.context.chat[0].mes = 'The letter has actually changed.';
+    await h.emit('MESSAGE_UPDATED');
+    assert.equal(controller.signal.aborted, true, 'real edits still cancel stale work');
+});
+
+test('rapid retries keep injecting and resume exactly one latest-turn job after cancellation settles', async () => {
+    const h = generationHarness(input());
+    const payload = h.prepare().payload;
+    h.context.chat.push({ is_user: false, mes: 'First attempt.' });
+    h.scope.analysisPromise = Promise.resolve();
+    h.scope.analysisAbortController = new AbortController();
+    h.scope.activeAnalysisIntent = { chatId: 'story' };
+    for (let i = 0; i < 20; i++) {
+        const type = i % 2 ? 'swipe' : 'regenerate';
+        await h.emit('GENERATION_STARTED', type);
+        assert.equal(h.prepare(type).payload, payload);
+        h.context.chat.at(-1).mes = `Attempt ${i}.`;
+        await h.emit('MESSAGE_RECEIVED');
+        await h.emit('GENERATION_STOPPED');
+        await h.emit('GENERATION_ENDED');
+    }
+    await h.flush();
+    assert.equal(h.calls.length, 0);
+    h.context.chat.push({ is_user: true, mes: 'I inspect the seal.' });
+    await h.emit('MESSAGE_SENT');
+    assert.ok(h.scope.queuedAnalysisIntent);
+    h.scope.analysisPromise = null;
+    h.scope.drainQueuedAnalysis();
+    h.scope.drainQueuedAnalysis();
+    assert.equal(h.calls.length, 1);
+    assert.equal(h.calls[0].messages.at(-2).mes, 'Attempt 19.');
+});
+
 for (const type of ['swipe', 'regenerate']) test(`${type} reuses exact pre-reply context across host events, stops, and repeated attempts`, async () => {
     const h = generationHarness(input());
     const original = h.prepare('normal').payload;

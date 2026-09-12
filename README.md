@@ -62,6 +62,8 @@ The last 12 pre-reply packets are cached separately from planner state so late b
 
 The 0.13.12 matching format starts a new cache history as replies are generated; older packets cannot prove the new content-based dependencies. A relevant book that was not loaded when a packet was created also requires a new packet once its content becomes available. Neither case triggers an AI rebuild on a retry.
 
+Rapid retries keep plot injection active even while background planning is intentionally idle. In 0.13.13, reply verification saves no longer hold up the host's reply-completion handler, duplicate transcript notifications preserve active planning and its queued successor, and delayed cancellation requests cannot stop a newer planner run. New user input or Continue resumes planning; repeatedly replacing the same reply still costs zero new planner calls.
+
 ## Scope
 
 ### Lightweight planning
