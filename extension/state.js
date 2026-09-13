@@ -2,11 +2,11 @@ import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy 
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
 import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js?v=0.13.17';
-import { defaultCausalContext, defaultSceneProfile, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, normalizeSceneProfile } from './causal-context.js?v=0.13.9';
+import { defaultCausalContext, defaultSceneProfile, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, normalizeSceneProfile } from './causal-context.js?v=0.13.19';
 import { normalizeDirectorSample } from './director-sampling.js?v=0.13.9';
 import { defaultOffscreenWorld, normalizeOffscreenWorld, offscreenWorldForPrompt } from './offscreen-world.js?v=0.13.9';
 import { defaultSituationBoard, normalizeSituationBoard } from './situations.js?v=0.13.9';
-import { GAME_MASTER_CONTRACT, isStoryGeneration } from './game-master.js?v=0.13.9';
+import { GAME_MASTER_CONTRACT, isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.13.19';
 import { relevantActors } from './evidence-selection.js?v=0.13.9';
 
 export const STATE_KEY = 'livingWorldGuide';
@@ -900,7 +900,7 @@ export function guidanceSnapshot(state, { guidanceUsable = false, causalContext 
 
 export function buildPromptPayload(state, { enabled = true, generationType = '', guidanceUsable = false, causalContext = null, sceneProfile = null, directorSample = null, mode = null, plotAnchor = '', cachedPayload = '' } = {}) {
     if (!enabled || !isStoryGeneration(generationType)) return '';
-    if (cachedPayload) return cachedPayload;
+    if (cachedPayload) return refreshGameMasterContract(cachedPayload);
     const s = normalizeState(state);
     const snapshot = guidanceSnapshot(s, { guidanceUsable, causalContext, sceneProfile });
     const selectedMode = directorSample?.mode || mode || s.mode;

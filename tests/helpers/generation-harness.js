@@ -5,7 +5,7 @@ import * as stateApi from '../../extension/state.js';
 import * as cacheApi from '../../extension/generation-context.js';
 import * as scheduleApi from '../../extension/planner-scheduler.js';
 import * as coalescerApi from '../../extension/planner-coalescer.js';
-import { isStoryGeneration } from '../../extension/game-master.js';
+import { isStoryGeneration, refreshGameMasterContract } from '../../extension/game-master.js';
 import { sampleDirectorSignals } from '../../extension/director-sampling.js';
 import { selectSituationalOpenings } from '../../extension/situations.js';
 import { createSafetyFallbackState } from '../../extension/fallback-direction.js';
@@ -25,7 +25,7 @@ export function generationHarness(messages, state = stateApi.defaultState(), met
     const names = ['GENERATION_STARTED', 'GENERATION_ENDED', 'GENERATION_STOPPED', 'MESSAGE_RECEIVED', 'MESSAGE_SENT', 'MESSAGE_EDITED', 'MESSAGE_UPDATED', 'MESSAGE_DELETED', 'MESSAGE_SWIPED', 'WORLDINFO_UPDATED', 'WORLDINFO_SETTINGS_UPDATED', 'CHARACTER_EDITED', 'PERSONA_CHANGED', 'PERSONA_UPDATED'];
     const scope = {
         ...stateApi, ...cacheApi, ...scheduleApi, ...coalescerApi,
-        isStoryGeneration, sampleDirectorSignals, selectSituationalOpenings, createSafetyFallbackState,
+        isStoryGeneration, refreshGameMasterContract, sampleDirectorSignals, selectSituationalOpenings, createSafetyFallbackState,
         // ST returns a new context with a snapshot reference to its metadata.
         // updateChatMetadata replaces the host object, not that reference.
         currentContext: () => ({ ...context }), messagesFromChat: value => value,

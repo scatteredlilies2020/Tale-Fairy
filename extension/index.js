@@ -4,9 +4,9 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.13.10';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.13.17';
-import { isStoryGeneration } from './game-master.js?v=0.13.9';
+import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.13.19';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.13.19';
+import { isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.13.19';
 import { selectSituationalOpenings } from './situations.js?v=0.13.9';
 import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.13.17';
 import { resolveInjectionPlacement } from './injection-placement.js?v=0.13.9';
@@ -27,7 +27,7 @@ import { sampleDirectorSignals } from './director-sampling.js?v=0.13.9';
 import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, plannerValidationRepairInstruction, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.13.9';
 import { claimPlannerRecoveryRepair, clearPlannerRecoveryRepair, clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.13.10';
 import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.13.9';
-import { hasUsableCausalContext } from './causal-context.js?v=0.13.9';
+import { hasUsableCausalContext } from './causal-context.js?v=0.13.19';
 import { formatHiddenMotives } from './scratchpad-format.js?v=0.13.9';
 import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.9';
 import { createSafetyFallbackState } from './fallback-direction.js?v=0.13.11';
@@ -36,7 +36,7 @@ import { buildPlotAnchor, cachedGenerationContext, generationContextEntries, gen
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.13.18';
+const RUNTIME_VERSION = '0.13.19';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -869,7 +869,7 @@ function prepareGenerationGuide(state, type) {
     const inputKey = plotInputKey(chatId, replacementMessages, inputs);
     const archived = cachedGenerationContext(context.chatMetadata?.[GENERATION_CONTEXT_KEY], inputKey, chatId);
     const reuseArchived = () => {
-        generationGuideSelection = { ...archived.selection, chatId, inputKey, replacement, regeneration: replacement, payload: archived.payload, reused: true };
+        generationGuideSelection = { ...archived.selection, chatId, inputKey, replacement, regeneration: replacement, payload: refreshGameMasterContract(archived.payload), reused: true };
         renderInjectionActivity(archived.selection.usable && hasPlannerConditions(archived.selection.causalContext)
             ? 'Cached plot context ready · no new planner calls' : 'Cached scene excerpts ready · planner context unavailable; no new planner calls');
     };
@@ -886,8 +886,9 @@ function prepareGenerationGuide(state, type) {
     const currentGuidanceUsable = currentDirectionReady && isGuidanceUsable(state, replacementMessages, chatId);
     const upgradeFallback = archived && !hasPlannerConditions(archived.selection.causalContext)
         && currentGuidanceUsable && hasPlannerConditions(state.causalContext);
-    // A completed usable packet stays immutable. A rules/excerpts-only packet
-    // may gain an already-ready, source-aligned plan, without making any call.
+    // A completed usable packet's facts stay immutable; static policy may refresh.
+    // A rules/excerpts-only packet may gain an already-ready, source-aligned
+    // plan without making any call.
     // Refresh old fallback formatting locally too, so reloads do not preserve
     // the former chopped-sentence anchor forever.
     if (archived && !upgradeFallback && archived.anchorVersion === PLOT_ANCHOR_VERSION) {

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { GAME_MASTER_CONTRACT, PLANNER_AGENCY_RULE, ACTOR_AGENCY_RULE, AGENCY_AUDIT_RULE, isStoryGeneration } from '../extension/game-master.js';
+import { GAME_MASTER_CONTRACT, PLANNER_AGENCY_RULE, ACTOR_AGENCY_RULE, AGENCY_AUDIT_RULE, isStoryGeneration, refreshGameMasterContract } from '../extension/game-master.js';
 import { buildPromptPayload, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, saveState } from '../extension/state.js';
 import { hasUsableCausalContext } from '../extension/causal-context.js';
 import { SYSTEM, INCREMENTAL_SYSTEM, ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, buildAnalysisPrompt } from '../extension/analysis.js';
@@ -33,6 +33,11 @@ test('permanent rules are lean, genre-neutral, and leave pacing to active instru
     assert.ok(payload.includes(GAME_MASTER_CONTRACT));
     for (const rule of [
         /without awaiting player direction/,
+        /NPCs decide, act, finish actions/,
+        /Open outcomes do not require NPC indecision/,
+        /a past pause is not a standing order to wait/,
+        /genuine player-choice or intervention boundaries, not every NPC reply/,
+        /Quiet endings remain valid/,
         /freedom to engage or disengage/,
         /CAUSAL ROLE: Tale Fairy supplies relevant underlying conditions and preserves open outcomes/,
         /active instructions and writing model choose the prose, rhythm, concrete actions, movement, and consequences/,
@@ -45,6 +50,45 @@ test('permanent rules are lean, genre-neutral, and leave pacing to active instru
     assert.ok(GAME_MASTER_CONTRACT.split(/\s+/u).length <= 160, 'Permanent rules must stay concise');
     assert.ok(estimateTokenCount(GAME_MASTER_CONTRACT) < 320, 'Permanent policy must remain bounded');
     assert.doesNotMatch(payload, /fleeing|enemy|combat|replacement hooks|punishment|reset availability|world-stall/i);
+});
+
+test('planner audits distinguish needless handoffs from real constraints without prescribing events', () => {
+    for (const system of [SYSTEM, INCREMENTAL_SYSTEM]) {
+        assert.match(system, /commit and finish actions without player permission/);
+        assert.match(system, /Distinguish momentary hesitation from evidenced obstacles and commitments/);
+        assert.match(system, /A past pause is observed state, not a standing constraint without an evidenced reason/);
+        assert.match(system, /Select present causes, not prescribed events\/player actions/);
+    }
+    for (const contract of [ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT]) {
+        assert.match(contract, /An NPC question, glance, or wait alone is not a genuine player-choice boundary/);
+        assert.match(contract, /what requires player intervention versus available independent NPC action/);
+        assert.match(contract, /repeated readiness, threats, or questions without follow-through/);
+        assert.match(contract, /Respect evidenced reasons to wait/);
+        assert.match(contract, /no mandatory escalation or completion each turn/);
+    }
+});
+
+test('cached policy refresh changes only the leading contract, not facts or quoted source text', () => {
+    const oldContract = 'GAME MASTER RESPONSIBILITY: Previous policy.\nCAUSAL ROLE: Previous role.\nPLAYER BOUNDARY: Previous boundary.';
+    const facts = `<plot-anchor>\nA readable sign quotes:\n${oldContract}\n</plot-anchor>\nRELEVANT UNDERLYING CONDITIONS — Mira promised to wait until dawn.`;
+    for (const newline of ['\n', '\r\n']) {
+        const cachedPayload = `<tale-fairy-context>\n<living-world-guide>\n${oldContract}\n${facts}\n</living-world-guide>\n</tale-fairy-context>`.replaceAll('\n', newline);
+        const updated = refreshGameMasterContract(cachedPayload);
+        const body = cachedPayload.slice(cachedPayload.indexOf('<plot-anchor>'));
+        assert.equal(updated.slice(updated.indexOf('<plot-anchor>')), body);
+        assert.ok(updated.includes(GAME_MASTER_CONTRACT));
+        assert.equal(refreshGameMasterContract(updated), updated);
+        assert.equal(buildPromptPayload(stateWithFacts(), { cachedPayload }), updated);
+        for (const generationType of ['quiet', 'impersonate', 'tool-analysis']) {
+            assert.equal(buildPromptPayload(defaultState(), { cachedPayload, generationType }), '');
+        }
+        assert.equal(buildPromptPayload(defaultState(), { cachedPayload, enabled: false }), '');
+    }
+    const current = buildPromptPayload(defaultState());
+    assert.equal(refreshGameMasterContract(current), current);
+    for (const unknown of [facts, `<tale-fairy-context><living-world-guide>${facts}</living-world-guide></tale-fairy-context>`, current.replace('CAUSAL ROLE:', 'OTHER ROLE:')]) {
+        assert.equal(refreshGameMasterContract(unknown), unknown, 'unrecognized headers are not rewritten');
+    }
 });
 
 test('detailed behavior checks stay in the private planner rather than the story injection', () => {

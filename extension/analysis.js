@@ -1,11 +1,11 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.13.9';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.13.19';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.13.9';
 import { relevantExcerpt } from './evidence-selection.js?v=0.13.9';
 import { formatDriftRequest, mergeOffscreenWorld, OFFSCREEN_KINDS } from './offscreen-world.js?v=0.13.9';
-import { CAUSAL_KINDS } from './causal-context.js?v=0.13.9';
+import { CAUSAL_KINDS } from './causal-context.js?v=0.13.19';
 import { mergeSituationUpdates, retireManifestedSituations } from './situations.js?v=0.13.9';
-import { PLANNER_AGENCY_RULE, ACTOR_AGENCY_RULE, AGENCY_AUDIT_RULE } from './game-master.js?v=0.13.9';
+import { PLANNER_AGENCY_RULE, ACTOR_AGENCY_RULE, AGENCY_AUDIT_RULE } from './game-master.js?v=0.13.19';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;

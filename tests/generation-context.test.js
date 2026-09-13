@@ -5,6 +5,7 @@ import { buildPlotAnchor, cachedGenerationContext, GENERATION_CACHE_LIMIT, GENER
 import { estimateTokenCount } from '../extension/token-budget.js';
 import { buildPromptPayload, defaultState, fingerprintMessages, saveState } from '../extension/state.js';
 import { createSafetyFallbackState } from '../extension/fallback-direction.js';
+import { GAME_MASTER_CONTRACT } from '../extension/game-master.js';
 
 const input = () => [{ is_user: false, name: 'Mira', mes: 'Mira guards the sealed letter. She promised not to deliver it until dawn.' }, { is_user: true, mes: 'I ask Mira who sent the letter.' }];
 
@@ -41,6 +42,31 @@ function readyPlan(messages = input()) {
         disclosure: 'open', confidence: 'established', relevance: 'The user asks about the letter.' }];
     return state;
 }
+
+test('reload, regenerate, swipe, and deletion refresh old policy without rebuilding cached plot facts', async () => {
+    for (const ready of [false, true]) {
+        const h = generationHarness(input(), ready ? readyPlan() : defaultState());
+        const original = h.prepare().payload;
+        const metadata = structuredClone(h.context.chatMetadata);
+        const entry = metadata[GENERATION_CONTEXT_KEY].entries[0];
+        entry.payload = original.replace(GAME_MASTER_CONTRACT, 'GAME MASTER RESPONSIBILITY: Old responsibility.\nCAUSAL ROLE: Old role.\nPLAYER BOUNDARY: Old boundary.');
+        const oldCache = JSON.stringify(metadata[GENERATION_CONTEXT_KEY]);
+        const reopened = generationHarness([...input(), { is_user: false, mes: 'Discarded: Mira burns the letter.' }], h.state(), metadata);
+        for (const type of ['regenerate', 'swipe']) {
+            await reopened.emit('GENERATION_STARTED', type);
+            const selection = reopened.prepare(type);
+            assert.equal(selection.reused, true);
+            assert.equal(selection.payload, original);
+            assert.equal(buildPromptPayload(reopened.state(), reopened.scope.guideSelectionOptions(reopened.state(), reopened.context)), original);
+            assert.doesNotMatch(selection.payload, /burns the letter/);
+        }
+        reopened.context.chat.pop();
+        await reopened.emit('MESSAGE_DELETED');
+        assert.equal(reopened.prepare('normal').payload, original);
+        assert.equal(reopened.calls.length, 0, 'policy refresh must not request a new plan');
+        assert.equal(JSON.stringify(reopened.context.chatMetadata[GENERATION_CONTEXT_KEY]), oldCache, 'stored facts and input keys remain unchanged');
+    }
+});
 
 test('completed plans enter retry history before a newer ahead plan overwrites them', async () => {
     const h = generationHarness(input());
