@@ -80,7 +80,7 @@ test('knowledge routes survive storage without promoting beliefs or leaking priv
     assert.match(output, /Mira: suspects the report is false/);
     assert.match(output, /Known to: Mira; others need an in-world learning route/);
     assert.match(output, /Her own comparison of two ledgers/);
-    assert.match(output, /belief, not objective truth/);
+    assert.match(output, /(?:belief, not|suspicion is not) objective truth/);
     assert.doesNotMatch(output, /Merchants/);
     assert.deepEqual(normalizeCausalContext({ conditions }).conditions[0].knownBy, []);
 });

@@ -63,6 +63,22 @@ function modern(incrementalPass = false, overrides = {}) {
         ...overrides,
     };
 }
+
+test('crowd knowledge preserves every witnessed name across validation, apply and reload', () => {
+    for (const routine of [false, true]) {
+        const value = modern(routine);
+        const names = Array.from({ length: 24 }, (_, index) => `Witness ${index + 1}`);
+        value.context.conditions[0].known_by = names;
+        assert.equal(validateAnalysisResult(value).valid, true);
+        const state = applyAnalysis(defaultState(), value, []);
+        const restored = loadState(saveState({}, state));
+        assert.deepEqual(restored.causalContext.conditions[0].knownBy, names);
+        value.context.conditions[0].known_by.push('Beyond bound');
+        assert.equal(validateAnalysisResult(value).valid, false);
+        value.context.conditions[0].known_by = [''];
+        assert.equal(validateAnalysisResult(value).valid, false);
+    }
+});
 const messages = [{ is_user: false, name: 'Narrator', mes: 'The reserve totals do not match the latest shipments.' }, { is_user: true, name: 'Ari', mes: 'I ask Mira what she thinks.' }];
 
 test('both current contracts require preparation in native schemas and apply it separately from facts', () => {
@@ -311,6 +327,27 @@ test('valid full and incremental causal results pass', () => {
     assert.deepEqual(validateAnalysisResult(incremental()), { valid: true, errors: [] });
 });
 
+test('explicit field invalidation clears only named actor memory and preserves replacements', () => {
+    for (const make of [full, incremental]) {
+        const state = defaultState();
+        state.entities = [{ name: 'Mira', constraints: 'An unsupported restriction.', knowledge: 'An unsupported attribution.', location: 'At the workshop', motivation: 'Finish the commission' }];
+        const result = make();
+        result.actor_updates = [{ op: 'upsert', name: 'Mira', state: '', location: '', perspective: '', motivation: '', knowledge: '', constraints: '', agenda: '', window: '', clear_fields: ['constraints', 'knowledge'] }];
+        assert.equal(validateAnalysisResult(result).valid, true);
+        const actor = applyAnalysis(state, result, messages).entities.find(item => item.name === 'Mira');
+        assert.equal(actor.constraints, '');
+        assert.equal(actor.knowledge, '');
+        assert.equal(actor.location, 'At the workshop');
+        assert.equal(actor.motivation, 'Finish the commission');
+        assert.ok(!Object.hasOwn(actor, 'clear_fields'));
+        result.actor_updates[0].constraints = 'A newly evidenced commitment.';
+        assert.equal(applyAnalysis(state, result, messages).entities.find(item => item.name === 'Mira').constraints, 'A newly evidenced commitment.');
+        result.actor_updates[0].clear_fields = ['name'];
+        assert.equal(validateAnalysisResult(result).valid, false);
+        assert.equal(state.entities[0].knowledge, 'An unsupported attribution.');
+    }
+});
+
 test('new contracts require bounded knowledge and an audit in the same result', () => {
     for (const incrementalPass of [false, true]) {
         const value = modern(incrementalPass);
@@ -473,7 +510,7 @@ test('offscreen validation enforces complete distinct bounded records', () => {
 
 test('routine instructions preserve creativity and factual boundaries without the full review essay', () => {
     assert.match(SYSTEM, /creative playable middle AND future/);
-    for (const rule of [/Creative NPC\/world actions, places, encounters/, /alternative middles\/futures belong in prepared/, /Keep current conditions and actor updates factual/, /Retain wider possibilities through long quiet scenes/, /Latest user pacing wins/, /no critic or model repair/]) assert.match(INCREMENTAL_SYSTEM, rule);
+    for (const rule of [/people, motives, places and processes/, /concrete middles and alternative futures/, /observations in factual fields and conditional inventions in prepared/, /Keep unused possibilities/, /Latest user pacing wins/, /no critic or model repair/]) assert.match(INCREMENTAL_SYSTEM, rule);
 });
 
 test('analysis prompt carries broad state but asks for only a relevant slice', () => {

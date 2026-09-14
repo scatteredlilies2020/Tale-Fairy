@@ -164,7 +164,10 @@ test('provider-bound request receives only clean relevant causal conditions', ()
 
     assert.equal(ensureGuidanceInChat(chat, prompt, { role: 'user', depth: 1, inlineLatestUser: true }), true);
     assert.equal(chatHasCurrentGuidance(chat, prompt), true);
-    assert.equal(chat.length, 1);
+    assert.equal(chat.length, 2);
+    assert.equal(chat[0].role, 'system');
+    assert.doesNotMatch(chat[0].content, /Mira|Grain reserves/);
+    chat.shift(); // Dynamic evidence remains in the user-role slice.
     assert.match(chat[0].content, /Mira: suspects the report is false/);
     assert.match(chat[0].content, /Grain reserves: are falling faster than reported/);
     assert.doesNotMatch(chat[0].content, /Merchants|confidence|relevance|Private evidence/i);

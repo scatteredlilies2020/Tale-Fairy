@@ -1,15 +1,17 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.14.5';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.14.6';
 import { leadingGeneratedStatusSummary, sceneStatus } from './transcript-status.js?v=0.14.5';
 import { plotExcerpt } from './generation-context.js?v=0.14.5';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.13.9';
 import { relevantExcerpt } from './evidence-selection.js?v=0.13.9';
 import { formatDriftRequest, mergeOffscreenWorld, OFFSCREEN_KINDS } from './offscreen-world.js?v=0.13.9';
-import { CAUSAL_KINDS } from './causal-context.js?v=0.14.5';
+import { CAUSAL_KINDS, normalizeCausalContext } from './causal-context.js?v=0.14.6';
 import { mergeSituationUpdates, retireManifestedSituations } from './situations.js?v=0.13.9';
-import { PLANNER_AGENCY_RULE, ACTOR_AGENCY_RULE, AGENCY_AUDIT_RULE } from './game-master.js?v=0.14.0';
+import { PLANNER_AGENCY_RULE, ACTOR_AGENCY_RULE, AGENCY_AUDIT_RULE } from './game-master.js?v=0.14.6';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { compactPreparedForPrompt, PREPARED_SCHEMA, PREPARED_RULE, validatePrepared, mergePreparedWorld } from './prepared-world.js?v=0.14.5';
+import { compactPreparedForPrompt, PREPARED_SCHEMA, PREPARED_RULE, validatePrepared, mergePreparedWorld } from './prepared-world.js?v=0.14.6';
+import { normalizeWorldPlan, validateWorldPlan } from './world-planner.js?v=0.14.6';
+export { WORLD_PLANNER_SCHEMA, WORLD_PLANNER_SYSTEM } from './world-planner.js?v=0.14.6';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
@@ -49,6 +51,7 @@ export function normalizeAnalysisActorUpdates(result) {
             if (value == null) normalized[key] = '';
             else if (Array.isArray(value) && value.every(item => typeof item === 'string')) normalized[key] = value.join('\n');
         }
+        if (actor.clear_fields === undefined) normalized.clear_fields = [];
         return normalized;
     }) };
 }
@@ -65,6 +68,9 @@ function validateActorUpdates(actors, errors) {
         }
         if (!['upsert', 'retire'].includes(actor.op)) errors.push(`actor_updates[${index}].op is invalid`);
         if (typeof actor.name !== 'string' || !actor.name.trim()) errors.push(`actor_updates[${index}].name must be non-empty`);
+        if (actor.clear_fields !== undefined && (!Array.isArray(actor.clear_fields)
+            || actor.clear_fields.length > ACTOR_DESCRIPTION_FIELDS.length
+            || actor.clear_fields.some(key => !ACTOR_DESCRIPTION_FIELDS.includes(key)))) errors.push(`actor_updates[${index}].clear_fields must name only actor description fields`);
     }
 }
 const ROUTE_LANES = ['immediate', 'character', 'relationship-institution', 'lore-world', 'original', 'long-range', 'extra'];
@@ -81,7 +87,7 @@ const CAUSAL_CONDITION_SCHEMA = { type: 'object', additionalProperties: false, p
     subject: text(120), condition: text(280),
     disclosure: { type: 'string', enum: ['open', 'limited', 'private'] },
     confidence: { type: 'string', enum: ['established', 'strong', 'tentative'] },
-    relevance: text(180), known_by: strings(6, 80), learned_from: text(180),
+    relevance: text(180), known_by: strings(24, 80), learned_from: text(180),
 }, required: ['id', 'kind', 'subject', 'condition', 'disclosure', 'confidence', 'relevance', 'known_by', 'learned_from'] };
 const SITUATION_SCHEMA = { type: 'object', additionalProperties: false, properties: {
     op: { type: 'string', enum: ['upsert', 'retire'] }, id: text(80),
@@ -104,7 +110,9 @@ const RESPONSE_AUDIT_SCHEMA = { type: 'object', additionalProperties: false, pro
     applicable: { type: 'boolean' },
     movement_fit: { type: 'string', enum: ['not-applicable', 'missed', 'partial', 'clear'] },
     repetition: { type: 'string', enum: ['none', 'possible', 'clear'] },
-    unjustified_escalation: { type: 'boolean' }, player_control: { type: 'boolean' }, continuity_drift: { type: 'boolean' },
+    unjustified_escalation: { type: 'boolean' },
+    player_control: { type: 'boolean', description: 'Failure flag: true only when the assistant overrode the player by inventing their choices, speech, consent, feelings or contested outcomes; false when player agency was preserved.' },
+    continuity_drift: { type: 'boolean' },
     patterns: strings(5, 140), summary: text(400), state_change: text(240),
 }, required: ['applicable', 'movement_fit', 'repetition', 'unjustified_escalation', 'player_control', 'continuity_drift', 'patterns', 'summary', 'state_change'] };
 
@@ -113,6 +121,7 @@ const RESPONSE_AUDIT_SCHEMA = { type: 'object', additionalProperties: false, pro
 // a verbose audit cannot discard an otherwise usable world rebuild. Never fill
 // missing fields, coerce types, drop array items, or repair factual/causal data.
 export function normalizeAnalysisDiagnostics(result) {
+    if (result?.contract_version === 14) return normalizeWorldPlan(result);
     const audit = result?.response_audit;
     if (!audit || typeof audit !== 'object' || Array.isArray(audit)) return result;
     const bounded = (value, limit) => {
@@ -206,7 +215,7 @@ export const ANALYSIS_SCHEMA_VALUE = {
             signatures: strings(6, 220), forces: strings(4, 180), confidence: { type: 'string', enum: ['low', 'moderate', 'high'] },
         }, required: ['identity', 'baseline', 'variant_rules', 'rp_changes', 'signatures', 'forces', 'confidence'] },
         thread_updates: { type: 'array', maxItems: 6, items: { type: 'object', additionalProperties: false, properties: { op: { type: 'string', enum: ['upsert', 'retire'] }, id: text(100), thread: text(180), state: text(240), status: { type: 'string', enum: ['active', 'dormant', 'due', 'blocked'] }, basis: text(160), cmRecordId: text(160), cmRevision: { type: 'integer', minimum: 0 }, canonicalStatus: text(40), directorialReadiness: text(40) }, required: ['op', 'id', 'thread', 'state', 'status', 'basis'] } },
-        actor_updates: { type: 'array', maxItems: 6, items: { type: 'object', additionalProperties: false, properties: { op: { type: 'string', enum: ['upsert', 'retire'] }, name: text(100), state: text(220), location: text(140), perspective: text(180), motivation: text(180), knowledge: text(180), constraints: text(160), agenda: text(180), window: text(100) }, required: ['op', 'name', 'state', 'location', 'perspective', 'motivation', 'knowledge', 'constraints', 'agenda', 'window'] } },
+        actor_updates: { type: 'array', maxItems: 6, items: { type: 'object', additionalProperties: false, properties: { op: { type: 'string', enum: ['upsert', 'retire'] }, name: text(100), state: text(220), location: text(140), perspective: text(180), motivation: text(180), knowledge: text(180), constraints: text(160), agenda: text(180), window: text(100), clear_fields: { type: 'array', maxItems: 8, items: { type: 'string', enum: ACTOR_DESCRIPTION_FIELDS } } }, required: ['op', 'name', 'state', 'location', 'perspective', 'motivation', 'knowledge', 'constraints', 'agenda', 'window'] } },
         canon_updates: { type: 'array', maxItems: 4, items: { type: 'object', additionalProperties: false, properties: { op: { type: 'string', enum: ['add', 'remove'] }, fact: text(500) }, required: ['op', 'fact'] } },
         ledger: text(1800),
         note_resolution: { anyOf: [{ type: 'object', additionalProperties: false, properties: { kind: { type: 'string', enum: ['suggest', 'correct', 'establish', 'forbid'] } }, required: ['kind'] }, { type: 'null' }] },
@@ -226,6 +235,7 @@ export const INCREMENTAL_ANALYSIS_SCHEMA_VALUE = {
     type: 'object', additionalProperties: false,
     properties: {
         contract_version: { type: 'integer', const: 13 },
+        audit: text(800),
         current: { type: 'object', additionalProperties: false, properties: {
             frame: { type: 'string', enum: ['grounded', 'heightened', 'surreal'] }, frame_basis: text(160),
             status: text(180), immediate_action: text(140), activity: text(180), situation: text(220),
@@ -261,12 +271,12 @@ export const INCREMENTAL_ANALYSIS_SCHEMA_VALUE = {
         }, required: ['status', 'items', 'audit'] },
         actor_updates: { type: 'array', maxItems: 4, items: { type: 'object', additionalProperties: false, properties: {
             op: { type: 'string', enum: ['upsert', 'retire'] }, name: text(100), state: text(180), location: text(120),
+            clear_fields: { type: 'array', maxItems: 8, items: { type: 'string', enum: ACTOR_DESCRIPTION_FIELDS } },
             perspective: text(150), motivation: text(160), knowledge: text(150), constraints: text(140), agenda: text(160), window: text(90),
         }, required: ['op', 'name', 'state', 'location', 'perspective', 'motivation', 'knowledge', 'constraints', 'agenda', 'window'] } },
         response_audit: RESPONSE_AUDIT_SCHEMA,
         ledger: text(1200),
         note_resolution: { anyOf: [{ type: 'object', additionalProperties: false, properties: { kind: { type: 'string', enum: ['suggest', 'correct', 'establish', 'forbid'] } }, required: ['kind'] }, { type: 'null' }] },
-        audit: text(320),
     },
     required: ['prepared', 'contract_version', 'current', 'context', 'response_audit', 'thread_updates', 'hidden_motives', 'actor_updates', 'ledger', 'note_resolution', 'audit'],
 };
@@ -492,8 +502,8 @@ function validateCausalContext(value, errors, label = 'context', requireKnowledg
         if (!['open', 'limited', 'private'].includes(condition?.disclosure)) errors.push(`${path}.disclosure is invalid`);
         if (!['established', 'strong', 'tentative'].includes(condition?.confidence)) errors.push(`${path}.confidence is invalid`);
         if (requireKnowledge) {
-            if (!Array.isArray(condition?.known_by) || condition.known_by.length > 6
-                || condition.known_by.some(name => typeof name !== 'string' || !name.trim() || name.length > 80)) errors.push(`${path}.known_by must contain at most 6 non-empty names`);
+            if (!Array.isArray(condition?.known_by) || condition.known_by.length > 24
+                || condition.known_by.some(name => typeof name !== 'string' || !name.trim() || name.length > 80)) errors.push(`${path}.known_by must contain at most 24 non-empty names`);
             if (typeof condition?.learned_from !== 'string' || condition.learned_from.length > 180) errors.push(`${path}.learned_from must be a string of at most 180 characters`);
         }
         if (condition?.confidence !== 'tentative') providerEligible += 1;
@@ -789,6 +799,7 @@ function validateCompactAnalysisResult(result) {
 }
 
 export function validateAnalysisResult(result) {
+    if (result?.contract_version === 14) return validateWorldPlan(result);
     // Old detached contracts remain readable; new preparation is validated.
     if (result?.prepared !== undefined) {
         const errors = validatePrepared(result.prepared);
@@ -1270,8 +1281,9 @@ function compactPromptStateForBudget(current = {}) {
         mode: current.mode, turnCount: current.turnCount,
         preparedWorld: current.preparedWorld, pacing: current.pacing,
         scene: current.scene, sceneProfile: current.sceneProfile,
-        causalContext: current.causalContext,
-        responseAudit: current.responseAudit,
+        // Both are replaced on every pass. Repeating yesterday's selected
+        // facts and verdict beside their source amplifies interpretation as
+        // apparent evidence; persistent memory and patterns remain below.
         responsePatternMemory: (current.responsePatternMemory || []).slice(-6),
         loreModel: current.loreModel,
         continuityThreads: (current.continuityThreads || []).slice(0, 5),
@@ -1360,16 +1372,23 @@ function stripStructuredEvidence(value) {
     return cleaned.replace(/<[A-Za-z_][\w:.-]*(?:\s[^<>]*?)?\s*\/>/gu, ' ');
 }
 
-function cleanMessageContent(value, { preserveLeadingStatus = false, preserveParagraphs = false } = {}) {
+function cleanMessageContent(value, { preserveLeadingStatus = false, preserveParagraphs = true } = {}) {
     const leading = leadingGeneratedStatusSummary(value);
     const source = preserveLeadingStatus && leading.status
         ? `${sceneStatus(value)}\n\n${leading.body}`
         : leading.body;
-    return stripStructuredEvidence(source)
+    // Rendered story tables/cards are evidence, not disposable markup. Keep
+    // their visible text while excluding generated panels and hidden guidance.
+    // stripStructuredEvidence remains stricter for detecting user directives:
+    // quoted/embedded text must not acquire OOC authority.
+    const visible = source
+        .replace(/<!--[\s\S]*?-->/gu, ' ')
+        .replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1\s*>/giu, ' ')
         .replace(/<think(?:ing)?>[\s\S]*?<\/think(?:ing)?>/giu, ' ')
         .replace(/<stat>[\s\S]*?<\/stat>/giu, ' ')
         .replace(/<background_updates>[\s\S]*?<\/background_updates>/giu, ' ')
-        .replace(/<living-world-guide>[\s\S]*?<\/living-world-guide>/giu, ' ')
+        .replace(/<(living-world-guide|tale-fairy-authority|tale-fairy-context|plot-anchor|prepared-world)\b[^>]*>[\s\S]*?<\/\1\s*>/giu, ' ');
+    return plotExcerpt(visible, Number.MAX_SAFE_INTEGER)
         .replace(preserveParagraphs ? /[^\S\n]+/g : /\s+/g, ' ')
         .trim();
 }
@@ -1544,10 +1563,14 @@ function historicalAuditClaims(state) {
         .map(match => Number(match[1]))
         .filter(Number.isInteger);
     return [
+        ...current.entities.filter(item => item.constraints).map(item => ({
+            text: `${item.name} ${item.constraints}`, subject: item.name,
+            priority: 1, anchors: [],
+        })),
         // Current preparation replaced the legacy horizon boards. Its factual
         // premises still need raw witnesses; invention needs no prior mention.
         ...current.preparedWorld.items.filter(item => item.origin !== 'invented').map(item => ({
-            text: item.premise, priority: current.preparedWorld.focus.includes(item.id) ? 0 : 2, anchors: [],
+            text: `${item.premise} ${item.hold}`, priority: current.preparedWorld.focus.includes(item.id) ? 0 : 2, anchors: [],
         })),
         ...current.causalContext.conditions.map(item => ({
             text: `${item.subject} ${item.condition}`, priority: 1, anchors: anchors(item.learnedFrom),
@@ -1583,9 +1606,10 @@ function historicalAuditClaims(state) {
 }
 
 function focusedHistoricalExcerpt(value, claimTerms) {
-    // A character window around one rare word can drop the named actor and
-    // leave only an ambiguous group count. Keep complete relevant sentences.
-    return plotExcerpt(cleanMessageContent(value, { preserveParagraphs: true }), 220, [...claimTerms].join(' '));
+    // A tiny topic window can select the right message yet remove the action
+    // or qualification needed to interpret it. Keep a normal-sized source
+    // turn intact whenever it fits; only long turns need topical selection.
+    return plotExcerpt(cleanMessageContent(value, { preserveParagraphs: true }), 700, [...claimTerms].join(' '));
 }
 
 function retrieveOlderHistoricalEvidence(messages, state, recentStart, selectedIndexes, maxItems = 4) {
@@ -1610,7 +1634,8 @@ function retrieveOlderHistoricalEvidence(messages, state, recentStart, selectedI
     for (let index = scanStart; index < recentStart; index++) {
         const message = messages[index];
         if (!message || selected.has(index)) continue;
-        const content = relevantExcerpt(cleanMessageContent(message.mes), 280, [...queryTerms.keys()].join(' '));
+        const raw = cleanMessageContent(message.mes, { preserveParagraphs: true });
+        const content = relevantExcerpt(raw, 280, [...queryTerms.keys()].join(' '));
         if (!content) continue;
         const terms = new Set(retrievalTerms(content));
         const overlap = [...terms].filter(term => queryTerms.has(term));
@@ -1624,7 +1649,7 @@ function retrieveOlderHistoricalEvidence(messages, state, recentStart, selectedI
         const intentBoost = hasIntent ? 1.75 : 0;
         const correctionBoost = hasCorrection ? 1 : 0;
         const proximity = index / Math.max(1, recentStart) * 0.35;
-        records.push({ index, role, content, terms, overlap: overlap.length, specificity, hasIntent, hasCorrection, intentBoost, correctionBoost, proximity });
+        records.push({ index, role, content, raw, rawTerms: new Set(retrievalTerms(raw)), terms, overlap: overlap.length, specificity, hasIntent, hasCorrection, intentBoost, correctionBoost, proximity });
     }
     const topicSeeds = records
         .filter(item => item.overlap >= 1)
@@ -1660,6 +1685,8 @@ function retrieveOlderHistoricalEvidence(messages, state, recentStart, selectedI
     for (const claim of historicalAuditClaims(state)) {
         if (chosen.size >= limit) break;
         const claimTerms = new Set(retrievalTerms(claim.text));
+        const termWeight = term => Math.log((documentCount + 1) / ((documentFrequency.get(term) || 0) + 1)) + 0.25;
+        const claimWeight = [...claimTerms].reduce((sum, term) => sum + termWeight(term), 0);
         // Planner source labels are hints, never proof. When they cite a raw
         // message, inspect the following exchange so a setup at that message
         // cannot outrank its nearby completion.
@@ -1668,19 +1695,29 @@ function retrieveOlderHistoricalEvidence(messages, state, recentStart, selectedI
             : records;
         const match = anchoredRecords
             .map(item => {
-                const overlap = [...item.terms].filter(term => claimTerms.has(term));
+                const subjectTerms = retrievalTerms(claim.subject);
+                if (subjectTerms.length && !subjectTerms.some(term => item.rawTerms.has(term))) return null;
+                const overlap = [...claimTerms].filter(term => item.rawTerms.has(term));
                 if (overlap.length < (claim.anchors.length ? 1 : 2)) return null;
-                const specificity = overlap.reduce((sum, term) => sum + Math.log((documentCount + 1) / ((documentFrequency.get(term) || 0) + 1)) + 0.25, 0);
+                const specificity = overlap.reduce((sum, term) => sum + termWeight(term), 0);
+                // A few common words are not a witness to this subject. Prefer
+                // no historical match over presenting unrelated prose as proof.
+                if (!claim.anchors.length && specificity / Math.max(1, claimWeight) < 0.3) return null;
                 const afterAnchor = claim.anchors.some(anchor => item.index > anchor) ? 1 : 0;
+                // Retrieve observations, not hand-coded categories of desired
+                // answers. Interpretation and correction belong to the GM.
                 return { item, score: specificity + (item.role === 'assistant' ? 1.5 : 0) + afterAnchor + item.proximity };
             })
             .filter(Boolean)
-            .sort((a, b) => b.score - a.score || b.item.index - a.item.index)[0]?.item;
+            .sort((a, b) => b.score - a.score || b.item.index - a.item.index)[0];
         if (match) add({
-            ...match,
-            content: focusedHistoricalExcerpt(messages[match.index]?.mes, claimTerms),
+            ...match.item,
+            content: focusedHistoricalExcerpt(messages[match.item.index]?.mes, claimTerms),
             purpose: 'audit-current-claim',
-            claim: compactText(claim.text, 160),
+            // Do not turn a truncated qualification into a different claim.
+            // Extremely large legacy claims can guide retrieval without being
+            // misrepresented as a short, complete statement.
+            ...(claim.text.length <= 1000 ? { claim: claim.text.trim() } : {}),
         });
     }
     // Preserve both sides of an old exchange when space remains. User turns
@@ -1694,7 +1731,7 @@ function retrieveOlderHistoricalEvidence(messages, state, recentStart, selectedI
         add(item);
     }
     return [...chosen.values()]
-        .map(({ score: _score, terms: _terms, overlap: _overlap, specificity: _specificity, hasIntent: _hasIntent, hasCorrection: _hasCorrection, intentBoost: _intentBoost, correctionBoost: _correctionBoost, proximity: _proximity, ...item }) => item);
+        .map(({ raw: _raw, rawTerms: _rawTerms, score: _score, terms: _terms, overlap: _overlap, specificity: _specificity, hasIntent: _hasIntent, hasCorrection: _hasCorrection, intentBoost: _intentBoost, correctionBoost: _correctionBoost, proximity: _proximity, ...item }) => item);
 }
 
 const DURABLE_HOOK_TYPES = Object.freeze([
@@ -1898,6 +1935,65 @@ function compactDormantHooks(items, limit, tokenLimit) {
 
 const PROMPT_EXTREME_CANON_INSTRUCTION = 'Explicit user/OOC facts remain authoritative even when extreme or unprecedented; averages are not ceilings. Apply relevant abilities and limits causally; never make traits decorative or manufacture equal odds. Unspecified details remain creative space. Keep all durable user-established constraints until corrected, but remove ordinary plot history and planner inference from canon constraints.';
 
+// A separate model-facing path, not a smaller budget around the old reporting
+// contract. Reuse evidence extraction, but never copy its policy/audit boards.
+export function buildWorldPlannerPrompt(messages, state, note = '', bootstrap = {}, options = {}) {
+    const s = normalizeState(state);
+    const budget = Math.max(800, Number(options.effectivePromptTokens) || Number(options.maxPromptTokens) || 6000);
+    const selected = selectMessages(messages, Math.min(Number(options.recentContextTokens) || 3000, budget * .6),
+        Math.max(600, Number(options.messageTokenLimit) || 900), Math.min(3000, budget * .6), Boolean(options.bootstrapScan));
+    const source = selected.map(({ index, kind, message, content }) => ({ index, kind,
+        role: message?.is_user ? 'user' : 'assistant', name: compactText(message?.name, 100),
+        content: typeof content === 'string' ? content : compactMessageContent(message?.mes, 900),
+    }));
+    const first = selected.filter(item => item.kind === 'recent')[0]?.index ?? messages.length;
+    const witnesses = retrieveOlderHistoricalEvidence(messages, s, first, new Set(selected.map(item => item.index)), 2);
+    const board = s.preparedWorld;
+    const payload = {
+        task: options.bootstrapScan ? 'initialize_world_notebook' : options.incremental === false ? 'review_wider_developments' : 'update_world_notebook',
+        rp_reference: compactOptionalObject(bootstrap, 1800),
+        player_controlled: playerCharacterName(messages) || 'The user controls their own character or side of the simulation.',
+        constraints: { notes: s.userNotes, pacing: s.pacing.mode, canon: s.canonConstraints },
+        ...(note ? { user_instruction: compactText(note, 1600) } : {}),
+        current: {
+            memory: s.plannerMemory || s.contextLedger,
+            preparedWorld: s.plannerContract === 14 ? { approach: board.approach, overview: board.overview, focus: board.focus, items: board.items.map(item => ({ ...item })) }
+                : { approach: '', overview: '', focus: [], items: [] },
+            // One-time migration evidence, not ongoing mandatory maintenance.
+            ...(s.plannerContract !== 14 ? { migration: 'The supplied memory came from a different planner and may be wrong. Reconstruct facts from actual observations. Its old next-reply proposals are archived separately, not tasks for you to perpetuate. Create a fresh lasting approach and directions from the RP itself.' } : {}),
+        },
+        summary_sources: compactSummarySources(options.summarySources || [], Math.min(1200, budget * .2), { query: messages.slice(-4).map(m => m.mes).join('\n') })
+            .map(({ label, kind, text }) => ({ label, kind, text })),
+        historical_evidence: witnesses.map(item => ({ index: item.index, role: item.role, content: item.content,
+            ...(item.claim ? { claim_under_review: item.claim } : {}) })),
+        messages: source,
+    };
+    const size = () => estimateTokenCount(JSON.stringify(payload));
+    // Shed optional duplication before source or the active notebook. The full
+    // state remains stored; a prompt omission never deletes it.
+    while (size() > budget && payload.summary_sources.length) payload.summary_sources.pop();
+    if (size() > budget && s.plannerContract === 14) {
+        payload.current.preparedWorld.items = board.items.map(item => board.focus.includes(item.id) ? { ...item }
+            : { id: item.id, status: item.status, premise: item.premise, future: item.future, omitted_details_remain_stored: true });
+    }
+    // Preserve the newest user/assistant pair and earlier whole witnesses.
+    while (size() > budget && payload.messages.length > 2) payload.messages.shift();
+    if (size() > budget && s.plannerContract === 14) {
+        payload.current.preparedWorld.items = payload.current.preparedWorld.items.map(item => board.focus.includes(item.id) ? item
+            : { id: item.id, status: item.status, omitted_details_remain_stored: true });
+    }
+    if (size() > budget) payload.rp_reference = compactOptionalObject(bootstrap, 300);
+    while (size() > budget && payload.historical_evidence.length) payload.historical_evidence.pop();
+    if (size() > budget && s.plannerContract === 14) {
+        payload.current.preparedWorld.items = board.items.map(item => ({ id: item.id, status: item.status,
+            premise: item.premise, omitted_details_remain_stored: true }));
+    }
+    // Keep supplied memory intact as reference, without asking to rewrite it.
+    // If mandatory constraints + memory + newest evidence cannot fit, the
+    // outer budget guard fails safely rather than silently erasing continuity.
+    return JSON.stringify(payload);
+}
+
 export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, options = {}) {
     const configuredBudget = Math.max(3000, Math.min(30000, Number(options.maxPromptTokens) || DEFAULT_PROMPT_TOKEN_BUDGET));
     const budget = Math.max(800, Math.min(configuredBudget, Number(options.effectivePromptTokens) || configuredBudget));
@@ -1970,15 +2066,15 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
             latest_user_text: latestUserText || undefined,
             authoritative_assistant_excerpt: authoritativeAssistantExcerpt || undefined,
             authoritative_relations: authoritativeRelations.length ? [...new Set(authoritativeRelations)] : undefined,
-            attribution_rule: 'Resolve named people against their group roles before counting them; do not add a named member to a group that already includes them. Track each relative by owner plus relation and any explicitly named identity, never by relation category alone. Different people can have different fathers or share one. Attribute each proposal to its actual source turn; a newer unrelated proposal does not reassign older ones. Reconcile only specific evidence-backed corrections, never globally rename relatives or speakers.',
-            rule: 'messages is chronological and the highest index is newest. Read latest_user_text and authoritative_assistant_excerpt as one authoritative exchange. Preserve exactly who spoke, who acted, and whose person, relative, object, or idea is being discussed; never invert speaker, actor, possessor, target, or pronoun referent. The message at newest_assistant_index is the only reply response_audit may evaluate and is the authoritative completed scene before any later user message. Its status header is authoritative when present. Do not mistake the newest user message for an unanswered prompt when a higher-index assistant reply already answered it.',
+            attribution_rule: 'Resolve identities, group membership, relationships and quantities from specific source observations, preserving both shared identities and distinct people. Track relationships by their participants, not by relation category alone. Attribute each action and proposal to its source. Correct only evidence-backed errors, never globally rename relatives or speakers.',
+            rule: 'messages is chronological and the highest index is newest. Audit only newest_assistant_index. Preserve speakers, actors, owners and sources exactly. Status headers are fallible summaries: direct, specific story observations outrank conflicting summary labels, even when the label is repeated later. New events can change an earlier state; repetition alone cannot. Explicit user/OOC corrections take priority. Copy explicit current time/place unless contradicted by stronger evidence; infer neither a time skip nor a new location from activity. A higher-index assistant reply may already have answered the newest user text.',
         },
         planner_clock: {
             previous_turn: currentPlannerTurn,
             output_turn: currentPlannerTurn + 1,
             rule: 'Use output_turn for last_seen_turn only when this pass observes or settles that subject. Otherwise preserve its previous last_seen_turn. settled_through is the newest turn through which the board was actually settled, not a timer.',
         },
-        retained_state_rule: 'current is retained planner state from before this analysis. It may be stale and must never override the transcript head. Replace obsolete time, location, activity, unresolved actions, and completed beats with what the newest assistant reply actually established. Compare historical claim_under_review with its source content; correct contradicted claims throughout facts and preparation.',
+        retained_state_rule: 'current is a fallible draft from before this analysis. Compare retained claims with direct source observations, not with another summary as proof. New events and explicit corrections update earlier facts; repeated unsupported labels do not. Correct contradictions throughout facts and preparation, including old entries still being retained. Compare historical claim_under_review with its source content. Remove obsolete prerequisites and completed beats.',
         current: retainedCurrent,
         messages: selected.map(({ index, kind, message, content }) => ({
             index, kind, role: message?.is_user ? 'user' : 'assistant', name: compactText(message?.name, 100),
@@ -1996,7 +2092,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     if (historical.length) {
         payload.historical_evidence = historical.map(item => ({ index: item.index, role: item.role, name: compactText(messages[item.index]?.name, 100),
             ...(item.claim ? { claim_under_review: item.claim } : {}), content: item.content }));
-        payload.historical_evidence_rule = 'Earlier indexed observations, not simultaneous current states. claim_under_review is fallible retained planner text: compare it with the source content and correct contradictions throughout facts and preparation. Newer explicit corrections and the transcript head win. A past refusal, departure, promise, or return is not permission to invent a new action.';
+        payload.historical_evidence_rule = 'Earlier indexed observations, not simultaneous current states. claim_under_review is fallible retained planner text: compare it with the source content and correct contradictions throughout facts and preparation. New events and explicit corrections can change earlier facts; later summary repetition cannot override direct evidence. A past refusal, departure, promise, or return is not permission to invent a new action.';
     }
     const offscreenDebt = formatDriftRequest(retainedState.offscreenWorld, {
         currentTurn: currentPlannerTurn,
@@ -2018,7 +2114,8 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     const canonClaims = explicitCanonClaims(messages);
     if (canonClaims.length) payload.explicit_ooc_canon = canonClaims;
     payload.provenance_order = [
-        'recent explicit chat or OOC instructions',
+        'explicit user or OOC instructions and corrections',
+        'direct specific story observations, updated by actual later events',
         'reviewed Continuity corrections',
         'current Continuity records',
         'other summaries and World Info',
@@ -2057,8 +2154,8 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
             if (key.endsWith('_rule') && key !== 'retained_state_rule') delete payload[key];
         }
         for (const key of ['authority', 'simulation', 'context_policy', 'offscreen_debt']) delete payload[key];
-        payload.transcript_head.rule = 'Messages are chronological. Audit only newest_assistant_index. The latest user/OOC facts and the newest assistant status override older state. Preserve speakers, actors, owners and sources exactly. A named group member is not an additional person. Copy explicit current time/place faithfully into facts and preparation; infer neither a time skip nor a new location from the activity.';
-        payload.transcript_head.attribution_rule = 'Relatives are owner + relation + explicit identity, not a global category. Preserve shared or distinct relatives and each proposal source unless specifically corrected.';
+        payload.transcript_head.rule = 'Messages are chronological. Audit only newest_assistant_index. Explicit user/OOC corrections win. Status headers are fallible summaries: direct, specific story observations outrank conflicting summary labels, even when repeated later. New events can change an earlier state; repetition alone cannot. Preserve speakers, actors, owners and sources. Copy explicit current time/place unless contradicted by stronger evidence; infer no time skip or relocation from activity.';
+        payload.transcript_head.attribution_rule = 'Resolve identities, group membership, relationships and quantities from specific source observations. Preserve both shared identities and distinct people, and each action or proposal source.';
         if (payload.current.offscreenWorld) {
             delete payload.current.offscreenWorld.audit;
             payload.current.offscreenWorld.subjects = payload.current.offscreenWorld.subjects.slice(0, options.incremental ? 3 : 6);
@@ -2104,11 +2201,61 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         delete payload.current[key];
         serialized = JSON.stringify(payload);
     }
+    for (const key of ['fast_rules', 'creative_preparation', 'provenance_order']) {
+        if (estimateTokenCount(serialized) <= budget) break;
+        delete payload[key];
+        serialized = JSON.stringify(payload);
+    }
+    // Evidence comes before a verbose interpretation of it. Preserve complete
+    // premise/hold boundaries instead of clipping their clauses to make room.
+    // This working index is a delta target, not a replacement for stored data.
+    if (estimateTokenCount(serialized) > budget && payload.current.preparedWorld) {
+        const board = normalizeState(state).preparedWorld;
+        payload.current.preparedWorld = {
+            overview: board.overview,
+            focus: board.focus,
+            items: board.items.map(({ id, status, origin, premise, hold }) => ({ id, status, origin, premise, hold })),
+        };
+        serialized = JSON.stringify(payload);
+    }
+    // The old status already has an authoritative successor in transcript_head.
+    // Per-actor interpretations remain fallible and are sufficient delta targets.
+    if (estimateTokenCount(serialized) > budget && payload.current.entities) {
+        payload.current.entities = payload.current.entities.map(({ name, state, location, constraints }) => ({ name, state, location, constraints }));
+        delete payload.current.scene;
+        delete payload.current.storyFrame;
+        serialized = JSON.stringify(payload);
+    }
     while (estimateTokenCount(serialized) > budget && payload.messages.length > 1) {
         const removableIndex = payload.messages.findIndex(message => message.index !== latestMessageIndex && message.index !== newestAssistantIndex && message.index !== newestUserIndex);
         if (removableIndex < 0) break;
         payload.messages.splice(removableIndex, 1);
         serialized = JSON.stringify(payload);
+    }
+    // Selection happened before budget compaction. Re-run witness retrieval
+    // over newly omitted turns; otherwise an important recent contradiction is
+    // excluded from BOTH messages and history simply because it was selected
+    // initially. Never treat the retained notebook as its own evidence.
+    let witnessedStart = recentStart;
+    while ((payload.messages[0]?.index ?? messages.length) > witnessedStart) {
+        const retainedStart = payload.messages[0]?.index ?? messages.length;
+        const key = `compacted:${retainedStart}:${payload.messages.map(item => item.index).join(',')}:${options.incremental ? 2 : 4}`;
+        const witnesses = options.historyCache?.get(key) || retrieveOlderHistoricalEvidence(
+            messages, state, retainedStart, new Set(payload.messages.map(item => item.index)), options.incremental ? 2 : 4);
+        options.historyCache?.set(key, witnesses);
+        payload.historical_evidence = witnesses.map(item => ({ index: item.index, role: item.role,
+            name: compactText(messages[item.index]?.name, 100),
+            ...(item.claim ? { claim_under_review: item.claim } : {}), content: item.content }));
+        serialized = JSON.stringify(payload);
+        witnessedStart = retainedStart;
+        // Pay for retrieved corrections with older ordinary excerpts before
+        // discarding those corrections again in the final fit.
+        while (estimateTokenCount(serialized) > budget && payload.messages.length > 1) {
+            const removable = payload.messages.findIndex(message => message.index !== latestMessageIndex && message.index !== newestAssistantIndex && message.index !== newestUserIndex);
+            if (removable < 0) break;
+            payload.messages.splice(removable, 1);
+            serialized = JSON.stringify(payload);
+        }
     }
     if (estimateTokenCount(serialized) > budget) {
         payload.current.contextLedger = truncateToTokenBudget(payload.current.contextLedger || '', 120);
@@ -2159,7 +2306,12 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         message.content = compactMessageContent(message.content, limit);
         serialized = JSON.stringify(payload);
     }
-    return serialized;
+    // End with observations, not yesterday's interpretation: the draft supplies
+    // update targets, while chronological source evidence gets the final word.
+    // Keep the public payload keys stable for recovery and source proofs.
+    const { current, messages: observations, historical_evidence, ...policy } = payload;
+    return JSON.stringify({ ...policy, current,
+        ...(historical_evidence ? { historical_evidence } : {}), messages: observations });
 }
 function mergePlanHorizons(previous, proposed) {
     if (!previous?.items?.length || proposed.items.length < 6) return proposed;
@@ -2211,8 +2363,9 @@ function mergeActorUpdate(existing, update) {
     // An actual change is expressed positively (e.g. "returned to the shop",
     // "no longer committed to the patrol"), not by silently erasing memory.
     for (const key of ['state', 'location', 'perspective', 'motivation', 'knowledge', 'constraints', 'agenda', 'window']) {
-        if (!String(update?.[key] ?? '').trim()) merged[key] = existing[key] || '';
+        if (!String(update?.[key] ?? '').trim()) merged[key] = update.clear_fields?.includes(key) ? '' : existing[key] || '';
     }
+    delete merged.clear_fields;
     return merged;
 }
 
@@ -2677,8 +2830,34 @@ function applyCompactAnalysis(next, value, messages) {
 export function applyAnalysis(state, result, messages) {
     const playerName = playerCharacterName(messages);
     const next = normalizeState(useSpecificPlayerName(state, playerName));
-    const value = result && typeof result === 'object' ? useSpecificPlayerName(result, playerName) : {};
-    next.preparedWorld = mergePreparedWorld(next.preparedWorld, value.prepared);
+    const value = normalizeWorldPlan(result && typeof result === 'object' ? useSpecificPlayerName(result, playerName) : {});
+    const migrating = value.contract_version === 14 && next.plannerContract !== 14;
+    if (migrating) next.legacyPreparedWorld = next.preparedWorld;
+    next.preparedWorld = mergePreparedWorld(migrating ? null : next.preparedWorld, value.prepared);
+    if (value.contract_version === 14) {
+        const checked = validateWorldPlan(value);
+        if (!checked.valid) throw new AnalysisValidationError('Invalid world notebook', checked.errors);
+        next.plannerContract = 14;
+        next.scene = { ...normalizeState().scene, status: 'World notebook updated' };
+        // This job prepares possibilities, not a second transcript summary.
+        // Preserve saved continuity without letting generated recaps overwrite
+        // it or compete with the writer's actual conversation.
+        next.causalContext = normalizeState().causalContext;
+        next.preparedWorld.overview = '';
+        // No inferred scene restrictions or legacy optional openings are fed
+        // back into the replacement writer packet.
+        next.sceneProfile = normalizeState().sceneProfile;
+        next.responseAudit = normalizeState().responseAudit;
+        next.lastInject = next.causalContext.inject;
+        next.lastReason = 'World notebook updated';
+        next.lastAnalysisFingerprint = fingerprintMessages(messages);
+        next.sourceMessageCount = messages.length;
+        next.ledgerMessageCount = messages.length;
+        next.ledgerUpdatedAt = next.lastAnalyzedAt = Date.now();
+        next.canonBootstrapPending = false;
+        next.turnCount += 1;
+        return next;
+    }
     if ([10, 11, 13].includes(value.contract_version)) return applyIncrementalAnalysis(next, value, messages);
     if ([8, 9, 12].includes(value.contract_version)) return applyBeatAnalysis(next, value, messages);
     if (value.contract_version === 2) return applyCompactAnalysis(next, value, messages);
@@ -2774,13 +2953,14 @@ situations has 0–6 optional setting-native circumstances, each {op,id,type,pre
 offscreen={subjects,elapsed,settled_through,audit} is the complete bounded deferred-debt board. Preserve unseen subjects and settled history; update last_seen_turn only when settling relevant debt. current records the exact current scene. response_audit privately evaluates the prior assistant response. horizon and hidden_motives remain private optional hypotheses. world and updates contain factual state only. Empty update arrays mean no factual change. No other keys.`;
 
 export const INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT = `Return contract_version=13 and the response shape. Target 900–1400 output tokens total. Short phrases; no deliberation or repeated explanations.
+Write audit first: briefly reconcile observations with the retained draft, identifying supported corrections and uncertainty with source indices. Apply those corrections in the actual deltas, not just the audit. An older error remains repairable on a routine pass. Blank actor fields preserve memory; clear_fields explicitly removes now-unsupported actor fields, while nonblank replacements win. This is separate from response_audit of the newest reply.
 current states the exact latest scene; copy explicit time/location. context replaces the writer's current factual slice: select 1–3 useful evidenced conditions, inject=true. known_by/learned_from require witnessed knowledge; otherwise []/"". At least one condition is established or strong. Suspicions remain attributed beliefs; tentative conditions stay private.
 prepared is a persistent delta: blank overview preserves it; omitted ids survive. Usually return zero or one changed development. Additional updates are for necessary corrections, not filling the notebook. Keep premise and middle concrete; other notes may be blank. Preserve focus ids when still fitting; retire contradicted or completed ideas explicitly. Do not rewrite an unchanged notebook. Omit offscreen entirely when unchanged. Offscreen subjects, hidden motives, actors and threads also contain changes only; empty arrays preserve records. Actor description fields use "" for unchanged/unknown, never invented filler. ledger may be "" when unchanged.
-response_audit checks only the newest assistant reply; record factual drift, player control, repetition and supported state change briefly. Distinguish real intervention boundaries from repeated questions/readiness without follow-through; do not force progress each turn. Quiet or unchanged scenes are valid. With no assistant reply use applicable=false, movement_fit=not-applicable and no flags. Diagnostics audit/basis fields may be short; do not echo facts across sections. note_resolution is null without a user note.`;
+response_audit checks only the newest assistant reply against recent evidence, not against the notebook as its own proof. Record factual drift, player control, repetition and supported state change briefly. Distinguish real intervention boundaries from repeated questions/readiness without follow-through; do not force progress each turn. Quiet or unchanged scenes are valid. With no assistant reply use applicable=false, movement_fit=not-applicable and no flags. Diagnostics audit/basis fields may be short; do not echo facts across sections. note_resolution is null without a user note.`;
 
-export const INCREMENTAL_SYSTEM = `You are Tale Fairy, a private creative GM preparing material for the roleplay writer. Return only JSON. This routine pass updates the newest exchange, not the whole story.
-Latest explicit user/OOC facts and the newest assistant status outrank retained state. Preserve speakers, owners, identities, counts and knowledge sources. A named group member is not an extra person. Unknown is acceptable; invented facts are not. Never turn proposals, suspected motives or unseen time into history.
-Keep current conditions and actor updates factual. Creative NPC/world actions, places, encounters and alternative middles/futures belong in prepared, clearly labeled established, inferred or invented premises. Retain wider possibilities through long quiet scenes; develop them when useful without churning every record. There are no genre quotas or required beats.
-NPCs may act, finish, refuse or disengage on their own motives. A past pause is not a standing constraint; respect actual commitments and reasons to wait. Never decide player dialogue, thoughts, choices or contestable outcomes; preserve intervention and viewpoint limits. Latest user pacing wins. Scene duration, development and interruption are independent. Eating, conversation or player silence alone do not block a fitting entry. Leave holds blank unless actual prerequisites or user constraints require them. No forced escalation or player participation. Preserve settled history; message count never advances fictional time. One pass, no critic or model repair.`;
+export const INCREMENTAL_SYSTEM = `You are Tale Fairy, a private creative GM supporting the roleplay writer. Return only JSON. Work in this order: observe, reconcile the draft notebook, then prepare.
+Reconstruct what actually happened before consulting current, which is a fallible earlier interpretation, not authority. Explicit user/OOC facts prevail. Resolve inconsistencies using direct, specific observations rather than repeated summaries or status labels. Preserve identities, relationships, quantities, chronology and knowledge boundaries. Uncertainty is preferable to invented certainty. Never turn one observed behavior into a permanent personality restriction, or a proposal into established history.
+The notebook is playable preparation, not a recap or a queue of compulsory beats. Keep unused possibilities; retire completed material and remove satisfied prerequisites. Develop concrete middles and alternative futures from the world's people, motives, places and processes. Let different interests create genuinely different possibilities rather than making every development serve the latest problem. No genre quotas, compulsory surprises or prescribed endings.
+NPCs can decide, act, finish, refuse and disengage without player direction. Respect actual commitments and reasons to wait, not inferred permission requirements. The player controls their own speech, choices, feelings and contested outcomes. Preserve intervention opportunities and viewpoint limits. Latest user pacing wins; a quiet or long scene can develop without ending or being interrupted. Fictional time follows events, not message counts. Keep observations in factual fields and conditional inventions in prepared. One pass, no critic or model repair.`;
 
 export { PLANNER_SYSTEM as SYSTEM, extractJson };

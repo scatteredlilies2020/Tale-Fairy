@@ -1,4 +1,4 @@
-import { GAME_MASTER_CONTRACT } from './game-master.js?v=0.14.0';
+import { GAME_MASTER_CONTRACT } from './game-master.js?v=0.14.6';
 
 // These are causal units rather than genre labels. Keeping settlements, places,
 // resources, and situations first-class avoids squeezing a town simulation into
@@ -74,13 +74,13 @@ export function normalizeCausalCondition(value = {}) {
         id: text(value.id, 80),
         kind: choice(value.kind, KINDS, 'system'),
         subject: text(value.subject, 120),
-        condition: text(value.condition, 280),
+        condition: text(value.condition, 1120),
         disclosure: choice(value.disclosure, DISCLOSURES, 'open'),
         confidence: choice(value.confidence, CONFIDENCES, 'tentative'),
         relevance: text(value.relevance, 180),
         knownBy: [...new Set((Array.isArray(value.knownBy ?? value.known_by) ? (value.knownBy ?? value.known_by) : [])
-            .map(name => text(name, 80)).filter(Boolean))].slice(0, 6),
-        learnedFrom: text(value.learnedFrom ?? value.learned_from, 180),
+            .map(name => text(name, 80)).filter(Boolean))].slice(0, 24),
+        learnedFrom: text(value.learnedFrom ?? value.learned_from, 720),
     };
 }
 
@@ -146,6 +146,6 @@ export function formatCausalContext(value, options = {}) {
         ].join('\n') : '',
         MODE_TREATMENT[mode],
         options.includeRules === false ? '' : GAME_MASTER_CONTRACT,
-        `SCENE FIT (provisional; latest user intent wins): ${INTRUSION_TREATMENT[sceneProfile.intrusion]} ${NOVELTY_TREATMENT[sceneProfile.noveltyCeiling]}`,
+        options.includeSceneFit === false ? '' : `SCENE FIT (provisional; latest user intent wins): ${INTRUSION_TREATMENT[sceneProfile.intrusion]} ${NOVELTY_TREATMENT[sceneProfile.noveltyCeiling]}`,
     ].filter(Boolean).join('\n');
 }

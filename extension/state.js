@@ -1,14 +1,14 @@
 import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.13.9';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
-import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js?v=0.13.17';
-import { defaultCausalContext, defaultSceneProfile, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, normalizeSceneProfile } from './causal-context.js?v=0.14.5';
+import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js?v=0.14.6';
+import { defaultCausalContext, defaultSceneProfile, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, normalizeSceneProfile } from './causal-context.js?v=0.14.6';
 import { normalizeDirectorSample } from './director-sampling.js?v=0.13.9';
 import { defaultOffscreenWorld, normalizeOffscreenWorld, offscreenWorldForPrompt } from './offscreen-world.js?v=0.13.9';
 import { defaultSituationBoard, normalizeSituationBoard } from './situations.js?v=0.13.9';
-import { GAME_MASTER_CONTRACT, isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.0';
+import { GAME_MASTER_CONTRACT, isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.6';
 import { relevantActors } from './evidence-selection.js?v=0.13.9';
-import { defaultPreparedWorld, normalizePreparedWorld, preparedWorldForPrompt, formatPreparedWorld, formatPacingPreference } from './prepared-world.js?v=0.14.5';
+import { defaultPreparedWorld, normalizePreparedWorld, preparedWorldForPrompt, formatPreparedWorld, formatPacingPreference } from './prepared-world.js?v=0.14.6';
 
 export const STATE_KEY = 'livingWorldGuide';
 export const STATE_VERSION = 59;
@@ -48,6 +48,7 @@ export function defaultState() {
         offscreenWorld: defaultOffscreenWorld(),
         situationBoard: defaultSituationBoard(),
         preparedWorld: defaultPreparedWorld(),
+        legacyPreparedWorld: null,
         responseAudit: { applicable: false, movementFit: 'not-applicable', repetition: 'none', unjustifiedEscalation: false, playerControl: false, continuityDrift: false, patterns: [], summary: '', stateChange: '' },
         responsePatternMemory: [],
         replyRepair: { attemptedResponseKey: '', reason: '', attemptedAt: 0 },
@@ -78,6 +79,8 @@ export function defaultState() {
         lastInject: false,
         lastReason: '',
         contextLedger: '',
+        plannerContract: 0,
+        plannerMemory: '',
         ledgerMessageCount: 0,
         ledgerUpdatedAt: 0,
         narrativeEvents: [],
@@ -631,6 +634,8 @@ export function normalizeState(input = {}) {
         ...value,
         version: STATE_VERSION,
         enabled: value.enabled !== false,
+        plannerContract: value.plannerContract === 14 ? 14 : 0,
+        plannerMemory: text(value.plannerMemory).slice(0, 12000),
         mode: MODES.has(value.mode) ? value.mode : base.mode,
         analysisModel: { ...base.analysisModel, ...(value.analysisModel || {}) },
         summaryEvidence: {
@@ -651,6 +656,7 @@ export function normalizeState(input = {}) {
         offscreenWorld: normalizeOffscreenWorld(value.offscreenWorld ?? value.offscreen_world),
         situationBoard: normalizeSituationBoard(value.situationBoard ?? value.situation_board),
         preparedWorld: normalizePreparedWorld(value.preparedWorld),
+        legacyPreparedWorld: value.legacyPreparedWorld ? normalizePreparedWorld(value.legacyPreparedWorld) : null,
         responseAudit: normalizeResponseAudit(value.responseAudit ?? value.response_audit),
         responsePatternMemory: cap(value.responsePatternMemory ?? value.response_pattern_memory, 12).map(item => clippedText(item, 140)).filter(Boolean),
         replyRepair: {
@@ -805,7 +811,7 @@ export function isGuidanceUsable(state, messages = [], chatId = '') {
 
 export function isDirectionCurrent(state, messages = [], chatId = '') {
     const s = normalizeState(state);
-    if (!hasUsableCausalContext(s.causalContext)) return false;
+    if (s.plannerContract === 14 ? !s.lastAnalyzedAt : !hasUsableCausalContext(s.causalContext)) return false;
     if (isStateAligned(s, messages, chatId)) return true;
     // The completed assistant turn is when the next conditional set is
     // prepared. It must remain eligible through exactly one appended user
@@ -912,7 +918,7 @@ export function buildPromptPayload(state, { enabled = true, generationType = '',
     const snapshot = guidanceSnapshot(s, { guidanceUsable, causalContext, sceneProfile });
     const selectedMode = directorSample?.mode || mode || s.mode;
     const dynamicPrompt = snapshot.dynamicContextIncluded
-        ? formatCausalContext(snapshot.causalContext, { mode: selectedMode, sceneProfile: snapshot.sceneProfile, includeRules: false }) : '';
+        ? formatCausalContext(snapshot.causalContext, { mode: selectedMode, sceneProfile: snapshot.sceneProfile, includeRules: false, includeSceneFit: s.plannerContract !== 14 }) : '';
     const preparedPrompt = preparedUsable ? formatPreparedWorld(preparedWorld || s.preparedWorld) : '';
     const statePrompt = [GAME_MASTER_CONTRACT, formatPacingPreference(s.pacing.mode), plotAnchor, dynamicPrompt, preparedPrompt].filter(Boolean).join('\n');
     const guidancePrompt = `\n<living-world-guide>\n${statePrompt}\n</living-world-guide>`;

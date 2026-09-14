@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { claimPlannerRecoveryRepair } from '../extension/planner-lifecycle.js';
 import { applyPlannerAuthorLayer, defaultState } from '../extension/state.js';
+import { canRetainSuccessfulPlan } from '../extension/fallback-direction.js';
 
 const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
 const recovery = source.slice(source.indexOf('async function recoverDetachedPlannerJobs('), source.indexOf('async function negotiatePlannerOutput('));
@@ -14,6 +15,7 @@ function harness(jobs, overrides = {}) {
     const chat = [{ mes: 'Current scene.' }];
     const context = { chat, chatMetadata: {}, getCurrentChatId: () => 'chat' };
     const scope = {
+        canRetainSuccessfulPlan,
         detachedPlannerRecovering: false, analysisPromise: null, analysisStopSequence: 0,
         replacementPlanningDeferred: () => false,
         retryPlannerSourceMatches: (_context, meta) => meta.allowOneAssistantAppend === true,
@@ -70,6 +72,21 @@ test('invalid detached recovery uses safe fallback without a second generation',
     assert.equal((await h.run()).fallback, true);
     assert.equal(h.calls.length, 0);
     assert.equal(h.scope.detachedPlannerRecovering, false);
+});
+
+test('invalid recovered refresh cannot replace a proven current plan with fallback', async () => {
+    const state = { ...defaultState(), sourceChatId: 'chat', lastAnalysisFingerprint: 'snapshot',
+        sourceMessageCount: 1, lastAnalyzedAt: 100, analysisModel: { plotInputsKey: 'pre-reply-input-proof' },
+        causalContext: { conditions: [{ id: 'departed', confidence: 'established', subject: 'Courier', condition: 'already departed' }] } };
+    const h = harness([invalidJob], { loadState: () => state });
+    const result = await h.run();
+    assert.equal(result.retained, true);
+    assert.equal(result.state, state);
+    assert.equal(h.saved.length, 0);
+    assert.equal(h.calls.length, 0);
+    assert.equal(h.scope.lastAnalysisError, 'invalid actor');
+    const changed = harness([invalidJob], { loadState: () => state, plotInputKey: () => 'changed-card' });
+    assert.equal((await changed.run()).fallback, true);
 });
 
 test('stopping or switching chats while acknowledging recovery never starts a new request', async () => {

@@ -57,7 +57,8 @@ function hasContradiction(messages) {
 
 export function plannerRefreshDecision({ state, messages = [], event = 'turn', manual = false, swipe = false } = {}) {
     const schedule = normalizePlannerSchedule(state?.plannerSchedule);
-    const initialized = Boolean(state?.sceneProfile?.promise && state?.causalContext?.conditions?.length);
+    const initialized = state?.plannerContract === 14
+        ? Boolean(state.lastAnalyzedAt) : Boolean(state?.sceneProfile?.promise && state?.causalContext?.conditions?.length);
     if (manual || schedule.manualRequested) return { shouldRun: true, code: 'manual', reason: 'Manual active-world reevaluation requested.' };
     if (swipe) return { shouldRun: false, code: '', reason: 'A replacement response reuses the archived causal slice and never spends a planner call.' };
     if (!initialized) return { shouldRun: true, code: 'initialization', reason: 'Current scene promise or causal context is missing.' };

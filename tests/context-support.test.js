@@ -18,6 +18,8 @@ test('tier budgets are configurable and respect the saved total ceiling', () => 
     assert.deepEqual(plannerBudgets({}, { fullContextPass: true }), { tier: 'review', input: 14000, recent: 4500, summary: 2400 });
     assert.deepEqual(plannerBudgets({}, { bootstrapScan: true }), { tier: 'rebuild', input: 16000, recent: 6000, summary: 4000 });
     assert.equal(plannerBudgets({ routineInputTokens: 13000 }).input, 13000);
+    assert.equal(plannerBudgets({ routineInputTokens: 10000 }).recent, 5000, 'roomier routine input buys source evidence, not just more retained interpretation');
+    assert.equal(plannerBudgets({ routineInputTokens: 14000 }).recent, 6000, 'saved raw-context limit remains binding');
     assert.equal(plannerBudgets({ maxPromptTokens: 9000, reviewInputTokens: 18000 }, { fullContextPass: true }).input, 9000);
     assert.equal(plannerBudgets({ recentContextTokens: 1000, summaryContextTokens: 1000 }).recent, 1000);
     assert.equal(normalizeInputBudget(-1), 9000);

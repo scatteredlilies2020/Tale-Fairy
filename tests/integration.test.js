@@ -16,12 +16,12 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest, browser runtime, and detached plugin share the release version', () => {
-    assert.equal(manifest.version, '0.14.5');
-    assert.equal(manifest.js, 'extension/index.js?v=0.14.5');
-    assert.equal(manifest.css, 'extension/style.css?v=0.14.5');
+    assert.equal(manifest.version, '0.14.6');
+    assert.equal(manifest.js, 'extension/index.js?v=0.14.6');
+    assert.equal(manifest.css, 'extension/style.css?v=0.14.6');
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.14\.5'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.14\.5'/);
+    assert.match(pluginSource, /const VERSION = '0\.14\.6'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.14\.6'/);
 });
 
 test('planner input proof travels through normal saves and detached recovery', () => {
@@ -57,8 +57,8 @@ test('roleplay injection never migrates the user default into a system message',
 });
 
 test('runtime uses causal context and deferred world state without prescriptive beat-director dependency', () => {
-    assert.match(source, /from '\.\/causal-context\.js\?v=0\.14\.5'/);
-    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.14\.5'/);
+    assert.match(source, /from '\.\/causal-context\.js\?v=0\.14\.6'/);
+    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.14\.6'/);
     assert.doesNotMatch(source, /beat-director/);
     assert.doesNotMatch(stateSource, /beat-director/);
     assert.match(stateSource, /export const STATE_VERSION = 59/);
@@ -75,7 +75,7 @@ test('planner contracts return active world conditions rather than future branch
     assert.match(analysisSource, /Explicit user\/OOC constraints and manifested consequences outrank proposals/i);
     assert.match(analysisSource, /deferred debt, not continuous ticking/i);
     assert.match(analysisSource, /Broad preparation may remain dormant/i);
-    assert.match(analysisSource, /Retain wider possibilities through long quiet scenes/i);
+    assert.match(analysisSource, /Keep unused possibilities/i);
     assert.match(offscreenSource, /scheduled arrival/i);
     assert.match(analysisSource, /transcript begins observation, not the world/i);
     assert.match(analysisSource, /Adapt to the RP/i);
@@ -130,7 +130,7 @@ test('SillyTavern interception and detached planner compatibility remain intact'
     assert.match(source, /ensureGuidanceInText/);
     assert.match(source, /X-Tale-Fairy-Job-Id/);
     assert.match(pluginSource, /router\.post\('\/planner-jobs\/generate'/);
-    assert.match(pluginSource, /\[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13\]\.includes\(value\.contract_version\)/);
+    assert.match(pluginSource, /\[2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14\]\.includes\(value\.contract_version\)/);
 });
 
 test('planner token budgets, retries, and nonblocking behavior remain compatible', () => {
@@ -146,11 +146,11 @@ test('planner token budgets, retries, and nonblocking behavior remain compatible
     assert.match(source, /const REVIEW_RESPONSE_TOKENS = 6144/);
     assert.match(source, /bootstrapScan \? REBUILD_RESPONSE_TOKENS : REVIEW_RESPONSE_TOKENS/);
     const requestTier = source.slice(source.indexOf('async function requestAnalysis('), source.indexOf('export async function analyzeNow('));
-    assert.match(requestTier, /reasoningMode: 'off'/, 'routine deltas disable optional thinking');
-    assert.match(source, /cacheNamespace: 'analysis-incremental-v13-lean-v1'/);
-    assert.match(source, /cacheNamespace: 'analysis-review-v12-prepared-v1'/);
-    assert.match(source, /fullReview: fullContextPass && \[8, 9, 12\]\.includes\(result\.contract_version\)/);
-    assert.match(source, /fullReview: meta\.fullContextPass === true && \[8, 9, 12\]\.includes\(result\.contract_version\)/);
+    assert.match(requestTier, /reasoningMode: 'off'/, 'replacement disables optional thinking');
+    assert.match(source, /cacheNamespace: 'analysis-world-v14'/);
+
+    assert.match(source, /fullReview: fullContextPass && \[8, 9, 12, 14\]\.includes\(result\.contract_version\)/);
+    assert.match(source, /fullReview: meta\.fullContextPass === true && \[8, 9, 12, 14\]\.includes\(result\.contract_version\)/);
     assert.match(source, /const REBUILD_RESPONSE_TOKENS = 8192/);
     assert.match(source, /PLANNER_MAX_AUTO_RETRIES = 0/);
     assert.match(source, /No Tale Fairy work is awaited and no verification failure can[\s\S]*reject the provider request/);
