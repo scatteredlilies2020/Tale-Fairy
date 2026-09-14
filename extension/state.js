@@ -8,7 +8,7 @@ import { defaultOffscreenWorld, normalizeOffscreenWorld, offscreenWorldForPrompt
 import { defaultSituationBoard, normalizeSituationBoard } from './situations.js?v=0.13.9';
 import { GAME_MASTER_CONTRACT, isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.0';
 import { relevantActors } from './evidence-selection.js?v=0.13.9';
-import { defaultPreparedWorld, normalizePreparedWorld, preparedWorldForPrompt, formatPreparedWorld, formatPacingPreference } from './prepared-world.js?v=0.14.0';
+import { defaultPreparedWorld, normalizePreparedWorld, preparedWorldForPrompt, formatPreparedWorld, formatPacingPreference } from './prepared-world.js?v=0.14.2';
 
 export const STATE_KEY = 'livingWorldGuide';
 export const STATE_VERSION = 59;

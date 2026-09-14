@@ -37,9 +37,30 @@ test('preparation has a bounded native schema and rejects malformed lifecycle da
     assert.equal(PREPARED_SCHEMA.properties.updates.maxItems, 4);
     assert.deepEqual(validatePrepared(delta()), []);
     for (const invalid of [null, [], { ...delta(), updates: 'oops' }, delta([{ ...record(), id: {} }]),
-        delta([{ ...record(), intervention: '' }]), delta([{ ...record(), origin: 'canon' }]),
+        delta([{ ...record(), premise: '' }]), delta([{ ...record(), origin: 'canon' }]),
         { ...delta(), focus: ['x', 'x'] }, delta([record(), record()])]) {
         assert.ok(validatePrepared(invalid).length);
+    }
+});
+
+test('a usable plan survives prose overruns and blank optional notes without losing its ending', () => {
+    const overview = `${'The journey has several possible continuations. '.repeat(22)}Respect the latest user direction.`;
+    const item = { ...record(), engine: '', entry: '', intervention: '', knowledge: '', invalidates: '',
+        middle: `${'Explore the town and follow its changing relationships. '.repeat(9)}Let the user decide whether to stay.` };
+    const value = { overview, updates: [item], focus: [item.id] };
+    assert.ok(overview.length > 900);
+    assert.ok(item.middle.length > 440);
+    assert.deepEqual(validatePrepared(value), []);
+    const saved = normalizeState({ ...defaultState(), preparedWorld: mergePreparedWorld(null, value) });
+    assert.equal(saved.preparedWorld.overview, overview);
+    assert.equal(saved.preparedWorld.items[0].middle, item.middle);
+    const prompt = buildPromptPayload(saved, { preparedUsable: true });
+    assert.ok(prompt.includes(overview));
+    assert.ok(prompt.includes(item.middle));
+    assert.doesNotMatch(prompt, /Do not use if:|Player intervention:|Knowledge boundary:|Driving process:|Entry:/);
+    for (const bad of [{ ...value, overview: {} }, { ...value, overview: 'x'.repeat(3601) },
+        { ...value, updates: [{ ...item, middle: { code: true } }] }]) {
+        assert.ok(validatePrepared(bad).length);
     }
 });
 

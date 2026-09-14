@@ -69,7 +69,7 @@ test('normal evaluation makes exactly one model request', async () => {
     const h = harness([{ valid: true }]);
     assert.equal((await h.run()).valid, true);
     assert.equal(h.requests.length, 1);
-    assert.equal(h.requests[0].max_tokens, 8192);
+    assert.equal(h.requests[0].max_tokens, 16384);
 });
 
 test('invalid output fails after one generation without a model correction pass', async () => {
@@ -106,7 +106,8 @@ for (const route of ['direct', 'profile', 'active']) {
                 }, { route, configured });
                 assert.equal((await h.runPass(meta, recovery)).valid, true);
                 assert.equal(h.requests.length, 1, 'reasoning must not require a failed Off probe');
-                assert.equal(h.requests[0].max_tokens, budget);
+                const reserve = { low: 8192, medium: 16384, high: 32768 }[expected];
+                assert.equal(h.requests[0].max_tokens, budget + reserve);
             }
         }
     });
@@ -171,6 +172,17 @@ test('DeepSeek routine updates preserve Low instead of silently disabling thinki
     const h = harness([{ valid: true }], { model: 'deepseek-v4-pro', configured: 'low' });
     await h.runPass();
     assert.deepEqual(JSON.parse(h.requests[0].custom_include_body), { reasoning_effort: 'low' });
-    assert.equal(h.requests[0].max_tokens, 8192);
+    assert.equal(h.requests[0].max_tokens, 16384);
     assert.equal(h.requests.length, 1);
+});
+
+test('every route reserves reasoning space after Auto inheritance and provider translation', async () => {
+    for (const route of ['direct', 'profile', 'active']) {
+        for (const [configured, expected] of [['off', 8192], ['low', 16384], ['medium', 40960], ['auto', 40960]]) {
+            const h = harness([{ valid: true }], { route, configured, activeEffort: 'high', model: 'deepseek-v4.1-flash' });
+            await h.runPass();
+            assert.equal(h.requests.length, 1);
+            assert.equal(h.requests[0].max_tokens, expected, `${route}: ${configured}`);
+        }
+    }
 });

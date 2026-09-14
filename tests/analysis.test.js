@@ -440,7 +440,7 @@ test('both planner tiers prepare broad creative middles separately from present 
     for (const system of [SYSTEM, INCREMENTAL_SYSTEM]) {
         assert.match(system, /creative playable middle AND future/);
         assert.match(system, /independent developments without prior mention/);
-        assert.match(system, /alternative continuations, not a jump to the endpoint/);
+        assert.match(system, /concrete intermediate experiences, changes and alternative continuations before distant possibilities/);
         assert.match(system, /prepared MAY propose concrete NPC\/world actions and events/);
         assert.match(system, /not history, player choices or a beat queue/);
         assert.match(system, /Latest explicit user pacing overrides saved preference/);

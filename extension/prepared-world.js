@@ -6,6 +6,10 @@ const limits = { id: 80, premise: 320, engine: 240, middle: 440, future: 260,
 const statuses = ['prepared', 'active', 'dormant', 'resolved', 'retired'];
 const origins = ['established', 'inferred', 'invented'];
 const fields = Object.keys(limits);
+// Schema lengths are writing targets. Preserve modest prose overruns intact
+// instead of losing the whole plan or cutting off its final constraints.
+const overviewStorageLimit = 3600;
+const storageLimit = key => key === 'id' ? limits.id : limits[key] * 4;
 const string = maxLength => ({ type: 'string', maxLength });
 export const PREPARED_SCHEMA = {
     type: 'object', additionalProperties: false,
@@ -21,23 +25,23 @@ export const PREPARED_SCHEMA = {
     }, required: ['overview', 'updates', 'focus'],
 };
 
-export const PREPARED_RULE = `Prepare a creative playable middle AND future, not variants of the latest topic. Invent compatible places, people, challenges, encounters, projects, secrets and independent developments without prior mention. Infer this RP's scale, canon deviations, motivations and constraints; no genre checklist or route quota. Contrast different possibilities in this one call; return selected material, not deliberation. A distant label is not long-term planning: middle needs concrete intermediate experiences, changing circumstances and alternative continuations, not a jump to the endpoint. Quiet scenes must not narrow preparation.
-prepared={overview,updates,focus} is a persistent notebook separate from factual memory. overview: wider trajectory, constraints, alternatives; blank preserves. updates: up to four new/changed records, stable ids; omitted records survive. At most twelve live records; explicitly resolve/retire instead of silently replacing them. No compulsory refresh. Fields: premise; engine (motives/resources/process); middle (playable developments/branches); future (what could grow beyond, not a promised ending); entry (recognizable introduction opportunity); hold (when dormant); invalidates (contradictions/dependencies); intervention (player reaction before contestable consequences); knowledge (GM secrets versus character discovery). origin: established=evidenced premise, inferred=deduction, invented=creation. status: prepared, active, dormant, resolved, retired. Active requires transcript uptake, not injection. Preserve manifested consequences as facts when revising unused ideas. focus: up to three retained/updated ids useful for the writer, not activation commands; consider wider material as well as this scene. Unfocused records stay private.
+export const PREPARED_RULE = `Prepare a creative playable middle AND future, not variants of the latest topic. Invent compatible places, people, challenges, encounters, projects, secrets and independent developments without prior mention. Infer this RP's scale, canon deviations, motivations and constraints; no genre checklist or route quota. Return selected possibilities, not deliberation. Develop concrete intermediate experiences, changes and alternative continuations before distant possibilities. Quiet scenes must not narrow preparation.
+prepared={overview,updates,focus} is a persistent notebook separate from factual memory. overview: wider trajectory, constraints, alternatives; blank preserves. updates: up to four new/changed records, stable ids; omitted records survive. At most twelve live records; explicitly resolve/retire instead of silently replacing them. Only premise and middle need prose; other notes may be blank. Never invent restrictions to fill fields. Fields: premise; engine (motives/resources/process); middle (playable developments/branches); future (what could grow beyond, not a promised ending); entry (recognizable introduction opportunity); hold (when dormant); invalidates (known contradictions, or blank); intervention (player reaction before contestable consequences); knowledge (GM secrets versus character discovery). origin: established=evidenced premise, inferred=deduction, invented=creation. status: prepared, active, dormant, resolved, retired. Active requires transcript uptake, not injection. Preserve manifested consequences as facts when revising unused ideas. focus: up to three retained/updated ids useful for the writer, not activation commands; consider wider material as well as this scene. Unfocused records stay private.
 Unlike factual context.conditions and actor_updates, prepared MAY propose concrete NPC/world actions and events. They are conditional possibilities, not history, player choices or a beat queue. Check entry/hold/contradictions against the latest exchange. Scene duration, meaningful development and interruption are independent: a long scene can deepen without ending; travel can contain a motivated encounter without skipping the journey or resolving an ambush before reaction. Latest explicit user pacing overrides saved preference in any language. Never tick fictional time by message count. Distill available evidence; exact wording only when needed. Summaries and Continuity are optional. Return preparation plus current facts in one call, no critic or model repair.`;
 
 export function validatePrepared(value) {
     const errors = [];
     if (!value || typeof value !== 'object' || Array.isArray(value)) return ['prepared must be an object'];
-    if (typeof value.overview !== 'string' || value.overview.length > 900) errors.push('prepared.overview must be a string up to 900 characters');
+    if (typeof value.overview !== 'string' || value.overview.length > overviewStorageLimit) errors.push(`prepared.overview must be text up to ${overviewStorageLimit} characters`);
     if (!Array.isArray(value.updates) || value.updates.length > 4) errors.push('prepared.updates must contain at most four records');
     const ids = new Set();
     for (const item of Array.isArray(value.updates) ? value.updates : []) {
         if (!item || typeof item !== 'object') { errors.push('prepared record must be an object'); continue; }
-        for (const key of fields) if (typeof item[key] !== 'string' || item[key].length > limits[key]) errors.push(`prepared.${key} must be a bounded string`);
+        for (const key of fields) if (typeof item[key] !== 'string' || item[key].length > storageLimit(key)) errors.push(`prepared.${key} must be text up to ${storageLimit(key)} characters`);
         if (typeof item.id !== 'string' || !item.id.trim() || ids.has(item.id)) errors.push('prepared ids must be nonempty and unique');
         ids.add(item.id);
         if (!statuses.includes(item.status) || !origins.includes(item.origin)) errors.push('prepared status/origin is invalid');
-        if (!['retired', 'resolved'].includes(item.status) && ['premise', 'engine', 'middle', 'entry', 'invalidates', 'intervention', 'knowledge'].some(key => typeof item[key] !== 'string' || !item[key].trim())) errors.push('live prepared records need usable content and boundaries');
+        if (!['retired', 'resolved'].includes(item.status) && ['premise', 'middle'].some(key => typeof item[key] !== 'string' || !item[key].trim())) errors.push('live prepared records need a premise and playable developments');
     }
     if (!Array.isArray(value.focus) || value.focus.length > 3 || value.focus.some(id => typeof id !== 'string' || !id.trim() || id.length > 80) || new Set(value.focus).size !== value.focus.length) errors.push('prepared.focus must contain up to three unique ids');
     return errors;
@@ -48,7 +52,7 @@ export function defaultPreparedWorld() { return { overview: '', items: [], focus
 export function normalizePreparedWorld(value) {
     const safe = defaultPreparedWorld();
     if (!value || typeof value !== 'object') return safe;
-    safe.overview = typeof value.overview === 'string' ? value.overview.slice(0, 900) : '';
+    safe.overview = typeof value.overview === 'string' ? value.overview.slice(0, overviewStorageLimit) : '';
     safe.items = (Array.isArray(value.items) ? value.items : []).filter(item =>
         validatePrepared({ overview: '', updates: [item], focus: [] }).length === 0).slice(-PREPARED_LIMIT);
     safe.focus = (Array.isArray(value.focus) ? value.focus : []).filter(id => safe.items.some(item => item.id === id)).slice(0, 3);
@@ -121,11 +125,11 @@ export function formatPreparedWorld(value) {
         board.overview ? `Wider direction (provisional, not a destination deadline): ${clean(board.overview)}` : '',
         ...selected.map(item => [
             `Possible development (${item.origin} premise; ${item.status}): ${clean(item.premise)}`,
-            `Driving process: ${clean(item.engine)}`, `Playable middle: ${clean(item.middle)}`,
+            item.engine ? `Driving process: ${clean(item.engine)}` : '', `Playable middle: ${clean(item.middle)}`,
             item.future ? `Beyond it: ${clean(item.future)}` : '',
-            `Entry: ${clean(item.entry)}`, item.hold ? `Keep dormant: ${clean(item.hold)}` : '',
-            `Do not use if: ${clean(item.invalidates)}`, `Player intervention: ${clean(item.intervention)}`,
-            `Knowledge boundary: ${clean(item.knowledge)}`,
+            item.entry ? `Entry: ${clean(item.entry)}` : '', item.hold ? `Keep dormant: ${clean(item.hold)}` : '',
+            item.invalidates ? `Do not use if: ${clean(item.invalidates)}` : '', item.intervention ? `Player intervention: ${clean(item.intervention)}` : '',
+            item.knowledge ? `Knowledge boundary: ${clean(item.knowledge)}` : '',
         ].filter(Boolean).join('\n')),
         '</prepared-world>',
     ].filter(Boolean).join('\n');

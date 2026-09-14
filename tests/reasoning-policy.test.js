@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildReasoningRequest, profileReasoningEffort, reasoningFallbackPayload, resolveReasoningMode } from '../extension/reasoning-policy.js';
+import { buildReasoningRequest, plannerOutputTokenBudget, profileReasoningEffort, reasoningFallbackPayload, resolveReasoningMode } from '../extension/reasoning-policy.js';
+
+test('reasoning has room in addition to the complete visible plan', () => {
+    assert.equal(plannerOutputTokenBudget(8192, 'off'), 8192);
+    assert.equal(plannerOutputTokenBudget(8192, 'low'), 16384);
+    assert.equal(plannerOutputTokenBudget(8192, 'high'), 40960);
+    assert.equal(plannerOutputTokenBudget(16384, 'high'), 49152);
+    assert.equal(plannerOutputTokenBudget(8192, 'default'), 40960);
+});
 
 test('Auto inherits a profile or preset effort before the active setting', () => {
     const presets = [{}, { reasoning_effort: 'high' }];

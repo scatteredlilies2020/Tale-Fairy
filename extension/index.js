@@ -4,8 +4,8 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.1';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.0';
+import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.2';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.2';
 import { isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.0';
 import { selectSituationalOpenings } from './situations.js?v=0.13.9';
 import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.13.17';
@@ -14,7 +14,7 @@ import { DEFAULT_INJECTION_ROLE, normalizeInjectionRole } from './injection-role
 import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.13.9';
 import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.13.9';
 import { normalizeModelListResponse } from './models.js?v=0.13.9';
-import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.13.18';
+import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, plannerOutputTokenBudget, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.14.2';
 import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.13.9';
 import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.13.9';
 import { collectSummarySources } from './summary-context.js?v=0.13.9';
@@ -29,15 +29,15 @@ import { clearPlannerRecoveryRepair, clearPlannerFailed, clearPlannerPending, ma
 import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.13.9';
 import { hasUsableCausalContext } from './causal-context.js?v=0.14.0';
 import { formatHiddenMotives } from './scratchpad-format.js?v=0.13.9';
-import { defaultPreparedWorld, preparedWorldUsable, unchangedSourcePrefix, stampPreparedWorld } from './prepared-world.js?v=0.14.0';
+import { defaultPreparedWorld, preparedWorldUsable, unchangedSourcePrefix, stampPreparedWorld } from './prepared-world.js?v=0.14.2';
 import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.9';
-import { createSafetyFallbackState } from './fallback-direction.js?v=0.13.11';
+import { createSafetyFallbackState } from './fallback-direction.js?v=0.14.2';
 import { classifyAssistantReply } from './response-usability.js?v=0.13.9';
 import { buildPlotAnchor, cachedGenerationContext, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.0';
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.14.1';
+const RUNTIME_VERSION = '0.14.2';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -1837,6 +1837,13 @@ function plannerModelRejectsTemperature(model) {
 
 function isolatePlannerGenerationData(generateData, reasoningMode, temperature = plannerTemperature(), samplingEnabled = true, outputMode = PLANNER_OUTPUT_MODE.JSON_SCHEMA, responseTokens = INCREMENTAL_RESPONSE_TOKENS) {
     if (!generateData || typeof generateData !== 'object') return;
+    const reasoning = buildReasoningRequest({
+        mode: reasoningMode,
+        source: generateData.chat_completion_source,
+        model: generateData.model,
+        url: generateData.custom_url || generateData.reverse_proxy,
+    });
+    responseTokens = plannerOutputTokenBudget(responseTokens, reasoning.payload.reasoning_effort || reasoningMode);
     generateData.stream = false;
     generateData.n = 1;
     if (samplingEnabled) {
@@ -1857,12 +1864,6 @@ function isolatePlannerGenerationData(generateData, reasoningMode, temperature =
         responseLengthSet = true;
     }
     if (!responseLengthSet && Array.isArray(generateData.messages)) generateData.max_tokens = responseTokens;
-    const reasoning = buildReasoningRequest({
-        mode: reasoningMode,
-        source: generateData.chat_completion_source,
-        model: generateData.model,
-        url: generateData.custom_url || generateData.reverse_proxy,
-    });
     Object.assign(generateData, reasoning.payload);
     // generateRaw starts from the active SillyTavern preset. A provider-level
     // response_format can therefore survive even when Tale Fairy retries in
@@ -1971,11 +1972,12 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
                 profileName: profile.name,
             });
             let reasoningPayload = reasoning.payload;
+            let reasoningBudgetMode = reasoningMode;
             let samplingEnabled = !plannerModelRejectsTemperature(profile.model);
             const sendProfileRaw = mode => ConnectionManagerRequestService.sendRequest(
                 model.profileId,
                 plannerMessages(systemPrompt, prompt, schema, mode),
-                responseTokens,
+                plannerOutputTokenBudget(responseTokens, reasoningPayload.reasoning_effort || reasoningBudgetMode),
                 { stream: false, extractData: false, includePreset: false, includeInstruct: false, signal: controller.signal },
                 {
                     ...(mode === PLANNER_OUTPUT_MODE.JSON_SCHEMA ? { json_schema: schema } : {}),
@@ -1999,6 +2001,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
                     if (error instanceof AnalysisValidationError) throw error;
                     if (!isReasoningControlError(error) || (!reasoning.controlled && !isMandatoryReasoningError(error))) throw error;
                     reasoningPayload = reasoningFallbackPayload(error, reasoningPayload);
+                    reasoningBudgetMode = 'default';
                     const response = await sendProfile(mode);
                     controller.signal.throwIfAborted();
                     return parseResponse(response);
@@ -2076,10 +2079,11 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
             url: model.url,
         });
         let reasoningPayload = reasoning.payload;
+        let reasoningBudgetMode = reasoningMode;
         let samplingEnabled = !plannerModelRejectsTemperature(model.model);
         const sendRaw = async mode => {
             const modePayload = model.provider === 'custom' ? customOutputPayload(reasoningPayload, mode) : reasoningPayload;
-            const body = { chat_completion_source: model.provider, model: model.model, messages: plannerMessages(systemPrompt, prompt, schema, mode), max_tokens: responseTokens, stream: false, ...plannerTemperaturePayload(temperature, samplingEnabled), ...modePayload, ...(mode === PLANNER_OUTPUT_MODE.JSON_SCHEMA ? { json_schema: schema } : {}), ...(model.provider === 'openrouter' ? { api_url: model.url.replace(/\/$/, '') } : { custom_url: model.url.replace(/\/$/, '') }), ...detachedMarker };
+            const body = { chat_completion_source: model.provider, model: model.model, messages: plannerMessages(systemPrompt, prompt, schema, mode), max_tokens: plannerOutputTokenBudget(responseTokens, reasoningPayload.reasoning_effort || reasoningBudgetMode), stream: false, ...plannerTemperaturePayload(temperature, samplingEnabled), ...modePayload, ...(mode === PLANNER_OUTPUT_MODE.JSON_SCHEMA ? { json_schema: schema } : {}), ...(model.provider === 'openrouter' ? { api_url: model.url.replace(/\/$/, '') } : { custom_url: model.url.replace(/\/$/, '') }), ...detachedMarker };
             if (model.secretId) body.secret_id = model.secretId;
             const response = await fetch('/api/backends/chat-completions/generate', { method: 'POST', headers: currentContext().getRequestHeaders?.() || getRequestHeaders?.() || { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
             const payload = await response.json();
@@ -2099,6 +2103,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
                 if (error instanceof AnalysisValidationError) throw error;
                 if (!isReasoningControlError(error) || (!reasoning.controlled && !isMandatoryReasoningError(error))) throw error;
                 reasoningPayload = reasoningFallbackPayload(error, reasoningPayload);
+                reasoningBudgetMode = 'default';
                 return send(mode);
             }
         };
@@ -2411,7 +2416,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
             ? 'Source-compatible preparation; each entry remains conditional on the latest exchange.'
             : 'Archived preparation: source/input changed; not eligible for injection until replanned.') : '',
         notebook.overview,
-        ...notebook.items.map(item => `[${item.status} · ${item.origin}${notebook.focus.includes(item.id) ? ' · selected' : ''}] ${item.premise}\nProcess: ${item.engine}\nMiddle: ${item.middle}\nBeyond: ${item.future}\nEntry: ${item.entry}\nHold: ${item.hold}\nInvalidated by: ${item.invalidates}\nIntervention: ${item.intervention}\nKnowledge: ${item.knowledge}`),
+        ...notebook.items.map(item => `[${item.status} · ${item.origin}${notebook.focus.includes(item.id) ? ' · selected' : ''}] ${item.premise}\nProcess: ${item.engine}\nMiddle: ${item.middle}\nBeyond: ${item.future}\nEntry: ${item.entry}\nHold: ${item.hold}\nInvalidated by: ${item.invalidates || 'No specific condition identified.'}\nIntervention: ${item.intervention}\nKnowledge: ${item.knowledge}`),
     ].filter(Boolean).join('\n\n'), 'No prepared material yet.');
     const guideButton = settingsRoot?.querySelector('[data-action="guide"]');
     const guideLabel = guideButton?.querySelector('[data-role="guide-label"]');

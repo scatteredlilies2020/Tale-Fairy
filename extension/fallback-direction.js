@@ -1,4 +1,4 @@
-import { applyPlannerAuthorLayer, defaultState, normalizeState } from './state.js?v=0.13.11';
+import { applyPlannerAuthorLayer, defaultState, normalizeState } from './state.js?v=0.14.2';
 import { relevantExcerpt } from './evidence-selection.js?v=0.13.9';
 
 function statusFields(value) {
