@@ -26,7 +26,7 @@ const MODE_TREATMENT = Object.freeze({
 
 const INTRUSION_TREATMENT = Object.freeze({
     closed: 'Keep outside pressure dormant unless the latest intent or an actual causal entry warrants it.',
-    incidental: 'Outside texture must not displace the activity.',
+    incidental: 'Favor the current activity; a fitting NPC action or encounter may develop within it.',
     'socially-open': 'Existing pressure may enter through natural social contact.',
     'dramatically-open': 'Existing pressure may enter through a credible route.',
     primed: 'Converging causes may arrive; no event is required.',
@@ -34,7 +34,7 @@ const INTRUSION_TREATMENT = Object.freeze({
 
 const NOVELTY_TREATMENT = Object.freeze({
     none: 'Favor the established activity; no novelty merely to fill space.',
-    incidental: 'Keep novelty incidental and setting-native.',
+    incidental: 'Incidental novelty fits readily; meaningful developments remain possible through a credible entry.',
     'context-native': 'New details must fit the setting and activity.',
     meaningful: 'Consequential novelty needs a credible setting-native cause and entry.',
     major: 'Major turns need credible preparation and room for player intervention, not forced results.',
@@ -113,11 +113,10 @@ function statement(item) {
     const subject = text(item.subject, 120).replace(/[.!?]+$/u, '');
     const condition = text(item.condition, 280).replace(/[.!?]+$/u, '');
     if (!subject || !condition) return '';
-    const lower = condition.charAt(0).toLocaleLowerCase() + condition.slice(1);
     const knowledge = item.knownBy.length ? ` Known to: ${item.knownBy.join(', ')}; others need an in-world learning route.`
         : item.disclosure !== 'open' ? ' Keep awareness local; do not infer additional knowers.' : '';
-    const learning = item.learnedFrom ? ` Learning route: ${item.learnedFrom}.` : '';
-    return `${subject} ${lower}.${knowledge}${learning}`;
+    const learning = item.learnedFrom ? ` Learning route: ${item.learnedFrom.replace(/[.!?]+$/u, '')}.` : '';
+    return `${subject}: ${condition}.${knowledge}${learning}`;
 }
 
 function section(label, items) {

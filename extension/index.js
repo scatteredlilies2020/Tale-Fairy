@@ -4,8 +4,8 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.3';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.2';
+import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.4';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.4';
 import { isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.0';
 import { selectSituationalOpenings } from './situations.js?v=0.13.9';
 import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.13.17';
@@ -27,17 +27,17 @@ import { sampleDirectorSignals } from './director-sampling.js?v=0.13.9';
 import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.13.9';
 import { clearPlannerRecoveryRepair, clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.13.10';
 import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.13.9';
-import { hasUsableCausalContext } from './causal-context.js?v=0.14.0';
+import { hasUsableCausalContext } from './causal-context.js?v=0.14.4';
 import { formatHiddenMotives } from './scratchpad-format.js?v=0.13.9';
-import { defaultPreparedWorld, preparedWorldUsable, unchangedSourcePrefix, stampPreparedWorld } from './prepared-world.js?v=0.14.2';
+import { defaultPreparedWorld, preparedWorldUsable, unchangedSourcePrefix, stampPreparedWorld } from './prepared-world.js?v=0.14.4';
 import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.9';
-import { createSafetyFallbackState } from './fallback-direction.js?v=0.14.2';
+import { createSafetyFallbackState } from './fallback-direction.js?v=0.14.4';
 import { classifyAssistantReply } from './response-usability.js?v=0.13.9';
-import { buildPlotAnchor, cachedGenerationContext, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.0';
+import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.4';
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.14.3';
+const RUNTIME_VERSION = '0.14.4';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -805,7 +805,8 @@ function archiveReadyPlannerContexts(metadata, states, context = currentContext(
             if (!plannerInputsMatch(state, candidate, context, { ...metadata, [GENERATION_CONTEXT_KEY]: cache })) continue;
             const key = plotInputKey(chatId, candidate, generationInputs(context, state));
             const existing = cachedGenerationContext(cache, key, chatId);
-            if (existing?.selection.usable && hasPlannerConditions(existing.selection.causalContext)) continue;
+            if (existing?.selection.usable && hasPlannerConditions(existing.selection.causalContext)
+                && !hasNewerPlannerState(state, existing)) continue;
             cache = rememberGenerationContext(cache, buildGenerationPacket(state, candidate, context, 'normal', true));
         }
     }
@@ -896,12 +897,22 @@ function prepareGenerationGuide(state, type) {
     const inputs = generationInputs(context, state);
     const inputKey = plotInputKey(chatId, replacementMessages, inputs);
     const archived = cachedGenerationContext(context.chatMetadata?.[GENERATION_CONTEXT_KEY], inputKey, chatId);
+    const currentDirectionReady = plannerInputsMatch(state, replacementMessages, context) && isDirectionCurrent(state, replacementMessages, chatId);
+    const currentGuidanceUsable = currentDirectionReady && isGuidanceUsable(state, replacementMessages, chatId);
+    const refreshPlan = currentGuidanceUsable && hasPlannerConditions(state.causalContext) && hasNewerPlannerState(state, archived);
     const reuseArchived = () => {
-        generationGuideSelection = { ...archived.selection, chatId, inputKey, replacement, regeneration: replacement, payload: refreshGameMasterContract(archived.payload), reused: true };
+        // Reformat the saved selection with current policy and source excerpts;
+        // never substitute post-response planner facts into a retry.
+        const plotAnchor = buildPlotAnchor(replacementMessages, { state: archived.plannerState || {},
+            stateCurrent: Boolean(archived.plannerState), bootstrap: bootstrapContext(context) });
+        const payload = archived.plannerState ? buildPromptPayload(archived.plannerState, {
+            ...archived.selection, plotAnchor, guidanceUsable: archived.selection.usable,
+        }) : refreshGameMasterContract(archived.payload);
+        generationGuideSelection = { ...archived.selection, plotAnchor, chatId, inputKey, replacement, regeneration: replacement, payload, reused: true };
         renderInjectionActivity(archived.selection.usable && hasPlannerConditions(archived.selection.causalContext)
             ? 'Cached plot context ready · no new planner calls' : 'Cached scene excerpts ready · planner context unavailable; no new planner calls');
     };
-    if ((archived?.selection.preparedUsable || archived?.selection.usable && hasPlannerConditions(archived.selection.causalContext))) {
+    if (!refreshPlan && (archived?.selection.preparedUsable || archived?.selection.usable && hasPlannerConditions(archived.selection.causalContext))) {
         reuseArchived();
         return;
     }
@@ -910,16 +921,15 @@ function prepareGenerationGuide(state, type) {
     // New plans record the actual input dependencies. An older packet made
     // before a book loaded must not veto a later plan that used that book.
     // Legacy plans still need the conservative history check.
-    const currentDirectionReady = plannerInputsMatch(state, replacementMessages, context) && isDirectionCurrent(state, replacementMessages, chatId);
-    const currentGuidanceUsable = currentDirectionReady && isGuidanceUsable(state, replacementMessages, chatId);
     const upgradeFallback = archived && !archived.selection.preparedUsable && !hasPlannerConditions(archived.selection.causalContext)
         && (preparedReady(state, replacementMessages, context) || currentGuidanceUsable && hasPlannerConditions(state.causalContext));
-    // A completed usable packet's facts stay immutable; static policy may refresh.
+    // A newer completed plan for this same pre-reply source can refresh the
+    // next request. The selection already held by an in-flight request stays frozen.
     // A rules/excerpts-only packet may gain an already-ready, source-aligned
     // plan without making any call.
     // Refresh old fallback formatting locally too, so reloads do not preserve
     // the former chopped-sentence anchor forever.
-    if (archived && !upgradeFallback && archived.anchorVersion === PLOT_ANCHOR_VERSION) {
+    if (archived && !refreshPlan && !upgradeFallback && archived.anchorVersion === PLOT_ANCHOR_VERSION) {
         reuseArchived();
         return;
     }
@@ -928,7 +938,7 @@ function prepareGenerationGuide(state, type) {
     context.updateChatMetadata({ ...context.chatMetadata, [GENERATION_CONTEXT_KEY]: rememberGenerationContext(context.chatMetadata?.[GENERATION_CONTEXT_KEY], cache) });
     scheduleVerificationPersistence(context);
     if (archived) renderInjectionActivity(currentGuidanceUsable
-        ? 'Cached fallback upgraded with ready planner context · no new planner calls'
+        ? 'Ready planner context refreshed for this request · no new planner calls'
         : 'Cached scene excerpts refreshed locally · no new planner calls');
 }
 

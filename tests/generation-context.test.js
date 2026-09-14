@@ -320,7 +320,7 @@ for (const type of ['normal', 'swipe', 'regenerate']) test(`${type} upgrades a c
     assert.equal(restored.calls.length, 0);
 });
 
-test('transcript safety conditions remain upgradeable, but a completed planner packet stays immutable', () => {
+test('a completed same-source reevaluation refreshes the next request without another call', () => {
     const fallback = createSafetyFallbackState(defaultState(), { messages: input(), chatId: 'story', fingerprint: fingerprintMessages(input()) });
     const h = generationHarness(input(), fallback);
     const original = h.prepare().payload;
@@ -328,9 +328,10 @@ test('transcript safety conditions remain upgradeable, but a completed planner p
     const upgraded = h.prepare().payload;
     assert.notEqual(upgraded, original);
     const later = readyPlan();
+    later.lastAnalyzedAt = h.state().lastAnalyzedAt + 100;
     later.causalContext.conditions[0].condition = 'has changed in a later evaluation';
     h.context.updateChatMetadata(saveState(h.context.chatMetadata, later));
-    assert.equal(h.prepare().payload, upgraded);
+    assert.match(h.prepare().payload, /has changed in a later evaluation/);
     assert.equal(h.calls.length, 0);
 });
 
@@ -347,6 +348,31 @@ test('old fallback formatting refreshes locally once without clearing other hist
     assert.equal(h.prepare().payload, refreshed);
     assert.equal(h.prepare().reused, true);
     assert.equal(h.calls.length, 0);
+});
+
+test('a newer completed plan updates cached guidance without changing an in-flight selection or importing future facts', async () => {
+    const first = readyPlan();
+    first.lastAnalyzedAt = 100;
+    const h = generationHarness(input(), first);
+    const inFlight = h.prepare();
+    const revised = readyPlan();
+    revised.lastAnalyzedAt = 200;
+    revised.causalContext.conditions[0].condition = 'has permission to open the letter now';
+    await h.scope.persist(revised);
+    assert.equal(h.scope.generationGuideSelection, inFlight);
+    assert.match(inFlight.payload, /keep the letter sealed until dawn/);
+    assert.match(h.prepare().payload, /permission to open the letter now/);
+    h.context.chat.push({ is_user: false, mes: 'Discarded future: the letter burns.' });
+    const future = readyPlan(h.context.chat);
+    future.lastAnalyzedAt = 300;
+    future.causalContext.conditions[0].condition = 'has burned the letter';
+    await h.scope.persist(future);
+    const reopened = generationHarness(structuredClone(h.context.chat), h.state(), structuredClone(h.context.chatMetadata));
+    await reopened.emit('GENERATION_STARTED', 'regenerate');
+    const retry = reopened.prepare('regenerate');
+    assert.match(retry.payload, /permission to open the letter now/);
+    assert.doesNotMatch(retry.payload, /burns|has burned/);
+    assert.equal(reopened.calls.length, 0);
 });
 
 test('input proof admits a fresh plan after card changes but rejects plans built for other inputs', () => {

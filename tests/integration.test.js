@@ -16,12 +16,12 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest, browser runtime, and detached plugin share the release version', () => {
-    assert.equal(manifest.version, '0.14.3');
-    assert.equal(manifest.js, 'extension/index.js?v=0.14.3');
-    assert.equal(manifest.css, 'extension/style.css?v=0.14.3');
+    assert.equal(manifest.version, '0.14.4');
+    assert.equal(manifest.js, 'extension/index.js?v=0.14.4');
+    assert.equal(manifest.css, 'extension/style.css?v=0.14.4');
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.14\.3'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.14\.3'/);
+    assert.match(pluginSource, /const VERSION = '0\.14\.4'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.14\.4'/);
 });
 
 test('planner input proof travels through normal saves and detached recovery', () => {
@@ -57,8 +57,8 @@ test('roleplay injection never migrates the user default into a system message',
 });
 
 test('runtime uses causal context and deferred world state without prescriptive beat-director dependency', () => {
-    assert.match(source, /from '\.\/causal-context\.js\?v=0\.14\.0'/);
-    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.14\.0'/);
+    assert.match(source, /from '\.\/causal-context\.js\?v=0\.14\.4'/);
+    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.14\.4'/);
     assert.doesNotMatch(source, /beat-director/);
     assert.doesNotMatch(stateSource, /beat-director/);
     assert.match(stateSource, /export const STATE_VERSION = 59/);
@@ -99,7 +99,7 @@ test('provider context exposes only clean relevant conditions', () => {
 
 test('generation archives and reuses the same causal slice for regeneration', () => {
     assert.match(source, /guidanceSnapshot\(state, guideSelectionOptions\(state, context\)\)/);
-    assert.match(source, /payload: refreshGameMasterContract\(archived.payload\), reused: true/);
+    assert.match(source, /payload, reused: true/);
     assert.doesNotMatch(source, /branchIndex|selectBeatBranchIndex/);
     const interceptor = source.slice(source.indexOf('export async function livingWorldGuideGenerateInterceptor'), source.indexOf('globalThis.livingWorldGuideGenerateInterceptor'));
     assert.doesNotMatch(interceptor, /await |analyzeNow\(/);

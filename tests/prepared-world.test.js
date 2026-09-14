@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { PREPARED_SCHEMA, PREPARED_LIMIT, defaultPreparedWorld, validatePrepared, mergePreparedWorld,
     normalizePreparedWorld, stampPreparedWorld, preparedWorldUsable, preparedWorldForPrompt,
-    formatPreparedWorld, formatPacingPreference } from '../extension/prepared-world.js';
+    formatPreparedWorld, formatPacingPreference, compactPreparedForPrompt } from '../extension/prepared-world.js';
 import { defaultState, normalizeState, saveState, fingerprintMessages, buildPromptPayload, guidanceSnapshot } from '../extension/state.js';
 import { plotInputKey, generationPreviewDescription } from '../extension/generation-context.js';
 import { SYSTEM, INCREMENTAL_SYSTEM, ANALYSIS_SCHEMA, INCREMENTAL_ANALYSIS_SCHEMA,
@@ -227,4 +227,17 @@ test('full notebooks fit real default envelopes without deletion or losing the n
         assert.match(parsed.current.preparedWorld.overview, /long journey/);
     }
     assert.equal(JSON.stringify(state), before);
+});
+
+
+test('compact preparation keeps timing beside entry and the writer receives advisory timing', () => {
+    const item = { ...record(), entry: 'Mira opens the book at the table.', hold: 'While the party eats at the table.' };
+    const board = mergePreparedWorld(null, delta([item]));
+    const compact = compactPreparedForPrompt(preparedWorldForPrompt(board));
+    assert.equal(compact.items[0].entry, item.entry);
+    assert.equal(compact.items[0].hold, item.hold);
+    const packet = formatPreparedWorld(board);
+    assert.match(packet, /use a fitting entry despite a conflicting inferred hold/);
+    assert.match(packet, /Timing consideration \(only if supported by the actual scene\):/);
+    assert.doesNotMatch(packet, /^Keep dormant:/m);
 });

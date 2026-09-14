@@ -577,8 +577,8 @@ test('provider payload exposes clean conditions and withholds tentative metadata
     const state = applyAnalysis(defaultState(), full(), messages);
     state.lastAnalysisFingerprint = 'x'; state.sourceMessageCount = messages.length; state.sourceChatId = 'chat';
     const payload = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
-    assert.match(payload, /Mira suspects the reserve report is falsified/);
-    assert.match(payload, /Grain reserves are falling faster/);
+    assert.match(payload, /Mira: suspects the reserve report is falsified/);
+    assert.match(payload, /Grain reserves: are falling faster/);
     assert.doesNotMatch(payload, /Harbor merchants/);
     assert.doesNotMatch(payload, /Harbor shortages|shipping ledgers|scheduled arrival/i);
     assert.doesNotMatch(payload, /confidence|relevance|mira-doubt/i);

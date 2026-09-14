@@ -1,12 +1,20 @@
 import { evidenceRelevance } from './evidence-selection.js?v=0.13.9';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.13.9';
+import { sceneStatus } from './transcript-status.js?v=0.14.4';
 
 // Kept outside planner state: an asynchronous planner save must never replace
 // the immutable pre-response packet or the replacement lifecycle marker.
 export const GENERATION_CONTEXT_KEY = 'taleFairyGenerationContext';
 export const REPLACEMENT_PENDING_KEY = 'taleFairyReplacementPending';
 export const GENERATION_CACHE_LIMIT = 12;
-export const PLOT_ANCHOR_VERSION = 3;
+export const PLOT_ANCHOR_VERSION = 4;
+
+// Compare completed planning runs, not UI saves or reply-verification updates.
+export function hasNewerPlannerState(state, packet) {
+    const revision = value => Number(value?.preparedWorld?.source?.startedAt || value?.lastAnalyzedAt || 0);
+    return Number(state?.sourceMessageCount || 0) >= Number(packet?.plannerState?.sourceMessageCount || 0)
+        && revision(state) > revision(packet?.plannerState);
+}
 
 export function hasPlannerConditions(context) {
     return (context?.conditions || []).some(item => item.condition && !String(item.id || '').startsWith('fallback-'));
@@ -185,6 +193,8 @@ export function buildPlotAnchor(messages = [], { state = {}, stateCurrent = fals
     const assistant = [...messages].reverse().find(message => !message.is_user && message.mes);
     const query = user?.mes || assistant?.mes || '';
     const lines = [];
+    const status = assistant && sceneStatus(assistant.mes);
+    if (status) lines.push(`Scene status from accepted reply (later explicit user changes take priority): ${excerpt(status, 220)}`);
     if (assistant) lines.push(`Accepted scene excerpt (${excerpt(assistant.name || 'narrator', 20)}): ${excerpt(assistant.mes, 180, query)}`);
     if (user) lines.push(`Latest user contribution (not an assumed outcome): ${excerpt(user.mes, 140, assistant?.mes)}`);
     // Only transcript-aligned memory can supplement excerpts. In particular,

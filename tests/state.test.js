@@ -10,6 +10,17 @@ import {
     CAUSAL_KINDS, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, providerCausalConditions,
 } from '../extension/causal-context.js';
 
+test('condition formatting preserves full sentences, proper names and punctuation', () => {
+    const output = formatCausalContext({ inject: true, conditions: [{
+        id: 'garrison', subject: 'Garrison under Captain Voss', kind: 'institution',
+        condition: 'Voss holds authority; Frieren has not decided.', confidence: 'established', disclosure: 'open',
+        relevance: 'The party is discussing custody.', knownBy: ['Frieren'], learnedFrom: 'Eisen said so.',
+    }] });
+    assert.match(output, /Garrison under Captain Voss: Voss holds authority; Frieren has not decided\./);
+    assert.match(output, /Learning route: Eisen said so\./);
+    assert.doesNotMatch(output, /Voss voss|frieren|so\.\./);
+});
+
 const conditions = [
     { id: 'mira', kind: 'actor', subject: 'Mira', condition: 'suspects the report is false', disclosure: 'private', confidence: 'strong', relevance: 'She is present.' },
     { id: 'grain', kind: 'system', subject: 'Grain reserves', condition: 'are falling faster than reported', disclosure: 'limited', confidence: 'established', relevance: 'Policy depends on them.' },
@@ -66,7 +77,7 @@ test('knowledge routes survive storage without promoting beliefs or leaking priv
     const restored = loadState(JSON.parse(JSON.stringify(saveState({}, state))));
     assert.deepEqual(restored.causalContext.conditions[0].knownBy, ['Mira']);
     const output = formatCausalContext(restored.causalContext);
-    assert.match(output, /Mira suspects the report is false/);
+    assert.match(output, /Mira: suspects the report is false/);
     assert.match(output, /Known to: Mira; others need an in-world learning route/);
     assert.match(output, /Her own comparison of two ledgers/);
     assert.match(output, /belief, not objective truth/);
@@ -85,8 +96,8 @@ test('quiet-scene guidance values meaningful progress without forcing conflict o
 
 test('formatter exposes natural-language causes without internal metadata', () => {
     const output = formatCausalContext({ conditions, inject: true }, { mode: 'balanced' });
-    assert.match(output, /Mira suspects the report is false\./);
-    assert.match(output, /Grain reserves are falling faster than reported\./);
+    assert.match(output, /Mira: suspects the report is false\./);
+    assert.match(output, /Grain reserves: are falling faster than reported\./);
     assert.doesNotMatch(output, /Merchants|confidence|relevance|"id"|mira/);
     assert.match(output, /writing model chooses every concrete action/i);
     assert.match(output, /writing model chooses realization and rhythm/i);
@@ -128,7 +139,7 @@ test('provider payload includes only clean causal context', () => {
     state.offscreenWorld.subjects = [{ id: 'harbor', kind: 'situation', subject: 'Secret harbor debt', reach: 'remote', motion: 'building', trajectory: 'Ships are late.', settled: 'A convoy vanished.', confidence: 'strong', lastSeenTurn: 0, owed: 'A messenger may arrive.', carriedBy: 'private ledger' }];
     const payload = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
     assert.match(payload, /<tale-fairy-context>/);
-    assert.match(payload, /Mira suspects/);
+    assert.match(payload, /Mira: suspects/);
     assert.doesNotMatch(payload, /Records|Current causes|Merchants|relevance/i);
     assert.doesNotMatch(payload, /Secret harbor debt|convoy vanished|private ledger/i);
 });

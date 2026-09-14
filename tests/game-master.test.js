@@ -109,7 +109,7 @@ test('fresh facts augment rules; unavailable facts never leak through a rules-on
     assert.deepEqual(stale.causalContext.conditions, []);
     assert.equal(stale.sceneProfile.promise, '');
     const fresh = buildPromptPayload(state, { guidanceUsable: true });
-    assert.match(fresh, /The merchant is away making a delivery/);
+    assert.match(fresh, /The merchant: is away making a delivery/);
     assert.equal(fresh.match(/GAME MASTER RESPONSIBILITY/g)?.length, 1);
     assert.doesNotMatch(buildPromptPayload(state), /merchant|delivery/);
 });
