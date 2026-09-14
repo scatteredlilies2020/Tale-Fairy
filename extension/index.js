@@ -4,7 +4,7 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.2';
+import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.3';
 import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.2';
 import { isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.0';
 import { selectSituationalOpenings } from './situations.js?v=0.13.9';
@@ -37,7 +37,7 @@ import { buildPlotAnchor, cachedGenerationContext, generationContextEntries, gen
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.14.2';
+const RUNTIME_VERSION = '0.14.3';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -1740,7 +1740,9 @@ async function recoverDetachedPlannerJobs() {
             clearPlannerPending(plannerStorage(), chatId);
             lastAnalysisError = '';
             renderBoard(next);
-            renderAnalysisActivity('Recovered planner result completed while this page was unavailable', false);
+            renderAnalysisActivity(result._taleFairyRecovery
+                ? 'Guidance recovered · unfinished notes omitted'
+                : 'Recovered planner result completed while this page was unavailable', false);
             return { active: false, recovered: true, state: next };
         }
         if (active) {
@@ -2310,6 +2312,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         lastAnalysisError = '';
         finalStatus = userNote && !resolvedNote
             ? 'Note not applied · try again'
+            : result._taleFairyRecovery ? `Guidance recovered · unfinished notes omitted · ${elapsedLabel(Date.now() - startedAt)}`
             : `Active world context ready · ${elapsedLabel(Date.now() - startedAt)}`;
         renderBoard(next);
         return next;

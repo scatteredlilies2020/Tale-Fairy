@@ -255,9 +255,44 @@ test('cut-off planner output is reported as incomplete before missing-field vali
         '{"contract_version":13,"prepared":{"overview":"An unfinished sentence',
         '```json\n{"contract_version":13,"offscreen":{}',
     ]) {
-        assert.throws(() => extractJson(raw), /response was cut off before the plan was complete/);
+        assert.throws(() => extractJson(raw), /response was cut off before usable guidance was complete/);
         assert.throws(() => parseRuntimeResponse(raw), error => /response was cut off/.test(error.message) && !/boolean|must be an array/.test(error.message));
     }
+});
+
+test('a cut-off audit preserves completed guidance and retained actor, motive, and ledger records', () => {
+    const prepared = { overview: 'Develop the open shipping investigation.', focus: ['dock'], updates: [{
+        id: 'dock', status: 'prepared', origin: 'invented', premise: 'A dock clerk may offer another ledger.',
+        middle: 'Meet the clerk, compare records, and follow whichever discrepancy matters.',
+        engine: '', future: '', entry: '', hold: '', invalidates: '', intervention: '', knowledge: '',
+    }] };
+    const value = modern(true, { prepared });
+    const core = { prepared, contract_version: 13, current: value.current, context: value.context, offscreen: value.offscreen };
+    const prefix = JSON.stringify(core).slice(0, -1);
+    for (const tail of [',"response_audit":{"applicable":true,"summary":"unfinished', ',"actor_updates":[{"op":"retire","name":"Mi', '']) {
+        const parsed = parseRuntimeResponse(prefix + tail);
+        assert.equal(validateAnalysisResult(parsed).valid, true);
+        assert.deepEqual(parsed.prepared, prepared);
+        assert.deepEqual(parsed.offscreen, value.offscreen);
+        assert.deepEqual(parsed.actor_updates, []);
+        assert.equal(parsed.response_audit.applicable, false, 'an unfinished audit is unavailable, not a clean bill of health');
+        assert.ok(parsed._taleFairyRecovery.omitted.includes('actor_updates'));
+        const prior = applyAnalysis(defaultState(), modern(false), messages);
+        prior.entities = [{ name: 'Mira', state: 'Reviewing records.', motivation: 'Find the missing shipment.', knowledge: 'Read the original ledger.' }];
+        const next = loadState(saveState({}, applyAnalysis(prior, parsed, messages)));
+        assert.equal(next.entities[0].knowledge, 'Read the original ledger.');
+        assert.deepEqual(next.hiddenMotives, prior.hiddenMotives);
+        assert.equal(next.contextLedger, prior.contextLedger);
+        assert.equal(next.preparedWorld.items[0].id, 'dock');
+        const prompt = buildPromptPayload(next, { guidanceUsable: true, preparedUsable: true });
+        assert.match(prompt, /A dock clerk may offer another ledger/);
+        assert.doesNotMatch(prompt, /unfinished|_taleFairyRecovery/);
+        assert.match(next.lastReason, /Recovered complete guidance/);
+    }
+    const broken = structuredClone(core);
+    broken.context.conditions[0].confidence = 'invented-fact';
+    assert.throws(() => parseRuntimeResponse(JSON.stringify(broken).slice(0, -1) + ',"audit":"cut'), /confidence/);
+    assert.throws(() => parseRuntimeResponse(JSON.stringify({ ...core, contract_version: 12 }).slice(0, -1)), /cut off/);
 });
 
 test('schemas expose audited causal contracts v12 and v13', () => {

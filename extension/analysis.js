@@ -294,18 +294,24 @@ function extractJson(raw) {
             parseError ||= error;
         }
     }
-    // Do not let syntax repair close a response that stopped mid-plan. Doing
-    // so turns a cutoff into misleading missing-boolean/array validation errors.
+    // A cutoff in optional notes must not discard already complete guidance.
+    // Track exact top-level boundaries; never repair an unfinished field into
+    // a fact or invent the missing end of a proposed development.
     if (start >= 0) {
         let depth = 0;
         let quoted = false;
         let escaped = false;
         let complete = false;
-        for (const char of source.slice(start)) {
+        const boundaries = [];
+        for (let index = start; index < source.length; index++) {
+            const char = source[index];
             if (quoted) {
                 if (escaped) escaped = false;
                 else if (char === '\\') escaped = true;
-                else if (char === '"') quoted = false;
+                else if (char === '"') {
+                    quoted = false;
+                    if (depth === 1) boundaries.push(index + 1);
+                }
                 continue;
             }
             if (char === '"') quoted = true;
@@ -313,9 +319,35 @@ function extractJson(raw) {
             else if (char === '}' || char === ']') {
                 depth--;
                 if (depth === 0) { complete = true; break; }
-            }
+                if (depth === 1) boundaries.push(index + 1);
+            } else if (char === ',' && depth === 1) boundaries.push(index);
         }
-        if (!complete) throw new AnalysisValidationError('The planner response was cut off before the plan was complete. It may have reached the output limit or the connection may have ended early.');
+        if (!complete) {
+            for (const boundary of boundaries.reverse()) {
+                let finished;
+                try { finished = JSON.parse(`${source.slice(start, boundary)}}`); }
+                catch { continue; }
+                // Routine updates merge into retained state. Missing ancillary
+                // deltas are no-ops, not empty replacements for saved facts.
+                // A rebuild cannot use this path to claim it rebuilt the world.
+                if (finished.contract_version !== 13 || !finished.prepared || !finished.current || !finished.context) break;
+                const optional = {
+                    situations: [],
+                    offscreen: { subjects: [], elapsed: '', settled_through: 0, audit: '' },
+                    response_audit: { applicable: false, movement_fit: 'not-applicable', repetition: 'none',
+                        unjustified_escalation: false, player_control: false, continuity_drift: false,
+                        patterns: [], summary: '', state_change: '' },
+                    thread_updates: [], hidden_motives: { status: 'none', items: [], audit: '' },
+                    actor_updates: [], ledger: '', note_resolution: null,
+                };
+                const omitted = Object.keys(optional).filter(key => !Object.hasOwn(finished, key));
+                return { ...optional, ...finished,
+                    audit: 'Recovered complete guidance from a cut-off response; unfinished notes were omitted and prior records retained.',
+                    _taleFairyRecovery: { omitted },
+                };
+            }
+            throw new AnalysisValidationError('The planner response was cut off before usable guidance was complete. It may have reached the output limit or the connection may have ended early.');
+        }
     }
     // Prompt-only providers occasionally return a complete object with one
     // missing comma, a dangling comma, or an unescaped quote. Repair syntax
