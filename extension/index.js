@@ -4,8 +4,8 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.5';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.5';
+import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, buildStoryEvidence, storyEvidenceQuery, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.6';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.6';
 import { isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.0';
 import { selectSituationalOpenings } from './situations.js?v=0.13.9';
 import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.13.17';
@@ -14,12 +14,12 @@ import { DEFAULT_INJECTION_ROLE, normalizeInjectionRole } from './injection-role
 import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.13.9';
 import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.13.9';
 import { normalizeModelListResponse } from './models.js?v=0.13.9';
-import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, plannerOutputTokenBudget, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.14.2';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.13.9';
+import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, plannerOutputTokenBudget, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.14.6';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.14.6';
 import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.13.9';
-import { collectSummarySources } from './summary-context.js?v=0.13.9';
+import { collectSummarySources } from './summary-context.js?v=0.14.6';
 import { estimateTokenCount } from './token-budget.js?v=0.13.9';
-import { fitPromptToBudget, plannerEvidenceAudit } from './prompt-budget.js?v=0.13.9';
+import { fitPromptToBudget, plannerEvidenceAudit } from './prompt-budget.js?v=0.14.6';
 import { DEFAULT_ROUTINE_INPUT, DEFAULT_REVIEW_INPUT, normalizeInputBudget, plannerBudgets } from './planner-budgets.js?v=0.14.5';
 import { relevantActors } from './evidence-selection.js?v=0.13.9';
 import { completionText } from './completion-response.js?v=0.13.9';
@@ -29,7 +29,7 @@ import { clearPlannerRecoveryRepair, clearPlannerFailed, clearPlannerPending, ma
 import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.13.9';
 import { hasUsableCausalContext } from './causal-context.js?v=0.14.5';
 import { formatHiddenMotives } from './scratchpad-format.js?v=0.13.9';
-import { defaultPreparedWorld, preparedWorldUsable, unchangedSourcePrefix, stampPreparedWorld } from './prepared-world.js?v=0.14.5';
+import { defaultPreparedWorld, preparedWorldUsable, unchangedSourcePrefix, stampPreparedWorld } from './prepared-world.js?v=0.14.6';
 import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.9';
 import { createSafetyFallbackState } from './fallback-direction.js?v=0.14.5';
 import { classifyAssistantReply } from './response-usability.js?v=0.13.9';
@@ -37,7 +37,7 @@ import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generat
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.14.5';
+const RUNTIME_VERSION = '0.14.6';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -614,19 +614,20 @@ async function optionalContinuityContextWhenReady(context, allowStale, signal) {
     return finalState;
 }
 
-function bootstrapContext(context) {
+function bootstrapContext(context, { broad = false } = {}) {
     const result = {};
     try {
         const fields = getCharacterCardFields?.() || context.getCharacterCardFields?.() || {};
         for (const key of ['description', 'personality', 'scenario', 'persona']) {
-            if (fields[key]) result[key] = String(fields[key]).slice(0, 3500);
+            if (fields[key]) result[key] = String(fields[key]).slice(0, broad ? undefined : 3500);
         }
         // A card system field may contain real setting mechanics alongside RP
         // instructions. Pass it as untrusted reference material so the planner
         // can retain factual rules without adopting its behavioral directives.
-        if (fields.system) result.cardSystemReference = String(fields.system).slice(0, 3500);
+        if (fields.system) result.cardSystemReference = String(fields.system).slice(0, broad ? undefined : 3500);
     } catch { /* older hosts may not expose card fields */ }
-    if (context.chatMetadata?.scenario) result.scenario = String(context.chatMetadata.scenario).slice(0, 3500);
+    if (context.chatMetadata?.scenario) result.scenario = String(context.chatMetadata.scenario).slice(0, broad ? undefined : 3500);
+    if (broad && context.chatMetadata?.note_prompt) result.authorNote = String(context.chatMetadata.note_prompt);
     return result;
 }
 
@@ -2231,6 +2232,23 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         const { fullContextPass, bootstrapScan } = pass;
         const budgets = plannerBudgets(s, { bootstrapScan, fullContextPass });
         const { input: plannerMaxPromptTokens, recent: plannerRecentContextTokens, summary: plannerSummaryContextTokens } = budgets;
+        const bootstrap = bootstrapContext(context, { broad: fullContextPass });
+        const storyEvidence = fullContextPass ? buildStoryEvidence(chat) : null;
+        const referenceSources = [];
+        if (fullContextPass) {
+            await warmPlotWorldInputs(context);
+            controller.signal.throwIfAborted();
+            for (const [name, text] of Object.entries(bootstrap)) {
+                referenceSources.push({ label: name, kind: 'character-reference', priority: 0, text });
+            }
+            for (const name of plotWorldNames(context, world_info, selected_world_info)) {
+                for (const entry of Object.values(worldInfoCache.get(name)?.entries || {})) {
+                    if (entry.disable || !entry.content) continue;
+                    referenceSources.push({ label: `World Info: ${name} · ${entry.comment || entry.uid}`,
+                        kind: 'world-info-reference', priority: 1, text: String(entry.content) });
+                }
+            }
+        }
         const analysisSelection = {
             source: s.analysisSource,
             profileId: s.analysisProfileId,
@@ -2254,10 +2272,12 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         const summarySources = await collectSummarySources(summaryContext, chat, {
             continuityContext,
             continuityEvidence: continuityState?.planningEvidence,
+            continuitySummary: continuityState?.summaryText,
             includeContinuity: s.continuityIntegration && !allowOneAssistantAppend,
             ownPromptKey: PROMPT_KEY,
+            broad: fullContextPass, referenceSources,
             tokenBudget: plannerSummaryContextTokens,
-            query: [...chat.slice(-4).map(message => message?.mes || ''), ...relevantActors(current.entities, chat.slice(-4).map(message => message?.mes || '').join('\n')).map(item => item.name)].join('\n'),
+            query: storyEvidence ? storyEvidenceQuery(storyEvidence, bootstrap) : [...chat.slice(-4).map(message => message?.mes || ''), ...relevantActors(current.entities, chat.slice(-4).map(message => message?.mes || '').join('\n')).map(item => item.name)].join('\n'),
             worldInfoActivationTokens: plannerMaxPromptTokens,
             onWarning: (message, error) => console.warn(`[${EXTENSION_ID}] ${message}`, error),
         });
@@ -2265,7 +2285,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         showAnalysisPhase(`Building ${Number(plannerMaxPromptTokens).toLocaleString()}-token ${fullContextPass ? 'full' : 'incremental'} planner input`, runId, startedAt);
         // Kept with run metadata so detached recovery retains the same proof.
         analysisSelection.plotInputsKey = plotInputKey(chatId, [], generationInputs(context, current));
-        const plannerPrompt = await buildTokenBudgetedAnalysisPrompt(chat, current, noteInstruction(userNote), bootstrapContext(context), { recentContextTokens: plannerRecentContextTokens, messageTokenLimit: s.messageTokenLimit, summaryContextTokens: plannerSummaryContextTokens, summarySources, bootstrapScan, fullRebuild: rebuild, incremental: !fullContextPass, maxPromptTokens: plannerMaxPromptTokens, variationNonce });
+        const plannerPrompt = await buildTokenBudgetedAnalysisPrompt(chat, current, noteInstruction(userNote), bootstrap, { storyEvidence, recentContextTokens: plannerRecentContextTokens, messageTokenLimit: s.messageTokenLimit, summaryContextTokens: plannerSummaryContextTokens, summarySources, bootstrapScan, fullRebuild: rebuild, incremental: !fullContextPass, maxPromptTokens: plannerMaxPromptTokens, variationNonce });
         plannerTranscriptHead = transcriptHeadFromPrompt(plannerPrompt);
         lastSummaryAudit = plannerEvidenceAudit(plannerPrompt, summarySources, {
             fixedEnvelope: analysisBudgetEnvelope(!fullContextPass),
@@ -2453,7 +2473,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const continuityStatus = analyzed ? continuityContextState(currentContext()).status : 'unavailable';
     const summaryAudit = state.summaryEvidence?.scannedAt ? state.summaryEvidence : lastSummaryAudit;
     const summaryStatus = summaryAudit.scannedAt || summaryAudit.count
-        ? ` · final summaries: ${summaryAudit.count} sources / ${summaryAudit.includedTokens.toLocaleString()} text tokens${summaryAudit.inputBudget ? ` · ${summaryAudit.tier}: ~${summaryAudit.inputTokens.toLocaleString()}/${summaryAudit.inputBudget.toLocaleString()} input tokens · raw excerpts: ${summaryAudit.recentTokens} tokens · historical witnesses: ${summaryAudit.historyCount} · actors: ${summaryAudit.actorCount} · candidate pool: ${summaryAudit.candidateCount} sources / ${summaryAudit.candidateTokens} text tokens${summaryAudit.droppedLabels?.length ? ` · omitted sources: ${summaryAudit.droppedLabels.join(', ')}` : ''}` : ' (legacy evidence count)'}`
+        ? ` · final summaries: ${summaryAudit.count} sources / ${summaryAudit.includedTokens.toLocaleString()} text tokens${summaryAudit.inputBudget ? ` · ${summaryAudit.tier}: ~${summaryAudit.inputTokens.toLocaleString()}/${summaryAudit.inputBudget.toLocaleString()} input tokens · raw excerpts: ${summaryAudit.recentTokens} tokens · historical witnesses: ${summaryAudit.historyCount}${summaryAudit.timelineEpochCount ? ` · story map: ${summaryAudit.timelineEpochCount} periods / ${summaryAudit.storyMessageCount} messages · older thread candidates: ${summaryAudit.openThreadCount}` : ''} · actors: ${summaryAudit.actorCount} · candidate pool: ${summaryAudit.candidateCount} sources / ${summaryAudit.candidateTokens} text tokens${summaryAudit.droppedLabels?.length ? ` · omitted sources: ${summaryAudit.droppedLabels.join(', ')}` : ''}` : ' (legacy evidence count)'}`
         : '';
     scratchpadText(board, 'scratchpad-continuity', `Direct Continuity connector: ${continuityStatus}${summaryStatus}`, 'Direct Continuity connector: unavailable');
 

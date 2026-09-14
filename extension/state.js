@@ -8,7 +8,7 @@ import { defaultOffscreenWorld, normalizeOffscreenWorld, offscreenWorldForPrompt
 import { defaultSituationBoard, normalizeSituationBoard } from './situations.js?v=0.13.9';
 import { GAME_MASTER_CONTRACT, isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.0';
 import { relevantActors } from './evidence-selection.js?v=0.13.9';
-import { defaultPreparedWorld, normalizePreparedWorld, preparedWorldForPrompt, formatPreparedWorld, formatPacingPreference } from './prepared-world.js?v=0.14.5';
+import { defaultPreparedWorld, normalizePreparedWorld, preparedWorldForPrompt, formatPreparedWorld, formatPacingPreference } from './prepared-world.js?v=0.14.6';
 
 export const STATE_KEY = 'livingWorldGuide';
 export const STATE_VERSION = 59;
@@ -637,7 +637,7 @@ export function normalizeState(input = {}) {
             count: Math.max(0, Number(value.summaryEvidence?.count) || 0),
             includedTokens: Math.max(0, Number(value.summaryEvidence?.includedTokens) || 0),
             originalTokens: Math.max(0, Number(value.summaryEvidence?.originalTokens) || 0),
-            ...Object.fromEntries(['candidateCount', 'candidateTokens', 'inputTokens', 'inputBudget', 'recentTokens', 'historyCount', 'actorCount'].map(key => [key, Math.max(0, Number(value.summaryEvidence?.[key]) || 0)])),
+            ...Object.fromEntries(['candidateCount', 'candidateTokens', 'inputTokens', 'inputBudget', 'recentTokens', 'historyCount', 'actorCount', 'storyMessageCount', 'timelineEpochCount', 'openThreadCount'].map(key => [key, Math.max(0, Number(value.summaryEvidence?.[key]) || 0)])),
             tier: ['routine', 'review', 'rebuild'].includes(value.summaryEvidence?.tier) ? value.summaryEvidence.tier : '',
             droppedLabels: (Array.isArray(value.summaryEvidence?.droppedLabels) ? value.summaryEvidence.droppedLabels.slice(0, 24) : []).map(item => text(item).slice(0, 140)),
             // Summary sources are priority ordered, so retain the leading

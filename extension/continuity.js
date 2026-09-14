@@ -110,6 +110,7 @@ export function readContinuityBridge(context = {}, bridge, { allowStale = false 
     const text = sameChat && usableStatus && typeof snapshot?.prompt === 'string' ? snapshot.prompt : '';
     return withMetadata({ text: evidenceText || text, status }, {
         planningEvidence,
+        summaryText: text,
         version: Number(snapshot?.version || bridge?.version || 1),
         revision: Number(snapshot?.revision || 0),
         messageSignature: String(snapshot?.coverage?.signature || ''),

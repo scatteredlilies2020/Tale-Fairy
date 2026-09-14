@@ -69,7 +69,7 @@ test('normal evaluation makes exactly one model request', async () => {
     const h = harness([{ valid: true }]);
     assert.equal((await h.run()).valid, true);
     assert.equal(h.requests.length, 1);
-    assert.equal(h.requests[0].max_tokens, 12288);
+    assert.equal(h.requests[0].max_tokens, 20480);
 });
 
 test('invalid output fails after one generation without a model correction pass', async () => {
@@ -106,7 +106,7 @@ for (const route of ['direct', 'profile', 'active']) {
                 }, { route, configured });
                 assert.equal((await h.runPass(meta, recovery)).valid, true);
                 assert.equal(h.requests.length, 1, 'supported controls need one request');
-                const reserve = { none: 0, low: 8192, medium: 16384, high: 32768 }[expected];
+                const reserve = { none: 0, low: 16384, medium: 16384, high: 32768 }[expected];
                 assert.equal(h.requests[0].max_tokens, budget + reserve);
             }
         }
@@ -178,7 +178,7 @@ test('DeepSeek routine updates disable thinking and bound output even with revie
 
 test('every route reserves reasoning space after Auto inheritance and provider translation', async () => {
     for (const route of ['direct', 'profile', 'active']) {
-        for (const [configured, expected] of [['off', 6144], ['low', 14336], ['medium', 38912], ['auto', 38912]]) {
+        for (const [configured, expected] of [['off', 6144], ['low', 22528], ['medium', 38912], ['auto', 38912]]) {
             const h = harness([{ valid: true }], { route, configured, activeEffort: 'high', model: 'deepseek-v4.1-flash' });
             await h.runPass({ fullContextPass: true });
             assert.equal(h.requests.length, 1);

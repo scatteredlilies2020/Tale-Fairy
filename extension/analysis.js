@@ -1,15 +1,15 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.14.5';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.14.6';
 import { leadingGeneratedStatusSummary, sceneStatus } from './transcript-status.js?v=0.14.5';
 import { plotExcerpt } from './generation-context.js?v=0.14.5';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
-import { compactSummarySources } from './summary-context.js?v=0.13.9';
+import { compactSummarySources } from './summary-context.js?v=0.14.6';
 import { relevantExcerpt } from './evidence-selection.js?v=0.13.9';
 import { formatDriftRequest, mergeOffscreenWorld, OFFSCREEN_KINDS } from './offscreen-world.js?v=0.13.9';
 import { CAUSAL_KINDS } from './causal-context.js?v=0.14.5';
 import { mergeSituationUpdates, retireManifestedSituations } from './situations.js?v=0.13.9';
 import { PLANNER_AGENCY_RULE, ACTOR_AGENCY_RULE, AGENCY_AUDIT_RULE } from './game-master.js?v=0.14.0';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { compactPreparedForPrompt, PREPARED_SCHEMA, PREPARED_RULE, validatePrepared, mergePreparedWorld } from './prepared-world.js?v=0.14.5';
+import { compactPreparedForPrompt, PREPARED_SCHEMA, PREPARED_RULE, validatePrepared, mergePreparedWorld } from './prepared-world.js?v=0.14.6';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
@@ -1429,7 +1429,7 @@ function compactRebuildTimelineEvidence(epochs, requestedTokenLimit) {
 }
 
 /**
- * Build a recency-independent story map for destructive Full Rebuilds.
+ * Build a recency-independent story map for initialization and broad reviews.
  *
  * This is extractive rather than generative: it scans the raw chat once,
  * divides it into chronological epochs, and retains distinctive evidence from
@@ -1493,6 +1493,26 @@ export function buildRebuildTimelineEvidence(messages, historicalEnd, requestedT
         excerpts: epoch.excerpts.map(item => ({ ...item, content: compactMessageContent(item.content, perExcerpt) })),
     }));
     return compactRebuildTimelineEvidence(compacted, tokenLimit);
+}
+
+// Collect once for this accepted transcript, before source selection or budget
+// fitting. Never reuse evidence across an edit, swipe, or different chat.
+export function buildStoryEvidence(messages = []) {
+    return {
+        messageCount: messages.length,
+        opening: messages.length ? { index: 0, role: messages[0].is_user ? 'user' : 'assistant', content: truncateToTokenBudget(cleanMessageContent(messages[0].mes), 400) } : null,
+        timeline: buildRebuildTimelineEvidence(messages, messages.length, 3200),
+        openThreads: retrieveDormantHookEvidence(messages, messages.length, new Set(), 6),
+    };
+}
+
+export function storyEvidenceQuery(evidence, bootstrap = {}) {
+    return [
+        ...Object.values(bootstrap),
+        evidence?.opening?.content || '',
+        ...(evidence?.timeline || []).flatMap(epoch => epoch.excerpts.map(item => item.content)),
+        ...(evidence?.openThreads || []).map(item => item.content),
+    ].join('\n');
 }
 
 function retrievalTerms(value) {
@@ -1813,10 +1833,13 @@ function retrieveDormantHookEvidence(messages, recentStart, selectedIndexes, max
     if (recentStart <= 0) return [];
     const selected = selectedIndexes instanceof Set ? selectedIndexes : new Set(selectedIndexes || []);
     const records = [];
+    // Later-state checks share one cleaned transcript instead of repeatedly
+    // stripping every long message for each candidate on large rebuilds.
+    const excerpts = messages.map(message => durableHookExcerpt(message?.mes, 420));
     for (let index = 0; index < recentStart; index++) {
         const message = messages[index];
         if (!message || selected.has(index)) continue;
-        const content = durableHookExcerpt(message.mes, 420);
+        const content = excerpts[index];
         if (!content) continue;
         const types = DURABLE_HOOK_TYPES.filter(([, pattern]) => pattern.test(content)).map(([type]) => type);
         if (!types.length) continue;
@@ -1832,7 +1855,7 @@ function retrieveDormantHookEvidence(messages, recentStart, selectedIndexes, max
     // is audited. A louder but already closed route must never crowd out a
     // quieter established route from the same family.
     const ranked = records
-        .map(record => attachLaterHookEvidence(record, messages))
+        .map(record => attachLaterHookEvidence(record, messages, excerpts))
         .filter(isOpenDurableHookCandidate)
         .sort((a, b) => b.score - a.score || b.index - a.index);
     const chosen = [];
@@ -1858,7 +1881,7 @@ function hookReferenceTokens(value) {
         .map(token => token.toLocaleLowerCase());
 }
 
-function attachLaterHookEvidence(candidate, messages) {
+function attachLaterHookEvidence(candidate, messages, excerpts = null) {
     const pattern = hookTypePattern(candidate?.hook_type);
     if (!pattern) return candidate;
     const identity = new Set(hookIdentityTerms(candidate.content, candidate.hook_type));
@@ -1867,7 +1890,7 @@ function attachLaterHookEvidence(candidate, messages) {
     for (let index = Number(candidate.index) + 1; index < messages.length; index++) {
         const message = messages[index];
         if (!message) continue;
-        const content = durableHookExcerpt(message.mes, 360);
+        const content = excerpts?.[index] ?? durableHookExcerpt(message.mes, 360);
         if (!content || !pattern.test(content)) continue;
         const laterIdentity = hookIdentityTerms(content, candidate.hook_type);
         const overlap = laterIdentity.filter(term => identity.has(term)).length;
@@ -1901,6 +1924,11 @@ const PROMPT_EXTREME_CANON_INSTRUCTION = 'Explicit user/OOC facts remain authori
 export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, options = {}) {
     const configuredBudget = Math.max(3000, Math.min(30000, Number(options.maxPromptTokens) || DEFAULT_PROMPT_TOKEN_BUDGET));
     const budget = Math.max(800, Math.min(configuredBudget, Number(options.effectivePromptTokens) || configuredBudget));
+    const broad = options.incremental !== true || options.bootstrapScan || options.fullRebuild;
+    const storyEvidence = broad
+        ? options.storyEvidence || options.historyCache?.get('story-evidence') || buildStoryEvidence(messages)
+        : null;
+    if (storyEvidence) options.historyCache?.set('story-evidence', storyEvidence);
     const messageTokenLimit = Math.max(180, Math.min(1800, Number(options.messageTokenLimit) || 600));
     const recentTokens = Math.max(900, Math.min(12000, Number(options.recentContextTokens) || Math.floor(budget * 0.42)));
     const selected = selectMessages(messages, recentTokens, messageTokenLimit, Math.min(3000, recentTokens), Boolean(options.bootstrapScan));
@@ -1926,7 +1954,8 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     const authoritativeRelations = [...authoritativeAssistantSource.matchAll(new RegExp(KINSHIP_POSSESSIVE_PATTERN_SOURCE, 'giu'))]
         .map(match => match[0]);
     const retainedState = stateForPrompt(state, { query: messages.slice(-6).map(message => message?.mes || '').join('\n') });
-    const evidenceQuery = [...messages.slice(-4).map(message => message?.mes || ''), ...retainedState.entities.map(item => item.name)].join('\n');
+    const evidenceQuery = storyEvidence ? storyEvidenceQuery(storyEvidence, bootstrap)
+        : [...messages.slice(-4).map(message => message?.mes || ''), ...retainedState.entities.map(item => item.name)].join('\n');
     const currentPlannerTurn = retainedState.turnCount;
     const retainedCurrent = useSpecificPlayerName(options.incremental ? compactPromptStateForBudget(retainedState) : retainedState, playerName);
     const payload = {
@@ -1989,6 +2018,18 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         })),
     };
     const recentStart = selected.filter(item => item.kind === 'recent')[0]?.index ?? messages.length;
+    if (storyEvidence) {
+        payload.preparation_brief = 'Build from the wider setting, not only observed problems. For open-ended play, retain or create at least one concrete independent development: if the current investigation/problem vanished, it would still have its own motive, intermediate experiences and later possibilities. Another witness, book, carrier or destination for the same problem is not independent. Invent compatible unexplored material explicitly as invented; no previous mention is required. Keep its entry conditional, and do not require its use in the next reply. Overview describes the wider RP and commitments, not the newest scene recap. Respect explicit user restrictions to a closed scenario.';
+        payload.story_evidence = {
+            instruction: 'Reconstruct the wider premise, accepted changes, durable commitments and independent people/processes before choosing the current scene focus. Indexed excerpts are partial past observations, not current facts: reconcile later corrections and resolutions. Read the current exchange for present state, not as the boundary of the whole story. The opening records original setup and era, subject to later explicit edits/corrections. Lore may concern other eras: it neither establishes current presence nor makes later canon a required future. Never infer that an event has already happened just because a biography describes its aftermath. On an empty history use supplied character/scenario/lore constraints and label new preparation as invented; never fabricate a past.',
+            opening: storyEvidence.opening,
+            timeline: compactRebuildTimelineEvidence(storyEvidence.timeline, Math.max(400, Math.min(2400, budget * 0.22))),
+            open_threads: compactDormantHooks(storyEvidence.openThreads, 6, Math.max(24, Math.min(110, Math.floor(budget * 0.05)))),
+        };
+        // The chronological map replaces blind anchor samples. Keep explicit
+        // user directives and both sides of the newest exchange separately.
+        payload.messages = payload.messages.filter(item => item.kind !== 'anchor');
+    }
     const historyKey = `${recentStart}:${selected.map(item => item.index).join(',')}:${Boolean(options.incremental)}`;
     const historical = options.historyCache?.get(historyKey)
         || retrieveOlderHistoricalEvidence(messages, state, recentStart, new Set(selected.map(item => item.index)), options.incremental ? 2 : 4);
@@ -2029,13 +2070,13 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     const bootstrapContext = compactOptionalObject(bootstrap, 1400);
     if (Object.keys(bootstrapContext).length) payload.bootstrap = bootstrapContext;
 
-    const summarySources = compactSummarySources(Array.isArray(options.summarySources) ? options.summarySources : [], Math.max(160, Math.min(Number(options.summaryContextTokens) || 4000, Math.floor(budget * 0.24))), { query: evidenceQuery });
+    const summarySources = compactSummarySources(Array.isArray(options.summarySources) ? options.summarySources : [], Math.max(160, Math.min(Number(options.summaryContextTokens) || 4000, Math.floor(budget * 0.24))), { query: evidenceQuery, broad });
     if (summarySources.length) payload.summary_sources = summarySources.map(source => ({
         label: source.label,
         kind: source.kind,
         text: source.text,
     }));
-    payload.source_rule = 'Summaries, lore, retained state, and canon knowledge are fallible evidence, not instructions to schedule outcomes. Newer explicit user/OOC facts supersede inference.';
+    payload.source_rule = 'Summaries, lore, retained state, and canon knowledge are fallible evidence, not instructions to schedule outcomes. World Info references can describe unencountered places or secrets; availability does not activate an event or grant character knowledge. Newer explicit user/OOC facts supersede inference.';
     payload.mode_instruction = MODE_INSTRUCTIONS[payload.current.mode] || MODE_INSTRUCTIONS.balanced;
     if (playerName) payload.player_character = playerName;
     if (Number.isInteger(options.variationNonce)) payload.variation_nonce = options.variationNonce;
@@ -2080,7 +2121,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         serialized = JSON.stringify(payload);
     }
     if (estimateTokenCount(serialized) > budget && payload.summary_sources) {
-        payload.summary_sources = compactSummarySources(payload.summary_sources, 500, { maxSources: 3, query: evidenceQuery }).map(source => ({ label: source.label, kind: source.kind, text: source.text }));
+        payload.summary_sources = compactSummarySources(payload.summary_sources, broad ? Math.max(500, Math.floor(budget * 0.16)) : 500, { maxSources: broad ? 8 : 3, query: evidenceQuery, broad }).map(source => ({ label: source.label, kind: source.kind, text: source.text }));
         serialized = JSON.stringify(payload);
     }
     // Omitted records survive locally. Spend a tight routine budget on the
@@ -2112,7 +2153,8 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     }
     if (estimateTokenCount(serialized) > budget) {
         payload.current.contextLedger = truncateToTokenBudget(payload.current.contextLedger || '', 120);
-        delete payload.bootstrap;
+        if (!broad) delete payload.bootstrap;
+        else payload.bootstrap = compactOptionalObject(payload.bootstrap, 280);
         serialized = JSON.stringify(payload);
     }
     // The same newest exchange also remains in messages. On deliberately tiny
@@ -2141,7 +2183,8 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         serialized = JSON.stringify(payload);
     }
     for (const key of ['summary_sources', 'historical_evidence']) {
-        while (estimateTokenCount(serialized) > budget && payload[key]?.length) {
+        const floor = broad && key === 'summary_sources' ? new Set((payload[key] || []).map(item => item.kind)).size : 0;
+        while (estimateTokenCount(serialized) > budget && payload[key]?.length > floor) {
             payload[key].pop();
             serialized = JSON.stringify(payload);
         }
@@ -2157,6 +2200,14 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         if (!message || estimateTokenCount(message.content) <= 80) break;
         const limit = Math.max(80, estimateTokenCount(message.content) - (estimateTokenCount(serialized) - budget) - 16);
         message.content = compactMessageContent(message.content, limit);
+        serialized = JSON.stringify(payload);
+    }
+    if (storyEvidence && estimateTokenCount(serialized) > budget) {
+        payload.story_evidence.timeline = compactRebuildTimelineEvidence(storyEvidence.timeline, Math.max(400, budget * 0.14));
+        payload.story_evidence.open_threads = compactDormantHooks(storyEvidence.openThreads, 3, 40);
+        if (payload.summary_sources) payload.summary_sources = payload.summary_sources.map(source => ({
+            ...source, text: relevantExcerpt(source.text, 80, evidenceQuery),
+        }));
         serialized = JSON.stringify(payload);
     }
     return serialized;
@@ -2771,16 +2822,16 @@ ${ACTOR_UPDATE_RULES}
 prepared contains overview, updates and focus as specified in the schema and system instructions. It is a persistent creative delta, not factual memory.
 context={conditions,inject,inject_reason,basis}; inject=true. conditions has 1–6 items, each {id,kind,subject,condition,disclosure,confidence,relevance,known_by,learned_from}. kind is ${CAUSAL_KINDS.join(', ')}. disclosure is open, limited, or private. confidence is established, strong, or tentative. Describe current causes only, never future actions or planned events. At least one condition must not be tentative. ${KNOWLEDGE_AND_AUDIT_RULES}
 situations has 0–6 optional setting-native circumstances, each {op,id,type,premise,cause,entry,scope,persistence,status,origin}. Use cause -> present circumstance -> possible interaction. These are never required events, objectives, outcomes, reveals, or player instructions. Original or consequential situations remain optional and non-canon until manifested. Return zero when none fit; use op=retire when contradicted or no longer relevant.
-offscreen={subjects,elapsed,settled_through,audit} is the complete bounded deferred-debt board. Preserve unseen subjects and settled history; update last_seen_turn only when settling relevant debt. current records the exact current scene. response_audit privately evaluates the prior assistant response. horizon and hidden_motives remain private optional hypotheses. world and updates contain factual state only. Empty update arrays mean no factual change. No other keys.`;
+offscreen={subjects,elapsed,settled_through,audit} is the complete bounded deferred-debt board; confidence is established, strong, or tentative. Inferred and invented are preparation origins, not confidence labels. Preserve unseen subjects and settled history; update last_seen_turn only when settling relevant debt. current records the exact current scene. response_audit privately evaluates the prior assistant response. horizon and hidden_motives remain private optional hypotheses. world and updates contain factual state only. Empty update arrays mean no factual change. No other keys.`;
 
 export const INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT = `Return contract_version=13 and the response shape. Target 900–1400 output tokens total. Short phrases; no deliberation or repeated explanations.
 current states the exact latest scene; copy explicit time/location. context replaces the writer's current factual slice: select 1–3 useful evidenced conditions, inject=true. known_by/learned_from require witnessed knowledge; otherwise []/"". At least one condition is established or strong. Suspicions remain attributed beliefs; tentative conditions stay private.
-prepared is a persistent delta: blank overview preserves it; omitted ids survive. Usually return zero or one changed development. Additional updates are for necessary corrections, not filling the notebook. Keep premise and middle concrete; other notes may be blank. Preserve focus ids when still fitting; retire contradicted or completed ideas explicitly. Do not rewrite an unchanged notebook. Omit offscreen entirely when unchanged. Offscreen subjects, hidden motives, actors and threads also contain changes only; empty arrays preserve records. Actor description fields use "" for unchanged/unknown, never invented filler. ledger may be "" when unchanged.
+prepared is a persistent delta: blank overview preserves it; omitted ids survive. Usually return zero or one changed development. A missing wider possibility may justify a new independent development; do not fill slots for their own sake. Change overview only when the wider premise, commitments or alternatives change, never just to recap the latest scene. Keep premise and middle concrete; other notes may be blank. Reassess focus against the latest exchange; repeated injection alone does not justify keeping the same focus. Preserve focus ids when still fitting; retire contradicted or completed ideas explicitly. Do not rewrite an unchanged notebook. Omit offscreen entirely when unchanged. Offscreen subjects, hidden motives, actors and threads also contain changes only; empty arrays preserve records. Actor description fields use "" for unchanged/unknown, never invented filler. ledger may be "" when unchanged.
 response_audit checks only the newest assistant reply; record factual drift, player control, repetition and supported state change briefly. Distinguish real intervention boundaries from repeated questions/readiness without follow-through; do not force progress each turn. Quiet or unchanged scenes are valid. With no assistant reply use applicable=false, movement_fit=not-applicable and no flags. Diagnostics audit/basis fields may be short; do not echo facts across sections. note_resolution is null without a user note.`;
 
 export const INCREMENTAL_SYSTEM = `You are Tale Fairy, a private creative GM preparing material for the roleplay writer. Return only JSON. This routine pass updates the newest exchange, not the whole story.
 Latest explicit user/OOC facts and the newest assistant status outrank retained state. Preserve speakers, owners, identities, counts and knowledge sources. A named group member is not an extra person. Unknown is acceptable; invented facts are not. Never turn proposals, suspected motives or unseen time into history.
-Keep current conditions and actor updates factual. Creative NPC/world actions, places, encounters and alternative middles/futures belong in prepared, clearly labeled established, inferred or invented premises. Retain wider possibilities through long quiet scenes; develop them when useful without churning every record. There are no genre quotas or required beats.
+Keep current conditions and actor updates factual. Creative NPC/world actions, places, encounters and alternative middles/futures belong in prepared, clearly labeled established, inferred or invented premises. Retain wider possibilities through long quiet scenes; do not turn overview into a scene recap or funnel independent ideas into the newest investigation. Future means experiences beyond the next clue or destination. Develop useful alternatives without churning every record. There are no genre quotas or required beats.
 NPCs may act, finish, refuse or disengage on their own motives. A past pause is not a standing constraint; respect actual commitments and reasons to wait. Never decide player dialogue, thoughts, choices or contestable outcomes; preserve intervention and viewpoint limits. Latest user pacing wins. Scene duration, development and interruption are independent. Eating, conversation or player silence alone do not block a fitting entry. Leave holds blank unless actual prerequisites or user constraints require them. No forced escalation or player participation. Preserve settled history; message count never advances fictional time. One pass, no critic or model repair.`;
 
 export { PLANNER_SYSTEM as SYSTEM, extractJson };

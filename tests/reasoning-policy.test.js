@@ -4,7 +4,7 @@ import { buildReasoningRequest, plannerOutputTokenBudget, profileReasoningEffort
 
 test('reasoning has room in addition to the complete visible plan', () => {
     assert.equal(plannerOutputTokenBudget(8192, 'off'), 8192);
-    assert.equal(plannerOutputTokenBudget(8192, 'low'), 16384);
+    assert.equal(plannerOutputTokenBudget(8192, 'low'), 24576);
     assert.equal(plannerOutputTokenBudget(8192, 'high'), 40960);
     assert.equal(plannerOutputTokenBudget(16384, 'high'), 49152);
     assert.equal(plannerOutputTokenBudget(8192, 'default'), 40960);

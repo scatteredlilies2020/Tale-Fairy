@@ -3,7 +3,9 @@ export const REASONING_MODES = Object.freeze(['auto', 'off', 'minimum', 'low', '
 // Completion limits can include hidden reasoning as well as the final plan.
 // Reserve that space separately, after resolving the selected/inherited mode.
 export function plannerOutputTokenBudget(planTokens, mode) {
-    const reserve = { off: 0, minimum: 4096, low: 8192, medium: 16384, high: 32768, max: 65536 };
+    // Broad planning can exceed 8k hidden tokens even at Low (observed 10,510
+    // before a plan was cut off). Reserve space for the visible plan separately.
+    const reserve = { off: 0, minimum: 4096, low: 16384, medium: 16384, high: 32768, max: 65536 };
     const selected = mode === 'none' ? 'off' : normalizeReasoningMode(mode);
     return Math.max(128, Number(planTokens) || 8192) + (reserve[selected] ?? 32768);
 }

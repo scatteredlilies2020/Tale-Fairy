@@ -1,4 +1,4 @@
-import { compactContinuityPrompt, formatPlanningEvidence } from './continuity.js?v=0.11.96';
+import { compactContinuityPrompt, formatPlanningEvidence } from './continuity.js?v=0.14.6';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { evidenceRelevance, relevantExcerpt } from './evidence-selection.js?v=0.13.9';
 
@@ -106,7 +106,7 @@ function normalizedSource(source, ordinal = 0) {
  * high-authority sources. This prevents one large memory prompt from starving
  * a smaller world-state recap while keeping the entire bundle token bounded.
  */
-export function compactSummarySources(sources, requestedTokenLimit = 4000, { maxSources = 24, query = '' } = {}) {
+export function compactSummarySources(sources, requestedTokenLimit = 4000, { maxSources = 24, query = '', broad = false } = {}) {
     const limit = Math.max(0, Math.floor(Number(requestedTokenLimit) || 0));
     if (!limit) return [];
     const seen = new Set();
@@ -121,11 +121,22 @@ export function compactSummarySources(sources, requestedTokenLimit = 4000, { max
     }
     // A queried pool favors usable passages over dozens of tiny fragments.
     const sourceLimit = query ? Math.min(maxSources, Math.max(1, Math.floor(limit / 160))) : maxSources;
-    const ranked = unique.map(item => ({ ...item, relevance: query ? evidenceRelevance(item.text, query) : 0 }))
+    let ranked = unique.map(item => ({ ...item, relevance: query ? evidenceRelevance(item.text, query) : 0 }))
         .sort((a, b) => Number(b.priority === 0) - Number(a.priority === 0)
             || b.relevance - a.relevance
-            || a.priority - b.priority || a.ordinal - b.ordinal)
-        .slice(0, Math.max(1, Math.min(32, Number(sourceLimit) || 24)));
+            || a.priority - b.priority || a.ordinal - b.ordinal);
+    if (broad) {
+        // Reserve a witness from each available source family before taking
+        // more hits about the same topic from a single large provider/book.
+        const families = new Set();
+        const representatives = ranked.filter(item => {
+            if (families.has(item.kind)) return false;
+            families.add(item.kind);
+            return true;
+        });
+        ranked = [...representatives, ...ranked.filter(item => !representatives.includes(item))];
+    }
+    ranked = ranked.slice(0, Math.max(1, Math.min(32, Number(sourceLimit) || 24)));
     const chosen = [];
     let runningHeaderTokens = 0;
     for (const item of ranked) {
@@ -162,7 +173,8 @@ export function compactSummarySources(sources, requestedTokenLimit = 4000, { max
     }
 
     return chosen.map((item, index) => {
-        const text = query ? relevantExcerpt(item.text, allocations[index], query) : compactHeadAndTail(item.text, allocations[index], item.kind);
+        const text = broad ? broadSummaryExcerpt(item.text, allocations[index], query)
+            : query ? relevantExcerpt(item.text, allocations[index], query) : compactHeadAndTail(item.text, allocations[index], item.kind);
         const includedTokens = estimateTokenCount(text);
         return {
             label: item.label,
@@ -174,6 +186,20 @@ export function compactSummarySources(sources, requestedTokenLimit = 4000, { max
             truncated: includedTokens < item.originalTokens,
         };
     }).filter(item => item.text);
+}
+
+// Broad planning reads across a source before reducing it, instead of taking
+// only passages that match the latest scene. Regions remain in source order.
+function broadSummaryExcerpt(text, budget, query) {
+    if (estimateTokenCount(text) <= budget) return text;
+    const passages = text.split(/(?<=[.!?。！？])\s+|\n+/u).filter(Boolean);
+    if (passages.length < 3 || budget < 72) return relevantExcerpt(text, budget, query);
+    const allowance = Math.max(16, Math.floor((budget - 8) / 3));
+    return truncateToTokenBudget(Array.from({ length: 3 }, (_, index) => {
+        const start = Math.floor(passages.length * index / 3);
+        const end = Math.floor(passages.length * (index + 1) / 3);
+        return relevantExcerpt(passages.slice(start, end).join(' '), allowance, query);
+    }).join(' … '), budget);
 }
 
 function appendLeaves(target, value, base, { requireShape = false } = {}) {
@@ -214,7 +240,7 @@ function appendLeaves(target, value, base, { requireShape = false } = {}) {
  * optional provider, not a required host or owner of the planner.
  */
 export async function collectSummarySources(context = {}, messages = [], options = {}) {
-    const discovered = [];
+    const discovered = options.broad ? [...(options.referenceSources || [])] : [];
     const ownPromptKey = String(options.ownPromptKey || 'living-world-guide_context');
     const hostMessages = Array.isArray(context.chat) && context.chat.length ? context.chat : messages;
     let continuityOwner = '';
@@ -222,7 +248,10 @@ export async function collectSummarySources(context = {}, messages = [], options
         const evidenceText = Array.isArray(options.continuityEvidence) && options.continuityEvidence.length
             ? formatPlanningEvidence(options.continuityEvidence, Math.max(500, Math.floor((options.tokenBudget || 4000) * 0.72)))
             : '';
-        discovered.push({ label: 'Continuity Memory snapshot', kind: 'continuity-memory', priority: 0, text: evidenceText || options.continuityContext });
+        const snapshotText = options.broad
+            ? [...new Set([evidenceText, options.continuitySummary || options.continuityContext].filter(Boolean))].join('\n\n')
+            : evidenceText || options.continuityContext;
+        discovered.push({ label: 'Continuity Memory snapshot', kind: 'continuity-memory', priority: 0, text: snapshotText });
         continuityOwner = 'bridge';
     }
 
@@ -263,7 +292,7 @@ export async function collectSummarySources(context = {}, messages = [], options
         }
     }
 
-    if (typeof context.getWorldInfoPrompt === 'function' && messages.length) {
+    if (typeof context.getWorldInfoPrompt === 'function' && (messages.length || options.broad)) {
         try {
             const chatForWorldInfo = worldInfoActivationContext(messages, options.worldInfoActivationTokens || 12000);
             const result = await context.getWorldInfoPrompt(chatForWorldInfo, Number(context.maxContext) || 100000, true);
@@ -273,7 +302,7 @@ export async function collectSummarySources(context = {}, messages = [], options
         }
     }
 
-    return compactSummarySources(discovered, options.tokenBudget || 4000, { maxSources: options.maxSources || 24, query: options.query || messages.slice(-4).map(message => message?.mes || '').join('\n') });
+    return compactSummarySources(discovered, options.tokenBudget || 4000, { maxSources: options.maxSources || 24, query: options.query ?? messages.slice(-4).map(message => message?.mes || '').join('\n'), broad: options.broad === true });
 }
 
 /**

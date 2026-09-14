@@ -1,4 +1,4 @@
-# Creative preparation contract — 0.14.4
+# Creative preparation contract — 0.14.6
 
 ## Purpose
 
@@ -37,7 +37,7 @@ Each update is a complete bounded record:
 
 Updates are deltas, maximum four per call. Omitted records persist. Blank overview preserves the previous overview; an empty focus selects no records but does not erase them. Active requires actual transcript uptake, not mere injection. Dormant records are not selected for injection. Resolved/retired updates remove the proposal; manifested consequences must already be retained in factual memory. Unknown focus IDs and capacity overflow are rejected, not silently repaired by deleting other ideas.
 
-The bounded prompt builder compacts retained records into a working index before sacrificing current evidence. Stored records remain intact. Routine/review input defaults remain 10,000/14,000 tokens including system and schema; base output caps are 8,192/12,288, plus the resolved reasoning allowance. Actual provider usage varies. Full notebook and default-envelope tests protect the basic budget contract, not unbounded history recall.
+The bounded prompt builder compacts retained records into a working index before sacrificing current evidence. Stored records remain intact. Routine/review input defaults are 6,000/14,000 tokens including system and schema; base output caps are 4,096/6,144. Initialization and explicit rebuild use the configured total input ceiling (default 16,000) and an 8,192 base output cap. Routine thinking is off; broad passes add the selected reasoning allowance. Actual provider usage varies. Full notebook and default-envelope tests protect the basic budget contract, not unbounded history recall.
 
 ## Pacing and realization
 

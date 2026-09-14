@@ -24,7 +24,7 @@ const result = {
 
 function harness(state = createSafetyFallbackState(defaultState(), { messages, chatId: 'story' })) {
     const h = generationHarness(structuredClone(messages), state);
-    const requests = [], prompts = [], errors = [];
+    const requests = [], prompts = [], errors = [], sourceRequests = [];
     Object.assign(h.settings, { fullReviewInterval: 12, maxPromptTokens: 16000, recentContextTokens: 6000, summaryContextTokens: 4000,
         analysisSource: 'direct', analysisProvider: 'custom', analysisModel: 'deepseek-v4-pro', analysisReasoningMode: 'low' });
     Object.assign(h.scope, analysis, lifecycle, {
@@ -32,7 +32,7 @@ function harness(state = createSafetyFallbackState(defaultState(), { messages, c
         normalizeUserNote: value => value, noteInstruction: value => value || '', resolveUserNote: () => null,
         randomVariationNonce: () => 1, showAnalysisPhase() {}, elapsedLabel: value => `${value}ms`,
         optionalContinuityContext: () => null, optionalContinuityContextWhenReady: async () => null,
-        collectSummarySources: async () => [], relevantActors: () => [],
+        collectSummarySources: async (...args) => { sourceRequests.push(args.at(-1)); return []; }, relevantActors: () => [],
         buildTokenBudgetedAnalysisPrompt: async (...args) => { prompts.push(args.at(-1)); return 'scene evidence'; },
         transcriptHeadFromPrompt: () => null, plannerEvidenceAudit: (_prompt, _sources, options) => options,
         acknowledgeDetachedPlannerRun: async () => {}, reconcileStateWithContinuity: state => ({ state }),
@@ -52,7 +52,7 @@ function harness(state = createSafetyFallbackState(defaultState(), { messages, c
     for (const name of ['requestAnalysis', 'analyzeNow']) {
         vm.runInContext(source.match(new RegExp(`(?:export )?async function ${name}\\([^]*?^}`, 'm'))[0].replace(/^export /u, ''), h.scope);
     }
-    return { ...h, requests, prompts, errors, settle: () => new Promise(resolve => setImmediate(resolve)) };
+    return { ...h, requests, prompts, errors, sourceRequests, settle: () => new Promise(resolve => setImmediate(resolve)) };
 }
 
 test('actual Re-evaluate uses one lightweight request from an empty fallback and repeated clicks do not restart it', async () => {
@@ -175,4 +175,27 @@ test('manual completion is honored through the state layer used by live and reco
     const completed = applyPlannerAuthorLayer(state, { manualCompleted: true });
     assert.equal(completed.plannerSchedule.manualRequested, false);
     assert.equal(completed.plannerSchedule.turnsSinceFullReview, 8);
+});
+
+for (const rebuild of [false, true]) test(`actual ${rebuild ? 'rebuild' : 'first empty-state analysis'} gathers whole-story and enabled selected-book references`, async () => {
+    const h = harness(defaultState());
+    h.context.card = { scenario: 'Explore independent towns during a long journey.' };
+    h.context.chatMetadata.world_info = 'Atlas';
+    h.context.worlds = { Atlas: { entries: {
+        harbor: { uid: 1, content: 'Distant harbor artists prepare a festival.', disable: false },
+        disabled: { uid: 2, content: 'Disabled lore must remain excluded.', disable: true },
+    } } };
+    const pending = h.scope.analyzeNow({ force: true, rebuild });
+    await h.settle();
+    assert.deepEqual(h.errors, []);
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.requests[0].meta.bootstrapScan, true);
+    assert.equal(h.sourceRequests[0].broad, true);
+    assert.match(h.sourceRequests[0].query, /independent towns/);
+    assert.match(JSON.stringify(h.sourceRequests[0].referenceSources), /harbor artists/);
+    assert.doesNotMatch(JSON.stringify(h.sourceRequests[0].referenceSources), /Disabled lore/);
+    assert.equal(h.prompts[0].storyEvidence.messageCount, messages.length);
+    h.requests[0].finish();
+    await pending;
+    assert.deepEqual(h.errors, []);
 });
