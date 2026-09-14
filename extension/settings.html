@@ -8,16 +8,16 @@
       <div class="living-world-guide-master-row">
         <label class="checkbox_label">
           <input type="checkbox" data-setting="enabled">
-          <span>Enable active world simulation</span>
+          <span>Enable creative world planning</span>
         </label>
         <span class="living-world-guide-status">Planner: <span data-role="analysis-status">Ready</span></span>
       </div>
       <div class="living-world-guide-status" role="status" aria-live="polite">Story context: <span data-role="injection-status">No request verified on this page</span></div>
 
       <div class="living-world-guide-card">
-        <h4>World simulation</h4>
+        <h4>World and future preparation</h4>
         <small>Tale Fairy adapts its causal units and cadence to the current scale—from slice of life and households through towns, organizations, countries, ecosystems, and wider worlds. It may fill open setting space with compatible information and setting-native challenges without making enemies, combat, or escalation mandatory.</small>
-        <small>GM initiative is always active while enabled: observing or waiting lets scenes develop without directing NPCs. NPCs can refuse, leave, or return to their duties according to personality and circumstances; the player can disengage too. Quiet scenes and meaningful intervention opportunities remain protected. If planning is unavailable, only the general GM rules remain—no stale world facts.</small>
+        <small>GM initiative is always active while enabled: observing or waiting lets scenes develop without directing NPCs. NPCs can refuse, leave, or return to their duties according to personality and circumstances; the player can disengage too. Quiet scenes and meaningful intervention opportunities remain protected. Planning never blocks story generation. Compatible conditional preparation remains available across new turns; outdated scene facts are withheld. If no compatible plan exists, general GM rules and current transcript grounding remain.</small>
         <div class="living-world-guide-grid">
           <label>Mode
             <select class="text_pole" data-setting="mode">
@@ -26,6 +26,15 @@
               <option value="fun">Fun</option>
             </select>
             <small>Modes tune how subtly or boldly the writing model may interpret relevant conditions. Tale Fairy never authors the player's response or a contested result.</small>
+          </label>
+          <label>Scene pacing (this chat)
+            <select class="text_pole" data-setting="pacing">
+              <option value="auto">Adaptive</option>
+              <option value="linger">Linger</option>
+              <option value="natural">Natural</option>
+              <option value="advance">Advance</option>
+            </select>
+            <small>Latest explicit user instructions win. Long scenes can develop without ending; travel can include encounters. No forced interruption or time skip by message count.</small>
           </label>
           <label>Recent raw context budget (tokens)
             <input class="text_pole" type="number" data-setting="recent-budget" min="1000" max="12000" step="500" value="6000">
@@ -123,7 +132,7 @@
             <input class="text_pole" type="number" data-setting="temperature" min="0" max="2" step="0.05" value="1" inputmode="decimal">
           </div>
         </label>
-        <small>Controls Tale Fairy's private simulation variety only. Lower values are steadier; higher values consider a broader range of supported causes. It does not change the roleplay model's temperature. Models that reject temperature automatically use their provider default.</small>
+        <small>Controls Tale Fairy's creative preparation variety only. Lower values are steadier; higher values consider more varied compatible possibilities. It does not change the roleplay model's temperature. Models that reject temperature automatically use their provider default.</small>
 
         <div class="living-world-guide-card-inset" data-source-panel="direct" hidden>
           <b data-role="direct-title">Direct planner API</b>
@@ -160,7 +169,7 @@
           <button class="menu_button" data-action="reset-settings" type="button" title="Restore Tale Fairy configuration defaults without deleting guide state"><i class="fa-solid fa-arrow-rotate-left"></i> Reset settings</button>
           <button class="menu_button" data-action="reset" type="button"><i class="fa-solid fa-trash-can"></i> Delete guide state</button>
         </div>
-        <small>Re-evaluate refreshes the current scene and relevant causal context while keeping canon and notes. Full rebuild reconstructs factual world state from accessible chat and summaries. Reset settings keeps simulation state; saved API passwords remain in SillyTavern but are no longer selected.</small>
+        <small>Re-evaluate updates both creative preparation and current context while retaining unused plans. Full rebuild replaces the notebook and reconstructs world context from available evidence; pacing and author notes survive. Invalid model output uses a local fallback, not a second AI correction. Full chat reading is not required for routine updates. Reset settings keeps simulation state; saved API passwords remain in SillyTavern but are no longer selected.</small>
         <div class="living-world-guide-grid living-world-guide-note-grid">
           <label>AI-assisted instruction
             <textarea class="text_pole" data-setting="note" rows="3" placeholder="Write naturally. Tale Fairy will understand whether this is a suggestion, correction, canon detail, or hard exclusion."></textarea>
@@ -177,9 +186,14 @@
             <span><span data-role="scratchpad-continuity">Continuity: unavailable</span> · <span data-role="scratchpad-meta">No planner result yet.</span></span>
           </div>
           <section>
-            <h5>Provider causal context</h5>
-            <small>Shows the exact clean slice eligible for the next request. The writing model interprets these underlying conditions and chooses all concrete action, movement, and consequence. Tentative, irrelevant, used, and stale material is not injected.</small>
+            <h5>Writer guidance preview</h5>
+            <small>Exact selected request guidance: current facts when fresh, and compatible conditional preparation. Prepared events are possibilities, not history or mandatory next beats. The writer checks entry, contradictions, pacing and player reaction against the actual exchange.</small>
             <div data-role="scratchpad-request-verification">No fresh Tale Fairy causal context is ready.</div>
+          </section>
+          <section>
+            <h5>Prepared world and future</h5>
+            <small>Persistent creative notebook, separate from factual memory. Unused ideas survive ordinary new turns. Only the wider overview and selected, non-dormant records can reach the writer. Explicitly closed records leave this notebook; manifested consequences belong in factual memory.</small>
+            <div data-role="scratchpad-prepared">No prepared material yet.</div>
           </section>
           <section>
             <h5>Current scene</h5>
@@ -201,7 +215,7 @@
           </section>
           <section>
             <h5>Active world conditions</h5>
-            <small>Tale Fairy privately tracks actors, relationships, institutions, systems, resources, and environments, then selects only the few conditions relevant now. Confidence, relevance reasoning, and tentative reconstructions remain private.</small>
+            <small>Tale Fairy privately tracks actors, relationships, institutions, systems, resources, and environments, then selects current factual conditions separately from conditional future preparation. Confidence, relevance reasoning, and tentative reconstructions remain private.</small>
             <div data-role="scratchpad-next-guides">No generated causal context yet.</div>
           </section>
           <section data-role="scratchpad-response-audit-section" hidden>

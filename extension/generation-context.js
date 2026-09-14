@@ -12,7 +12,8 @@ export function hasPlannerConditions(context) {
     return (context?.conditions || []).some(item => item.condition && !String(item.id || '').startsWith('fallback-'));
 }
 
-export function generationPreviewDescription({ reused = false, dynamic = false, deferred = false, planning = false, prepared = false, nextReady = false } = {}) {
+export function generationPreviewDescription({ reused = false, dynamic = false, future = false, deferred = false, planning = false, prepared = false, nextReady = false } = {}) {
+    if (future) return reused ? 'Reused conditional preparation and plot anchor · no new planner calls' : 'Conditional preparation and plot anchor; current facts included only when fresh';
     if (dynamic) return reused ? 'Reused plot anchor and causal context · no new planner calls' : 'Plot anchor and relevant causal context';
     if (prepared && nextReady) return 'This request used scene excerpts only; a completed planner context is now cached for the next retry';
     if (prepared && planning) return 'This request contains scene excerpts only; the missing planner context is being prepared for a later request';

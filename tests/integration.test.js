@@ -16,12 +16,12 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest, browser runtime, and detached plugin share the release version', () => {
-    assert.equal(manifest.version, '0.13.19');
-    assert.equal(manifest.js, 'extension/index.js?v=0.13.19');
-    assert.equal(manifest.css, 'extension/style.css?v=0.13.19');
+    assert.equal(manifest.version, '0.14.0');
+    assert.equal(manifest.js, 'extension/index.js?v=0.14.0');
+    assert.equal(manifest.css, 'extension/style.css?v=0.14.0');
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.13\.19'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.13\.19'/);
+    assert.match(pluginSource, /const VERSION = '0\.14\.0'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.14\.0'/);
 });
 
 test('planner input proof travels through normal saves and detached recovery', () => {
@@ -57,11 +57,11 @@ test('roleplay injection never migrates the user default into a system message',
 });
 
 test('runtime uses causal context and deferred world state without prescriptive beat-director dependency', () => {
-    assert.match(source, /from '\.\/causal-context\.js\?v=0\.13\.19'/);
-    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.13\.19'/);
+    assert.match(source, /from '\.\/causal-context\.js\?v=0\.14\.0'/);
+    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.14\.0'/);
     assert.doesNotMatch(source, /beat-director/);
     assert.doesNotMatch(stateSource, /beat-director/);
-    assert.match(stateSource, /export const STATE_VERSION = 58/);
+    assert.match(stateSource, /export const STATE_VERSION = 59/);
     assert.match(stateSource, /offscreenWorld/);
     assert.match(stateSource, /delete state\.beatDirective/);
 });
@@ -69,16 +69,16 @@ test('runtime uses causal context and deferred world state without prescriptive 
 test('planner contracts return active world conditions rather than future branches', () => {
     assert.match(analysisSource, /contract_version=12/);
     assert.match(analysisSource, /contract_version=13/);
-    assert.match(analysisSource, /private active-world simulator/i);
-    assert.match(analysisSource, /underlying conditions|present causal state/i);
-    assert.match(analysisSource, /Never prescribe a future action, scene, event, dialogue, reveal, discovery, consequence, or outcome/i);
-    assert.match(analysisSource, /Do not assume expressed means resolved|Do not equate mention with resolution/i);
+    assert.match(analysisSource, /private creative GM/i);
+    assert.match(analysisSource, /present causes only/i);
+    assert.match(analysisSource, /world and updates contain factual state only/i);
+    assert.match(analysisSource, /Explicit user\/OOC constraints and manifested consequences outrank proposals/i);
     assert.match(analysisSource, /deferred debt, not continuous ticking/i);
-    assert.match(analysisSource, /Every provider response is self-propelling/i);
-    assert.match(analysisSource, /same scene or activity continues/i);
+    assert.match(analysisSource, /Broad preparation may remain dormant/i);
+    assert.match(analysisSource, /not a scene-only planner/i);
     assert.match(offscreenSource, /scheduled arrival/i);
-    assert.match(analysisSource, /under-specified setting is open simulation space/i);
-    assert.match(analysisSource, /Enemies and threats are optional, never defaults/i);
+    assert.match(analysisSource, /transcript begins observation, not the world/i);
+    assert.match(analysisSource, /Adapt to the RP/i);
     assert.match(analysisSource, /communities, settlements, organizations, institutions, resources, economies, infrastructure/i);
     assert.doesNotMatch(analysisSource, /one primary.*two.*alternatives/i);
 });
@@ -86,15 +86,15 @@ test('planner contracts return active world conditions rather than future branch
 test('provider context exposes only clean relevant conditions', () => {
     assert.match(causalSource, /RELEVANT UNDERLYING CONDITIONS/);
     assert.match(causalSource, /causal context, not required events or predetermined outcomes/i);
-    assert.match(gmSource, /CAUSAL ROLE: Tale Fairy supplies relevant underlying conditions/i);
-    assert.match(gmSource, /active instructions and writing model choose the prose, rhythm/i);
+    assert.match(gmSource, /CAUSAL ROLE: Use relevant conditions and conditional preparation/i);
+    assert.match(gmSource, /writing model chooses realization and rhythm/i);
     assert.doesNotMatch(gmSource, /SELF-PROPELLING MOVEMENT|Every reply changes the current situation/i);
     assert.doesNotMatch(causalSource, /question|interrogat/i);
     assert.match(causalSource, /confidence !== 'tentative'/);
     assert.doesNotMatch(causalSource, /branchIndex|weighted random choice|NEXT-STEP EFFECT/);
     assert.match(stateSource, /formatCausalContext/);
     assert.match(stateSource, /if \(!enabled \|\| !isStoryGeneration\(generationType\)\) return ''/);
-    assert.match(stateSource, /\[GAME_MASTER_CONTRACT, plotAnchor, dynamicPrompt\]/);
+    assert.match(stateSource, /formatPacingPreference\(s\.pacing\.mode\)/);
 });
 
 test('generation archives and reuses the same causal slice for regeneration', () => {
@@ -116,7 +116,7 @@ test('failed planning supplies only transcript-grounded fallback conditions', ()
     assert.match(fallbackSource, /authoritative transcript status/);
     assert.match(fallbackSource, /next\.lastInject = true/);
     assert.match(analysisSource, /beginning of observation, not the birth of the world/);
-    assert.match(source, /allowValidationRepair: true/);
+    assert.match(source, /allowValidationRepair: false/);
     assert.match(schedulerSource, /causalContext/);
 });
 
@@ -147,24 +147,24 @@ test('planner token budgets, retries, and nonblocking behavior remain compatible
     assert.match(source, /bootstrapScan \? REBUILD_RESPONSE_TOKENS : REVIEW_RESPONSE_TOKENS/);
     const requestTier = source.slice(source.indexOf('async function requestAnalysis('), source.indexOf('export async function analyzeNow('));
     assert.doesNotMatch(requestTier, /reasoningMode:/, 'no evaluation tier silently overrides configured reasoning');
-    assert.match(source, /cacheNamespace: 'analysis-incremental-v13'/);
-    assert.match(source, /cacheNamespace: 'analysis-review-v12'/);
+    assert.match(source, /cacheNamespace: 'analysis-incremental-v13-prepared-v1'/);
+    assert.match(source, /cacheNamespace: 'analysis-review-v12-prepared-v1'/);
     assert.match(source, /fullReview: fullContextPass && \[8, 9, 12\]\.includes\(result\.contract_version\)/);
     assert.match(source, /fullReview: meta\.fullContextPass === true && \[8, 9, 12\]\.includes\(result\.contract_version\)/);
     assert.match(source, /const REBUILD_RESPONSE_TOKENS = 16384/);
-    assert.match(source, /PLANNER_MAX_AUTO_RETRIES = 2/);
+    assert.match(source, /PLANNER_MAX_AUTO_RETRIES = 0/);
     assert.match(source, /No Tale Fairy work is awaited and no verification failure can[\s\S]*reject the provider request/);
     assert.match(source, /Generation will continue without Tale Fairy blocking it/);
 });
 
 test('settings describe private simulation and causal injection without branch controls', () => {
-    assert.match(template, /active world simulation|world simulation/i);
+    assert.match(template, /World and future preparation/i);
     assert.match(template, /causal context|underlying conditions/i);
     assert.match(template, /slice of life and households through towns, organizations, countries, ecosystems/i);
     assert.match(template, /without making enemies, combat, or escalation mandatory/i);
     assert.doesNotMatch(template, /one primary NPC\/world response and two redirect-safe alternatives/i);
     assert.doesNotMatch(template, /one compatible external branch/i);
-    assert.doesNotMatch(template, /data-setting="pacing"|Scene pacing/);
+    assert.match(template, /data-setting="pacing"/);
 });
 
 test('Continuity remains optional one-way evidence rather than an authority dependency', () => {

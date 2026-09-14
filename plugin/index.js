@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 
 const PLUGIN = 'tale-fairy';
-const VERSION = '0.13.19';
+const VERSION = '0.14.0';
 const jobs = new Map();
 const MAX_FINISHED_JOBS = 40;
 const MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
@@ -319,6 +319,7 @@ export async function init(router, { fetchImpl = fetch } = {}) {
                 runKey: String(suppliedMeta.runKey),
                 fingerprint: String(suppliedMeta.fingerprint || ''),
                 messageCount: Math.max(0, Number(suppliedMeta.messageCount) || 0),
+                startedAt: Math.max(0, Number(suppliedMeta.startedAt) || 0),
                 allowOneUserAppend: Boolean(suppliedMeta.allowOneUserAppend),
                 allowOneAssistantAppend: Boolean(suppliedMeta.allowOneAssistantAppend),
                 rebuild: Boolean(suppliedMeta.rebuild),

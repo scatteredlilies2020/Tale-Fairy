@@ -25,12 +25,14 @@ function harness(jobs, overrides = {}) {
         parseAnalysisResponse: text => { if (text === 'invalid') throw new Error('invalid actor'); return {}; },
         alignmentPromptFromMeta: () => '', console: { warn() {} }, EXTENSION_ID: 'test',
         loadState: () => ({ userNotes: [] }), rebuildState: () => ({ userNotes: [] }),
+        generationInputs: () => ({}), plotInputKey: () => 'pre-reply-input-proof',
+        unchangedSourcePrefix: () => false, preparedReady: () => false, defaultPreparedWorld: () => ({ items: [], focus: [] }),
         alignRetainedStateToTranscript: state => state,
         applyAnalysis: state => state, applyPlannerAuthorLayer: state => state,
         assistantTurnNumber: () => 1, fingerprintMessages: () => 'snapshot',
         reconcileStateWithContinuity: state => ({ state }), optionalContinuityContext: () => null,
         normalizeUserNote: () => null, resolveUserNote: () => null,
-        persist: async state => saved.push(state), clearPlannerPending() {}, clearPlannerFailed() {},
+        persist: async state => { saved.push(state); return state; }, clearPlannerPending() {}, clearPlannerFailed() {},
         plannerStorage: () => ({ getItem: key => values.get(key), setItem: (key, value) => values.set(key, value) }),
         claimPlannerRecoveryRepair, lastAnalysisError: '', renderBoard() {}, renderAnalysisActivity() {},
         plannerValidationRepairInstruction: () => 'Correct the fields.',
@@ -61,14 +63,12 @@ test('a still-running attempt takes precedence over retained invalid output', as
     assert.equal(h.saved.length, 0);
 });
 
-test('recovery requests at most one correction per snapshot, then uses safe fallback', async () => {
+test('invalid detached recovery uses safe fallback without a second generation', async () => {
     const h = harness([invalidJob]);
-    assert.equal((await h.run()).state.repaired, true);
-    assert.equal(h.calls.length, 1);
-    assert.equal(h.calls[0].recovery.instruction, 'Correct the fields.');
-    assert.equal(h.calls[0].recovery.fullContextPass, true);
     assert.equal((await h.run()).fallback, true);
-    assert.equal(h.calls.length, 1);
+    assert.equal(h.calls.length, 0);
+    assert.equal((await h.run()).fallback, true);
+    assert.equal(h.calls.length, 0);
     assert.equal(h.scope.detachedPlannerRecovering, false);
 });
 
@@ -124,18 +124,14 @@ test('repairing an invalid detached retry never evaluates or falls back to its d
     });
     h.context.chat.push({ mes: 'Discarded reply.' });
     await h.run();
-    assert.equal(h.calls.length, 1);
-    assert.equal(h.calls[0].messages.length, 1);
-    assert.equal(h.calls[0].allowOneAssistantAppend, true);
-    await h.run();
-    assert.equal(h.calls.length, 1);
+    assert.equal(h.calls.length, 0);
     assert.equal(sources.length, 1);
     assert.equal(sources[0].length, 1);
 });
 
-test('runtime uses one content correction, not a second chain of output-mode retries', () => {
+test('runtime disables content correction and output-mode validation retries', () => {
     assert.match(source, /retryInvalidOutput = false/);
-    assert.match(source, /repairInstruction: recovery.instruction, allowValidationRepair: false/);
+    assert.doesNotMatch(source, /repairInstruction: recovery.instruction|withValidationRepair/);
     const failure = source.slice(source.indexOf('const willRetry ='), source.indexOf('const willRetry =') + 3000);
     assert.match(failure, /!recovery/);
     assert.ok(failure.indexOf('acknowledgeDetachedPlannerRun(') < failure.indexOf('createSafetyFallbackState('));

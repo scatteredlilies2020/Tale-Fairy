@@ -1,4 +1,4 @@
-import { GAME_MASTER_CONTRACT } from './game-master.js?v=0.13.19';
+import { GAME_MASTER_CONTRACT } from './game-master.js?v=0.14.0';
 
 // These are causal units rather than genre labels. Keeping settlements, places,
 // resources, and situations first-class avoids squeezing a town simulation into
@@ -25,7 +25,7 @@ const MODE_TREATMENT = Object.freeze({
 });
 
 const INTRUSION_TREATMENT = Object.freeze({
-    closed: 'Keep outside pressure silent or subtextual.',
+    closed: 'Keep outside pressure dormant unless the latest intent or an actual causal entry warrants it.',
     incidental: 'Outside texture must not displace the activity.',
     'socially-open': 'Existing pressure may enter through natural social contact.',
     'dramatically-open': 'Existing pressure may enter through a credible route.',
@@ -33,11 +33,11 @@ const INTRUSION_TREATMENT = Object.freeze({
 });
 
 const NOVELTY_TREATMENT = Object.freeze({
-    none: 'Develop the established activity and causes; no separate plot element.',
+    none: 'Favor the established activity; no novelty merely to fill space.',
     incidental: 'Keep novelty incidental and setting-native.',
     'context-native': 'New details must fit the setting and activity.',
-    meaningful: 'Consequential novelty needs an existing cause.',
-    major: 'Major turns need an established cause already in motion.',
+    meaningful: 'Consequential novelty needs a credible setting-native cause and entry.',
+    major: 'Major turns need credible preparation and room for player intervention, not forced results.',
 });
 
 function text(value, limit = 240) {
@@ -147,6 +147,6 @@ export function formatCausalContext(value, options = {}) {
         ].join('\n') : '',
         MODE_TREATMENT[mode],
         options.includeRules === false ? '' : GAME_MASTER_CONTRACT,
-        `SCENE-SCALE BOUNDARY: ${INTRUSION_TREATMENT[sceneProfile.intrusion]} ${NOVELTY_TREATMENT[sceneProfile.noveltyCeiling]}`,
+        `SCENE FIT (provisional; latest user intent wins): ${INTRUSION_TREATMENT[sceneProfile.intrusion]} ${NOVELTY_TREATMENT[sceneProfile.noveltyCeiling]}`,
     ].filter(Boolean).join('\n');
 }

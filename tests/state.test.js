@@ -27,10 +27,10 @@ function analyzed(messages = [{ is_user: false, mes: 'The figures conflict.' }])
     return state;
 }
 
-test('default state uses the v58 deferred-world contract', () => {
+test('default state uses the v59 prepared-world contract', () => {
     const state = defaultState();
     assert.equal(state.version, STATE_VERSION);
-    assert.equal(STATE_VERSION, 58);
+    assert.equal(STATE_VERSION, 59);
     assert.deepEqual(state.causalContext.conditions, []);
     assert.equal(state.causalContext.inject, false);
     assert.deepEqual(state.offscreenWorld, { subjects: [], archive: [], elapsed: '', settledThrough: 0, audit: '' });
@@ -76,8 +76,8 @@ test('knowledge routes survive storage without promoting beliefs or leaking priv
 
 test('quiet-scene guidance values meaningful progress without forcing conflict or player emotions', () => {
     const output = formatCausalContext({ conditions: [{ ...conditions[0], subject: 'Lucia', condition: 'is finishing the shared tea ritual', disclosure: 'open' }], inject: true }, { sceneProfile: { phase: 'landing', intrusion: 'closed', noveltyCeiling: 'none' } });
-    assert.match(output, /CAUSAL ROLE: Tale Fairy supplies relevant underlying conditions/i);
-    assert.match(output, /active instructions and writing model choose the prose, rhythm/i);
+    assert.match(output, /CAUSAL ROLE: Use relevant conditions and conditional preparation/i);
+    assert.match(output, /writing model chooses realization and rhythm/i);
     assert.doesNotMatch(output, /meaningfully, even during rest or inactivity|quiet progress needs no interruption or new conflict/i);
     assert.match(output, /Never author the player character's choices, dialogue, consent, thoughts, feelings/);
     assert.match(output, /Explicit user\/OOC instructions and established facts take priority/);
@@ -89,7 +89,7 @@ test('formatter exposes natural-language causes without internal metadata', () =
     assert.match(output, /Grain reserves are falling faster than reported\./);
     assert.doesNotMatch(output, /Merchants|confidence|relevance|"id"|mira/);
     assert.match(output, /writing model chooses every concrete action/i);
-    assert.match(output, /active instructions and writing model choose the prose, rhythm/i);
+    assert.match(output, /writing model chooses realization and rhythm/i);
     assert.doesNotMatch(output, /self-propelling movement|every reply changes the current situation|Develop what is underway|lasting change in circumstances/i);
     assert.doesNotMatch(output, /question|interrogat/i);
 });
@@ -138,9 +138,9 @@ test('scene profile bounds outside pressure and preserves explicit OOC authority
     state.sceneProfile.intrusion = 'closed';
     state.sceneProfile.noveltyCeiling = 'none';
     const payload = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
-    assert.match(payload, /Keep outside pressure silent or subtextual/i);
-    assert.match(payload, /Develop the established activity and causes; no separate plot element/i);
-    assert.match(payload, /active instructions and writing model choose the prose, rhythm/i);
+    assert.match(payload, /Keep outside pressure dormant/i);
+    assert.match(payload, /Favor the established activity; no novelty merely to fill space/i);
+    assert.match(payload, /writing model chooses realization and rhythm/i);
     assert.doesNotMatch(payload, /quiet progress needs no interruption or new conflict/i);
     assert.match(payload, /Explicit user\/OOC instructions and established facts take priority/i);
     assert.doesNotMatch(payload, /combat|bureaucratic|opposition may be/i);
@@ -155,7 +155,7 @@ test('dynamic guidance remains lean across modes and scene boundaries without du
                     optionalSituations: [{ premise: 'A rehearsal space may be available.', entry: 'checks the club noticeboard' }],
                 }, { mode, sceneProfile: { intrusion, noveltyCeiling }, includeRules: false });
                 assert.match(output, /DEVELOPMENT:/);
-                assert.match(output, /SCENE-SCALE BOUNDARY:/);
+                assert.match(output, /SCENE FIT \(provisional/);
                 assert.match(output, /possibilities, not facts or required events/);
                 assert.match(output, /Private conditions/);
                 assert.match(output, /Keep awareness local/);

@@ -39,8 +39,8 @@ test('permanent rules are lean, genre-neutral, and leave pacing to active instru
         /genuine player-choice or intervention boundaries, not every NPC reply/,
         /Quiet endings remain valid/,
         /freedom to engage or disengage/,
-        /CAUSAL ROLE: Tale Fairy supplies relevant underlying conditions and preserves open outcomes/,
-        /active instructions and writing model choose the prose, rhythm, concrete actions, movement, and consequences/,
+        /CAUSAL ROLE: Use relevant conditions and conditional preparation, not mandatory beats or history/,
+        /writing model chooses realization and rhythm/,
         /Never author the player character's choices/,
         /within viewpoint knowledge/,
         /Explicit user\/OOC instructions and established facts take priority/,
@@ -57,7 +57,7 @@ test('planner audits distinguish needless handoffs from real constraints without
         assert.match(system, /commit and finish actions without player permission/);
         assert.match(system, /Distinguish momentary hesitation from evidenced obstacles and commitments/);
         assert.match(system, /A past pause is observed state, not a standing constraint without an evidenced reason/);
-        assert.match(system, /Select present causes, not prescribed events\/player actions/);
+        assert.match(system, /concrete NPC\/world proposals belong in conditional prepared material, never prescribed player actions/);
     }
     for (const contract of [ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT]) {
         assert.match(contract, /An NPC question, glance, or wait alone is not a genuine player-choice boundary/);

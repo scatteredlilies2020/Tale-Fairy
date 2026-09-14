@@ -29,3 +29,25 @@ For the GM cases, also score autonomous world initiative, reciprocal disengageme
 Record planner input/output tokens, number of requests (including retries), planner elapsed time, injected token count, and median quality scores. Check a sequence longer than twelve accepted replies so a broad review is included. Compare total cost per accepted reply, not just a single successful request or the configured ceilings. Reduced cost is useful only if continuity and scene quality do not regress.
 
 Also exercise an interrupted planner, an edited user correction, and a swipe. Stale results must not overwrite newer facts; retries must not make generation wait; a replacement should reuse its archived causal slice rather than recanonize discarded prose. These behaviors have offline coverage but still need a SillyTavern integration smoke test before release.
+
+
+## 0.14.0 creative preparation acceptance scenarios
+
+These are live-model acceptance cases, not claims that an offline test proves creative quality. Compare both the private notebook and the actual writer continuation. Use the same model/settings and several trials; inspect plans before and after updates, not just polished examples.
+
+| Case | Setup | Pass condition |
+| --- | --- | --- |
+| Journey's missing middle | Start a Frieren-inspired RP at the beginning of the ten-year journey; the user wants to explore the unstated years. | Prepare distinct settlements, encounters and ongoing processes with playable intermediate experiences and possible later consequences. No leap to the endpoint, no obligation to visit every plan, and no repetition of one latest-scene theme under different names. |
+| Canon and divergence | Start a Star Wars RP just after Geonosis; give one explicit canon change and character motivation. | Prepare multiple useful intermediate experiences and longer dependencies shaped by that change. Do not silently restore canonical outcomes or rush the war's endpoint. Separate invented secrets from facts characters know. |
+| Country simulation | A government is debating a routine budget with several institutions and regional pressures. | Develop independent civic, material or institutional possibilities at fitting scales, including middles and alternatives; do not force all developments into a villain or one council argument. |
+| Life simulation | An ordinary household is eating breakfast; career and neighborhood possibilities exist. | Prepare opportunities beyond breakfast while allowing breakfast to remain long. No compulsory conflict, scene closure or instant promotion. |
+| Long scene, then travel | Stay in a camp conversation for many exchanges, then begin a trip. | Keep future material available without injecting an interruption into every reply. Introduce a compatible travel encounter through observable signs and an actual entry, preserving a reaction window. |
+| Changed mind | Linger is saved, but the user explicitly asks to advance, then later to stay. | Latest explicit intent wins without an English-keyword-only gate, fixed turn threshold or forced timing. |
+| Rapid-fire chat | Append many accepted turns while one planner request is pending. | Do not repeatedly cancel the request or wait for it. Coalesce follow-up; a late result may supply conditional ideas but cannot roll back newer facts. Contradicted entries stay unused. |
+| Branch correction | Edit/swipe an earlier source, or change author constraints/card/lore. | Never treat source-incompatible preparation as current or revive discarded factual consequences. Reuse only compatible pre-reply packets. |
+| No memory extension | Disable Continuity and provide only recent chat, then repeat with generic summaries or World Info. | Planning works without Continuity. Retain unused preparation and distinguish missing historical evidence from creative invention. Do not claim knowledge of unavailable history. |
+| Model failure | Return invalid JSON or invalid lifecycle fields. | No second generated correction. Preserve useful compatible state or a local grounded fallback; story generation continues. |
+
+Score **variety**, **playable middle**, **future beyond the current topic**, **causal fit**, **pacing**, and **agency/knowledge** separately (0–2 each). A distant label or endpoint alone scores zero for the middle. Reusing a compatible dormant idea is not a creativity failure. Quiet scenes score fully without interruption. Any player overrun, false established fact, forced canonical ending or lost correction is a failure regardless of total.
+
+Offline regression coverage checks schema/lifecycle, persistence, bounded prompt envelopes, append-vs-edit compatibility, late factual preservation, one-call failure handling and retry isolation. It does not substitute for these live scenarios or a real mobile SillyTavern UI check.

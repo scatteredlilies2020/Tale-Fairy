@@ -72,25 +72,18 @@ test('normal evaluation makes exactly one model request', async () => {
     assert.equal(h.requests[0].max_tokens, 4096);
 });
 
-test('invalid output gets exactly one focused correction and retains current evidence', async () => {
+test('invalid output fails after one generation without a model correction pass', async () => {
     const h = harness([{ valid: false }, { valid: true }]);
-    assert.equal((await h.run()).valid, true);
-    assert.equal(h.requests.length, 2);
-    assert.equal(h.requests[1].messages[1].content, 'current evidence');
-    assert.match(h.requests[1].messages.at(-1).content, /actor_updates\[2\].knowledge must be a string/);
-});
-
-test('two invalid responses do not cascade into more output-mode model calls', async () => {
-    const h = harness([{ valid: false }]);
     await assert.rejects(h.run(), AnalysisValidationError);
-    assert.equal(h.requests.length, 2);
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.requests[0].messages[1].content, 'current evidence');
 });
 
-test('recovery sends its correction immediately and cannot start another repair', async () => {
+test('legacy repair options cannot start a second pass or inject a correction', async () => {
     const h = harness([{ valid: false }]);
-    await assert.rejects(h.run({ repairInstruction: 'Correct retained response.', allowValidationRepair: false }), AnalysisValidationError);
+    await assert.rejects(h.run({ repairInstruction: 'Correct retained response.', allowValidationRepair: true }), AnalysisValidationError);
     assert.equal(h.requests.length, 1);
-    assert.equal(h.requests[0].messages.at(-1).content, 'Correct retained response.');
+    assert.doesNotMatch(JSON.stringify(h.requests), /Correct retained response/);
 });
 
 const tiers = [

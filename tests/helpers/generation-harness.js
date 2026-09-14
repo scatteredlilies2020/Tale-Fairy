@@ -5,6 +5,7 @@ import * as stateApi from '../../extension/state.js';
 import * as cacheApi from '../../extension/generation-context.js';
 import * as scheduleApi from '../../extension/planner-scheduler.js';
 import * as coalescerApi from '../../extension/planner-coalescer.js';
+import * as preparedApi from '../../extension/prepared-world.js';
 import { isStoryGeneration, refreshGameMasterContract } from '../../extension/game-master.js';
 import { sampleDirectorSignals } from '../../extension/director-sampling.js';
 import { selectSituationalOpenings } from '../../extension/situations.js';
@@ -24,7 +25,7 @@ export function generationHarness(messages, state = stateApi.defaultState(), met
     };
     const names = ['GENERATION_STARTED', 'GENERATION_ENDED', 'GENERATION_STOPPED', 'MESSAGE_RECEIVED', 'MESSAGE_SENT', 'MESSAGE_EDITED', 'MESSAGE_UPDATED', 'MESSAGE_DELETED', 'MESSAGE_SWIPED', 'WORLDINFO_UPDATED', 'WORLDINFO_SETTINGS_UPDATED', 'CHARACTER_EDITED', 'PERSONA_CHANGED', 'PERSONA_UPDATED'];
     const scope = {
-        ...stateApi, ...cacheApi, ...scheduleApi, ...coalescerApi,
+        ...stateApi, ...cacheApi, ...scheduleApi, ...coalescerApi, ...preparedApi,
         isStoryGeneration, refreshGameMasterContract, sampleDirectorSignals, selectSituationalOpenings, createSafetyFallbackState,
         // ST returns a new context with a snapshot reference to its metadata.
         // updateChatMetadata replaces the host object, not that reference.
@@ -57,6 +58,11 @@ export function generationHarness(messages, state = stateApi.defaultState(), met
         DOMException, console,
     };
     vm.createContext(scope);
+    for (const name of ['preparedReady', 'runningSourceHasOnlyAppends', 'rebuildState']) {
+        const match = source.match(new RegExp(`(?:export )?(?:async )?function ${name}\\([^]*?^}`, 'm'));
+        assert.ok(match, name);
+        vm.runInContext(match[0].replace(/^export /u, ''), scope);
+    }
     for (const name of ['guideSelectionOptions', 'generationInputs', 'warmPlotWorldInputs', 'replacementPlanningDeferred', 'retryPlannerSourceMatches', 'retryPlannerActive', 'plannerInputsMatch', 'bindResolvedNoteInputProof', 'buildGenerationPacket', 'archiveReadyPlannerContexts', 'deferReplacementPlanning', 'repairDeferredReplacementPlan', 'reevaluateGuideState', 'refreshCurrentPlanIfNeeded', 'resetState', 'rebuildPendingState', 'persistRebuildPending', 'prepareGenerationGuide', 'persist', 'queueLatestAnalysis', 'drainQueuedAnalysis', 'scheduleTranscriptRefresh', 'clearQueuedAnalysis', 'clearTranscriptRefresh', 'cancelAnalysisRetry', 'cancelRunningAnalysis', 'interruptAnalysis', 'verificationMatchesTranscript', 'invalidateChangedTranscriptVerification']) {
         const match = source.match(new RegExp(`(?:export )?(?:async )?function ${name}\\([^]*?^}`, 'm'));
         assert.ok(match, name);

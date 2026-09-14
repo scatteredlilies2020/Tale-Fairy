@@ -2,15 +2,16 @@ import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy 
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
 import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js?v=0.13.17';
-import { defaultCausalContext, defaultSceneProfile, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, normalizeSceneProfile } from './causal-context.js?v=0.13.19';
+import { defaultCausalContext, defaultSceneProfile, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, normalizeSceneProfile } from './causal-context.js?v=0.14.0';
 import { normalizeDirectorSample } from './director-sampling.js?v=0.13.9';
 import { defaultOffscreenWorld, normalizeOffscreenWorld, offscreenWorldForPrompt } from './offscreen-world.js?v=0.13.9';
 import { defaultSituationBoard, normalizeSituationBoard } from './situations.js?v=0.13.9';
-import { GAME_MASTER_CONTRACT, isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.13.19';
+import { GAME_MASTER_CONTRACT, isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.0';
 import { relevantActors } from './evidence-selection.js?v=0.13.9';
+import { defaultPreparedWorld, normalizePreparedWorld, preparedWorldForPrompt, formatPreparedWorld, formatPacingPreference } from './prepared-world.js?v=0.14.0';
 
 export const STATE_KEY = 'livingWorldGuide';
-export const STATE_VERSION = 58;
+export const STATE_VERSION = 59;
 
 const MODES = new Set(['light', 'balanced', 'fun']);
 const MAX_ITEMS = 12;
@@ -46,6 +47,7 @@ export function defaultState() {
         causalContext: defaultCausalContext(),
         offscreenWorld: defaultOffscreenWorld(),
         situationBoard: defaultSituationBoard(),
+        preparedWorld: defaultPreparedWorld(),
         responseAudit: { applicable: false, movementFit: 'not-applicable', repetition: 'none', unjustifiedEscalation: false, playerControl: false, continuityDrift: false, patterns: [], summary: '', stateChange: '' },
         responsePatternMemory: [],
         replyRepair: { attemptedResponseKey: '', reason: '', attemptedAt: 0 },
@@ -484,10 +486,11 @@ function normalizeRequestVerification(value) {
         status: value.status,
         injectionDecision,
         dynamicContextIncluded: injectionDecision === 'inject' && value.dynamicContextIncluded !== false && hasUsableCausalContext(value.causalContext),
+        preparedContextIncluded: injectionDecision === 'inject' && value.preparedContextIncluded === true,
         reusedContext: value.reusedContext === true,
         runtimeVersion: text(value.runtimeVersion).slice(0, 40),
         verificationId: text(value.verificationId).slice(0, 100),
-        guidanceBlock: injectionDecision === 'inject' ? text(value.guidanceBlock).slice(0, 12000) : '',
+        guidanceBlock: injectionDecision === 'inject' ? text(value.guidanceBlock).slice(0, 24000) : '',
         requestedAt: Math.max(0, Number(value.requestedAt) || 0),
         confirmedAt: Math.max(0, Number(value.confirmedAt) || 0),
         sourceMessageCount: Math.max(0, Number(value.sourceMessageCount) || 0),
@@ -647,6 +650,7 @@ export function normalizeState(input = {}) {
         causalContext: causalContextUpgrade ? base.causalContext : normalizeCausalContext(value.causalContext ?? value.causal_context),
         offscreenWorld: normalizeOffscreenWorld(value.offscreenWorld ?? value.offscreen_world),
         situationBoard: normalizeSituationBoard(value.situationBoard ?? value.situation_board),
+        preparedWorld: normalizePreparedWorld(value.preparedWorld),
         responseAudit: normalizeResponseAudit(value.responseAudit ?? value.response_audit),
         responsePatternMemory: cap(value.responsePatternMemory ?? value.response_pattern_memory, 12).map(item => clippedText(item, 140)).filter(Boolean),
         replyRepair: {
@@ -743,6 +747,8 @@ export function stateForPrompt(state, { query = '' } = {}) {
     const s = normalizeState(state);
     return {
         mode: s.mode,
+        pacing: { mode: s.pacing.mode },
+        preparedWorld: preparedWorldForPrompt(s.preparedWorld),
         turnCount: s.turnCount,
         scene: Object.fromEntries(Object.entries(s.scene).map(([key, value]) => [key, typeof value === 'string' ? value.slice(0, 100) : value])),
         sceneProfile: s.sceneProfile,
@@ -888,17 +894,18 @@ function normalizeLoreModel(value = {}) {
     };
 }
 
-export function guidanceSnapshot(state, { guidanceUsable = false, causalContext = null, sceneProfile = null } = {}) {
+export function guidanceSnapshot(state, { guidanceUsable = false, preparedUsable = false, preparedWorld = null, causalContext = null, sceneProfile = null } = {}) {
     const selectedContext = normalizeCausalContext(causalContext || state?.causalContext);
     const dynamicContextIncluded = guidanceUsable && hasUsableCausalContext(selectedContext);
     return {
         dynamicContextIncluded: Boolean(dynamicContextIncluded),
+        preparedContextIncluded: Boolean(preparedUsable && formatPreparedWorld(preparedWorld || state?.preparedWorld)),
         causalContext: dynamicContextIncluded ? selectedContext : defaultCausalContext(),
         sceneProfile: dynamicContextIncluded ? normalizeSceneProfile(sceneProfile || state?.sceneProfile) : defaultSceneProfile(),
     };
 }
 
-export function buildPromptPayload(state, { enabled = true, generationType = '', guidanceUsable = false, causalContext = null, sceneProfile = null, directorSample = null, mode = null, plotAnchor = '', cachedPayload = '' } = {}) {
+export function buildPromptPayload(state, { enabled = true, generationType = '', guidanceUsable = false, preparedUsable = false, preparedWorld = null, causalContext = null, sceneProfile = null, directorSample = null, mode = null, plotAnchor = '', cachedPayload = '' } = {}) {
     if (!enabled || !isStoryGeneration(generationType)) return '';
     if (cachedPayload) return refreshGameMasterContract(cachedPayload);
     const s = normalizeState(state);
@@ -906,7 +913,8 @@ export function buildPromptPayload(state, { enabled = true, generationType = '',
     const selectedMode = directorSample?.mode || mode || s.mode;
     const dynamicPrompt = snapshot.dynamicContextIncluded
         ? formatCausalContext(snapshot.causalContext, { mode: selectedMode, sceneProfile: snapshot.sceneProfile, includeRules: false }) : '';
-    const statePrompt = [GAME_MASTER_CONTRACT, plotAnchor, dynamicPrompt].filter(Boolean).join('\n');
+    const preparedPrompt = preparedUsable ? formatPreparedWorld(preparedWorld || s.preparedWorld) : '';
+    const statePrompt = [GAME_MASTER_CONTRACT, formatPacingPreference(s.pacing.mode), plotAnchor, dynamicPrompt, preparedPrompt].filter(Boolean).join('\n');
     const guidancePrompt = `\n<living-world-guide>\n${statePrompt}\n</living-world-guide>`;
     return `<tale-fairy-context>${guidancePrompt}\n</tale-fairy-context>`;
 }

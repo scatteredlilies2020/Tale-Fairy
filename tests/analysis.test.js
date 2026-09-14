@@ -65,6 +65,26 @@ function modern(incrementalPass = false, overrides = {}) {
 }
 const messages = [{ is_user: false, name: 'Narrator', mes: 'The reserve totals do not match the latest shipments.' }, { is_user: true, name: 'Ari', mes: 'I ask Mira what she thinks.' }];
 
+test('both current contracts require preparation in native schemas and apply it separately from facts', () => {
+    const proposal = id => ({ id, status: 'prepared', origin: 'invented',
+        ...Object.fromEntries(['premise', 'engine', 'middle', 'future', 'entry', 'hold', 'invalidates', 'intervention', 'knowledge'].map(key => [key, `Conditional future material: ${key}`])) });
+    for (const routine of [false, true]) {
+        const schema = routine ? INCREMENTAL_ANALYSIS_SCHEMA_VALUE : ANALYSIS_SCHEMA_VALUE;
+        assert.ok(schema.required.includes('prepared'));
+        assert.equal(schema.properties.prepared.properties.updates.maxItems, 4);
+        const prepared = { overview: 'Explore beyond the cabinet.', updates: [proposal('region')], focus: ['region'] };
+        const result = modern(routine, { prepared });
+        assert.equal(validateAnalysisResult(result).valid, true);
+        const first = applyAnalysis(defaultState(), result, messages);
+        assert.equal(first.preparedWorld.items[0].origin, 'invented');
+        assert.doesNotMatch(first.contextLedger, /Conditional future material/);
+        const second = applyAnalysis(first, modern(routine, { prepared: { overview: '', updates: [proposal('town')], focus: ['town'] } }), messages);
+        assert.deepEqual(second.preparedWorld.items.map(item => item.id), ['region', 'town']);
+        assert.throws(() => applyAnalysis(second, modern(routine, { prepared: { overview: '', updates: [], focus: ['missing'] } }), messages), /unavailable/);
+        assert.equal(second.preparedWorld.items.length, 2);
+    }
+});
+
 test('live parser accepts sparse third-actor updates on the first response without inventing facts', () => {
     for (const routine of [false, true]) {
         const original = modern(routine, { actor_updates: [
@@ -361,7 +381,7 @@ test('story prompt fits the complete routine and review envelopes with durable h
         const fixedEnvelope = incrementalPass
             ? `${plannerMarker}\n${INCREMENTAL_SYSTEM}\n${INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT}\n${JSON.stringify(INCREMENTAL_ANALYSIS_SCHEMA)}`
             : `${plannerMarker}\n${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}\n${JSON.stringify(ANALYSIS_SCHEMA)}`;
-        const tokenBudget = incrementalPass ? 6000 : 9000;
+        const tokenBudget = incrementalPass ? 9000 : 10000;
         const prompt = await fitPromptToBudget({ fixedEnvelope, tokenBudget,
             buildPrompt: effectivePromptTokens => buildAnalysisPrompt(messages, state, '', {}, { incremental: incrementalPass, maxPromptTokens: tokenBudget, effectivePromptTokens }),
         });
@@ -403,28 +423,26 @@ test('offscreen validation enforces complete distinct bounded records', () => {
     assert.match(validateAnalysisResult(invalid).errors.join('\n'), /reach is invalid[\s\S]*non-negative integer/i);
 });
 
-test('planner prompt defines private active simulation rather than future branches', () => {
-    assert.match(SYSTEM, /private active-world simulator/i);
-    assert.match(SYSTEM, /Never prescribe a future action/i);
-    assert.match(SYSTEM, /expressed means resolved/i);
-    assert.match(SYSTEM, /Every provider response is self-propelling/i);
-    assert.match(SYSTEM, /while remaining in the same scene or activity/i);
-    assert.match(INCREMENTAL_SYSTEM, /observable self-propelling change/i);
-    assert.match(MODE_INSTRUCTIONS.light, /self-propelling change within the present activity/i);
-    assert.doesNotMatch(`${SYSTEM}\n${INCREMENTAL_SYSTEM}\n${Object.values(MODE_INSTRUCTIONS).join('\n')}`, /question|interrogat/i);
-    assert.doesNotMatch(SYSTEM, /exactly two conditional/i);
-    assert.match(INCREMENTAL_SYSTEM, /tentative stays private/i);
-    assert.match(SYSTEM, /conversation, household, slice of life, business, town, country, ecosystem/i);
-    assert.match(SYSTEM, /under-specified setting is open simulation space/i);
-    assert.match(SYSTEM, /Enemies and threats are optional, never defaults/i);
-    assert.match(INCREMENTAL_SYSTEM, /Adapt scale naturally among people, households, institutions, towns, countries, ecosystems/i);
+test('both planner tiers prepare broad creative middles separately from present facts', () => {
+    for (const system of [SYSTEM, INCREMENTAL_SYSTEM]) {
+        assert.match(system, /creative playable middle AND future/);
+        assert.match(system, /independent developments without prior mention/);
+        assert.match(system, /alternative continuations, not a jump to the endpoint/);
+        assert.match(system, /prepared MAY propose concrete NPC\/world actions and events/);
+        assert.match(system, /not history, player choices or a beat queue/);
+        assert.match(system, /Latest explicit user pacing overrides saved preference/);
+        assert.match(system, /Quiet scenes must not narrow preparation/);
+        assert.match(system, /Summaries and Continuity are optional/);
+        assert.match(system, /no critic or model repair/);
+    }
+    assert.match(INCREMENTAL_SYSTEM, /not a scene-only planner/);
 });
 
 test('analysis prompt carries broad state but asks for only a relevant slice', () => {
     const state = defaultState();
     state.mode = 'fun'; state.contextLedger = 'Several ministries and families remain dormant.';
     const prompt = JSON.parse(buildAnalysisPrompt(messages, state, '', { scenario: 'Country simulation' }, { variationNonce: 7 }));
-    assert.equal(prompt.task, 'refresh_active_world_simulation');
+    assert.equal(prompt.task, 'prepare_playable_world_and_future');
     assert.match(prompt.condition_rule, /durable present-state cause/i);
     assert.match(prompt.relevance_rule, /real causal state change/i);
     assert.match(prompt.mode_instruction, /bolder strongly supported pressure/i);

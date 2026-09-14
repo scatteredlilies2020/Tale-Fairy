@@ -1,12 +1,13 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.13.19';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.14.0';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.13.9';
 import { relevantExcerpt } from './evidence-selection.js?v=0.13.9';
 import { formatDriftRequest, mergeOffscreenWorld, OFFSCREEN_KINDS } from './offscreen-world.js?v=0.13.9';
-import { CAUSAL_KINDS } from './causal-context.js?v=0.13.19';
+import { CAUSAL_KINDS } from './causal-context.js?v=0.14.0';
 import { mergeSituationUpdates, retireManifestedSituations } from './situations.js?v=0.13.9';
-import { PLANNER_AGENCY_RULE, ACTOR_AGENCY_RULE, AGENCY_AUDIT_RULE } from './game-master.js?v=0.13.19';
+import { PLANNER_AGENCY_RULE, ACTOR_AGENCY_RULE, AGENCY_AUDIT_RULE } from './game-master.js?v=0.14.0';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
+import { compactPreparedForPrompt, PREPARED_SCHEMA, PREPARED_RULE, validatePrepared, mergePreparedWorld } from './prepared-world.js?v=0.14.0';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
@@ -187,6 +188,7 @@ export const ANALYSIS_SCHEMA_VALUE = {
         }, required: ['conditions', 'inject', 'inject_reason', 'basis'] },
         situations: { type: 'array', maxItems: 6, items: SITUATION_SCHEMA_COMPACT },
         offscreen: OFFSCREEN_SCHEMA,
+        prepared: PREPARED_SCHEMA,
         response_audit: RESPONSE_AUDIT_SCHEMA,
         horizon: { type: 'object', additionalProperties: false, properties: {
             status: { type: 'string', enum: ['none', 'latent', 'developing', 'converging'] },
@@ -208,7 +210,7 @@ export const ANALYSIS_SCHEMA_VALUE = {
         note_resolution: { anyOf: [{ type: 'object', additionalProperties: false, properties: { kind: { type: 'string', enum: ['suggest', 'correct', 'establish', 'forbid'] } }, required: ['kind'] }, { type: 'null' }] },
         audit: text(500),
     },
-    required: ['contract_version', 'current', 'context', 'offscreen', 'response_audit', 'horizon', 'hidden_motives', 'world', 'thread_updates', 'actor_updates', 'canon_updates', 'ledger', 'note_resolution', 'audit'],
+    required: ['prepared', 'contract_version', 'current', 'context', 'offscreen', 'response_audit', 'horizon', 'hidden_motives', 'world', 'thread_updates', 'actor_updates', 'canon_updates', 'ledger', 'note_resolution', 'audit'],
 };
 export const ANALYSIS_SCHEMA = Object.freeze({
     name: 'tale_fairy_causal_context_v12',
@@ -238,6 +240,7 @@ export const INCREMENTAL_ANALYSIS_SCHEMA_VALUE = {
         }, required: ['conditions', 'inject', 'inject_reason', 'basis'] },
         situations: { type: 'array', maxItems: 6, items: SITUATION_SCHEMA_WIRE },
         offscreen: OFFSCREEN_SCHEMA,
+        prepared: PREPARED_SCHEMA,
         thread_updates: { type: 'array', maxItems: 4, items: { type: 'object', additionalProperties: false, properties: {
             op: { type: 'string', enum: ['upsert', 'retire'] }, id: text(100), thread: text(180), state: text(220),
             status: { type: 'string', enum: ['active', 'dormant', 'due', 'blocked'] }, basis: text(150),
@@ -256,7 +259,7 @@ export const INCREMENTAL_ANALYSIS_SCHEMA_VALUE = {
         note_resolution: { anyOf: [{ type: 'object', additionalProperties: false, properties: { kind: { type: 'string', enum: ['suggest', 'correct', 'establish', 'forbid'] } }, required: ['kind'] }, { type: 'null' }] },
         audit: text(320),
     },
-    required: ['contract_version', 'current', 'context', 'offscreen', 'response_audit', 'thread_updates', 'hidden_motives', 'actor_updates', 'ledger', 'note_resolution', 'audit'],
+    required: ['prepared', 'contract_version', 'current', 'context', 'offscreen', 'response_audit', 'thread_updates', 'hidden_motives', 'actor_updates', 'ledger', 'note_resolution', 'audit'],
 };
 export const INCREMENTAL_ANALYSIS_SCHEMA = Object.freeze({
     name: 'tale_fairy_causal_context_v13_incremental',
@@ -269,10 +272,10 @@ export const INCREMENTAL_ANALYSIS_SCHEMA = Object.freeze({
 export const MODE_INSTRUCTIONS = Object.freeze({
     light: 'LIGHT — Select only the few strongest conditions that can support subtle self-propelling change within the present activity. Favor quiet motives, relationships, and ordinary constraints.',
     balanced: 'BALANCED — Select a compact mix of actors and wider-world causes that gives the writing model useful leverage for self-propelling scene movement.',
-    fun: 'FUN — Include a bolder strongly supported pressure or capability when relevant, giving the writing model lively self-propelling movement while keeping tentative inventions private.',
+    fun: 'FUN — Include a bolder strongly supported pressure or capability when relevant, giving the writing model lively self-propelling movement while keeping proposals clearly separate from established facts.',
 });
 
-export const DIRECTOR_POLICY = 'Simulate the world privately, then select only the currently relevant underlying conditions that give the next response causal traction. A condition describes a present motivation, stance, relationship, capability, constraint, resource pressure, institutional tendency, or environmental state. It never prescribes the next action, event, dialogue, discovery, consequence, reveal, or outcome. The writing model interprets the conditions and makes every response self-propelling through an observable change, even when remaining in the same scene or activity. Explicit user/OOC facts outrank inference, and the player character remains entirely outside Tale Fairy’s control.';
+export const DIRECTOR_POLICY = 'Prepare a creative, world-aware middle and future alongside a concise factual scene read. Concrete conditional NPC/world developments belong in prepared; context.conditions describes present causes only, never planned actions disguised as facts. The writing model chooses realization, rhythm and prose while preserving player agency. Explicit user/OOC constraints and manifested consequences outrank proposals. Broad preparation may remain dormant through many long scenes.';
 
 export const EXTREME_CANON_INSTRUCTION = 'Explicit user/OOC canon remains authoritative even when extreme or unprecedented. Preserve its magnitude and apply relevant strengths and limits causally; averages are not ceilings. Unspecified compatible details remain creative space.';
 
@@ -722,6 +725,11 @@ function validateCompactAnalysisResult(result) {
 }
 
 export function validateAnalysisResult(result) {
+    // Old detached contracts remain readable; new preparation is validated.
+    if (result?.prepared !== undefined) {
+        const errors = validatePrepared(result.prepared);
+        if (errors.length) return { valid: false, errors };
+    }
     if ([11, 13].includes(result?.contract_version)) return validateIncrementalAnalysisResult(result);
     if (result?.contract_version === 10) return validateIncrementalAnalysisResult(result, { requireOffscreen: false });
     if ([9, 12].includes(result?.contract_version)) return validateBeatAnalysisResult(result);
@@ -1193,6 +1201,7 @@ function compactPromptStateForBudget(current = {}) {
     // evidence the model needs to read again on every reply.
     return {
         mode: current.mode, turnCount: current.turnCount,
+        preparedWorld: current.preparedWorld, pacing: current.pacing,
         scene: current.scene, sceneProfile: current.sceneProfile,
         causalContext: current.causalContext,
         responseAudit: current.responseAudit,
@@ -1867,20 +1876,21 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     const currentPlannerTurn = retainedState.turnCount;
     const retainedCurrent = useSpecificPlayerName(options.incremental ? compactPromptStateForBudget(retainedState) : retainedState, playerName);
     const payload = {
-        task: 'refresh_active_world_simulation',
+        task: 'prepare_playable_world_and_future',
         instruction: options.incremental
-            ? 'Reconstruct the current scene from the newest authoritative exchange, update changed world and actor state, re-evaluate private hypotheses, and select the few underlying conditions most useful to a self-propelling next response.'
-            : 'Reconstruct the current scene, audit the newest assistant reply, update the private world simulation, and select the few underlying conditions most useful to a self-propelling next response.',
+            ? 'Update facts from the newest exchange, then sustain and enrich prepared material beyond this scene. Preserve unused developments; prepare concrete middles and future branches without forcing immediate uptake.'
+            : 'Review the wider RP and its open creative space, prepare varied playable middles and future developments, and update a concise current factual context. Do not funnel everything into the newest topic.',
         authority: 'Explicit OOC/scenario commands and the latest user text outrank retained state and inference. Never define, modify, complete, or judge the player action, intent, response, consent, or inner state.',
         game_master_rule: PLANNER_AGENCY_RULE,
         actor_agency_rule: ACTOR_AGENCY_RULE,
         agency_audit_rule: AGENCY_AUDIT_RULE,
         world_start_rule: 'The beginning of the available transcript is only the beginning of observation, not the birth of the world. Treat every opening as in medias res: infer currently active people, relationships, institutions, systems, constraints, and environmental forces from the transcript, scenario, World Info, and retained evidence. Even on the first exchange, return useful present causal conditions; reduce confidence or scope when evidence is thin, but never return an empty world merely because the chat is new.',
         context_policy: DIRECTOR_POLICY,
-        simulation: 'Infer the active simulation scale on every pass and track the causal unit natural to it: people, relationships, households, groups, communities, settlements, organizations, institutions, resources, economies, infrastructure, environments, regions, countries, societies, ecosystems, and world forces. A subject may operate at more than one scale. Track only domains that are causally active instead of forcing every world to resemble an adventure or a nation-state. The persistent boards may be broad; context.conditions is only the 1–6 items relevant now.',
+        creative_preparation: 'Sustain prepared.overview and prepared.updates beyond the latest scene; concrete conditional developments are allowed. Return compact decisions, not deliberation.',
+        simulation: 'Infer the active simulation scale on every pass and track the causal unit natural to it: people, relationships, households, groups, communities, settlements, organizations, institutions, resources, economies, infrastructure, environments, regions, countries, societies, ecosystems, and world forces. A subject may operate at more than one scale. For factual tracking, prioritize causally active domains. Prepared material can explore independent and not-yet-encountered domains without forcing a genre template. The persistent boards may be broad; context.conditions is only the 1–6 items relevant now.',
         adaptation_rule: 'Match resolution, cadence, and kinds of change to the current simulation. A conversation or chore may move minute by minute; a household or neighborhood by routines and days; a town through residents, services, supply, governance, infrastructure, culture, and surroundings; a country through populations, institutions, factions, production, logistics, diplomacy, security, and geography. These are examples, not mandatory checklists. Change scale smoothly when the user zooms between a person, place, organization, polity, or wider world, while retaining causal links across scales.',
-        world_generation_rule: 'An under-specified world is open simulation space, not missing permission. Generate compatible new information when observation, inquiry, travel, creation, ordinary turnover, or a causal process makes it relevant. Prefer setting-native details that answer a present need and imply consequences: people, relationships, routines, locations, organizations, customs, goods, services, opportunities, problems, rumors, and discoveries. Preserve anything manifested in the transcript as fact. Before manifestation, keep consequential inventions as tentative private hypotheses; do not retroactively invent decisive secrets, negate established facts, or flood a quiet scene with novelty.',
-        opposition_rule: 'Model challenge as resistance from goals, scarcity, rules, tradeoffs, uncertainty, environment, institutions, or opposing actors and groups. Enemies are one optional form of opposition, not a required genre feature. New adversaries or threats need a setting-native motive, capability, constraint, and causal route; keep them tentative in horizon or offscreen state until evidence or on-screen manifestation establishes them. Also simulate allies, neutral parties, opportunities, cooperation, recovery, and uneventful periods so the world does not become an escalation machine.',
+        world_generation_rule: 'An under-specified world is open simulation space, not missing permission. Generate compatible new information when observation, inquiry, travel, creation, ordinary turnover, or a causal process makes it relevant. Prepare setting-native details for present or future opportunities: people, relationships, routines, locations, organizations, customs, goods, services, opportunities, problems, rumors, and discoveries. Preserve anything manifested in the transcript as fact. Before manifestation, keep consequential inventions labeled as conditional prepared proposals; do not retroactively invent decisive secrets, negate established facts, or flood a quiet scene with novelty.',
+        opposition_rule: 'Model challenge as resistance from goals, scarcity, rules, tradeoffs, uncertainty, environment, institutions, or opposing actors and groups. Enemies are one optional form of opposition, not a required genre feature. New adversaries or threats need a setting-native motive, capability, constraint, and causal route; keep them as conditional prepared proposals until on-screen manifestation establishes them. Also simulate allies, neutral parties, opportunities, cooperation, recovery, and uneventful periods so the world does not become an escalation machine.',
         condition_rule: 'Each condition must name its actual subject and describe a durable present-state cause. Good conditions answer what the subject wants, believes, knows, can do, is constrained by, or is under pressure from. Do not write a proposed future action, next beat, exact event, dialogue, reveal, discovery, consequence, outcome, or instruction. Do not disguise a planned event with future tense. The main writing model chooses every concrete realization.',
         evidence_rule: 'confidence=established requires direct evidence. confidence=strong permits a well-supported causal inference. confidence=tentative is private scratchpad material and is automatically withheld from the provider. Newer explicit facts and corrections supersede all summaries and inference.',
         disclosure_rule: 'open means generally knowable in scene; limited means known only to relevant participants; private means it may shape behavior without being automatically revealed. Disclosure never commands a reveal.',
@@ -1888,11 +1898,11 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
         offscreen_rule: 'Maintain offscreen as a bounded complete board of relevant actors, relationships, groups, communities, institutions, systems, resources, environments, places, and situations. This is deferred debt, not continuous ticking: preserve an unobserved subject unchanged until the newest exchange makes it relevant again, an explicit material time skip occurs, or a dependency changes. Then settle only the plausible broad change already latent in its trajectory, append rather than replace settled history, and advance last_seen_turn. Never re-roll settled facts. Nothing much changing is valid. To retire a fully settled subject, first return it with motion=static and owed empty; it may be omitted on a later pass.',
         distance_rule: 'Distance controls resolution, not importance: present and near subjects may be specific; distant subjects get broad strokes; remote subjects remain rumour-level, incomplete, and possibly outdated. After more than about fourteen days without reliable contact, cap the settlement at remote resolution unless the transcript supplies a trustworthy nearer witness. Do not grant the player omniscient knowledge of a private settlement.',
         pressure_rule: 'owed records a plausible undelivered consequence, not an event queue or deadline. Wider-world pressure may remain silent, color description or NPC subtext, complicate existing activity, or arrive openly only when causal access and scene scale support it. A quiet scene still progresses through its current activity, relationships, understanding, or immediate circumstances. Never interrupt merely because a subject was ignored or because time passed.',
-        scene_scale_rule: 'Every response must be self-propelling through an observable change independent of another player reply, including while remaining in the same scene or activity. Calibrate that movement and any challenge to the actual setting and activity. Task-native progress, NPC decisions or actions, compatible new information, disclosures, consequences, discoveries, opportunities, and environmental changes all qualify when fitting. Dialogue qualifies when it changes what is known, decided, possible, or underway. Challenge can be social, intellectual, bureaucratic, material, emotional, environmental, or physical; combat is only one possibility. Context creates possibilities, never guarantees. A major derailment is rare and may be supported only when an established or strong cause is already converging and current.intrusion is primed; never manufacture one for novelty. The latest explicit user/OOC request to stay, skip, or advance outranks all optional pressure.',
+        scene_scale_rule: 'Support meaningful development without requiring a scene ending, compulsory progress on every reply, or another player command. Genuine pending choices and quiet endings remain valid. Calibrate that movement and any challenge to the actual setting and activity. Task-native progress, NPC decisions or actions, compatible new information, disclosures, consequences, discoveries, opportunities, and environmental changes all qualify when fitting. Dialogue qualifies when it changes what is known, decided, possible, or underway. Challenge can be social, intellectual, bureaucratic, material, emotional, environmental, or physical; combat is only one possibility. Context creates possibilities, never guarantees. Current scene-fit fields are provisional, not permanent locks. Introduce prepared material only when its causal entry fits the actual exchange; allow reaction before contestable consequences and never force a derailment for novelty. The latest explicit user/OOC request to stay, skip, or advance outranks all optional pressure.',
         repetition_rule: 'Use response_audit and retained responsePatternMemory to avoid repeating the same presentation, escalation, arrival, dialogue shape, or emotional turn. Vary realization only through supported causes; choosing no new event is always allowed.',
-        horizon_rule: 'Stay one step ahead privately by maintaining optional horizon trajectories, but never convert them into provider instructions, promised events, delivery debt, or fixed plot. Long-range possibilities remain hypotheses until supported.',
+        horizon_rule: 'The legacy horizon board holds private hypotheses, not a delivery queue. Use prepared for concrete middle and longer-range possibilities that may reach the writer conditionally; none are promised outcomes or fixed plot.',
         motive_rule: 'Maintain the separate private hidden-motive board as ranked hypotheses. It can preserve bold specific explanations, but a likely motive is not canon. Retire or revise only when evidence changes; irrelevance may make an item dormant without resolving it.',
-        contribution_rule: 'Set context.inject=true and provide 1–6 concise conditions, normally 3–6 when evidence supports them. At least one must be established or strong. Favor a useful mix rather than exhaustive lore. The provider receives only subject plus condition and a positive self-propelling movement contract; it does not receive ids, confidence, relevance, basis, rankings, or future plans.',
+        contribution_rule: 'Set context.inject=true and provide 1–6 concise conditions, normally 3–6 when evidence supports them. At least one must be established or strong. Favor a useful mix rather than exhaustive lore. The factual slice exposes subjects and conditions, not internal ids, confidence, relevance, basis or rankings. Separately, prepared supplies the wider overview and selected conditional developments.',
         situation_rule: 'Maintain 0–6 private optional situations suited to genre, setting, era, location, and activity. Use cause -> present circumstance -> possible entry. Challenges, opportunities, discoveries, encounters, and open quest-hooks are valid. Observation, NPC initiative, and established causal processes may make them relevant without player engagement. An established activity can proceed without the player; an unintroduced possibility is not a scheduled event. Never require player actions, outcomes, reveals, or sequences; preserve quiet scenes. Original inventions stay optional until manifested. Use stable ids and retire contradicted or irrelevant items.',
         response_audit_rule: 'Privately audit only the newest assistant reply for repetition, unjustified escalation, player control, continuity drift, and whether it made meaningful movement. Meaningful movement is an observable change in activity, behavior, understanding, options, or circumstances that carries the situation forward at its natural scale. The audit informs future selection but never mechanically marks a condition resolved or forces regeneration.',
         transcript_head: {
@@ -2003,6 +2013,7 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
             items: payload.current.hiddenMotives.items.map(({ id, actor, explanation, likelihood, evidence, counterevidence, currentRelevance }) =>
                 ({ id, actor, explanation, likelihood, evidence: evidence.slice(-1), counterevidence: counterevidence.slice(-1), currentRelevance })),
         };
+        payload.current.preparedWorld = compactPreparedForPrompt(payload.current.preparedWorld);
         delete payload.current.responseAudit;
         if (payload.current.causalContext) payload.current.causalContext = {
             conditions: (payload.current.causalContext.conditions || []).slice(0, 3).map(({ id, kind, relevance, ...condition }) => condition),
@@ -2605,6 +2616,7 @@ export function applyAnalysis(state, result, messages) {
     const playerName = playerCharacterName(messages);
     const next = normalizeState(useSpecificPlayerName(state, playerName));
     const value = result && typeof result === 'object' ? useSpecificPlayerName(result, playerName) : {};
+    next.preparedWorld = mergePreparedWorld(next.preparedWorld, value.prepared);
     if ([10, 11, 13].includes(value.contract_version)) return applyIncrementalAnalysis(next, value, messages);
     if ([8, 9, 12].includes(value.contract_version)) return applyBeatAnalysis(next, value, messages);
     if (value.contract_version === 2) return applyCompactAnalysis(next, value, messages);
@@ -2687,36 +2699,24 @@ export function applyAnalysis(state, result, messages) {
     return next;
 }
 
-const PLANNER_SYSTEM = `You are Tale Fairy, a private active-world simulator and causal-context curator. Another model writes the roleplay or simulation. Return only JSON matching the schema. ${PLANNER_AGENCY_RULE} ${ACTOR_AGENCY_RULE}
-
-Reconstruct the current state from the newest authoritative exchange. Infer the active scale rather than assuming a genre: the same engine must handle a conversation, household, slice of life, business, town, country, ecosystem, adventure, civilization, or mixed-scale world. Maintain the causal units natural to it—people, relationships, communities, settlements, organizations, institutions, resources, economies, infrastructure, environments, regions, societies, and long-range pressures—then select only the few underlying conditions relevant to the next response. Track only causally active domains and change scale smoothly when the user zooms in or out.
-
-An under-specified setting is open simulation space. Generate compatible setting-native information when observation, inquiry, travel, creation, or an active causal process makes it relevant. Low-stakes details can complete the world naturally; consequential inventions remain tentative private hypotheses until evidence or on-screen manifestation establishes them. Do not retcon canon or add novelty merely to keep things busy.
-
-Model challenge as setting-native resistance from goals, scarcity, rules, tradeoffs, uncertainty, environments, institutions, or opposing actors and groups. Enemies and threats are optional, never defaults. Any new adversary needs a motive, capability, constraint, and causal route, and remains a private horizon/offscreen hypothesis until established. Preserve allies, neutral parties, opportunities, cooperation, recovery, ordinary routines, and uneventful periods as equally valid simulation outcomes.
-
-The offscreen board is deferred debt, not continuous ticking. Preserve unseen subjects until they become relevant again, the transcript explicitly advances material time, or a dependency changes; only then settle the broad plausible development already latent in their trajectory. Distance controls resolution. Never re-roll settled history, schedule an owed consequence, or make elapsed time manufacture drama. Wider-world pressure may remain silent or subtextual while a quiet scene still progresses through its current activity, relationships, understanding, or immediate circumstances.
-
-A condition is present causal state: a motivation, belief, knowledge state, stance, capability, constraint, relationship, institutional tendency, resource pressure, or environmental condition. Name the real subject. Never prescribe a future action, scene, event, dialogue, reveal, discovery, consequence, or outcome. Never disguise a plan as a condition. The writing model interprets these causes and creatively decides what happens.
-
-Use confidence carefully. established requires direct evidence; strong requires a well-supported inference; tentative remains private and is never provider-visible. open, limited, and private describe who may know a condition; private conditions may shape behavior but do not require revelation. Explicit user/OOC facts and corrections outrank retained state, summaries, lore, and inference.
-
-Select 1–6 conditions, normally 3–6 when useful, with at least one established or strong item. Choose conditions that give the writing model causal traction for an observable self-propelling change even when the scene or activity continues. Relevance is private selection reasoning, not a plot priority. Do not assume expressed means resolved or neglected means escalated. Revise salience only from evidence, time, dependencies, or real causal change. Dormant characters and systems can leave the active set and be reconstructed from retained summaries, lore, Continuity, and factual records when relevant again.
-
-Stay a step ahead only in the private horizon, motive, and offscreen boards. They are optional possibilities and hypotheses, never event queues, promises, or instructions. Every provider response is self-propelling: it changes the current situation observably independent of another player reply, while remaining in the same scene or activity when that is the natural scale. Setting-native challenge may be social, intellectual, bureaucratic, material, emotional, environmental, or physical. Rare derailment is permissible only from an established or strong cause already converging in a primed scene, never for novelty. The player action, response, consent, and inner state remain outside Tale Fairy's authority. The provider will receive only a clean natural-language slice of subject plus condition and will choose concrete movement itself.`;
+const PLANNER_SYSTEM = `You are Tale Fairy, a private creative GM preparing material for another model that writes the roleplay or simulation. Return only JSON matching the schema. ${PREPARED_RULE} ${PLANNER_AGENCY_RULE} ${ACTOR_AGENCY_RULE}
+Reconstruct current facts from the newest authoritative exchange. Adapt to the RP's natural scale without mandatory genre categories. The transcript begins observation, not the world. Maintain useful causes and factual memory without simulating everything. Established requires direct evidence; strong requires a supported inference. Tentative factual conditions are withheld, but labeled conditional preparation can reach the writer. Known_by and learned_from never grant invented knowledge. User instructions and corrections outrank retained state and inference. Preserve settled offscreen history; unseen time does not advance by message count. Select 1–6 useful current conditions with at least one evidenced or strongly inferred cause; do not let that small present slice consume the wider creative job.`;
 
 const KNOWLEDGE_AND_AUDIT_RULES = `For each condition, known_by lists only evidenced knowers and learned_from gives their in-world learning route, not private planner reasoning. Use [] and an empty string when not established; do not invent knowledge or grant it to the player. A suspected fact stays a belief held by its subject, not objective truth. On every pass, response_audit evaluates only the newest assistant reply: state_change describes the supported before-to-after difference, or explicitly says no meaningful change was observed. Evaluate task progress, NPC stance, shared understanding, options, and circumstances, not gesture counts or decorative motion. Rest, silence, routine, and scene landings are legitimate; never manufacture escalation or player feelings to satisfy an audit. Patterns are concrete observed repetition, not speculative criticisms. With no assistant reply, set applicable=false, movement_fit=not-applicable, empty state_change, and no flags. The audit informs the next selection, not automatic retries or imposed outcomes. ${AGENCY_AUDIT_RULE}`;
 
-export const ANALYSIS_OUTPUT_CONTRACT = `Return exactly: contract_version=12, current, context, situations, offscreen, response_audit, horizon, hidden_motives, world, thread_updates, actor_updates, canon_updates, ledger, note_resolution, audit.
+export const ANALYSIS_OUTPUT_CONTRACT = `Return exactly: contract_version=12, prepared, current, context, situations, offscreen, response_audit, horizon, hidden_motives, world, thread_updates, actor_updates, canon_updates, ledger, note_resolution, audit.
 ${ACTOR_UPDATE_RULES}
+prepared contains overview, updates and focus as specified in the schema and system instructions. It is a persistent creative delta, not factual memory.
 context={conditions,inject,inject_reason,basis}; inject=true. conditions has 1–6 items, each {id,kind,subject,condition,disclosure,confidence,relevance,known_by,learned_from}. kind is ${CAUSAL_KINDS.join(', ')}. disclosure is open, limited, or private. confidence is established, strong, or tentative. Describe current causes only, never future actions or planned events. At least one condition must not be tentative. ${KNOWLEDGE_AND_AUDIT_RULES}
 situations has 0–6 optional setting-native circumstances, each {op,id,type,premise,cause,entry,scope,persistence,status,origin}. Use cause -> present circumstance -> possible interaction. These are never required events, objectives, outcomes, reveals, or player instructions. Original or consequential situations remain optional and non-canon until manifested. Return zero when none fit; use op=retire when contradicted or no longer relevant.
 offscreen={subjects,elapsed,settled_through,audit} is the complete bounded deferred-debt board. Preserve unseen subjects and settled history; update last_seen_turn only when settling relevant debt. current records the exact current scene. response_audit privately evaluates the prior assistant response. horizon and hidden_motives remain private optional hypotheses. world and updates contain factual state only. Empty update arrays mean no factual change. No other keys.`;
 
-export const INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT = `Return exactly contract_version=13 plus current, context, situations, offscreen, response_audit, thread_updates, hidden_motives, actor_updates, ledger, note_resolution, and audit.
+export const INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT = `Return exactly contract_version=13 plus prepared, current, context, situations, offscreen, response_audit, thread_updates, hidden_motives, actor_updates, ledger, note_resolution, and audit.
 ${ACTOR_UPDATE_RULES}
+prepared contains overview, updates and focus as specified in the schema and system instructions. It is a persistent creative delta, not factual memory.
 context contains 1–6 currently relevant present causal conditions using {id,kind,subject,condition,disclosure,confidence,relevance,known_by,learned_from}, inject=true, inject_reason, and basis. At least one condition is established or strong; tentative items remain private. Conditions may name real subjects but never prescribe actions, events, dialogue, revelations, or outcomes. ${KNOWLEDGE_AND_AUDIT_RULES} offscreen.subjects and hidden_motives.items contain only changed records; omitted ids and empty arrays preserve prior records. Use stable ids and change=retire to remove a disproven motive. Usually select 1–3 useful conditions; keep prose concise. Updates contain factual changes only. No other keys.`;
 
-export const INCREMENTAL_SYSTEM = `You are Tale Fairy, a private active-world simulator for another model that writes the roleplay. Return only JSON matching the schema. ${PLANNER_AGENCY_RULE} ${ACTOR_AGENCY_RULE}
-The transcript begins observation, not the world. Treat openings as in medias res; infer useful present causes from transcript, scenario, World Info, and retained evidence rather than returning an empty world. Newest explicit facts outrank retained inference. Adapt scale naturally among people, households, institutions, towns, countries, ecosystems, and mixed settings; never impose genre mechanics. Select 1–6 current conditions, usually 1–3: actual subject plus present motivation, knowledge, capability, relationship, constraint, resource pressure, or environmental state. The writing model realizes observable self-propelling change even when the same scene or activity continues. Never plan the next action, event, dialogue, reveal, discovery, consequence, or outcome. established requires direct evidence, strong a supported inference, tentative stays private. Compatible setting-native inventions are allowed, but consequential inventions and adversaries remain private hypotheses until evidenced or manifested. Enemies and combat are never defaults; cooperation, routine, recovery, and uneventful periods remain valid. Offscreen is deferred debt, not continuous ticking: preserve unseen subjects; settle only on renewed relevance, explicit time skips, or changed dependencies. Scale detail by distance; never re-roll history or schedule consequences. Mention is not resolution; neglect is not escalation. Never define or modify the player action, response, consent, or inner state.`;
+export const INCREMENTAL_SYSTEM = `${PLANNER_SYSTEM}
+This is a routine delta update, not a scene-only planner. Reuse prepared ids and retain the wider overview; develop material when useful without churning every record. Give creative preparation room even while the user lingers. Updates to actors, ledger and context are factual; proposals belong only in prepared. Offscreen and hidden motive updates preserve omitted records. Empty factual updates mean no change. No second critic or model repair pass.`;
+
 export { PLANNER_SYSTEM as SYSTEM, extractJson };
