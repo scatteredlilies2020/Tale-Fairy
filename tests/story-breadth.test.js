@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildAnalysisPrompt, buildStoryEvidence, storyEvidenceQuery, SYSTEM, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA } from '../extension/analysis.js';
+import { readFileSync } from 'node:fs';
+import { buildAnalysisPrompt, buildWorldPlannerPrompt, WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA, buildStoryEvidence, storyEvidenceQuery, SYSTEM, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA } from '../extension/analysis.js';
 import { collectSummarySources } from '../extension/summary-context.js';
 import { readContinuityBridge } from '../extension/continuity.js';
 import { defaultState, fingerprintMessages } from '../extension/state.js';
@@ -41,15 +42,18 @@ async function sourcePool(messages, storyEvidence) {
     });
 }
 
-for (const rebuild of [false, true]) test(`${rebuild ? 'rebuild' : 'first empty-state analysis'} keeps history, Continuity chronicle, other summaries and lore in the final bounded prompt`, async () => {
+for (const builder of [buildAnalysisPrompt, buildWorldPlannerPrompt])
+for (const rebuild of [false, true]) test(`${builder.name}: ${rebuild ? 'rebuild' : 'first empty-state analysis'} keeps history, Continuity chronicle, other summaries and lore in the final bounded prompt`, async () => {
     const messages = longChat();
     const before = JSON.stringify(messages);
     const storyEvidence = buildStoryEvidence(messages);
     const sources = await sourcePool(messages, storyEvidence);
     for (const mode of ['prompt-only', 'json-schema']) {
-        const fixedEnvelope = plannerBudgetEnvelope(`${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}`, ANALYSIS_SCHEMA, mode);
+        const fixedEnvelope = builder === buildWorldPlannerPrompt
+            ? plannerBudgetEnvelope(WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA, mode)
+            : plannerBudgetEnvelope(`${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}`, ANALYSIS_SCHEMA, mode);
         const prompt = await fitPromptToBudget({ fixedEnvelope, tokenBudget: 16000,
-            buildPrompt: effectivePromptTokens => buildAnalysisPrompt(messages, defaultState(), '', bootstrap, {
+            buildPrompt: effectivePromptTokens => builder(messages, defaultState(), '', bootstrap, {
                 bootstrapScan: true, fullRebuild: rebuild, incremental: false, storyEvidence,
                 maxPromptTokens: 16000, effectivePromptTokens, recentContextTokens: 12000, summaryContextTokens: 4000, summarySources: sources,
             }),
@@ -78,14 +82,14 @@ for (const rebuild of [false, true]) test(`${rebuild ? 'rebuild' : 'first empty-
     assert.equal(JSON.stringify(messages), before);
 });
 
-test('empty transcript initialization retains supplied setting and summary evidence without inventing history', async () => {
+for (const builder of [buildAnalysisPrompt, buildWorldPlannerPrompt]) test(`${builder.name}: empty transcript initialization retains supplied setting and summary evidence without inventing history`, async () => {
     const messages = [];
     const storyEvidence = buildStoryEvidence(messages);
     const sources = await sourcePool(messages, storyEvidence);
-    const p = JSON.parse(buildAnalysisPrompt(messages, defaultState(), '', bootstrap, { bootstrapScan: true, summarySources: sources, storyEvidence }));
+    const p = JSON.parse(builder(messages, defaultState(), '', bootstrap, { bootstrapScan: true, summarySources: sources, storyEvidence }));
     assert.deepEqual(p.story_evidence.timeline, []);
     assert.deepEqual(p.story_evidence.open_threads, []);
-    assert.match(p.bootstrap.scenario, /long journey/);
+    assert.match((p.rp_reference || p.bootstrap).scenario, /long journey/);
     assert.match(p.story_evidence.instruction, /never fabricate a past/);
     assert.ok(p.summary_sources.some(item => item.kind === 'world-info'));
 });
@@ -148,4 +152,32 @@ test('a notebook prepared from a truly empty transcript remains usable after the
     assert.equal(preparedWorldUsable(board, options), true);
     assert.equal(preparedWorldUsable(board, { ...options, inputsKey: 'changed-setup' }), false);
     assert.equal(preparedWorldUsable(board, { ...options, chatId: 'another-story' }), false);
+});
+
+// Exercise the runtime's own fitting wrapper, including a provider tokenizer
+// that measures more tokens than the local estimate.
+test('production budget wrapper delivers broader review evidence within the measured ceiling', async () => {
+    const runtime = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
+    const wrapper = runtime.match(/async function buildTokenBudgetedAnalysisPrompt\([^]*?^}/m)[0];
+    const fixedEnvelope = plannerBudgetEnvelope(WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA, 'prompt-only');
+    const measured = text => Math.ceil(estimateTokenCount(text) * 1.2);
+    const build = new Function('currentContext', 'fitPromptToBudget', 'analysisBudgetEnvelope', 'buildWorldPlannerPrompt',
+        `${wrapper}; return buildTokenBudgetedAnalysisPrompt;`)(
+        () => ({ getTokenCountAsync: async text => measured(text) }), fitPromptToBudget, () => fixedEnvelope, buildWorldPlannerPrompt);
+    const messages = longChat();
+    const evidence = buildStoryEvidence(messages);
+    const sources = await sourcePool(messages, evidence);
+    const prompt = await build(messages, defaultState(), '', bootstrap, {
+        incremental: false, bootstrapScan: false, maxPromptTokens: 14000,
+        recentContextTokens: 4500, summaryContextTokens: 2400, summarySources: sources, storyEvidence: evidence,
+    });
+    const payload = JSON.parse(prompt);
+    assert.equal(payload.task, 'review_wider_developments');
+    assert.ok(measured(`${fixedEnvelope}\n${prompt}`) <= 14000);
+    assert.equal(payload.story_evidence.timeline.at(-1).range[1], messages.length - 1);
+    assert.match(JSON.stringify(payload.story_evidence), /EM-73/);
+    for (const kind of ['continuity-memory', 'extension-summary', 'chat-summary', 'world-info-reference', 'character-reference']) {
+        assert.ok(payload.summary_sources.some(source => source.kind === kind), `Missing ${kind}`);
+    }
+    assert.match(payload.messages.at(-1).content, /not in this village/);
 });

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { AnalysisValidationError } from '../extension/analysis.js';
+import { AnalysisValidationError, WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA } from '../extension/analysis.js';
 import * as reasoning from '../extension/reasoning-policy.js';
 import * as output from '../extension/output-negotiation.js';
 import { claimPlannerRecoveryRepair } from '../extension/planner-lifecycle.js';
@@ -23,7 +23,7 @@ function harness(results, { route = 'direct', configured = 'low', activeEffort =
         return result;
     };
     const scope = {
-        ...reasoning, ...output, AnalysisValidationError, claimPlannerRecoveryRepair,
+        ...reasoning, ...output, AnalysisValidationError, claimPlannerRecoveryRepair, WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA,
         plannerStorage: () => null, AbortController, DOMException, console: { warn() {} },
         EXTENSION_ID: 'test', detachedPlannerReady: Promise.resolve(), detachedPlannerEnabled: false,
         PLANNER_SYSTEM_PROMPT: 'planner', INCREMENTAL_SYSTEM_PROMPT: 'routine',
@@ -94,10 +94,10 @@ const tiers = [
 ];
 
 for (const route of ['direct', 'profile', 'active']) {
-    test(`${route}: routine disables optional thinking and broader tiers honor selected reasoning`, async () => {
+    test(`${route}: the replacement disables reasoning in every tier regardless of legacy selection`, async () => {
         for (const configured of ['low', 'high', 'auto']) {
             for (const { meta, budget, recovery } of tiers) {
-                const expected = !meta.fullContextPass ? 'none' : configured === 'auto' ? (route === 'profile' ? 'high' : 'medium') : configured;
+                const expected = 'none';
                 const h = harness(body => {
                     assert.equal(body.include_reasoning, expected !== 'none');
                     assert.equal(body.reasoning_effort, expected);
@@ -117,7 +117,7 @@ test('Auto leaves provider defaults alone when no profile or active effort is co
     for (const route of ['direct', 'profile', 'active']) {
         for (const { meta } of tiers.filter(tier => tier.meta.fullContextPass)) {
             const h = harness([{ valid: true }], { route, configured: 'auto', activeEffort: '', profile: {} });
-            await h.runPass(meta);
+            await h.run();
             assert.ok(!h.requests[0].reasoning_effort);
             assert.equal(h.requests[0].include_reasoning, undefined);
             assert.equal(h.requests.length, 1);
@@ -127,7 +127,7 @@ test('Auto leaves provider defaults alone when no profile or active effort is co
 
 test('Auto uses an explicit profile effort before its preset or the active model', async () => {
     const h = harness([{ valid: true }], { route: 'profile', configured: 'auto', profile: { reasoning_effort: 'low', preset: 'Planner' } });
-    await h.runPass({ fullContextPass: true });
+    await h.run();
     assert.equal(h.requests[0].reasoning_effort, 'low');
     assert.equal(h.requests.length, 1);
 });
@@ -168,7 +168,7 @@ test('a continuing mandatory-reasoning rejection does not create a retry loop', 
     assert.equal(h.requests.length, 2);
 });
 
-test('DeepSeek routine updates disable thinking and bound output even with review reasoning Low', async () => {
+test('DeepSeek replacement disables optional thinking without reasoning reserve', async () => {
     const h = harness([{ valid: true }], { model: 'deepseek-v4-pro', configured: 'low' });
     await h.runPass();
     assert.deepEqual(JSON.parse(h.requests[0].custom_include_body), { thinking: { type: 'disabled' } });
@@ -180,7 +180,7 @@ test('every route reserves reasoning space after Auto inheritance and provider t
     for (const route of ['direct', 'profile', 'active']) {
         for (const [configured, expected] of [['off', 6144], ['low', 22528], ['medium', 38912], ['auto', 38912]]) {
             const h = harness([{ valid: true }], { route, configured, activeEffort: 'high', model: 'deepseek-v4.1-flash' });
-            await h.runPass({ fullContextPass: true });
+            await h.run({ responseTokens: 6144 });
             assert.equal(h.requests.length, 1);
             assert.equal(h.requests[0].max_tokens, expected, `${route}: ${configured}`);
         }
@@ -190,7 +190,7 @@ test('every route reserves reasoning space after Auto inheritance and provider t
 
 test('routine transports send the compact response shape without native schema overhead', async () => {
     for (const route of ['direct', 'profile', 'active']) {
-        const h = harness([{ valid: true }], { route });
+        const h = harness([{ valid: true }], { route, configured: 'off' });
         await h.runPass();
         const sent = h.requests[0];
         assert.equal(h.requests.length, 1);

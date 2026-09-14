@@ -95,7 +95,7 @@ test('successful live response is unchanged and can be acknowledged after metada
 });
 
 test('modern structured results and review tiers survive detached recovery', async () => {
-    for (const contractVersion of [12, 13]) {
+    for (const contractVersion of [12, 13, 14]) {
         const payload = { contract_version: contractVersion, audit: 'Mock structured planner result.' };
         const router = routerMock();
         await init(router, { fetchImpl: async () => new Response(JSON.stringify(payload), { status: 200 }) });

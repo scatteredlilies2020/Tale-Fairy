@@ -1,5 +1,17 @@
-import { applyPlannerAuthorLayer, defaultState, normalizeState } from './state.js?v=0.14.6';
+import { applyPlannerAuthorLayer, defaultState, normalizeState } from './state.js?v=0.14.7';
 import { relevantExcerpt } from './evidence-selection.js?v=0.13.9';
+
+// A failed re-evaluation is not new story evidence. Only an exact-source plan
+// with matching author/card/lore inputs can survive; never rescue stale facts.
+export function canRetainSuccessfulPlan(state, { chatId, fingerprint, messageCount, inputsKey } = {}) {
+    return Boolean(state?.lastAnalyzedAt && inputsKey
+        && state.sourceChatId === chatId
+        && state.lastAnalysisFingerprint === fingerprint
+        && state.sourceMessageCount === messageCount
+        && state.analysisModel?.plotInputsKey === inputsKey
+        && (state.plannerContract === 14 || state.causalContext?.conditions?.some(item => item.confidence !== 'tentative'))
+        && !state.causalContext?.conditions?.some(item => String(item.id).startsWith('fallback-')));
+}
 
 function statusFields(value) {
     const fields = {};

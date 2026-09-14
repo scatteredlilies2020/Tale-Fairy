@@ -1,5 +1,7 @@
 # Lean planner check — 0.14.5
 
+Historical report for 0.14.5, not the replacement contract. The 0.14.6 replacement keeps planner reasoning Off on every tier; only providers requiring thinking receive a Low compatibility fallback. See [the current quality check](quality-check-0.14.6.md).
+
 Checked on 2026-09-14 against the configured DeepSeek-compatible proxy. These were isolated planner requests; no generated result was saved into the chat or memory.
 
 The routine pass now targets 6,000 input tokens and 900–1,400 output tokens, with a 4,096 output ceiling and optional thinking disabled. All connection types use the compact response shape for routine passes. Broader reviews retain their 14,000 input default and configured reasoning. Native schema transports otherwise exceeded the smaller routine budget on the current long conversation.

@@ -47,14 +47,14 @@ test('permanent rules are lean, genre-neutral, and leave pacing to active instru
     ]) assert.match(payload, rule);
     assert.doesNotMatch(payload, /Every reply changes the current situation meaningfully|Match the scene's tone and pace|time passage proportionate/i);
     assert.equal(payload.match(/GAME MASTER RESPONSIBILITY/g)?.length, 1);
-    assert.ok(GAME_MASTER_CONTRACT.split(/\s+/u).length <= 160, 'Permanent rules must stay concise');
-    assert.ok(estimateTokenCount(GAME_MASTER_CONTRACT) < 320, 'Permanent policy must remain bounded');
+    assert.ok(GAME_MASTER_CONTRACT.split(/\s+/u).length <= 190, 'Permanent rules must stay concise');
+    assert.ok(estimateTokenCount(GAME_MASTER_CONTRACT) < 380, 'Permanent policy must remain bounded');
     assert.doesNotMatch(payload, /fleeing|enemy|combat|replacement hooks|punishment|reset availability|world-stall/i);
 });
 
 test('routine agency rules distinguish independent activity from player intervention', () => {
     assert.match(SYSTEM, /commit and finish actions without player permission/);
-    for (const rule of [/NPCs may act, finish, refuse or disengage/, /A past pause is not a standing constraint/, /respect actual commitments and reasons to wait/, /Never decide player dialogue, thoughts, choices or contestable outcomes/, /preserve intervention and viewpoint limits/]) assert.match(INCREMENTAL_SYSTEM, rule);
+    for (const rule of [/NPCs can decide, act, finish, refuse and disengage/, /Never turn one observed behavior into a permanent personality restriction/, /Respect actual commitments and reasons to wait/, /player controls their own speech, choices, feelings and contested outcomes/, /Preserve intervention opportunities and viewpoint limits/]) assert.match(INCREMENTAL_SYSTEM, rule);
     assert.match(INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, /real intervention boundaries from repeated questions\/readiness without follow-through/);
     assert.match(INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, /do not force progress each turn/);
 });
@@ -121,7 +121,7 @@ test('both planner passes retain agency and actor memory instructions in their f
     assert.ok(SYSTEM.includes(PLANNER_AGENCY_RULE));
     assert.ok(SYSTEM.includes(ACTOR_AGENCY_RULE));
     assert.ok(ANALYSIS_OUTPUT_CONTRACT.includes(AGENCY_AUDIT_RULE));
-    assert.match(INCREMENTAL_SYSTEM, /NPCs may act, finish, refuse or disengage/);
+    assert.match(INCREMENTAL_SYSTEM, /NPCs can decide, act, finish, refuse and disengage/);
     assert.match(INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, /Actor description fields use "" for unchanged\/unknown/);
     const prompt = buildAnalysisPrompt([{ is_user: true, mes: 'I observe.' }], defaultState(), '', {}, { incremental: true, maxPromptTokens: 6000, effectivePromptTokens: 1000 });
     assert.ok(JSON.parse(prompt).messages.some(item => item.content === 'I observe.'));

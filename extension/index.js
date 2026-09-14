@@ -4,40 +4,42 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, buildStoryEvidence, storyEvidenceQuery, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.6';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.6';
-import { isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.0';
+import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, buildStoryEvidence, storyEvidenceQuery, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.7';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.7';
+import { isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.7';
 import { selectSituationalOpenings } from './situations.js?v=0.13.9';
-import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.13.17';
+import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.14.7';
 import { resolveInjectionPlacement } from './injection-placement.js?v=0.13.9';
 import { DEFAULT_INJECTION_ROLE, normalizeInjectionRole } from './injection-role.js?v=0.13.9';
 import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.13.9';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.13.9';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.14.7';
 import { normalizeModelListResponse } from './models.js?v=0.13.9';
-import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, plannerOutputTokenBudget, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.14.6';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.14.6';
+import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, plannerOutputTokenBudget, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.14.7';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.14.7';
 import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.13.9';
-import { collectSummarySources } from './summary-context.js?v=0.14.6';
+import { collectSummarySources } from './summary-context.js?v=0.14.7';
 import { estimateTokenCount } from './token-budget.js?v=0.13.9';
-import { fitPromptToBudget, plannerEvidenceAudit } from './prompt-budget.js?v=0.14.6';
-import { DEFAULT_ROUTINE_INPUT, DEFAULT_REVIEW_INPUT, normalizeInputBudget, plannerBudgets } from './planner-budgets.js?v=0.14.5';
+import { fitPromptToBudget, plannerEvidenceAudit } from './prompt-budget.js?v=0.14.7';
+import { DEFAULT_ROUTINE_INPUT, DEFAULT_REVIEW_INPUT, normalizeInputBudget, plannerBudgets } from './planner-budgets.js?v=0.14.7';
 import { relevantActors } from './evidence-selection.js?v=0.13.9';
-import { completionText } from './completion-response.js?v=0.13.9';
+import { completionText } from './completion-response.js?v=0.14.7';
 import { sampleDirectorSignals } from './director-sampling.js?v=0.13.9';
 import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerBudgetEnvelope, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.14.5';
 import { clearPlannerRecoveryRepair, clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.13.10';
 import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.13.9';
-import { hasUsableCausalContext } from './causal-context.js?v=0.14.5';
+import { hasUsableCausalContext } from './causal-context.js?v=0.14.7';
 import { formatHiddenMotives } from './scratchpad-format.js?v=0.13.9';
-import { defaultPreparedWorld, preparedWorldUsable, unchangedSourcePrefix, stampPreparedWorld } from './prepared-world.js?v=0.14.6';
+import { WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA } from './world-planner.js?v=0.14.7';
+import { buildWorldPlannerPrompt } from './analysis.js?v=0.14.7';
+import { defaultPreparedWorld, preparedWorldUsable, unchangedSourcePrefix, stampPreparedWorld } from './prepared-world.js?v=0.14.7';
 import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.9';
-import { createSafetyFallbackState } from './fallback-direction.js?v=0.14.5';
+import { canRetainSuccessfulPlan, createSafetyFallbackState } from './fallback-direction.js?v=0.14.7';
 import { classifyAssistantReply } from './response-usability.js?v=0.13.9';
 import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.5';
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.14.6';
+const RUNTIME_VERSION = '0.14.7';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -377,11 +379,7 @@ installDetachedPlannerTransport();
 const detachedPlannerReady = initializeDetachedPlanner();
 
 function analysisBudgetEnvelope(incremental) {
-    const model = analysisModelOptions();
-    const mode = incremental ? PLANNER_OUTPUT_MODE.PROMPT_ONLY : model.profileId || model.active
-        ? PLANNER_OUTPUT_MODE.JSON_SCHEMA : plannerOutputModes(model)[0];
-    return plannerBudgetEnvelope(incremental ? INCREMENTAL_SYSTEM_PROMPT : PLANNER_SYSTEM_PROMPT,
-        incremental ? INCREMENTAL_ANALYSIS_SCHEMA : ANALYSIS_SCHEMA, mode);
+    return plannerBudgetEnvelope(WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA, PLANNER_OUTPUT_MODE.PROMPT_ONLY);
 }
 
 async function buildTokenBudgetedAnalysisPrompt(messages, state, note, bootstrap, options) {
@@ -392,7 +390,7 @@ async function buildTokenBudgetedAnalysisPrompt(messages, state, note, bootstrap
         tokenBudget,
         fixedEnvelope: analysisBudgetEnvelope(options.incremental),
         tokenCounter: typeof context?.getTokenCountAsync === 'function' ? context.getTokenCountAsync.bind(context) : null,
-        buildPrompt: effectivePromptTokens => buildAnalysisPrompt(messages, state, note, bootstrap, { ...options, maxPromptTokens: tokenBudget, effectivePromptTokens, historyCache }),
+        buildPrompt: effectivePromptTokens => buildWorldPlannerPrompt(messages, state, note, bootstrap, { ...options, maxPromptTokens: tokenBudget, effectivePromptTokens, historyCache }),
     });
 }
 
@@ -737,9 +735,9 @@ function plannerInputsMatch(state, messages, context, metadata = context.chatMet
         (item.sourceKey === sourceKey || item.sourceFingerprint === sourceFingerprint) && item.inputKey !== inputKey);
 }
 
-function preparedReady(state, messages, context = currentContext()) {
+function preparedReady(state, messages, context = currentContext(), forReplanning = false) {
     const chatId = String(context.getCurrentChatId?.() || '');
-    return preparedWorldUsable(state.preparedWorld, { chatId, messages, fingerprint: fingerprintMessages,
+    return preparedWorldUsable(state.preparedWorld, { chatId, messages, fingerprint: fingerprintMessages, forReplanning,
         inputsKey: plotInputKey(chatId, [], generationInputs(context, state)) });
 }
 
@@ -802,9 +800,10 @@ function archiveReadyPlannerContexts(metadata, states, context = currentContext(
     let cache = metadata?.[GENERATION_CONTEXT_KEY];
     const original = cache;
     for (const state of states) {
-        if (!hasPlannerConditions(state.causalContext) || !state.sourceMessageCount) continue;
+        if (!state.sourceMessageCount || state.plannerContract !== 14 && !hasPlannerConditions(state.causalContext)) continue;
         const source = messages.slice(0, state.sourceMessageCount);
-        if (!isGuidanceUsable(state, source, chatId)) continue;
+        if (!(state.plannerContract === 14 ? isDirectionCurrent(state, source, chatId) && preparedReady(state, source, context)
+            : isGuidanceUsable(state, source, chatId))) continue;
         const sources = [source];
         // Ahead plans also support exactly one new user contribution. Archive
         // that pre-reply input before the next completed plan can replace it.
@@ -813,7 +812,7 @@ function archiveReadyPlannerContexts(metadata, states, context = currentContext(
             if (!plannerInputsMatch(state, candidate, context, { ...metadata, [GENERATION_CONTEXT_KEY]: cache })) continue;
             const key = plotInputKey(chatId, candidate, generationInputs(context, state));
             const existing = cachedGenerationContext(cache, key, chatId);
-            if (existing?.selection.usable && hasPlannerConditions(existing.selection.causalContext)
+            if ((existing?.selection.preparedUsable || existing?.selection.usable && hasPlannerConditions(existing.selection.causalContext))
                 && !hasNewerPlannerState(state, existing)) continue;
             cache = rememberGenerationContext(cache, buildGenerationPacket(state, candidate, context, 'normal', true));
         }
@@ -1300,7 +1299,9 @@ async function persist(state, guard = {}) {
         const incoming = state.preparedWorld;
         const newer = previous.preparedWorld?.source?.messageCount > guard.messageCount;
         state = !newer && incoming?.source?.fingerprint === guard.fingerprint
-            ? { ...previous, preparedWorld: incoming, userNotes: state.userNotes }
+            ? { ...previous, preparedWorld: incoming, userNotes: state.userNotes,
+                plannerContract: state.plannerContract === 14 ? 14 : previous.plannerContract,
+                legacyPreparedWorld: previous.legacyPreparedWorld || state.legacyPreparedWorld }
             : previous;
     }
     const metadata = archiveReadyPlannerContexts(context.chatMetadata, [loadState(context.chatMetadata), state], context);
@@ -1607,7 +1608,7 @@ function plannerStorage() {
 
 function parseAnalysisResponse(value, prompt = '') {
     try {
-        const rawResult = value && typeof value === 'object' && !Array.isArray(value) && ([2, 8, 9, 10, 11, 12, 13].includes(value.contract_version) || value.scene)
+        const rawResult = value && typeof value === 'object' && !Array.isArray(value) && ([2, 8, 9, 10, 11, 12, 13, 14].includes(value.contract_version) || value.scene)
             ? value
             : extractJson(completionText(value));
         const result = normalizeAnalysisActorUpdates(normalizeAnalysisDiagnostics(abstractIncrementalVisibleBranches(rawResult)));
@@ -1716,13 +1717,13 @@ async function recoverDetachedPlannerJobs() {
             }
             const current = meta.rebuild ? rebuildState(loadState(currentContext().chatMetadata)) : alignRetainedStateToTranscript(loadState(currentContext().chatMetadata), chat.slice(0, Number(meta.messageCount) || chat.length));
             current.mode = meta.mode || getSettings().mode;
-            if (!preparedReady(current, chat.slice(0, meta.messageCount), currentContext())) current.preparedWorld = defaultPreparedWorld();
+            if (!preparedReady(current, chat.slice(0, meta.messageCount), currentContext(), true)) current.preparedWorld = defaultPreparedWorld();
             let next = applyAnalysis(current, result, chat.slice(0, Number(meta.messageCount) || chat.length));
             next = applyPlannerAuthorLayer(next, {
                 turnCount: assistantTurnNumber(chat.slice(0, Number(meta.messageCount) || chat.length)),
                 fingerprint: String(meta.fingerprint || ''),
                 seedRequiredDevelopment: !meta.rebuild,
-                fullReview: meta.fullContextPass === true && [8, 9, 12].includes(result.contract_version),
+                fullReview: meta.fullContextPass === true && [8, 9, 12, 14].includes(result.contract_version),
                 manualCompleted: true,
                 messages: chat.slice(0, Number(meta.messageCount) || chat.length),
             });
@@ -1781,7 +1782,19 @@ async function recoverDetachedPlannerJobs() {
             if (!getSettings().enabled || analysisStopSequence !== stopSequence || analysisPromise
                 || String(currentContext().getCurrentChatId?.() || '') !== chatId
                 || !sourceMatches(messagesFromChat(currentContext().chat || []))) return { active: false, recovered: false };
-            const fallback = createSafetyFallbackState(alignRetainedStateToTranscript(loadState(latestContext.chatMetadata), repairSource), {
+            const retained = loadState(latestContext.chatMetadata);
+            if (!meta.userNote && !meta.rebuild && canRetainSuccessfulPlan(retained, {
+                chatId, fingerprint, messageCount: repairSource.length,
+                inputsKey: plotInputKey(chatId, [], generationInputs(latestContext, retained)),
+            })) {
+                clearPlannerFailed(plannerStorage(), chatId);
+                clearPlannerPending(plannerStorage(), chatId);
+                lastAnalysisError = analysisErrorMessage(error);
+                renderBoard(retained);
+                renderAnalysisActivity('Current good plan retained · recovered refresh failed', false);
+                return { active: false, recovered: true, retained: true, state: retained };
+            }
+            const fallback = createSafetyFallbackState(alignRetainedStateToTranscript(retained, repairSource), {
                 transcriptHead: repairSource.length === Number(meta.messageCount) ? meta.transcriptHead : null,
                 messages: repairSource, chatId, fingerprint, turnCount: assistantTurnNumber(repairSource),
                 seed: Number(meta.plannerSeed) || randomVariationNonce(), reason: analysisErrorMessage(error),
@@ -2145,23 +2158,17 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
 async function requestAnalysis(prompt, externalSignal, detachedMeta, recovery = null) {
     const fullContextPass = detachedMeta?.fullContextPass === true;
     const bootstrapScan = detachedMeta?.bootstrapScan === true || detachedMeta?.rebuild === true;
-    // Routine deltas disable optional thinking. Providers that require it use
-    // the existing compatibility fallback; full reviews retain the selected mode.
+    // Same lean contract on every pass; wider review changes the evidence
+    // window, not the number of mandatory reporting boards or thinking depth.
     return requestAnalysisOnce(prompt, externalSignal, detachedMeta, {
         responseTokens: fullContextPass ? (bootstrapScan ? REBUILD_RESPONSE_TOKENS : REVIEW_RESPONSE_TOKENS) : INCREMENTAL_RESPONSE_TOKENS,
-        ...(fullContextPass && !bootstrapScan ? { label: 'bounded story review', cacheNamespace: 'analysis-review-v12-prepared-v1', allowValidationRepair: false } : {}),
-        ...(fullContextPass ? {} : {
-            systemPrompt: INCREMENTAL_SYSTEM_PROMPT,
-            reasoningMode: 'off',
-            compactOutput: true,
-            schema: INCREMENTAL_ANALYSIS_SCHEMA,
-            // Invalid output fails locally; never start a second model repair pass.
-            // A routine refresh must not discard an active world merely because
-            // the first response omitted a required field.
-            allowValidationRepair: false,
-            label: 'incremental planner',
-            cacheNamespace: 'analysis-incremental-v13-lean-v1',
-        }),
+        systemPrompt: WORLD_PLANNER_SYSTEM,
+        reasoningMode: 'off',
+        compactOutput: true,
+        schema: WORLD_PLANNER_SCHEMA,
+        allowValidationRepair: false,
+        label: fullContextPass ? 'world notebook review' : 'world notebook update',
+        cacheNamespace: 'analysis-world-v14',
     });
 }
 
@@ -2176,7 +2183,8 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
     const userNote = normalizeUserNote(note);
     const fingerprint = fingerprintMessages(chat);
     const chatId = String(context.getCurrentChatId?.() || '');
-    if (!force && !userNote && !rebuild && !state.canonBootstrapPending && isGuidanceUsable(state, chat, chatId)) { updatePrompt(state); return state; }
+    if (!force && !userNote && !rebuild && !state.canonBootstrapPending
+        && (state.plannerContract === 14 ? isDirectionCurrent(state, chat, chatId) : isGuidanceUsable(state, chat, chatId))) { updatePrompt(state); return state; }
     const pass = plannerPassDecision({ state, messages: chat, rebuild,
         manual: Boolean(userNote) || recovery?.fullContextPass === true,
         sceneRefresh: allowOneAssistantAppend || (!userNote && state.plannerSchedule.manualRequested),
@@ -2227,7 +2235,9 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         const latestSaved = loadState(currentContext().chatMetadata);
         const current = rebuild ? rebuildState(latestSaved) : latestSaved;
         current.mode = s.mode;
-        if (!preparedReady(current, chat, context)) current.preparedWorld = defaultPreparedWorld();
+        // Changed author inputs require revision, not loss of the whole brief.
+        // Edited/discarded source branches and foreign chats still cannot carry it.
+        if (!preparedReady(current, chat, context, true)) current.preparedWorld = defaultPreparedWorld();
         current.plannerSchedule = normalizePlannerSchedule({ ...current.plannerSchedule, refreshInterval: s.fullReviewInterval });
         const { fullContextPass, bootstrapScan } = pass;
         const budgets = plannerBudgets(s, { bootstrapScan, fullContextPass });
@@ -2322,7 +2332,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
             return current;
         }
         let next = applyAnalysis(alignRetainedStateToTranscript(current, chat), result, chat);
-        next = applyPlannerAuthorLayer(next, { turnCount: assistantTurnNumber(chat), fingerprint, seedRequiredDevelopment: !rebuild, fullReview: fullContextPass && [8, 9, 12].includes(result.contract_version), manualCompleted: true, messages: chat });
+        next = applyPlannerAuthorLayer(next, { turnCount: assistantTurnNumber(chat), fingerprint, seedRequiredDevelopment: !rebuild, fullReview: fullContextPass && [8, 9, 12, 14].includes(result.contract_version), manualCompleted: true, messages: chat });
         // A bridge notification can arrive while the planner is running. The
         // direction still records the snapshot it actually used, while linked
         // factual entries immediately accept the latest canonical correction.
@@ -2376,7 +2386,18 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
                     if (sourceCurrent && latestChat.length) {
                         const fallbackSource = allowOneAssistantAppend ? chat : latestChat;
                         const fallbackFingerprint = fingerprintMessages(fallbackSource);
-                        const fallback = createSafetyFallbackState(alignRetainedStateToTranscript(loadState(latestContext.chatMetadata), fallbackSource), {
+                        const retained = loadState(latestContext.chatMetadata);
+                        if (!userNote && !rebuild && canRetainSuccessfulPlan(retained, {
+                            chatId, fingerprint: fallbackFingerprint, messageCount: fallbackSource.length,
+                            inputsKey: plotInputKey(chatId, [], generationInputs(latestContext, retained)),
+                        })) {
+                            clearPlannerFailed(plannerStorage(), chatId);
+                            cancelAnalysisRetry();
+                            finalStatus = 'Current good plan retained · planner refresh failed';
+                            renderBoard(retained);
+                            return retained;
+                        }
+                        const fallback = createSafetyFallbackState(alignRetainedStateToTranscript(retained, fallbackSource), {
                             transcriptHead: fallbackSource.length === chat.length ? plannerTranscriptHead : null,
                             messages: fallbackSource,
                             chatId,
@@ -2454,11 +2475,15 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     if (pacingControl) pacingControl.value = state.pacing.mode;
     const notebook = state.preparedWorld;
     scratchpadText(board, 'scratchpad-prepared', [
-        notebook.items.length || notebook.overview ? (preparedReady(state, messagesFromChat(currentContext().chat || []))
+        notebook.items.length || notebook.overview || notebook.approach ? (preparedReady(state, messagesFromChat(currentContext().chat || []))
             ? 'Source-compatible preparation; each entry remains conditional on the latest exchange.'
             : 'Archived preparation: source/input changed; not eligible for injection until replanned.') : '',
-        notebook.overview,
-        ...notebook.items.map(item => `[${item.status} · ${item.origin}${notebook.focus.includes(item.id) ? ' · selected' : ''}] ${item.premise}\nProcess: ${item.engine}\nMiddle: ${item.middle}\nBeyond: ${item.future}\nEntry: ${item.entry}\nHold: ${item.hold}\nInvalidated by: ${item.invalidates || 'No specific condition identified.'}\nIntervention: ${item.intervention}\nKnowledge: ${item.knowledge}`),
+        notebook.approach && `APPROACH\n${notebook.approach}`,
+        notebook.overview && `DIRECTIONS\n${notebook.overview}`,
+        ...notebook.items.map(item => [`[${item.status} · ${item.origin}${notebook.focus.includes(item.id) ? ' · selected' : ''}] ${item.premise}`,
+            ...Object.entries({ Process: item.engine, Middle: item.middle, Beyond: item.future, Entry: item.entry,
+                Hold: item.hold, 'Invalidated by': item.invalidates, Intervention: item.intervention, Knowledge: item.knowledge })
+                .filter(([, value]) => value).map(([label, value]) => `${label}: ${value}`)].join('\n')),
     ].filter(Boolean).join('\n\n'), 'No prepared material yet.');
     const guideButton = settingsRoot?.querySelector('[data-action="guide"]');
     const guideLabel = guideButton?.querySelector('[data-role="guide-label"]');
@@ -2566,8 +2591,15 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
 
     scratchpadOptionalText(board, 'scratchpad-continuity-section', 'scratchpad-continuity-processes', analyzed ? scratchpadList(state.continuityThreads, item => item?.thread ? `${item.thread} — ${item.state}` : '', '') : '');
     scratchpadOptionalText(board, 'scratchpad-entities-section', 'scratchpad-entities', analyzed ? scratchpadList(state.entities, item => item?.name ? `${item.name}${item.state ? ` — ${item.state}` : ''}${item.agenda ? ` · Agenda: ${item.agenda}` : ''}` : '', '') : '');
-    scratchpadText(board, 'scratchpad-ledger', analyzed ? state.contextLedger : '', 'No current continuity ledger yet.');
+    scratchpadText(board, 'scratchpad-ledger', analyzed ? (state.plannerContract === 14 ? state.plannerMemory : state.contextLedger) : '', 'No current continuity memory yet.');
     scratchpadText(board, 'scratchpad-notes', scratchpadList(state.userNotes, item => item?.text ? `[${String(item.kind || 'note').toUpperCase()}] ${item.text}` : '', ''), 'No user notes.');
+    // Legacy data remains stored for migration, never displayed as freshly
+    // generated by the replacement planner.
+    for (const role of ['scratchpad-scene', 'scratchpad-frame', 'scratchpad-lore', 'scratchpad-hidden-motives',
+        'scratchpad-response-audit', 'scratchpad-continuity-processes', 'scratchpad-entities', 'scratchpad-ledger']) {
+        const section = board.querySelector(`[data-role="${role}"]`)?.closest('section');
+        if (section) section.hidden = state.plannerContract === 14 || !board.querySelector(`[data-role="${role}"]`)?.textContent.trim();
+    }
 }
 async function resetState({ rebuilding = false } = {}) {
     let context = currentContext();
@@ -2782,7 +2814,7 @@ async function mountUI() {
     const root = document.querySelector(`#${EXTENSION_ID}-settings`);
     root.querySelector('[data-setting="enabled"]').checked = s.enabled;
     root.querySelector('[data-setting="mode"]').value = s.mode;
-    root.querySelector('[data-setting="reasoning"]').value = s.analysisReasoningMode;
+    root.querySelector('[data-setting="reasoning"]').value = 'off';
     root.querySelector('[data-setting="temperature-slider"]').value = s.analysisTemperature;
     root.querySelector('[data-setting="temperature"]').value = s.analysisTemperature;
     root.querySelector('[data-setting="model"]').value = s.analysisModel;

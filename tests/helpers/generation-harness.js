@@ -9,7 +9,7 @@ import * as preparedApi from '../../extension/prepared-world.js';
 import { isStoryGeneration, refreshGameMasterContract } from '../../extension/game-master.js';
 import { sampleDirectorSignals } from '../../extension/director-sampling.js';
 import { selectSituationalOpenings } from '../../extension/situations.js';
-import { createSafetyFallbackState } from '../../extension/fallback-direction.js';
+import { canRetainSuccessfulPlan, createSafetyFallbackState } from '../../extension/fallback-direction.js';
 
 const source = readFileSync(new URL('../../extension/index.js', import.meta.url), 'utf8');
 export function generationHarness(messages, state = stateApi.defaultState(), metadata = {}) {
@@ -26,7 +26,7 @@ export function generationHarness(messages, state = stateApi.defaultState(), met
     const names = ['GENERATION_STARTED', 'GENERATION_ENDED', 'GENERATION_STOPPED', 'MESSAGE_RECEIVED', 'MESSAGE_SENT', 'MESSAGE_EDITED', 'MESSAGE_UPDATED', 'MESSAGE_DELETED', 'MESSAGE_SWIPED', 'WORLDINFO_UPDATED', 'WORLDINFO_SETTINGS_UPDATED', 'CHARACTER_EDITED', 'PERSONA_CHANGED', 'PERSONA_UPDATED'];
     const scope = {
         ...stateApi, ...cacheApi, ...scheduleApi, ...coalescerApi, ...preparedApi,
-        isStoryGeneration, refreshGameMasterContract, sampleDirectorSignals, selectSituationalOpenings, createSafetyFallbackState,
+        isStoryGeneration, refreshGameMasterContract, sampleDirectorSignals, selectSituationalOpenings, createSafetyFallbackState, canRetainSuccessfulPlan,
         // ST returns a new context with a snapshot reference to its metadata.
         // updateChatMetadata replaces the host object, not that reference.
         currentContext: () => ({ ...context }), messagesFromChat: value => value,

@@ -25,6 +25,33 @@ const record = (id = 'mill-town') => ({ id, status: 'prepared', origin: 'invente
 });
 const delta = (items = [record()]) => ({ overview: 'Fill the long journey with distinct local experiences and evolving relationships; no leap to its endpoint.', updates: items, focus: [items[0].id] });
 const messages = () => [{ is_user: false, mes: 'The travelers rest beside their campfire.' }, { is_user: true, mes: 'I ask about yesterday. Stay here for now.' }];
+
+test('omitted optional preparation notes preserve existing boundaries; explicit blank clears', () => {
+    const original = record();
+    const prior = mergePreparedWorld(null, delta([original]));
+    const { engine, hold, knowledge, ...update } = { ...original, middle: 'The millers begin a new negotiation.' };
+    assert.deepEqual(validatePrepared(delta([update])), []);
+    const next = mergePreparedWorld(prior, delta([update]));
+    assert.equal(next.items[0].engine, engine);
+    assert.equal(next.items[0].hold, hold);
+    assert.equal(next.items[0].knowledge, knowledge);
+    assert.equal(mergePreparedWorld(next, delta([{ ...update, hold: '' }])).items[0].hold, '');
+    assert.equal(mergePreparedWorld(null, delta([update])).items[0].engine, '');
+    for (const value of [null, [], 123]) assert.ok(validatePrepared(delta([{ ...update, engine: value }])).length);
+    assert.equal(prior.items[0].middle, original.middle);
+});
+
+test('the lasting approach round-trips, survives legacy deltas and can be explicitly cleared', () => {
+    const approach = 'Develop trade, relationships and exploration across the journey, not only its current mystery.';
+    const board = mergePreparedWorld(null, { ...delta(), approach });
+    assert.equal(normalizeState(JSON.parse(JSON.stringify({ ...defaultState(), preparedWorld: board }))).preparedWorld.approach, approach);
+    assert.equal(mergePreparedWorld(board, delta()).approach, approach);
+    assert.equal(mergePreparedWorld(board, { ...delta(), approach: '' }).approach, '');
+    assert.match(formatPreparedWorld(board), /RP APPROACH/);
+    assert.equal(compactPreparedForPrompt(board).approach, approach);
+    assert.ok(validatePrepared({ ...delta(), approach: {} }).length);
+    assert.ok(validatePrepared({ ...delta(), approach: 'x'.repeat(2401) }).length);
+});
 function attach(h, board = mergePreparedWorld(null, delta()), source = h.context.chat) {
     const state = h.state();
     const inputsKey = plotInputKey('story', [], h.scope.generationInputs(h.context, state));
@@ -104,9 +131,12 @@ test('conditional preparation survives many appended turns but not branch or inp
     assert.equal(preparedWorldUsable(h.state().preparedWorld, options), true);
     assert.equal(preparedWorldUsable(h.state().preparedWorld, { ...options, chatId: 'other' }), false);
     assert.equal(preparedWorldUsable(h.state().preparedWorld, { ...options, inputsKey: 'changed author/card/lore' }), false);
+    assert.equal(preparedWorldUsable(h.state().preparedWorld, { ...options, inputsKey: 'changed author/card/lore', forReplanning: true }), true);
+    assert.equal(preparedWorldUsable(h.state().preparedWorld, { ...options, chatId: 'other', forReplanning: true }), false);
     assert.equal(preparedWorldUsable(h.state().preparedWorld, { ...options, messages: h.context.chat.slice(0, 1) }), false);
     h.context.chat[0].mes = 'Replacement branch: the camp never existed.';
     assert.equal(preparedWorldUsable(h.state().preparedWorld, options), false);
+    assert.equal(preparedWorldUsable(h.state().preparedWorld, { ...options, forReplanning: true }), false);
 });
 
 test('late background preparation cannot roll back newer factual scene state', async () => {
@@ -114,8 +144,9 @@ test('late background preparation cannot roll back newer factual scene state', a
     const proof = attach(h);
     const incoming = h.state();
     incoming.scene.status = 'Outdated camp scene';
+    incoming.plannerContract = 14;
     incoming.contextLedger = 'Outdated ledger';
-    incoming.preparedWorld = stampPreparedWorld(mergePreparedWorld(incoming.preparedWorld, delta([record('new-region')])), proof);
+    incoming.preparedWorld = stampPreparedWorld(mergePreparedWorld(incoming.preparedWorld, { ...delta([record('new-region')]), approach: 'Keep relationships and exploration alive across regions.' }), proof);
     for (let i = 0; i < 10; i++) h.context.chat.push({ is_user: i % 2 === 0, mes: `Later exchange ${i}.` });
     const current = h.state();
     current.scene.status = 'Current bridge scene'; current.contextLedger = 'The accepted bridge events';
@@ -124,6 +155,8 @@ test('late background preparation cannot roll back newer factual scene state', a
     assert.equal(h.state().scene.status, 'Current bridge scene');
     assert.equal(h.state().contextLedger, 'The accepted bridge events');
     assert.ok(h.state().preparedWorld.items.some(x => x.id === 'new-region'));
+    assert.equal(h.state().preparedWorld.approach, incoming.preparedWorld.approach);
+    assert.equal(h.state().plannerContract, 14, 'a delayed first brief is not mistaken for legacy material on the next call');
     h.context.card = { scenario: 'A different world' };
     await assert.rejects(h.scope.persist(incoming, proof), /changed/);
 });
@@ -139,17 +172,18 @@ test('a plan from an older source cannot replace a newer prepared notebook', asy
 });
 
 test('preparation-only retry packets never revive stale facts and stay frozen', () => {
-    const h = generationHarness(messages()); attach(h);
+    const h = generationHarness(messages()); attach(h, mergePreparedWorld(null, { ...delta(), approach: 'OLD APPROACH to preserve for this retry.' }));
     const old = h.state(); old.contextLedger = 'STALE FACT DO NOT RESTORE'; old.scene.status = 'STALE FACT DO NOT RESTORE';
     h.context.chatMetadata = saveState(h.context.chatMetadata, old);
     h.context.chat.push({ is_user: false, mes: 'More conversation.' }, { is_user: true, mes: 'I keep listening.' });
     const selected = h.prepare();
     assert.equal(selected.preparedUsable, true);
     assert.match(selected.payload, /<prepared-world>/);
+    assert.match(selected.payload, /OLD APPROACH/);
     const packet = h.scope.buildGenerationPacket(h.state(), h.context.chat, h.context, 'normal', false);
     assert.doesNotMatch(JSON.stringify(packet.plannerState), /STALE FACT DO NOT RESTORE/);
     const frozen = selected.payload;
-    attach(h, mergePreparedWorld(null, delta([record('later-idea')])));
+    attach(h, mergePreparedWorld(null, { ...delta([record('later-idea')]), approach: 'NEW APPROACH for a later request.' }));
     assert.equal(h.scope.generationGuideSelection.payload, frozen, 'late completion cannot rewrite an in-flight selection');
 });
 

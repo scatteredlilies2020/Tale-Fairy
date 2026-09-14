@@ -12,14 +12,10 @@ import { createSafetyFallbackState } from '../extension/fallback-direction.js';
 const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
 const messages = [{ is_user: false, mes: 'Mira waits beside the sealed chest in the library.' }, { is_user: true, mes: 'I ask about the chest.' }];
 const result = {
-    contract_version: 13,
-    current: { frame: 'grounded', frame_basis: 'The latest exchange concerns the chest.', status: 'The chest is still sealed.',
-        immediate_action: 'A question about the chest.', activity: 'Library discussion', situation: 'Mira is present beside a sealed chest.',
-        location: 'library', time: '', loop: false, scene_promise: 'An open discussion about the sealed chest.', phase: 'developing',
-        emotional_direction: 'preserve', pressure: 'ambient', intrusion: 'closed', novelty_ceiling: 'context-native' },
-    context: { conditions: [{ id: 'sealed-chest', kind: 'situation', subject: 'The chest', condition: 'remains sealed beside Mira',
-        disclosure: 'open', confidence: 'established', relevance: 'The user just asked about it.' }], inject: true, inject_reason: 'Current question.', basis: 'Latest exchange.' },
-    thread_updates: [], actor_updates: [], ledger: 'Mira is in the library beside a sealed chest.', audit: 'Updated the current scene.',
+    contract_version: 14,
+    memory: 'Mira is in the library beside a sealed chest.',
+    context: [{ subject: 'The chest', condition: 'remains sealed beside Mira', knowledge: 'Its contents are unknown.' }],
+    prepared: { approach: 'Let scholarship uncover conflicting interpretations and relationships over time, without forcing discoveries or player choices.', overview: '', updates: [], focus: [] },
 };
 
 function harness(state = createSafetyFallbackState(defaultState(), { messages, chatId: 'story' })) {
@@ -66,8 +62,8 @@ test('actual Re-evaluate uses one lightweight request from an empty fallback and
     assert.equal(request.meta.bootstrapScan, false);
     assert.equal(request.meta.fullContextPass, false);
     assert.equal(request.spec.responseTokens, 4096);
-    assert.equal(request.spec.reasoningMode, 'off', 'routine deltas disable optional thinking');
-    assert.equal(request.spec.schema, analysis.INCREMENTAL_ANALYSIS_SCHEMA);
+    assert.equal(request.spec.reasoningMode, 'off', 'replacement runs without optional reasoning');
+    assert.equal(request.spec.schema, analysis.WORLD_PLANNER_SCHEMA);
     assert.equal(h.prompts[0].maxPromptTokens, 6000);
     assert.equal(h.prompts[0].recentContextTokens, 3000);
     assert.equal(h.prompts[0].summaryContextTokens, 1200);
@@ -79,8 +75,11 @@ test('actual Re-evaluate uses one lightweight request from an empty fallback and
     await Promise.all([first, ...clicks]);
     assert.deepEqual(h.errors, []);
     assert.equal(h.state().plannerSchedule.manualRequested, false);
-    assert.equal(h.state().causalContext.conditions[0].subject, 'The chest');
-    assert.equal(h.state().contextLedger, result.ledger);
+    assert.deepEqual(h.state().causalContext.conditions, []);
+    assert.equal(h.state().preparedWorld.approach, result.prepared.approach);
+    await h.scope.analyzeNow();
+    await h.settle();
+    assert.equal(h.requests.length, 1, 'a completed preparation-only plan is not an empty-state retry loop');
 });
 
 test('pre-reply repair and its recovered correction cannot promote empty state to full initialization', async () => {
@@ -91,7 +90,7 @@ test('pre-reply repair and its recovered correction cannot promote empty state t
         assert.equal(h.requests.length, 1);
         assert.equal(h.requests[0].meta.bootstrapScan, false);
         assert.equal(h.requests[0].spec.responseTokens, 4096);
-        assert.equal(h.requests[0].spec.reasoningMode, 'off', 'routine repairs disable optional thinking');
+        assert.equal(h.requests[0].spec.reasoningMode, 'off', 'repairs run without optional reasoning');
         if (recovery) assert.equal(h.requests[0].spec.allowValidationRepair, false);
         h.requests[0].finish();
         await pending;
@@ -141,17 +140,19 @@ test('rapid Regenerate/swipe and manual clicks preserve a single pre-reply repai
     assert.deepEqual(h.errors, []);
     assert.equal(h.state().plannerSchedule.manualRequested, false);
     assert.equal(h.state().sourceMessageCount, messages.length);
-    assert.equal(h.prepare('regenerate').usable, true);
+    const selected = h.prepare('regenerate');
+    assert.equal(selected.preparedUsable, true);
+    assert.equal(selected.usable, false, 'no duplicated scene recap is needed to cache preparation');
     assert.equal(h.requests.length, 1);
 });
 
-test('full rebuild retains its explicit larger budget and configured reasoning', async () => {
+test('full rebuild retains its explicit larger budget with planner reasoning off', async () => {
     const h = harness();
     const pending = h.scope.analyzeNow({ force: true, rebuild: true });
     await h.settle();
     assert.equal(h.requests[0].meta.bootstrapScan, true);
     assert.equal(h.requests[0].spec.responseTokens, 8192);
-    assert.equal(h.requests[0].spec.reasoningMode, undefined);
+    assert.equal(h.requests[0].spec.reasoningMode, 'off');
     assert.equal(h.prompts[0].maxPromptTokens, 16000);
     h.requests[0].finish();
     await pending;
@@ -167,6 +168,23 @@ test('unsuccessful reevaluation retains the pending manual request without prete
     assert.equal(h.state().plannerSchedule.manualRequested, true);
     assert.equal(h.requests.length, 1);
     assert.match(h.statuses.at(-1), /Safety fallback ready/);
+});
+
+test('failed live refresh preserves a successful same-source same-input plan', async () => {
+    const h = harness();
+    const initial = h.scope.reevaluateGuideState();
+    await h.settle();
+    h.requests[0].finish();
+    await initial;
+    const conditions = structuredClone(h.state().causalContext);
+    const refreshed = h.scope.reevaluateGuideState();
+    await h.settle();
+    assert.equal(h.requests.length, 2);
+    h.requests[1].fail(new analysis.AnalysisValidationError('Unusable refresh'));
+    await refreshed;
+    assert.deepEqual(h.state().causalContext, conditions);
+    assert.match(h.statuses.at(-1), /Current good plan retained/);
+    assert.equal(h.state().plannerSchedule.manualRequested, true, 'failed manual refresh is not a successful completion');
 });
 
 test('manual completion is honored through the state layer used by live and recovered results', () => {

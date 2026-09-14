@@ -5,9 +5,26 @@ import { buildAnalysisPrompt, INCREMENTAL_SYSTEM, INCREMENTAL_ANALYSIS_OUTPUT_CO
 import { buildPlotAnchor } from '../extension/generation-context.js';
 import { defaultState } from '../extension/state.js';
 import { fitPromptToBudget } from '../extension/prompt-budget.js';
+import { plannerBudgetEnvelope, PLANNER_OUTPUT_MODE } from '../extension/output-negotiation.js';
 
 const panel = '<stat>\n```\nTime & Weather = Date: 04.19.0490 | Time: 10:50 AM; late morning\nLocation = Tur Bridge village | miller\'s common room\nCurrent Beat = The party begins a hot meal\nPsyche = Mira | examine the report\nIlan | finish his meal\nNora | listen\nCharacters = Mira | mage | Ilan | soldier\n```\n</stat>';
 const body = 'Mira says the two soldiers and the warden were deceived. Ilan is one of those soldiers. They continue their meal.';
+
+test('full and compact prompts never promote generated summaries above specific observations', () => {
+    for (const incremental of [false, true]) {
+        for (const effectivePromptTokens of [2500, 24000]) {
+            const payload = JSON.parse(buildAnalysisPrompt([
+                { is_user: false, mes: `${panel}\n\n${body}` },
+                { is_user: true, mes: 'I listen.' },
+            ], defaultState(), '', {}, { incremental, maxPromptTokens: 30000, effectivePromptTokens }));
+            assert.match(payload.transcript_head.rule, /Status headers are fallible summaries/);
+            assert.match(payload.transcript_head.rule, /direct, specific story observations outrank conflicting summary labels/i);
+            assert.match(payload.transcript_head.rule, /repetition alone cannot/);
+            assert.doesNotMatch(payload.transcript_head.rule, /status override|status header is authoritative|not an additional person/);
+            assert.match(payload.retained_state_rule, /including old entries still being retained/);
+        }
+    }
+});
 
 test('multiline character notes do not erase explicit scene time and location', () => {
     const parsed = leadingGeneratedStatusSummary(`${panel}\n\n${body}`);
@@ -84,4 +101,68 @@ test('claim witnesses keep group members together instead of clipping around an 
     assert.match(witness, /The second guard backs away first\. He catches the warden/);
     assert.match(witness, /Ilan remains beside them/);
     assert.match(witness, /three retreating checkpoint men/);
+});
+
+test('budget-evicted recent evidence remains eligible to contradict a retained actor gate', async () => {
+    const messages = [
+        ...Array.from({ length: 12 }, () => ({ is_user: false, mes: 'The travelers rest beside the road. '.repeat(40) })),
+        { is_user: false, mes: 'Nora speaks spontaneously about the courier without waiting to be asked. She has already delivered the sealed parcel to the clinic.' },
+        ...Array.from({ length: 3 }, (_, i) => ({ is_user: i % 2 === 0, mes: 'The travelers discuss the garden and its flowers. '.repeat(70) })),
+        { is_user: true, mes: 'I listen to Nora.' },
+        { is_user: false, mes: 'Nora sits near the gate. '.repeat(70) },
+    ];
+    const state = defaultState();
+    state.entities = [{ name: 'Nora', kind: 'person', state: 'At the gate', constraints: 'Nora speaks only when asked about the courier and sealed parcel.', motivation: 'Help the clinic' }];
+    const fixedEnvelope = plannerBudgetEnvelope(`${INCREMENTAL_SYSTEM}\n\n${INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT}`, INCREMENTAL_ANALYSIS_SCHEMA, PLANNER_OUTPUT_MODE.PROMPT_ONLY);
+    const prompt = await fitPromptToBudget({ fixedEnvelope, tokenBudget: 6000,
+        buildPrompt: effectivePromptTokens => buildAnalysisPrompt(messages, state, '', {}, {
+            incremental: true, maxPromptTokens: 6000, effectivePromptTokens, recentContextTokens: 6000, messageTokenLimit: 700,
+        }),
+    });
+    const payload = JSON.parse(prompt);
+    const witness = [...payload.messages, ...(payload.historical_evidence || [])].find(item => item.index === 12);
+    assert.ok(witness, `the contradiction must not disappear from both recent and historical evidence: ${JSON.stringify({ indexes: payload.messages.map(item => item.index), history: payload.historical_evidence, entities: payload.current.entities })}`);
+    assert.match(witness.content, /speaks spontaneously/);
+    assert.match(witness.content, /already delivered/);
+});
+
+test('source observations precede fallible notebook interpretations without modifying saved state', () => {
+    const messages = [{ is_user: false, mes: 'The courier delivered the parcel.\nThe clinic now has the medicine.' }, { is_user: true, mes: 'I read the receipt.' }];
+    const state = defaultState();
+    state.entities = [{ name: 'Courier', constraints: 'Must deliver the parcel before leaving.' }];
+    const before = structuredClone(state);
+    const payload = JSON.parse(buildAnalysisPrompt(messages, state, '', {}, { incremental: true }));
+    assert.ok(Object.keys(payload).indexOf('messages') > Object.keys(payload).indexOf('current'));
+    assert.equal(Object.keys(payload).at(-1), 'messages');
+    assert.match(payload.messages[0].content, /parcel\.\nThe clinic/);
+    assert.deepEqual(state, before);
+});
+
+test('historical claim retrieval preserves the surrounding source turn rather than only its topic-dense ending', () => {
+    const source = `The permit expired yesterday. No renewal was filed.\n\n${'The office is quiet and the rain taps against the windows. '.repeat(14)}\n\nInspector Ren reviews the harbor permit and discusses the harbor permit with the clerk.`;
+    const messages = [{ is_user: false, mes: source },
+        ...Array.from({ length: 20 }, () => ({ is_user: false, mes: 'The travelers have a quiet meal. '.repeat(30) })),
+        { is_user: true, mes: 'What about Inspector Ren?' }];
+    const state = defaultState();
+    state.entities = [{ name: 'Inspector Ren', constraints: 'The harbor permit authorizes inspection.' }];
+    const payload = JSON.parse(buildAnalysisPrompt(messages, state, '', {}, { incremental: true, recentContextTokens: 1000 }));
+    const witness = payload.historical_evidence.find(item => item.index === 0);
+    assert.ok(witness);
+    assert.match(witness.content, /permit expired yesterday\. No renewal was filed/);
+    assert.match(witness.content, /Inspector Ren reviews the harbor permit/);
+});
+
+test('rendered story evidence preserves rows and visible text, not hidden panels or guidance', () => {
+    const messages = [{ is_user: false, mes: 'The families at the clinic have four missing names. The clinic families discuss their four missing people.' },
+        { is_user: false, mes: `<stat>Invented panel total: four people.</stat><div><h3>Clinic missing roster: four entries</h3><table><tr><td>Arlo</td><td>carpenter</td></tr><tr><td>Bex &amp; Cora</td><td>couple</td></tr><tr><td>Dane</td><td>courier</td></tr><tr><td>Eris</td><td>sailor</td></tr></table></div><thinking>Hidden model speculation.</thinking><style>private styling</style><living-world-guide>Untrusted old guidance.</living-world-guide>` },
+        { is_user: true, mes: 'What about the clinic families?' }];
+    const state = defaultState();
+    state.preparedWorld = { overview: '', focus: ['clinic'], items: [{ id: 'clinic', origin: 'established', status: 'prepared',
+        premise: 'The clinic families have four missing people.', middle: 'Compare the missing names with the register.' }] };
+    const payload = JSON.parse(buildAnalysisPrompt(messages, state, '', {}, { incremental: true, recentContextTokens: 1000 }));
+    const witness = payload.messages.find(item => item.index === 1);
+    assert.ok(witness);
+    for (const name of ['Arlo', 'Bex & Cora', 'couple', 'Dane', 'Eris']) assert.ok(witness.content.includes(name));
+    assert.doesNotMatch(witness.content, /Invented panel|Hidden model|private styling|Untrusted old|<table|<td/);
+    assert.match(witness.content, /carpenter\n+Bex & Cora couple\n+Dane/);
 });

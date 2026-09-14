@@ -8,6 +8,7 @@ const limits = { id: 80, premise: 320, engine: 240, middle: 440, future: 260,
 const statuses = ['prepared', 'active', 'dormant', 'resolved', 'retired'];
 const origins = ['established', 'inferred', 'invented'];
 const fields = Object.keys(limits);
+const optionalNotes = fields.filter(key => !['id', 'premise', 'middle'].includes(key));
 // Schema lengths are writing targets. Preserve modest prose overruns intact
 // instead of losing the whole plan or cutting off its final constraints.
 const overviewStorageLimit = 3600;
@@ -29,18 +30,24 @@ export const PREPARED_SCHEMA = {
 
 export const PREPARED_RULE = `Prepare a creative playable middle AND future, not variants of the latest topic. First distinguish the wider story premise and durable commitments from the immediate scene. overview preserves that wider direction and meaningful alternatives; it is not a recap or an itinerary for the next reply. A future label such as another clue, the next stop or eventual victory is not a playable middle. Prepare experiences with decisions, changing relationships/resources and consequences that can support later experiences. Multiple witnesses, books or locations serving the same investigation are one development family, not independent variety. In initialization and broad reviews, use the available context to consider independent people, places or processes whose motives do not depend on that family. For initialization and broad reviews in an open-ended RP, ensure the notebook contains at least one concrete development beyond the current activity that would still have its own motive and playable middle if the current investigation/problem disappeared. Retain one if it exists; otherwise use an update slot to invent a compatible one. Moving the same problem to a new town, witness or carrier does not meet this test. Lack of prior mention is not an obstacle to a labeled invention. These preparations may remain private or await travel; they do not force an interruption. Respect an explicit user restriction to a closed scenario. Avoid genre checklists. Focus is only what the writer may use now; keep broader preparation even when it is not ready to enter this scene. Invent compatible places, people, challenges, encounters, projects, secrets and independent developments without prior mention. Develop concrete intermediate experiences, changes and alternative continuations before distant possibilities. Quiet scenes must not narrow preparation. Give new possibilities independent motives instead of tying every encounter to one investigation. Follow the RP's scale and constraints without genre quotas.
 prepared={overview,updates,focus} is a persistent notebook separate from factual memory. overview holds wider trajectory and alternatives; blank preserves. Align factual time, place and identities across all records with the latest transcript. A named group member is not an additional person. updates use stable ids; omitted records survive. Keep at most twelve live records; explicitly resolve/retire. Only premise and middle need prose; other notes may be blank. Never invent restrictions to fill fields. Leave hold blank unless an evidenced obstacle or unmet prerequisite needs it. Entry and hold must agree: eating, conversation, rest, indoors or player silence alone cannot block a fitting entry. A distant encounter may await travel without freezing local activity.
-Fields: engine=motives/process; middle=playable branches; future=possible continuations; entry=introduction opportunity; hold=evidenced timing constraint; invalidates=known contradiction; intervention=room to react; knowledge=GM secrets versus discovery. origin distinguishes evidenced, inferred and invented premises. Active requires transcript uptake, not injection. Preserve manifested consequences when revising unused ideas. focus selects up to three ids for the writer; unfocused records remain private.
+Fields: engine=motives/process; middle=playable branches; future=possible continuations; entry=introduction opportunity; hold=evidenced timing constraint; invalidates=known contradiction; intervention=room to react; knowledge=GM secrets versus discovery. origin distinguishes evidenced, inferred and invented premises. Active requires transcript uptake, not injection. Preserve manifested consequences when revising unused ideas. Check focused records first: retire completed exchanges, remove satisfied prerequisites and advance the unused middle instead of replaying it. Distinct IDs for one problem are not independent possibilities. focus selects up to three ids for the writer; unfocused records remain private.
 Unlike factual context.conditions and actor_updates, prepared MAY propose concrete NPC/world actions and events. They are conditional possibilities, not history, player choices or a beat queue. Reconcile entries, holds and retained claims against the latest exchange before returning them. Scene duration, meaningful development and interruption are independent; long scenes can deepen without ending. Latest explicit user pacing overrides saved preference in any language. Never tick fictional time by message count. Summaries and Continuity are optional. Return preparation plus current facts in one call, no critic or model repair.`;
 
 export function validatePrepared(value) {
     const errors = [];
     if (!value || typeof value !== 'object' || Array.isArray(value)) return ['prepared must be an object'];
     if (typeof value.overview !== 'string' || value.overview.length > overviewStorageLimit) errors.push(`prepared.overview must be text up to ${overviewStorageLimit} characters`);
-    if (!Array.isArray(value.updates) || value.updates.length > 4) errors.push('prepared.updates must contain at most four records');
+    if (value.approach !== undefined && (typeof value.approach !== 'string' || value.approach.length > 2400)) errors.push('prepared.approach must be text up to 2400 characters');
+    // Four is the routine writing target, not the notebook's capacity. A pivot
+    // can legitimately retire/dormant several old directions and add a new one.
+    if (!Array.isArray(value.updates) || value.updates.length > PREPARED_LIMIT) errors.push(`prepared.updates must contain at most ${PREPARED_LIMIT} records`);
     const ids = new Set();
     for (const item of Array.isArray(value.updates) ? value.updates : []) {
         if (!item || typeof item !== 'object') { errors.push('prepared record must be an object'); continue; }
-        for (const key of fields) if (typeof item[key] !== 'string' || item[key].length > storageLimit(key)) errors.push(`prepared.${key} must be text up to ${storageLimit(key)} characters`);
+        for (const key of fields) {
+            if (item[key] === undefined && optionalNotes.includes(key)) continue;
+            if (typeof item[key] !== 'string' || item[key].length > storageLimit(key)) errors.push(`prepared.${key} must be text up to ${storageLimit(key)} characters`);
+        }
         if (typeof item.id !== 'string' || !item.id.trim() || ids.has(item.id)) errors.push('prepared ids must be nonempty and unique');
         ids.add(item.id);
         if (!statuses.includes(item.status) || !origins.includes(item.origin)) errors.push('prepared status/origin is invalid');
@@ -50,14 +57,16 @@ export function validatePrepared(value) {
     return errors;
 }
 
-export function defaultPreparedWorld() { return { overview: '', items: [], focus: [], source: null }; }
+export function defaultPreparedWorld() { return { approach: '', overview: '', items: [], focus: [], source: null }; }
 
 export function normalizePreparedWorld(value) {
     const safe = defaultPreparedWorld();
     if (!value || typeof value !== 'object') return safe;
     safe.overview = typeof value.overview === 'string' ? value.overview.slice(0, overviewStorageLimit) : '';
+    safe.approach = typeof value.approach === 'string' ? value.approach.slice(0, 2400) : '';
     safe.items = (Array.isArray(value.items) ? value.items : []).filter(item =>
-        validatePrepared({ overview: '', updates: [item], focus: [] }).length === 0).slice(-PREPARED_LIMIT);
+        validatePrepared({ overview: '', updates: [item], focus: [] }).length === 0).slice(-PREPARED_LIMIT)
+        .map(item => ({ ...Object.fromEntries(optionalNotes.map(key => [key, ''])), ...item }));
     safe.focus = (Array.isArray(value.focus) ? value.focus : []).filter(id => safe.items.some(item => item.id === id)).slice(0, 3);
     if (value.source && typeof value.source === 'object') safe.source = {
         chatId: String(value.source.chatId || ''), fingerprint: String(value.source.fingerprint || ''),
@@ -77,11 +86,12 @@ export function mergePreparedWorld(previous, delta) {
     const items = new Map(prior.items.map(item => [item.id, item]));
     for (const item of delta.updates) {
         if (['resolved', 'retired'].includes(item.status)) items.delete(item.id);
-        else items.set(item.id, { ...item });
+        else items.set(item.id, { ...Object.fromEntries(optionalNotes.map(key => [key, ''])), ...items.get(item.id), ...item });
     }
     if (items.size > PREPARED_LIMIT) throw new Error('Prepared notebook is full; retire or consolidate records explicitly.');
     if (delta.focus.some(id => !items.has(id))) throw new Error('Prepared focus refers to an unavailable record.');
-    return { ...prior, overview: delta.overview.trim() || prior.overview, items: [...items.values()], focus: [...delta.focus] };
+    return { ...prior, approach: delta.approach === undefined ? prior.approach : delta.approach.trim(),
+        overview: delta.overview.trim() || prior.overview, items: [...items.values()], focus: [...delta.focus] };
 }
 
 // Prefix proof permits any number of appended turns, never an edit, swipe,
@@ -92,9 +102,9 @@ export function unchangedSourcePrefix(source, messages, fingerprint) {
         && fingerprint(messages.slice(0, source.messageCount)) === source.fingerprint);
 }
 
-export function preparedWorldUsable(value, { chatId, inputsKey, messages, fingerprint }) {
+export function preparedWorldUsable(value, { chatId, inputsKey, messages, fingerprint, forReplanning = false }) {
     const board = normalizePreparedWorld(value);
-    return Boolean(board.source?.chatId === chatId && board.source?.inputsKey === inputsKey && inputsKey
+    return Boolean(board.source?.chatId === chatId && (forReplanning || board.source?.inputsKey === inputsKey && inputsKey)
         && unchangedSourcePrefix(board.source, messages, fingerprint));
 }
 
@@ -111,7 +121,7 @@ export function preparedWorldForPrompt(value) {
 
 export function compactPreparedForPrompt(board = {}) {
     const clip = (value, length) => String(value || '').slice(0, length);
-    return { overview: clip(board.overview, 500), focus: board.focus || [],
+    return { approach: board.approach || '', overview: clip(board.overview, 500), focus: board.focus || [],
         retained: 'Compact index; omitted details remain stored. Update only deliberately; no omission deletes a record.',
         items: (board.items || []).map(item => ({ id: item.id, status: item.status, origin: item.origin,
             premise: clip(item.premise, 110), engine: clip(item.engine, 100), middle: clip(item.middle, 130), future: clip(item.future, 130),
@@ -122,8 +132,9 @@ const clean = value => String(value).replace(/[<>]/gu, '').trim();
 export function formatPreparedWorld(value) {
     const board = normalizePreparedWorld(value);
     const selected = board.focus.map(id => board.items.find(item => item.id === id)).filter(item => item && item.status !== 'dormant');
-    if (!board.overview && !selected.length) return '';
+    if (!board.approach && !board.overview && !selected.length) return '';
     const lines = ['<prepared-world>',
+        board.approach ? `RP APPROACH (editable guidance, not new canon or player preferences): ${clean(board.approach)}` : '',
         board.overview ? `Wider direction (provisional, not a destination deadline): ${clean(board.overview)}` : '',
         ...selected.map(item => [
             `Possible development (${item.origin} premise; ${item.status}): ${clean(item.premise)}`,

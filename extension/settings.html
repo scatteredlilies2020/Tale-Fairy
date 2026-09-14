@@ -46,19 +46,19 @@
           </label>
           <label>Total planner input ceiling / rebuild budget (tokens)
             <input class="text_pole" type="number" data-setting="budget" min="9000" max="30000" step="1000" value="16000">
-            <small>Includes instructions, schema, and story evidence. Caps every pass, including the targets below. Initialization and Full Rebuild use this limit and an 8,192-token base output allowance plus your selected reasoning reserve.</small>
+              <small>Includes instructions, schema, and story evidence. Caps every pass, including the targets below. Initialization and Full Rebuild use this limit and up to 8,192 output tokens. Optional reasoning stays off.</small>
           </label>
           <label>Routine planner input target (tokens)
             <input class="text_pole" type="number" data-setting="routine-budget" min="6000" max="30000" step="1000" value="6000">
-            <small>Default: 6,000, subject to the total ceiling. Routine updates target 900–1,400 output tokens with a 4,096 ceiling and optional thinking disabled. Larger inputs cost more but leave more space for evidence.</small>
+              <small>Default: 6,000, subject to the total ceiling. Routine updates target 600–1,400 output tokens with a 4,096 ceiling and optional reasoning off. Larger inputs leave more space for evidence.</small>
           </label>
           <label>Broad-review input target (tokens)
             <input class="text_pole" type="number" data-setting="review-budget" min="9000" max="30000" step="1000" value="14000">
-            <small>Default: 14,000, subject to the total ceiling. Up to 6,144 output tokens, using your reasoning setting. All planning remains background-only.</small>
+              <small>Default: 14,000, subject to the total ceiling. Up to 6,144 output tokens with optional reasoning off. All planning remains background-only.</small>
           </label>
           <label>Broad story review interval (assistant replies)
             <input class="text_pole" type="number" data-setting="full-review-interval" min="3" max="20" step="1" value="12">
-            <small>Default: 12. Compact guidance and a brief story audit still refresh after each accepted reply. Corrections, major scene shifts, and manual reevaluation can trigger a review earlier. Raw-history retrieval is bounded; summary discovery may inspect the full chat. Neither blocks generation.</small>
+            <small>Default: 12. Compact world-notebook updates run in the background after accepted replies, without a separate story audit. Corrections, major scene shifts, and manual reevaluation can trigger a wider review earlier. Raw-history retrieval is bounded; summary discovery may inspect the full chat. Neither blocks generation.</small>
           </label>
         </div>
         <label class="checkbox_label">
@@ -114,8 +114,8 @@
           </select>
         </label>
         <small>Choose the active model, a Connection Manager profile, or a direct provider. Connection profiles supply the endpoint, model, and authentication.</small>
-        <label>Review / rebuild reasoning
-          <select class="text_pole" data-setting="reasoning">
+        <label>World notebook reasoning
+          <select class="text_pole" data-setting="reasoning" disabled>
             <option value="auto">Auto (selected profile)</option>
             <option value="off">Off</option>
             <option value="minimum">Minimum</option>
@@ -125,7 +125,7 @@
             <option value="max">Maximum</option>
           </select>
         </label>
-        <small>Applies to broad reviews and rebuilds. Routine updates, Re-evaluate and retry-plan repairs disable optional thinking for speed. Auto inherits the selected Connection Manager profile or its preset, then SillyTavern's active reasoning effort; otherwise the provider default is preserved. Choose a level to override it for Tale Fairy only. More reasoning can take longer; Off is not supported by every model.</small>
+        <small>All notebook updates, reviews and rebuilds disable optional reasoning. Providers that require reasoning receive one compatibility retry at Low. Planning runs in the background and does not hold up chat. Your roleplay model's settings are unchanged.</small>
         <label>Planner temperature
           <div class="living-world-guide-temperature">
             <input type="range" data-setting="temperature-slider" min="0" max="2" step="0.05" value="1">
@@ -191,8 +191,8 @@
             <div data-role="scratchpad-request-verification">No fresh Tale Fairy causal context is ready.</div>
           </section>
           <section>
-            <h5>Prepared world and future</h5>
-            <small>Persistent creative notebook, separate from factual memory. Unused ideas survive ordinary new turns. Only the wider overview and selected, non-dormant records can reach the writer. Explicitly closed records leave this notebook; manifested consequences belong in factual memory.</small>
+              <h5>RP approach and directions</h5>
+              <small>A lasting RP-specific approach plus possible developments, not another scene recap. Ordinary turns preserve useful guidance; redirection revises affected material. The writer receives the approach and selected non-dormant directions within a bounded packet. Your instructions always take priority.</small>
             <div data-role="scratchpad-prepared">No prepared material yet.</div>
           </section>
           <section>
@@ -215,7 +215,7 @@
           </section>
           <section>
             <h5>Active world conditions</h5>
-            <small>Tale Fairy privately tracks actors, relationships, institutions, systems, resources, and environments, then selects current factual conditions separately from conditional future preparation. Confidence, relevance reasoning, and tentative reconstructions remain private.</small>
+            <small>A few supported facts or attributed motivations useful now, kept separate from proposed futures. Empty is valid when no additional current conditions help. The replacement does not generate separate actor forms or reasoning scratchpads.</small>
             <div data-role="scratchpad-next-guides">No generated causal context yet.</div>
           </section>
           <section data-role="scratchpad-response-audit-section" hidden>
