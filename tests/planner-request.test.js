@@ -69,7 +69,7 @@ test('normal evaluation makes exactly one model request', async () => {
     const h = harness([{ valid: true }]);
     assert.equal((await h.run()).valid, true);
     assert.equal(h.requests.length, 1);
-    assert.equal(h.requests[0].max_tokens, 16384);
+    assert.equal(h.requests[0].max_tokens, 12288);
 });
 
 test('invalid output fails after one generation without a model correction pass', async () => {
@@ -87,26 +87,26 @@ test('legacy repair options cannot start a second pass or inject a correction', 
 });
 
 const tiers = [
-    { meta: {}, budget: 8192 },
-    { meta: { fullContextPass: true }, budget: 12288 },
-    { meta: { fullContextPass: true, rebuild: true }, budget: 16384 },
-    { meta: {}, budget: 8192, recovery: { instruction: 'Correct retained response.' } },
+    { meta: {}, budget: 4096 },
+    { meta: { fullContextPass: true }, budget: 6144 },
+    { meta: { fullContextPass: true, rebuild: true }, budget: 8192 },
+    { meta: {}, budget: 4096, recovery: { instruction: 'Correct retained response.' } },
 ];
 
 for (const route of ['direct', 'profile', 'active']) {
-    test(`${route}: all evaluation tiers honor selected and inherited reasoning on the first request`, async () => {
+    test(`${route}: routine disables optional thinking and broader tiers honor selected reasoning`, async () => {
         for (const configured of ['low', 'high', 'auto']) {
             for (const { meta, budget, recovery } of tiers) {
-                const expected = configured === 'auto' ? (route === 'profile' ? 'high' : 'medium') : configured;
+                const expected = !meta.fullContextPass ? 'none' : configured === 'auto' ? (route === 'profile' ? 'high' : 'medium') : configured;
                 const h = harness(body => {
-                    assert.equal(body.include_reasoning, true);
+                    assert.equal(body.include_reasoning, expected !== 'none');
                     assert.equal(body.reasoning_effort, expected);
                     assert.equal(JSON.parse(body.custom_include_body).reasoning_effort, expected);
                     return { valid: true };
                 }, { route, configured });
                 assert.equal((await h.runPass(meta, recovery)).valid, true);
-                assert.equal(h.requests.length, 1, 'reasoning must not require a failed Off probe');
-                const reserve = { low: 8192, medium: 16384, high: 32768 }[expected];
+                assert.equal(h.requests.length, 1, 'supported controls need one request');
+                const reserve = { none: 0, low: 8192, medium: 16384, high: 32768 }[expected];
                 assert.equal(h.requests[0].max_tokens, budget + reserve);
             }
         }
@@ -115,7 +115,7 @@ for (const route of ['direct', 'profile', 'active']) {
 
 test('Auto leaves provider defaults alone when no profile or active effort is configured', async () => {
     for (const route of ['direct', 'profile', 'active']) {
-        for (const { meta } of tiers) {
+        for (const { meta } of tiers.filter(tier => tier.meta.fullContextPass)) {
             const h = harness([{ valid: true }], { route, configured: 'auto', activeEffort: '', profile: {} });
             await h.runPass(meta);
             assert.ok(!h.requests[0].reasoning_effort);
@@ -127,12 +127,12 @@ test('Auto leaves provider defaults alone when no profile or active effort is co
 
 test('Auto uses an explicit profile effort before its preset or the active model', async () => {
     const h = harness([{ valid: true }], { route: 'profile', configured: 'auto', profile: { reasoning_effort: 'low', preset: 'Planner' } });
-    await h.runPass();
+    await h.runPass({ fullContextPass: true });
     assert.equal(h.requests[0].reasoning_effort, 'low');
     assert.equal(h.requests.length, 1);
 });
 
-test('explicit Off remains a user choice, not a hidden tier default', async () => {
+test('explicit Off also disables thinking in broader tiers', async () => {
     for (const route of ['direct', 'profile', 'active']) {
         for (const { meta } of tiers) {
             const h = harness([{ valid: true }], { route, configured: 'off' });
@@ -168,21 +168,35 @@ test('a continuing mandatory-reasoning rejection does not create a retry loop', 
     assert.equal(h.requests.length, 2);
 });
 
-test('DeepSeek routine updates preserve Low instead of silently disabling thinking', async () => {
+test('DeepSeek routine updates disable thinking and bound output even with review reasoning Low', async () => {
     const h = harness([{ valid: true }], { model: 'deepseek-v4-pro', configured: 'low' });
     await h.runPass();
-    assert.deepEqual(JSON.parse(h.requests[0].custom_include_body), { reasoning_effort: 'low' });
-    assert.equal(h.requests[0].max_tokens, 16384);
+    assert.deepEqual(JSON.parse(h.requests[0].custom_include_body), { thinking: { type: 'disabled' } });
+    assert.equal(h.requests[0].max_tokens, 4096);
     assert.equal(h.requests.length, 1);
 });
 
 test('every route reserves reasoning space after Auto inheritance and provider translation', async () => {
     for (const route of ['direct', 'profile', 'active']) {
-        for (const [configured, expected] of [['off', 8192], ['low', 16384], ['medium', 40960], ['auto', 40960]]) {
+        for (const [configured, expected] of [['off', 6144], ['low', 14336], ['medium', 38912], ['auto', 38912]]) {
             const h = harness([{ valid: true }], { route, configured, activeEffort: 'high', model: 'deepseek-v4.1-flash' });
-            await h.runPass();
+            await h.runPass({ fullContextPass: true });
             assert.equal(h.requests.length, 1);
             assert.equal(h.requests[0].max_tokens, expected, `${route}: ${configured}`);
         }
+    }
+});
+
+
+test('routine transports send the compact response shape without native schema overhead', async () => {
+    for (const route of ['direct', 'profile', 'active']) {
+        const h = harness([{ valid: true }], { route });
+        await h.runPass();
+        const sent = h.requests[0];
+        assert.equal(h.requests.length, 1);
+        assert.match(JSON.stringify(sent.messages), /Response shape/);
+        assert.ok(!sent.json_schema);
+        assert.ok(!sent.response_format);
+        assert.equal(sent.max_tokens, 4096);
     }
 });

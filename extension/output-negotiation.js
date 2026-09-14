@@ -72,8 +72,25 @@ export function stripStructuredOutputControls(payload) {
     return payload;
 }
 
-function schemaInstruction(schema) {
-    return `JSON schema for the response:\n${JSON.stringify(schema.value, null, 2)}`;
+export function schemaInstruction(schema) {
+    // The compatibility transport needs the shape and constraints, not JSON
+    // Schema's repeated property/type/required scaffolding. Native transports
+    // still receive the original machine schema and validation stays unchanged.
+    const shape = node => {
+        if (node.const !== undefined) return JSON.stringify(node.const);
+        if (node.enum) return node.enum.map(value => JSON.stringify(value)).join('|');
+        if (node.anyOf) return node.anyOf.map(shape).join('|');
+        if (node.type === 'object' && !node.properties) return JSON.stringify(node);
+        if (node.type === 'object' && node.properties) return `{${Object.entries(node.properties)
+            .map(([key, value]) => `${key}${node.required?.includes(key) ? '' : '?'}:${shape(value)}`).join(',')}}`;
+        if (node.type === 'array') return `[${shape(node.items)}]${node.maxItems === undefined ? '' : `(${node.minItems || 0}..${node.maxItems} items)`}`;
+        return `${node.type || 'object'}${node.maxLength ? `(<=${node.maxLength} chars)` : ''}${node.minimum !== undefined ? `(>=${node.minimum})` : ''}`;
+    };
+    return `Response shape (JSON schema shorthand): ? means optional key; | means one allowed value; [] means array. Return JSON values, never these type labels. No extra keys.\n${shape(schema.value)}`;
+}
+
+export function plannerBudgetEnvelope(system, schema, mode = PLANNER_OUTPUT_MODE.JSON_SCHEMA) {
+    return `${system}\n${mode === PLANNER_OUTPUT_MODE.JSON_SCHEMA ? JSON.stringify(schema) : schemaInstruction(schema)}`;
 }
 
 export function plannerValidationRepairInstruction(error) {

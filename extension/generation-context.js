@@ -1,6 +1,6 @@
 import { evidenceRelevance } from './evidence-selection.js?v=0.13.9';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.13.9';
-import { sceneStatus } from './transcript-status.js?v=0.14.4';
+import { sceneStatus } from './transcript-status.js?v=0.14.5';
 
 // Kept outside planner state: an asynchronous planner save must never replace
 // the immutable pre-response packet or the replacement lifecycle marker.

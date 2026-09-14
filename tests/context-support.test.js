@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { buildAnalysisPrompt, SYSTEM, INCREMENTAL_SYSTEM, ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, INCREMENTAL_ANALYSIS_SCHEMA } from '../extension/analysis.js';
 import { defaultState, normalizeState, stateForPrompt } from '../extension/state.js';
 import { fitPromptToBudget, plannerEvidenceAudit } from '../extension/prompt-budget.js';
+import { plannerBudgetEnvelope } from '../extension/output-negotiation.js';
 import { plannerBudgets, normalizeInputBudget } from '../extension/planner-budgets.js';
 import { compactSummarySources } from '../extension/summary-context.js';
 import { relevantExcerpt } from '../extension/evidence-selection.js';
@@ -10,12 +11,10 @@ import { estimateTokenCount } from '../extension/token-budget.js';
 
 const actor = name => ({ name, state: 'Departed for her night shift.', location: 'clinic', relevance: 'active', perspective: 'Values independence.', motivation: 'Keep her promise to patients.', knowledge: 'Knows the clinic.', constraints: 'Unwilling to return before finishing work.', agenda: 'Finish her work and go home.' });
 const sources = Array.from({ length: 8 }, (_, i) => ({ label: `Record ${i}`, kind: 'summary', priority: 2, text: `Record ${i}. ${'The garden is calm. '.repeat(50)}Mira refused the invitation and left for her night shift. ${'The garden is calm. '.repeat(50)}` }));
-const envelope = review => review
-    ? `${SYSTEM}\n\n${ANALYSIS_OUTPUT_CONTRACT}\n${JSON.stringify(ANALYSIS_SCHEMA)}`
-    : `${INCREMENTAL_SYSTEM}\n\n${INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT}\n${JSON.stringify(INCREMENTAL_ANALYSIS_SCHEMA)}`;
+const envelope = review => plannerBudgetEnvelope(review ? `${SYSTEM}\n${ANALYSIS_OUTPUT_CONTRACT}` : `${INCREMENTAL_SYSTEM}\n${INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT}`, review ? ANALYSIS_SCHEMA : INCREMENTAL_ANALYSIS_SCHEMA, 'prompt-only');
 
 test('tier budgets are configurable and respect the saved total ceiling', () => {
-    assert.deepEqual(plannerBudgets(), { tier: 'routine', input: 10000, recent: 3000, summary: 1200 });
+    assert.deepEqual(plannerBudgets(), { tier: 'routine', input: 6000, recent: 3000, summary: 1200 });
     assert.deepEqual(plannerBudgets({}, { fullContextPass: true }), { tier: 'review', input: 14000, recent: 4500, summary: 2400 });
     assert.deepEqual(plannerBudgets({}, { bootstrapScan: true }), { tier: 'rebuild', input: 16000, recent: 6000, summary: 4000 });
     assert.equal(plannerBudgets({ routineInputTokens: 13000 }).input, 13000);
@@ -69,7 +68,8 @@ test('default complete envelopes retain realistic latest exchanges and actor bou
         const p = JSON.parse(prompt);
         assert.ok(estimateTokenCount(`${fixedEnvelope}\n${prompt}`) <= budgets.input);
         assert.equal(p.messages.find(item => item.index === 0).content, messages[0].mes);
-        assert.equal(p.messages.find(item => item.index === 1).content, messages[1].mes.trim());
+        assert.match(p.messages.find(item => item.index === 1).content, /Mira remains at the clinic/);
+        if (length <= 1200) assert.equal(p.messages.find(item => item.index === 1).content, messages[1].mes.trim());
         assert.match(p.current.entities.find(item => item.name === 'Mira').constraints, /Unwilling to return/);
     }
     assert.equal(JSON.stringify(state), before);

@@ -1,3 +1,5 @@
+import { estimateTokenCount } from './token-budget.js?v=0.11.96';
+
 // Creative preparation is not historical memory. Never promote a proposal to
 // fact merely because it was saved, injected, or left unobserved for many turns.
 export const PREPARED_LIMIT = 12;
@@ -121,8 +123,7 @@ export function formatPreparedWorld(value) {
     const board = normalizePreparedWorld(value);
     const selected = board.focus.map(id => board.items.find(item => item.id === id)).filter(item => item && item.status !== 'dormant');
     if (!board.overview && !selected.length) return '';
-    return ['<prepared-world>',
-        'CONDITIONAL GM PREPARATION, NOT TRANSCRIPT FACTS OR A REQUIRED NEXT BEAT. Check against the latest actual exchange. Omit a contradicted, already used or premature element; do not discard unrelated possibilities. Do not replay events. Saved preparation never proves time passed or grants character knowledge. Proposals can guide concrete NPC/world action when their entry fits, without deciding the player response. No obligation to use one this reply. Entry and timing notes are provisional: use a fitting entry despite a conflicting inferred hold. Honor explicit user constraints and actual unmet prerequisites; eating, talking, rest or player silence alone do not suspend independent NPC/world activity.',
+    const lines = ['<prepared-world>',
         board.overview ? `Wider direction (provisional, not a destination deadline): ${clean(board.overview)}` : '',
         ...selected.map(item => [
             `Possible development (${item.origin} premise; ${item.status}): ${clean(item.premise)}`,
@@ -133,7 +134,16 @@ export function formatPreparedWorld(value) {
             item.knowledge ? `Knowledge boundary: ${clean(item.knowledge)}` : '',
         ].filter(Boolean).join('\n')),
         '</prepared-world>',
-    ].filter(Boolean).join('\n');
+    ].filter(Boolean);
+    // Select complete records, including their constraints and knowledge
+    // boundaries. Never truncate a sentence into a different causal claim.
+    // The full notebook survives privately for subsequent passes.
+    const header = 'CONDITIONAL GM PREPARATION, NOT TRANSCRIPT FACTS OR A REQUIRED NEXT BEAT. Use only fitting, unused possibilities; latest facts and user constraints win. Preparation proves neither elapsed time nor character knowledge. Preserve player intervention. Entry and timing notes are provisional: use a fitting entry despite a conflicting inferred hold. Eating, rest or silence alone do not suspend NPC activity. No obligation to use one this reply.';
+    const result = [lines[0], header];
+    for (const line of lines.slice(1, -1)) {
+        if (estimateTokenCount([...result, line, '</prepared-world>'].join('\n')) <= 1000) result.push(line);
+    }
+    return [...result, '</prepared-world>'].join('\n');
 }
 
 export function formatPacingPreference(mode = 'auto') {

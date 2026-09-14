@@ -44,7 +44,7 @@ function harness(state = createSafetyFallbackState(defaultState(), { messages, c
         }),
         analysisErrorMessage: error => error.message, shouldRetryPlannerError: () => false, isPlannerTimeoutError: () => false,
         console: { warn: (...args) => errors.push(args) }, EXTENSION_ID: 'test',
-        PLANNER_BUDGET_ENVELOPE: 'full', INCREMENTAL_BUDGET_ENVELOPE: 'small', INCREMENTAL_SYSTEM_PROMPT: 'small',
+        analysisBudgetEnvelope: () => 'small', PLANNER_BUDGET_ENVELOPE: 'full', INCREMENTAL_BUDGET_ENVELOPE: 'small', INCREMENTAL_SYSTEM_PROMPT: 'small',
     });
     for (const name of ['INCREMENTAL_RESPONSE_TOKENS', 'REBUILD_RESPONSE_TOKENS', 'REVIEW_RESPONSE_TOKENS', 'PLANNER_MAX_AUTO_RETRIES']) {
         h.scope[name] = Number(source.match(new RegExp(`const ${name} = (\\d+)`))[1]);
@@ -65,10 +65,10 @@ test('actual Re-evaluate uses one lightweight request from an empty fallback and
     const request = h.requests[0];
     assert.equal(request.meta.bootstrapScan, false);
     assert.equal(request.meta.fullContextPass, false);
-    assert.equal(request.spec.responseTokens, 8192);
-    assert.equal(request.spec.reasoningMode, undefined, 'resolve the configured reasoning mode when sending');
+    assert.equal(request.spec.responseTokens, 4096);
+    assert.equal(request.spec.reasoningMode, 'off', 'routine deltas disable optional thinking');
     assert.equal(request.spec.schema, analysis.INCREMENTAL_ANALYSIS_SCHEMA);
-    assert.equal(h.prompts[0].maxPromptTokens, 10000);
+    assert.equal(h.prompts[0].maxPromptTokens, 6000);
     assert.equal(h.prompts[0].recentContextTokens, 3000);
     assert.equal(h.prompts[0].summaryContextTokens, 1200);
     const clicks = Array.from({ length: 20 }, () => h.scope.reevaluateGuideState());
@@ -90,8 +90,8 @@ test('pre-reply repair and its recovered correction cannot promote empty state t
         await h.settle();
         assert.equal(h.requests.length, 1);
         assert.equal(h.requests[0].meta.bootstrapScan, false);
-        assert.equal(h.requests[0].spec.responseTokens, 8192);
-        assert.equal(h.requests[0].spec.reasoningMode, undefined, 'repairs also honor configured reasoning');
+        assert.equal(h.requests[0].spec.responseTokens, 4096);
+        assert.equal(h.requests[0].spec.reasoningMode, 'off', 'routine repairs disable optional thinking');
         if (recovery) assert.equal(h.requests[0].spec.allowValidationRepair, false);
         h.requests[0].finish();
         await pending;
@@ -125,7 +125,7 @@ test('rapid Regenerate/swipe and manual clicks preserve a single pre-reply repai
     await h.settle();
     assert.equal(h.requests.length, 1);
     assert.equal(h.requests[0].meta.messageCount, messages.length);
-    assert.equal(h.requests[0].spec.responseTokens, 8192);
+    assert.equal(h.requests[0].spec.responseTokens, 4096);
     const clicks = [];
     for (let i = 0; i < 20; i++) {
         h.context.chat.at(-1).mes = `Discarded replacement ${i}.`;
@@ -150,7 +150,7 @@ test('full rebuild retains its explicit larger budget and configured reasoning',
     const pending = h.scope.analyzeNow({ force: true, rebuild: true });
     await h.settle();
     assert.equal(h.requests[0].meta.bootstrapScan, true);
-    assert.equal(h.requests[0].spec.responseTokens, 16384);
+    assert.equal(h.requests[0].spec.responseTokens, 8192);
     assert.equal(h.requests[0].spec.reasoningMode, undefined);
     assert.equal(h.prompts[0].maxPromptTokens, 16000);
     h.requests[0].finish();

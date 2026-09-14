@@ -1,8 +1,8 @@
-export const DEFAULT_ROUTINE_INPUT = 10000;
+export const DEFAULT_ROUTINE_INPUT = 6000;
 export const DEFAULT_REVIEW_INPUT = 14000;
 
 export function normalizeInputBudget(value, fallback = 16000) {
-    return Math.max(9000, Math.min(30000, Math.floor(Number(value) || fallback)));
+    return Math.max(fallback === DEFAULT_ROUTINE_INPUT ? 6000 : 9000, Math.min(30000, Math.floor(Number(value) || fallback)));
 }
 
 export function plannerBudgets(settings = {}, { bootstrapScan = false, fullContextPass = false } = {}) {

@@ -241,3 +241,26 @@ test('compact preparation keeps timing beside entry and the writer receives advi
     assert.match(packet, /Timing consideration \(only if supported by the actual scene\):/);
     assert.doesNotMatch(packet, /^Keep dormant:/m);
 });
+
+
+test('writer budget selects whole preparations with all their boundaries and keeps omitted records stored', () => {
+    const items = ['first', 'second', 'third'].map(id => ({ ...record(id),
+        premise: `Proposal ${id}: ` + record().premise,
+        middle: record().middle.repeat(3),
+        knowledge: `Only the keeper knows secret-${id}.`,
+        invalidates: `Never use ${id} if the bridge has fallen.`,
+    }));
+    const board = mergePreparedWorld(null, { overview: '', updates: items, focus: items.map(item => item.id) });
+    const before = JSON.stringify(board);
+    const output = formatPreparedWorld(board);
+    assert.ok(estimateTokenCount(output) <= 1000);
+    assert.match(output, /Proposal first:/);
+    const included = items.filter(item => output.includes(item.premise));
+    assert.ok(included.length < items.length);
+    for (const item of items) {
+        if (included.includes(item)) {
+            for (const key of ['middle', 'hold', 'invalidates', 'intervention', 'knowledge']) assert.ok(output.includes(item[key]));
+        } else assert.ok(!output.includes(item.knowledge));
+    }
+    assert.equal(JSON.stringify(board), before);
+});

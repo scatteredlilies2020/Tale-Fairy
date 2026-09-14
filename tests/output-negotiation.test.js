@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, plannerValidationRepairInstruction, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from '../extension/output-negotiation.js';
+import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerBudgetEnvelope, schemaInstruction, plannerOutputModes, plannerPrompt, plannerValidationRepairInstruction, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from '../extension/output-negotiation.js';
 
 const schema = { value: { type: 'object', required: ['contract_version'] } };
 
@@ -15,7 +15,7 @@ test('strict schema mode keeps the schema in native request metadata only', () =
 test('compatibility modes give the model the complete schema in its prompt', () => {
     const messages = plannerMessages('system', 'prompt', schema, PLANNER_OUTPUT_MODE.JSON_OBJECT);
     assert.equal(messages.length, 3);
-    assert.match(messages[2].content, /JSON schema for the response/);
+    assert.match(messages[2].content, /JSON schema shorthand/);
     assert.match(messages[2].content, /contract_version/);
     assert.match(plannerPrompt('prompt', schema, PLANNER_OUTPUT_MODE.PROMPT_ONLY), /contract_version/);
 });
@@ -169,4 +169,21 @@ test('other direct and profile routes retain negotiated output modes', () => {
         PLANNER_OUTPUT_MODE.JSON_SCHEMA,
         PLANNER_OUTPUT_MODE.PROMPT_ONLY,
     ]);
+});
+
+
+test('compact compatibility shapes preserve nested identities, required keys, enums and bounds', () => {
+    const schema = { value: { type: 'object', required: ['records'], additionalProperties: false, properties: {
+        records: { type: 'array', minItems: 1, maxItems: 3, items: { type: 'object', required: ['name', 'status'], properties: {
+            name: { type: 'string', maxLength: 80 }, status: { type: 'string', enum: ['known', 'uncertain'] },
+            source: { type: 'string' },
+        } } }, note: { anyOf: [{ type: 'null' }, { type: 'string' }] },
+    } } };
+    const before = JSON.stringify(schema);
+    const shape = schemaInstruction(schema);
+    assert.match(shape, /records:\[\{name:string\(<=80 chars\),status:"known"\|"uncertain",source\?:string\}\]\(1\.\.3 items\)/);
+    assert.match(shape, /note\?:null\|string/);
+    assert.equal(plannerBudgetEnvelope('system', schema, 'prompt-only'), `system\n${shape}`);
+    assert.equal(plannerBudgetEnvelope('system', schema, 'json-schema'), `system\n${JSON.stringify(schema)}`);
+    assert.equal(JSON.stringify(schema), before);
 });

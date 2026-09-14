@@ -1,15 +1,15 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.14.4';
-import { leadingGeneratedStatusSummary, sceneStatus } from './transcript-status.js?v=0.14.4';
-import { plotExcerpt } from './generation-context.js?v=0.14.4';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.14.5';
+import { leadingGeneratedStatusSummary, sceneStatus } from './transcript-status.js?v=0.14.5';
+import { plotExcerpt } from './generation-context.js?v=0.14.5';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.13.9';
 import { relevantExcerpt } from './evidence-selection.js?v=0.13.9';
 import { formatDriftRequest, mergeOffscreenWorld, OFFSCREEN_KINDS } from './offscreen-world.js?v=0.13.9';
-import { CAUSAL_KINDS } from './causal-context.js?v=0.14.4';
+import { CAUSAL_KINDS } from './causal-context.js?v=0.14.5';
 import { mergeSituationUpdates, retireManifestedSituations } from './situations.js?v=0.13.9';
 import { PLANNER_AGENCY_RULE, ACTOR_AGENCY_RULE, AGENCY_AUDIT_RULE } from './game-master.js?v=0.14.0';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { compactPreparedForPrompt, PREPARED_SCHEMA, PREPARED_RULE, validatePrepared, mergePreparedWorld } from './prepared-world.js?v=0.14.4';
+import { compactPreparedForPrompt, PREPARED_SCHEMA, PREPARED_RULE, validatePrepared, mergePreparedWorld } from './prepared-world.js?v=0.14.5';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
@@ -242,7 +242,14 @@ export const INCREMENTAL_ANALYSIS_SCHEMA_VALUE = {
         }, required: ['conditions', 'inject', 'inject_reason', 'basis'] },
         situations: { type: 'array', maxItems: 6, items: SITUATION_SCHEMA_WIRE },
         offscreen: OFFSCREEN_SCHEMA,
-        prepared: PREPARED_SCHEMA,
+        prepared: { ...PREPARED_SCHEMA, properties: {
+            ...PREPARED_SCHEMA.properties, overview: text(320),
+            updates: { ...PREPARED_SCHEMA.properties.updates, items: {
+                ...PREPARED_SCHEMA.properties.updates.items,
+                properties: Object.fromEntries(Object.entries(PREPARED_SCHEMA.properties.updates.items.properties)
+                    .map(([key, field]) => [key, field.maxLength && key !== 'id' ? { ...field, maxLength: Math.min(field.maxLength, key === 'middle' ? 260 : 180) } : field])),
+            } },
+        } },
         thread_updates: { type: 'array', maxItems: 4, items: { type: 'object', additionalProperties: false, properties: {
             op: { type: 'string', enum: ['upsert', 'retire'] }, id: text(100), thread: text(180), state: text(220),
             status: { type: 'string', enum: ['active', 'dormant', 'due', 'blocked'] }, basis: text(150),
@@ -261,7 +268,7 @@ export const INCREMENTAL_ANALYSIS_SCHEMA_VALUE = {
         note_resolution: { anyOf: [{ type: 'object', additionalProperties: false, properties: { kind: { type: 'string', enum: ['suggest', 'correct', 'establish', 'forbid'] } }, required: ['kind'] }, { type: 'null' }] },
         audit: text(320),
     },
-    required: ['prepared', 'contract_version', 'current', 'context', 'offscreen', 'response_audit', 'thread_updates', 'hidden_motives', 'actor_updates', 'ledger', 'note_resolution', 'audit'],
+    required: ['prepared', 'contract_version', 'current', 'context', 'response_audit', 'thread_updates', 'hidden_motives', 'actor_updates', 'ledger', 'note_resolution', 'audit'],
 };
 export const INCREMENTAL_ANALYSIS_SCHEMA = Object.freeze({
     name: 'tale_fairy_causal_context_v13_incremental',
@@ -787,7 +794,8 @@ export function validateAnalysisResult(result) {
         const errors = validatePrepared(result.prepared);
         if (errors.length) return { valid: false, errors };
     }
-    if ([11, 13].includes(result?.contract_version)) return validateIncrementalAnalysisResult(result);
+    if (result?.contract_version === 13) return validateIncrementalAnalysisResult(result, { requireOffscreen: result.offscreen !== undefined });
+    if (result?.contract_version === 11) return validateIncrementalAnalysisResult(result);
     if (result?.contract_version === 10) return validateIncrementalAnalysisResult(result, { requireOffscreen: false });
     if ([9, 12].includes(result?.contract_version)) return validateBeatAnalysisResult(result);
     if (result?.contract_version === 8) return validateBeatAnalysisResult(result, { requireOffscreen: false });
@@ -2765,12 +2773,14 @@ context={conditions,inject,inject_reason,basis}; inject=true. conditions has 1�
 situations has 0–6 optional setting-native circumstances, each {op,id,type,premise,cause,entry,scope,persistence,status,origin}. Use cause -> present circumstance -> possible interaction. These are never required events, objectives, outcomes, reveals, or player instructions. Original or consequential situations remain optional and non-canon until manifested. Return zero when none fit; use op=retire when contradicted or no longer relevant.
 offscreen={subjects,elapsed,settled_through,audit} is the complete bounded deferred-debt board. Preserve unseen subjects and settled history; update last_seen_turn only when settling relevant debt. current records the exact current scene. response_audit privately evaluates the prior assistant response. horizon and hidden_motives remain private optional hypotheses. world and updates contain factual state only. Empty update arrays mean no factual change. No other keys.`;
 
-export const INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT = `Return exactly contract_version=13 plus prepared, current, context, situations, offscreen, response_audit, thread_updates, hidden_motives, actor_updates, ledger, note_resolution, and audit.
-${ACTOR_UPDATE_RULES}
-prepared contains overview, updates and focus as specified in the schema and system instructions. It is a persistent creative delta, not factual memory.
-context contains 1–6 currently relevant present causal conditions using {id,kind,subject,condition,disclosure,confidence,relevance,known_by,learned_from}, inject=true, inject_reason, and basis. At least one condition is established or strong; tentative items remain private. Conditions may name real subjects but never prescribe actions, events, dialogue, revelations, or outcomes. ${KNOWLEDGE_AND_AUDIT_RULES} offscreen.subjects and hidden_motives.items contain only changed records; omitted ids and empty arrays preserve prior records. Use stable ids and change=retire to remove a disproven motive. Usually select 1–3 useful conditions; keep prose concise. Updates contain factual changes only. No other keys.`;
+export const INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT = `Return contract_version=13 and the response shape. Target 900–1400 output tokens total. Short phrases; no deliberation or repeated explanations.
+current states the exact latest scene; copy explicit time/location. context replaces the writer's current factual slice: select 1–3 useful evidenced conditions, inject=true. known_by/learned_from require witnessed knowledge; otherwise []/"". At least one condition is established or strong. Suspicions remain attributed beliefs; tentative conditions stay private.
+prepared is a persistent delta: blank overview preserves it; omitted ids survive. Usually return zero or one changed development. Additional updates are for necessary corrections, not filling the notebook. Keep premise and middle concrete; other notes may be blank. Preserve focus ids when still fitting; retire contradicted or completed ideas explicitly. Do not rewrite an unchanged notebook. Omit offscreen entirely when unchanged. Offscreen subjects, hidden motives, actors and threads also contain changes only; empty arrays preserve records. Actor description fields use "" for unchanged/unknown, never invented filler. ledger may be "" when unchanged.
+response_audit checks only the newest assistant reply; record factual drift, player control, repetition and supported state change briefly. Distinguish real intervention boundaries from repeated questions/readiness without follow-through; do not force progress each turn. Quiet or unchanged scenes are valid. With no assistant reply use applicable=false, movement_fit=not-applicable and no flags. Diagnostics audit/basis fields may be short; do not echo facts across sections. note_resolution is null without a user note.`;
 
-export const INCREMENTAL_SYSTEM = `${PLANNER_SYSTEM}
-This is a routine delta update, not a scene-only planner. Reuse prepared ids and retain the wider overview; develop material when useful without churning every record. Give creative preparation room even while the user lingers. Updates to actors, ledger and context are factual; proposals belong only in prepared. Offscreen and hidden motive updates preserve omitted records. Empty factual updates mean no change. No second critic or model repair pass.`;
+export const INCREMENTAL_SYSTEM = `You are Tale Fairy, a private creative GM preparing material for the roleplay writer. Return only JSON. This routine pass updates the newest exchange, not the whole story.
+Latest explicit user/OOC facts and the newest assistant status outrank retained state. Preserve speakers, owners, identities, counts and knowledge sources. A named group member is not an extra person. Unknown is acceptable; invented facts are not. Never turn proposals, suspected motives or unseen time into history.
+Keep current conditions and actor updates factual. Creative NPC/world actions, places, encounters and alternative middles/futures belong in prepared, clearly labeled established, inferred or invented premises. Retain wider possibilities through long quiet scenes; develop them when useful without churning every record. There are no genre quotas or required beats.
+NPCs may act, finish, refuse or disengage on their own motives. A past pause is not a standing constraint; respect actual commitments and reasons to wait. Never decide player dialogue, thoughts, choices or contestable outcomes; preserve intervention and viewpoint limits. Latest user pacing wins. Scene duration, development and interruption are independent. Eating, conversation or player silence alone do not block a fitting entry. Leave holds blank unless actual prerequisites or user constraints require them. No forced escalation or player participation. Preserve settled history; message count never advances fictional time. One pass, no critic or model repair.`;
 
 export { PLANNER_SYSTEM as SYSTEM, extractJson };

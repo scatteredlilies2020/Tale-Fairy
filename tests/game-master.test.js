@@ -52,20 +52,11 @@ test('permanent rules are lean, genre-neutral, and leave pacing to active instru
     assert.doesNotMatch(payload, /fleeing|enemy|combat|replacement hooks|punishment|reset availability|world-stall/i);
 });
 
-test('planner audits distinguish needless handoffs from real constraints without prescribing events', () => {
-    for (const system of [SYSTEM, INCREMENTAL_SYSTEM]) {
-        assert.match(system, /commit and finish actions without player permission/);
-        assert.match(system, /Distinguish momentary hesitation from evidenced obstacles and commitments/);
-        assert.match(system, /A past pause is observed state, not a standing constraint without an evidenced reason/);
-        assert.match(system, /concrete NPC\/world proposals belong in conditional prepared material, never prescribed player actions/);
-    }
-    for (const contract of [ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT]) {
-        assert.match(contract, /An NPC question, glance, or wait alone is not a genuine player-choice boundary/);
-        assert.match(contract, /what requires player intervention versus available independent NPC action/);
-        assert.match(contract, /repeated readiness, threats, or questions without follow-through/);
-        assert.match(contract, /Respect evidenced reasons to wait/);
-        assert.match(contract, /no mandatory escalation or completion each turn/);
-    }
+test('routine agency rules distinguish independent activity from player intervention', () => {
+    assert.match(SYSTEM, /commit and finish actions without player permission/);
+    for (const rule of [/NPCs may act, finish, refuse or disengage/, /A past pause is not a standing constraint/, /respect actual commitments and reasons to wait/, /Never decide player dialogue, thoughts, choices or contestable outcomes/, /preserve intervention and viewpoint limits/]) assert.match(INCREMENTAL_SYSTEM, rule);
+    assert.match(INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, /real intervention boundaries from repeated questions\/readiness without follow-through/);
+    assert.match(INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, /do not force progress each turn/);
 });
 
 test('cached policy refresh changes only the leading contract, not facts or quoted source text', () => {
@@ -127,13 +118,11 @@ test('disabled, quiet, and impersonation requests contain no GM rules', () => {
 });
 
 test('both planner passes retain agency and actor memory instructions in their fixed envelopes', () => {
-    for (const system of [SYSTEM, INCREMENTAL_SYSTEM]) {
-        assert.ok(system.includes(PLANNER_AGENCY_RULE));
-        assert.ok(system.includes(ACTOR_AGENCY_RULE));
-    }
-    for (const contract of [ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT]) {
-        assert.ok(contract.includes(AGENCY_AUDIT_RULE));
-    }
+    assert.ok(SYSTEM.includes(PLANNER_AGENCY_RULE));
+    assert.ok(SYSTEM.includes(ACTOR_AGENCY_RULE));
+    assert.ok(ANALYSIS_OUTPUT_CONTRACT.includes(AGENCY_AUDIT_RULE));
+    assert.match(INCREMENTAL_SYSTEM, /NPCs may act, finish, refuse or disengage/);
+    assert.match(INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, /Actor description fields use "" for unchanged\/unknown/);
     const prompt = buildAnalysisPrompt([{ is_user: true, mes: 'I observe.' }], defaultState(), '', {}, { incremental: true, maxPromptTokens: 6000, effectivePromptTokens: 1000 });
     assert.ok(JSON.parse(prompt).messages.some(item => item.content === 'I observe.'));
     // Small prompts may shed repeated rules, but cannot remove their fixed

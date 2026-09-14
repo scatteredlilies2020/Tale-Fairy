@@ -300,7 +300,7 @@ test('schemas expose audited causal contracts v12 and v13', () => {
     assert.equal(INCREMENTAL_ANALYSIS_SCHEMA_VALUE.properties.contract_version.const, 13);
     assert.ok(ANALYSIS_SCHEMA_VALUE.required.includes('context'));
     assert.ok(ANALYSIS_SCHEMA_VALUE.required.includes('offscreen'));
-    assert.ok(INCREMENTAL_ANALYSIS_SCHEMA_VALUE.required.includes('offscreen'));
+    assert.ok(!INCREMENTAL_ANALYSIS_SCHEMA_VALUE.required.includes('offscreen'));
     assert.ok(ANALYSIS_SCHEMA_VALUE.properties.offscreen.required.includes('settled_through'));
     assert.equal(ANALYSIS_SCHEMA_VALUE.properties.context.properties.conditions.maxItems, 6);
     assert.match(ANALYSIS_OUTPUT_CONTRACT, /current causes only/i);
@@ -471,19 +471,9 @@ test('offscreen validation enforces complete distinct bounded records', () => {
     assert.match(validateAnalysisResult(invalid).errors.join('\n'), /reach is invalid[\s\S]*non-negative integer/i);
 });
 
-test('both planner tiers prepare broad creative middles separately from present facts', () => {
-    for (const system of [SYSTEM, INCREMENTAL_SYSTEM]) {
-        assert.match(system, /creative playable middle AND future/);
-        assert.match(system, /independent developments without prior mention/);
-        assert.match(system, /concrete intermediate experiences, changes and alternative continuations before distant possibilities/);
-        assert.match(system, /prepared MAY propose concrete NPC\/world actions and events/);
-        assert.match(system, /not history, player choices or a beat queue/);
-        assert.match(system, /Latest explicit user pacing overrides saved preference/);
-        assert.match(system, /Quiet scenes must not narrow preparation/);
-        assert.match(system, /Summaries and Continuity are optional/);
-        assert.match(system, /no critic or model repair/);
-    }
-    assert.match(INCREMENTAL_SYSTEM, /not a scene-only planner/);
+test('routine instructions preserve creativity and factual boundaries without the full review essay', () => {
+    assert.match(SYSTEM, /creative playable middle AND future/);
+    for (const rule of [/Creative NPC\/world actions, places, encounters/, /alternative middles\/futures belong in prepared/, /Keep current conditions and actor updates factual/, /Retain wider possibilities through long quiet scenes/, /Latest user pacing wins/, /no critic or model repair/]) assert.match(INCREMENTAL_SYSTEM, rule);
 });
 
 test('analysis prompt carries broad state but asks for only a relevant slice', () => {
@@ -603,4 +593,20 @@ test('runtime planner source contains no scenario-specific recovery keys', () =>
     const source = readFileSync(new URL('../extension/analysis.js', import.meta.url), 'utf8');
     assert.doesNotMatch(source, /hogwarts|naruto|star wars/i);
     assert.deepEqual(Object.keys(MODE_INSTRUCTIONS), ['light', 'balanced', 'fun']);
+});
+
+
+test('routine omission preserves offscreen history but malformed supplied updates still fail', () => {
+    const first = applyAnalysis(defaultState(), modern(true), messages);
+    const delta = modern(true, { offscreen: undefined, actor_updates: [], thread_updates: [], hidden_motives: { status: 'none', items: [], audit: '' }, ledger: '' });
+    assert.equal(validateAnalysisResult(delta).valid, true);
+    const before = JSON.stringify(first);
+    const next = applyAnalysis(first, delta, messages);
+    assert.deepEqual(next.offscreenWorld, first.offscreenWorld);
+    assert.deepEqual(next.hiddenMotives, first.hiddenMotives);
+    assert.equal(next.contextLedger, first.contextLedger);
+    assert.equal(JSON.stringify(first), before);
+    for (const offscreen of [null, [], { subjects: [{ subject: 'Made-up event' }] }]) {
+        assert.equal(validateAnalysisResult({ ...delta, offscreen }).valid, false);
+    }
 });

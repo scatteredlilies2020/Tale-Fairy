@@ -4,8 +4,8 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.4';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.4';
+import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.5';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.5';
 import { isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.0';
 import { selectSituationalOpenings } from './situations.js?v=0.13.9';
 import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.13.17';
@@ -20,24 +20,24 @@ import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } fro
 import { collectSummarySources } from './summary-context.js?v=0.13.9';
 import { estimateTokenCount } from './token-budget.js?v=0.13.9';
 import { fitPromptToBudget, plannerEvidenceAudit } from './prompt-budget.js?v=0.13.9';
-import { DEFAULT_ROUTINE_INPUT, DEFAULT_REVIEW_INPUT, normalizeInputBudget, plannerBudgets } from './planner-budgets.js?v=0.13.9';
+import { DEFAULT_ROUTINE_INPUT, DEFAULT_REVIEW_INPUT, normalizeInputBudget, plannerBudgets } from './planner-budgets.js?v=0.14.5';
 import { relevantActors } from './evidence-selection.js?v=0.13.9';
 import { completionText } from './completion-response.js?v=0.13.9';
 import { sampleDirectorSignals } from './director-sampling.js?v=0.13.9';
-import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.13.9';
+import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerBudgetEnvelope, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.14.5';
 import { clearPlannerRecoveryRepair, clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.13.10';
 import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.13.9';
-import { hasUsableCausalContext } from './causal-context.js?v=0.14.4';
+import { hasUsableCausalContext } from './causal-context.js?v=0.14.5';
 import { formatHiddenMotives } from './scratchpad-format.js?v=0.13.9';
-import { defaultPreparedWorld, preparedWorldUsable, unchangedSourcePrefix, stampPreparedWorld } from './prepared-world.js?v=0.14.4';
+import { defaultPreparedWorld, preparedWorldUsable, unchangedSourcePrefix, stampPreparedWorld } from './prepared-world.js?v=0.14.5';
 import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.9';
-import { createSafetyFallbackState } from './fallback-direction.js?v=0.14.4';
+import { createSafetyFallbackState } from './fallback-direction.js?v=0.14.5';
 import { classifyAssistantReply } from './response-usability.js?v=0.13.9';
-import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.4';
+import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.5';
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.14.4';
+const RUNTIME_VERSION = '0.14.5';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -49,7 +49,7 @@ const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
 const INJECTION_POSITIONS = new Set(['before-main', 'after-main', 'before-character-definitions', 'after-character-definitions', 'before-example-messages', 'after-example-messages', 'before-an', 'after-an', 'before-chat-history', 'after-chat-history', 'before-jailbreak', 'after-jailbreak', 'at-depth']);
-const DEFAULT_SETTINGS = { enabled: true, mode: 'balanced', analysisProfileId: '', analysisSource: 'active', analysisProvider: 'custom', analysisModel: '', analysisUrl: '', analysisSecretId: '', analysisReasoningMode: 'auto', analysisTemperature: 1, directSettingsMigrated: false, directCustomModel: '', directCustomUrl: '', directCustomSecretId: '', directOpenRouterModel: '', directOpenRouterUrl: '', directOpenRouterSecretId: '', injectionPosition: 'at-depth', injectionDepth: 1, injectionRole: DEFAULT_INJECTION_ROLE, includeWorldInfo: false, showDirectorNotes: false, recentContextTokens: 6000, messageTokenLimit: 700, maxPromptTokens: 16000, continuityIntegration: true, summaryContextTokens: 4000, fullReviewInterval: DEFAULT_REFRESH_INTERVAL, contextSettingsVersion: 11 };
+const DEFAULT_SETTINGS = { enabled: true, mode: 'balanced', analysisProfileId: '', analysisSource: 'active', analysisProvider: 'custom', analysisModel: '', analysisUrl: '', analysisSecretId: '', analysisReasoningMode: 'auto', analysisTemperature: 1, directSettingsMigrated: false, directCustomModel: '', directCustomUrl: '', directCustomSecretId: '', directOpenRouterModel: '', directOpenRouterUrl: '', directOpenRouterSecretId: '', injectionPosition: 'at-depth', injectionDepth: 1, injectionRole: DEFAULT_INJECTION_ROLE, includeWorldInfo: false, showDirectorNotes: false, recentContextTokens: 6000, messageTokenLimit: 700, maxPromptTokens: 16000, continuityIntegration: true, summaryContextTokens: 4000, fullReviewInterval: DEFAULT_REFRESH_INTERVAL, contextSettingsVersion: 12 };
 let settings = null;
 let analysisPromise = null;
 let analysisAbortController = null;
@@ -86,13 +86,11 @@ let detachedPlannerEnabled = false;
 let detachedPlannerRecovering = false;
 let replyRepairTimer = null;
 let replyRepairInFlight = false;
-// Reasoning providers may count hidden thinking against this ceiling. The
-// planner prompt and schema separately target a concise visible JSON result.
-// Creative preparation shares this response with facts, audits and actor
-// deltas. The old 4,096 ceiling cut off real v13 output before its audit.
-const INCREMENTAL_RESPONSE_TOKENS = 8192;
-const REBUILD_RESPONSE_TOKENS = 16384;
-const REVIEW_RESPONSE_TOKENS = 12288;
+// Routine output targets 1200–1800 tokens; leave room for corrections and
+// JSON structure. Full reviews/rebuilds have separate, bounded allowances.
+const INCREMENTAL_RESPONSE_TOKENS = 4096;
+const REBUILD_RESPONSE_TOKENS = 8192;
+const REVIEW_RESPONSE_TOKENS = 6144;
 const PLANNER_MAX_AUTO_RETRIES = 0;
 const UI_MOUNT_TIMEOUT_MS = 30000;
 const LEGACY_UPGRADE_MAX_ATTEMPTS = 1;
@@ -103,10 +101,8 @@ const INTERNAL_PLANNER_MARKER = 'You are Tale Fairy, the private authorial plann
 // prompt tokens: that space belongs to lore, summaries, and conversation evidence.
 const PLANNER_SYSTEM_PROMPT = `${SYSTEM}\n\n${ANALYSIS_OUTPUT_CONTRACT}`;
 const INCREMENTAL_SYSTEM_PROMPT = `${INCREMENTAL_SYSTEM}\n\n${INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT}`;
-// The full schema occupies provider context either as native metadata or as a
-// compatibility prompt. Reserve its tokens once in both cases.
-const PLANNER_BUDGET_ENVELOPE = `${PLANNER_SYSTEM_PROMPT}\n${JSON.stringify(ANALYSIS_SCHEMA)}`;
-const INCREMENTAL_BUDGET_ENVELOPE = `${INCREMENTAL_SYSTEM_PROMPT}\n${JSON.stringify(INCREMENTAL_ANALYSIS_SCHEMA)}`;
+// Budget fitting uses the selected transport: native schema metadata or its
+// shorter compatibility shape, plus the system prompt exactly once.
 
 globalThis.taleFairyRuntime = Object.freeze({ version: RUNTIME_VERSION, loadedAt: Date.now() });
 console.info(`[${EXTENSION_ID}] Tale Fairy runtime ${RUNTIME_VERSION} loaded`);
@@ -190,6 +186,9 @@ function getSettings() {
             settings.injectionDepth = 1;
         }
         settings.contextSettingsVersion = 11;
+    }
+    if (previousContextVersion > 0 && previousContextVersion < 12) {
+        if (Number(settings.routineInputTokens) === 10000) settings.routineInputTokens = DEFAULT_ROUTINE_INPUT;
     }
     settings.contextSettingsVersion = DEFAULT_SETTINGS.contextSettingsVersion;
     settings.fullReviewInterval = normalizePlannerSchedule({ refreshInterval: settings.fullReviewInterval }).refreshInterval;
@@ -377,13 +376,21 @@ async function initializeDetachedPlanner() {
 installDetachedPlannerTransport();
 const detachedPlannerReady = initializeDetachedPlanner();
 
+function analysisBudgetEnvelope(incremental) {
+    const model = analysisModelOptions();
+    const mode = incremental ? PLANNER_OUTPUT_MODE.PROMPT_ONLY : model.profileId || model.active
+        ? PLANNER_OUTPUT_MODE.JSON_SCHEMA : plannerOutputModes(model)[0];
+    return plannerBudgetEnvelope(incremental ? INCREMENTAL_SYSTEM_PROMPT : PLANNER_SYSTEM_PROMPT,
+        incremental ? INCREMENTAL_ANALYSIS_SCHEMA : ANALYSIS_SCHEMA, mode);
+}
+
 async function buildTokenBudgetedAnalysisPrompt(messages, state, note, bootstrap, options) {
     const tokenBudget = Math.max(options.incremental ? 6000 : 9000, Math.min(30000, Number(options.maxPromptTokens) || DEFAULT_SETTINGS.maxPromptTokens));
     const context = currentContext();
     const historyCache = new Map(); // One transcript-bound cache per fit, never across turns.
     return fitPromptToBudget({
         tokenBudget,
-        fixedEnvelope: options.incremental ? INCREMENTAL_BUDGET_ENVELOPE : PLANNER_BUDGET_ENVELOPE,
+        fixedEnvelope: analysisBudgetEnvelope(options.incremental),
         tokenCounter: typeof context?.getTokenCountAsync === 'function' ? context.getTokenCountAsync.bind(context) : null,
         buildPrompt: effectivePromptTokens => buildAnalysisPrompt(messages, state, note, bootstrap, { ...options, maxPromptTokens: tokenBudget, effectivePromptTokens, historyCache }),
     });
@@ -1969,6 +1976,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
         const requestedReasoningMode = requestSpec.reasoningMode || '';
         const requestLabel = requestSpec.label || 'planner';
         const cacheNamespace = requestSpec.cacheNamespace || 'analysis';
+        const compactModes = requestSpec.compactOutput ? [PLANNER_OUTPUT_MODE.PROMPT_ONLY] : null;
         const detachedMarker = detachedPlannerEnabled && detachedMeta ? { _taleFairyPlanner: detachedMeta } : {};
         const model = analysisModelOptions();
         const temperature = requestSpec.temperature === undefined ? plannerTemperature() : normalizePlannerTemperature(requestSpec.temperature);
@@ -2022,7 +2030,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
             const runProfileMode = mode => runProfileAttempt(mode);
             return negotiatePlannerOutput(
                 runProfileMode,
-                [PLANNER_OUTPUT_MODE.JSON_SCHEMA, PLANNER_OUTPUT_MODE.PROMPT_ONLY],
+                compactModes || [PLANNER_OUTPUT_MODE.JSON_SCHEMA, PLANNER_OUTPUT_MODE.PROMPT_ONLY],
                 `${requestLabel} connection profile`,
                 controller.signal,
                 `${cacheNamespace}:profile:${model.profileId}:${apiMap.source}:${profile.model || ''}:${profile['api-url'] || ''}`,
@@ -2077,7 +2085,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
             const runActiveMode = mode => runActiveAttempt(mode);
             return negotiatePlannerOutput(
                 runActiveMode,
-                [PLANNER_OUTPUT_MODE.JSON_SCHEMA, PLANNER_OUTPUT_MODE.PROMPT_ONLY],
+                compactModes || [PLANNER_OUTPUT_MODE.JSON_SCHEMA, PLANNER_OUTPUT_MODE.PROMPT_ONLY],
                 `${requestLabel} active model`,
                 controller.signal,
                 `${cacheNamespace}:active:${activeContext.mainApi || ''}:${activeSource}`,
@@ -2120,7 +2128,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
             }
         };
         const runDirectMode = mode => runDirectAttempt(mode);
-        const modes = plannerOutputModes(model);
+        const modes = compactModes || plannerOutputModes(model);
         return negotiatePlannerOutput(
             runDirectMode,
             modes,
@@ -2136,21 +2144,22 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
 async function requestAnalysis(prompt, externalSignal, detachedMeta, recovery = null) {
     const fullContextPass = detachedMeta?.fullContextPass === true;
     const bootstrapScan = detachedMeta?.bootstrapScan === true || detachedMeta?.rebuild === true;
-    // Bound the work, not the model's thinking mode. Every tier resolves the
-    // user's reasoning choice (including profile/preset inheritance) at send
-    // time; forcing Off breaks models that require reasoning.
+    // Routine deltas disable optional thinking. Providers that require it use
+    // the existing compatibility fallback; full reviews retain the selected mode.
     return requestAnalysisOnce(prompt, externalSignal, detachedMeta, {
         responseTokens: fullContextPass ? (bootstrapScan ? REBUILD_RESPONSE_TOKENS : REVIEW_RESPONSE_TOKENS) : INCREMENTAL_RESPONSE_TOKENS,
         ...(fullContextPass && !bootstrapScan ? { label: 'bounded story review', cacheNamespace: 'analysis-review-v12-prepared-v1', allowValidationRepair: false } : {}),
         ...(fullContextPass ? {} : {
             systemPrompt: INCREMENTAL_SYSTEM_PROMPT,
+            reasoningMode: 'off',
+            compactOutput: true,
             schema: INCREMENTAL_ANALYSIS_SCHEMA,
             // Invalid output fails locally; never start a second model repair pass.
             // A routine refresh must not discard an active world merely because
             // the first response omitted a required field.
             allowValidationRepair: false,
             label: 'incremental planner',
-            cacheNamespace: 'analysis-incremental-v13-prepared-v1',
+            cacheNamespace: 'analysis-incremental-v13-lean-v1',
         }),
     });
 }
@@ -2259,7 +2268,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         const plannerPrompt = await buildTokenBudgetedAnalysisPrompt(chat, current, noteInstruction(userNote), bootstrapContext(context), { recentContextTokens: plannerRecentContextTokens, messageTokenLimit: s.messageTokenLimit, summaryContextTokens: plannerSummaryContextTokens, summarySources, bootstrapScan, fullRebuild: rebuild, incremental: !fullContextPass, maxPromptTokens: plannerMaxPromptTokens, variationNonce });
         plannerTranscriptHead = transcriptHeadFromPrompt(plannerPrompt);
         lastSummaryAudit = plannerEvidenceAudit(plannerPrompt, summarySources, {
-            fixedEnvelope: fullContextPass ? PLANNER_BUDGET_ENVELOPE : INCREMENTAL_BUDGET_ENVELOPE,
+            fixedEnvelope: analysisBudgetEnvelope(!fullContextPass),
             tokenBudget: plannerMaxPromptTokens, tier: budgets.tier,
         });
         showAnalysisPhase('Waiting for planner model', runId, startedAt);
