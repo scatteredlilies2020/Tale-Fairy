@@ -4,7 +4,7 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.0';
+import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.1';
 import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.0';
 import { isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.0';
 import { selectSituationalOpenings } from './situations.js?v=0.13.9';
@@ -37,7 +37,7 @@ import { buildPlotAnchor, cachedGenerationContext, generationContextEntries, gen
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.14.0';
+const RUNTIME_VERSION = '0.14.1';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -88,11 +88,11 @@ let replyRepairTimer = null;
 let replyRepairInFlight = false;
 // Reasoning providers may count hidden thinking against this ceiling. The
 // planner prompt and schema separately target a concise visible JSON result.
-// Include enough room for the required audit and actor deltas. A 2,304-token
-// cap truncated real routine responses, so retrying only repeated the failure.
-const INCREMENTAL_RESPONSE_TOKENS = 4096;
+// Creative preparation shares this response with facts, audits and actor
+// deltas. The old 4,096 ceiling cut off real v13 output before its audit.
+const INCREMENTAL_RESPONSE_TOKENS = 8192;
 const REBUILD_RESPONSE_TOKENS = 16384;
-const REVIEW_RESPONSE_TOKENS = 6144;
+const REVIEW_RESPONSE_TOKENS = 12288;
 const PLANNER_MAX_AUTO_RETRIES = 0;
 const UI_MOUNT_TIMEOUT_MS = 30000;
 const LEGACY_UPGRADE_MAX_ATTEMPTS = 1;

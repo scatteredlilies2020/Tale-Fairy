@@ -16,12 +16,12 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest, browser runtime, and detached plugin share the release version', () => {
-    assert.equal(manifest.version, '0.14.0');
-    assert.equal(manifest.js, 'extension/index.js?v=0.14.0');
-    assert.equal(manifest.css, 'extension/style.css?v=0.14.0');
+    assert.equal(manifest.version, '0.14.1');
+    assert.equal(manifest.js, 'extension/index.js?v=0.14.1');
+    assert.equal(manifest.css, 'extension/style.css?v=0.14.1');
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.14\.0'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.14\.0'/);
+    assert.match(pluginSource, /const VERSION = '0\.14\.1'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.14\.1'/);
 });
 
 test('planner input proof travels through normal saves and detached recovery', () => {
@@ -142,8 +142,8 @@ test('planner token budgets, retries, and nonblocking behavior remain compatible
     assert.match(template, /data-setting="routine-budget"/);
     assert.match(template, /data-setting="review-budget"/);
     assert.ok(source.indexOf('lastSummaryAudit = plannerEvidenceAudit(plannerPrompt') > source.indexOf('const plannerPrompt = await buildTokenBudgetedAnalysisPrompt'));
-    assert.match(source, /const INCREMENTAL_RESPONSE_TOKENS = 4096/);
-    assert.match(source, /const REVIEW_RESPONSE_TOKENS = 6144/);
+    assert.match(source, /const INCREMENTAL_RESPONSE_TOKENS = 8192/);
+    assert.match(source, /const REVIEW_RESPONSE_TOKENS = 12288/);
     assert.match(source, /bootstrapScan \? REBUILD_RESPONSE_TOKENS : REVIEW_RESPONSE_TOKENS/);
     const requestTier = source.slice(source.indexOf('async function requestAnalysis('), source.indexOf('export async function analyzeNow('));
     assert.doesNotMatch(requestTier, /reasoningMode:/, 'no evaluation tier silently overrides configured reasoning');

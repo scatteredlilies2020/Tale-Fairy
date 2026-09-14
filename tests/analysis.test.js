@@ -245,6 +245,19 @@ test('modern multi-turn lifecycle preserves memory, reviews on schedule, and fai
 test('extractJson accepts fenced, wrapped, and repairable JSON', () => {
     assert.deepEqual(extractJson('```json\n{"contract_version":8}\n```'), { contract_version: 8 });
     assert.deepEqual(extractJson('prefix {"ok":true} suffix'), { ok: true });
+    assert.deepEqual(extractJson('{"ok":true,}'), { ok: true });
+    assert.deepEqual(extractJson('{"ok":true "text":"braces { inside } prose"}'), { ok: true, text: 'braces { inside } prose' });
+});
+
+test('cut-off planner output is reported as incomplete before missing-field validation', () => {
+    for (const raw of [
+        '{"contract_version":13,"offscreen":{"subjects":[{"subject":"Captain"}',
+        '{"contract_version":13,"prepared":{"overview":"An unfinished sentence',
+        '```json\n{"contract_version":13,"offscreen":{}',
+    ]) {
+        assert.throws(() => extractJson(raw), /response was cut off before the plan was complete/);
+        assert.throws(() => parseRuntimeResponse(raw), error => /response was cut off/.test(error.message) && !/boolean|must be an array/.test(error.message));
+    }
 });
 
 test('schemas expose audited causal contracts v12 and v13', () => {

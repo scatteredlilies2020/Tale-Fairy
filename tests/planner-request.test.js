@@ -69,7 +69,7 @@ test('normal evaluation makes exactly one model request', async () => {
     const h = harness([{ valid: true }]);
     assert.equal((await h.run()).valid, true);
     assert.equal(h.requests.length, 1);
-    assert.equal(h.requests[0].max_tokens, 4096);
+    assert.equal(h.requests[0].max_tokens, 8192);
 });
 
 test('invalid output fails after one generation without a model correction pass', async () => {
@@ -87,10 +87,10 @@ test('legacy repair options cannot start a second pass or inject a correction', 
 });
 
 const tiers = [
-    { meta: {}, budget: 4096 },
-    { meta: { fullContextPass: true }, budget: 6144 },
+    { meta: {}, budget: 8192 },
+    { meta: { fullContextPass: true }, budget: 12288 },
     { meta: { fullContextPass: true, rebuild: true }, budget: 16384 },
-    { meta: {}, budget: 4096, recovery: { instruction: 'Correct retained response.' } },
+    { meta: {}, budget: 8192, recovery: { instruction: 'Correct retained response.' } },
 ];
 
 for (const route of ['direct', 'profile', 'active']) {
@@ -171,6 +171,6 @@ test('DeepSeek routine updates preserve Low instead of silently disabling thinki
     const h = harness([{ valid: true }], { model: 'deepseek-v4-pro', configured: 'low' });
     await h.runPass();
     assert.deepEqual(JSON.parse(h.requests[0].custom_include_body), { reasoning_effort: 'low' });
-    assert.equal(h.requests[0].max_tokens, 4096);
+    assert.equal(h.requests[0].max_tokens, 8192);
     assert.equal(h.requests.length, 1);
 });

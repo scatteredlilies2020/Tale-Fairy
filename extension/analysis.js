@@ -294,6 +294,29 @@ function extractJson(raw) {
             parseError ||= error;
         }
     }
+    // Do not let syntax repair close a response that stopped mid-plan. Doing
+    // so turns a cutoff into misleading missing-boolean/array validation errors.
+    if (start >= 0) {
+        let depth = 0;
+        let quoted = false;
+        let escaped = false;
+        let complete = false;
+        for (const char of source.slice(start)) {
+            if (quoted) {
+                if (escaped) escaped = false;
+                else if (char === '\\') escaped = true;
+                else if (char === '"') quoted = false;
+                continue;
+            }
+            if (char === '"') quoted = true;
+            else if (char === '{' || char === '[') depth++;
+            else if (char === '}' || char === ']') {
+                depth--;
+                if (depth === 0) { complete = true; break; }
+            }
+        }
+        if (!complete) throw new AnalysisValidationError('The planner response was cut off before the plan was complete. It may have reached the output limit or the connection may have ended early.');
+    }
     // Prompt-only providers occasionally return a complete object with one
     // missing comma, a dangling comma, or an unescaped quote. Repair syntax
     // locally so a multi-minute planner run is not thrown away or repeated.

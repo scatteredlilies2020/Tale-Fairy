@@ -74,13 +74,13 @@ Routine replies use **one background update**, not separate planning and critiqu
 
 | Pass | Default input target, including instructions and schema | Raw-context ceiling | Summary-pool ceiling | Output ceiling |
 | --- | ---: | ---: | ---: | ---: |
-| Routine update | 10,000 tokens, configurable | 3,000 | 1,200 | 4,096 |
-| Bounded story review | 14,000 tokens, configurable | 4,500 | 2,400 | 6,144 |
+| Routine update | 10,000 tokens, configurable | 3,000 | 1,200 | 8,192 |
+| Bounded story review | 14,000 tokens, configurable | 4,500 | 2,400 | 12,288 |
 | Initialization / explicit rebuild | Configured total ceiling (default 16,000) | Configured (default 6,000) | Configured (default 4,000) | 16,384 |
 
 Every input target is capped by the saved total input ceiling. Lower raw/summary settings also cap each pass; final fitting may reduce evidence further. These larger routine/review defaults can increase API input cost. Existing total-budget choices are preserved.
 
-Since **0.13.17**, **Guide now / Re-evaluate** and missing retry-plan repairs use the lightweight routine tier—even if the fallback has no ledger. At defaults this means at most 10,000 input tokens and 4,096 output tokens instead of silently switching to a 16,384-output-token initialization. Repeated identical clicks share the active request instead of cancelling and restarting it; actual input or provider-setting changes still replace it. Successful quick evaluations clear the manual request without resetting the broad-review clock. Safety fallbacks do not count as successful evaluations. Provider speed still determines wall-clock time; output budgets are ceilings, not promised response lengths.
+Since **0.13.17**, **Guide now / Re-evaluate** and missing retry-plan repairs use the lightweight routine tier—even if the fallback has no ledger. At defaults this means at most 10,000 input tokens and 8,192 output tokens instead of silently switching to a 16,384-output-token initialization. Repeated identical clicks share the active request instead of cancelling and restarting it; actual input or provider-setting changes still replace it. Successful quick evaluations clear the manual request without resetting the broad-review clock. Safety fallbacks do not count as successful evaluations. Provider speed still determines wall-clock time; output budgets are ceilings, not promised response lengths.
 
 Broader reviews run every **12 accepted assistant replies** by default (configurable from 3–20), or sooner for a detected correction, scene/time pivot, or submitted author note. Routine completions do not reset that clock. A review replaces that turn's routine pass; it is not an additional call or a full transcript rebuild. Initial automatic setup and explicit **Full Rebuild** retain the larger initialization budget. Existing compatibility retries and invalid-output repair can still require another request. Story generation never waits for planning.
 
@@ -103,3 +103,5 @@ This is a lightweight, chat-local active-world simulation and causal-context lay
 Copyright (C) 2026 [ScatteredLilies2020](https://github.com/scatteredlilies2020).
 
 Tale Fairy is free software licensed under the [GNU Affero General Public License v3.0](LICENSE).
+
+Version 0.14.1 increases the routine and review output ceilings to fit creative preparation alongside the factual plan and audit. Incomplete planner responses are reported as cut off, instead of being repaired into partial objects that produce missing-field errors.

@@ -65,7 +65,7 @@ test('actual Re-evaluate uses one lightweight request from an empty fallback and
     const request = h.requests[0];
     assert.equal(request.meta.bootstrapScan, false);
     assert.equal(request.meta.fullContextPass, false);
-    assert.equal(request.spec.responseTokens, 4096);
+    assert.equal(request.spec.responseTokens, 8192);
     assert.equal(request.spec.reasoningMode, undefined, 'resolve the configured reasoning mode when sending');
     assert.equal(request.spec.schema, analysis.INCREMENTAL_ANALYSIS_SCHEMA);
     assert.equal(h.prompts[0].maxPromptTokens, 10000);
@@ -90,7 +90,7 @@ test('pre-reply repair and its recovered correction cannot promote empty state t
         await h.settle();
         assert.equal(h.requests.length, 1);
         assert.equal(h.requests[0].meta.bootstrapScan, false);
-        assert.equal(h.requests[0].spec.responseTokens, 4096);
+        assert.equal(h.requests[0].spec.responseTokens, 8192);
         assert.equal(h.requests[0].spec.reasoningMode, undefined, 'repairs also honor configured reasoning');
         if (recovery) assert.equal(h.requests[0].spec.allowValidationRepair, false);
         h.requests[0].finish();
@@ -125,7 +125,7 @@ test('rapid Regenerate/swipe and manual clicks preserve a single pre-reply repai
     await h.settle();
     assert.equal(h.requests.length, 1);
     assert.equal(h.requests[0].meta.messageCount, messages.length);
-    assert.equal(h.requests[0].spec.responseTokens, 4096);
+    assert.equal(h.requests[0].spec.responseTokens, 8192);
     const clicks = [];
     for (let i = 0; i < 20; i++) {
         h.context.chat.at(-1).mes = `Discarded replacement ${i}.`;
