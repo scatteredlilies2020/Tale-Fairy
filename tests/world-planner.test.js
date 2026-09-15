@@ -20,6 +20,8 @@ test('replacement instructions stay compact and do not reintroduce generated rep
     assert.match(WORLD_PLANNER_SYSTEM, /These instructions govern private preparation only/);
     assert.match(WORLD_PLANNER_SYSTEM, /Do not generate general writing rules/);
     assert.match(WORLD_PLANNER_SYSTEM, /Revisit an existing approach/);
+    assert.match(WORLD_PLANNER_SYSTEM, /Private planner guidance, never injected into the writer/);
+    assert.match(WORLD_PLANNER_SYSTEM, /Do not copy approach instructions into premise, middle, future, knowledge/);
     assert.match(WORLD_PLANNER_SCHEMA.value.properties.prepared.properties.approach.description, /not general writing rules/);
     assert.deepEqual(Object.keys(WORLD_PLANNER_SCHEMA.value.properties).sort(), ['contract_version', 'note_resolution', 'prepared']);
     assert.deepEqual(Object.keys(WORLD_PLANNER_SCHEMA.value.properties.prepared.properties).sort(), ['approach', 'consolidations', 'focus', 'status_changes', 'summary', 'updates']);
@@ -66,7 +68,7 @@ test('new wire contract runs through production parser, persistence and actual r
     assert.equal(isGuidanceUsable(state, messages, 'story'), false, 'no factual recap to inject');
     const payload = buildPromptPayload(state, { guidanceUsable: true, preparedUsable: true });
     assert.match(payload, /competing regional compacts/);
-    assert.match(payload, /Make governing consequential/);
+    assert.doesNotMatch(payload, /Make governing consequential/);
     assert.match(payload, /No agreement or harvest outcome is established yet/);
     assert.doesNotMatch(payload, /SCENE FIT/);
     const request = [{ role: 'system', content: 'Use literary prose.' }, { role: 'user', content: 'I listen.' }];
@@ -91,10 +93,24 @@ test('lasting directions survive forty appended messages without presenting stal
     assert.equal(usable, true);
     const payload = buildPromptPayload(state, { guidanceUsable: false, preparedUsable: usable });
     assert.match(payload, /successive seasons/);
-    assert.match(payload, /Make governing consequential/);
+    assert.doesNotMatch(payload, /Make governing consequential/);
     assert.match(payload, /not transcript facts, character knowledge, or required next events/);
     assert.doesNotMatch(payload, /is seeking district views/);
     assert.equal(state.preparedWorld.items[0].status, 'prepared');
+});
+
+test('the approach still reaches the private planner but not the writer packet or request', () => {
+    const state = ready(analysis.applyAnalysis(defaultState(), plan(), messages));
+    const before = structuredClone(state);
+    const input = JSON.parse(analysis.buildWorldPlannerPrompt(messages, state, '', {}, { incremental: true }));
+    assert.equal(input.current.preparedWorld.approach, state.preparedWorld.approach);
+    const payload = buildPromptPayload(state, { preparedUsable: true });
+    const request = [{ role: 'system', content: 'Preset unchanged.' }, { role: 'user', content: 'I listen.' }];
+    ensureGuidanceInChat(request, payload);
+    assert.ok(!JSON.stringify(request).includes(state.preparedWorld.approach));
+    assert.doesNotMatch(payload, /RP APPROACH/);
+    assert.match(payload, /Districts may develop a lasting federation/);
+    assert.deepEqual(state, before);
 });
 
 test('redirecting the RP shelves affected directions without erasing unrelated long-term material', () => {
@@ -109,7 +125,7 @@ test('redirecting the RP shelves affected directions without erasing unrelated l
     const payload = buildPromptPayload(state, { preparedUsable: true });
     assert.match(payload, /abandoned orchard/);
     assert.doesNotMatch(payload, /growers want guaranteed transport/);
-    assert.match(payload, /Develop family life/);
+    assert.doesNotMatch(payload, /Develop family life/);
     assert.doesNotMatch(payload, /Make governing consequential/);
     state = analysis.applyAnalysis(state, plan({ memory: 'The orchard restoration was completed.', context: [], prepared: { approach: state.preparedWorld.approach, overview: '', updates: [direction('family', { status: 'resolved' })], focus: [] } }), later);
     assert.deepEqual(state.preparedWorld.items.map(item => item.id), ['compact']);

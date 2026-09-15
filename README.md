@@ -2,7 +2,13 @@
 
 Tale Fairy is a standalone SillyTavern extension that acts as a **background creative Game Master**, preparing a playable middle and future while the roleplay model writes the story. It combines a persistent private notebook with selective factual world awareness—not a full world simulation, a prose generator, or a fixed event script.
 
-## What changes in 0.14.18 (testing)
+## What changes in 0.14.19 (testing)
+
+**The RP approach is private planner input, not writer context.** It remains saved and visible in the notebook, and helps Tale Fairy develop, preserve and select possibilities. Fresh writer packets omit it entirely. Old retry/swipe packets also omit their approach field locally without modifying saved snapshots, plot quotations or development records. An approach-only notebook adds no preparation block.
+
+The planner is instructed not to copy approach instructions into writer-facing developments: those fields describe possible story content, not how to narrate it. Field exclusion is deterministic; model compliance inside generated development prose still needs live evaluation. Update and reload the extension to activate the change; no rebuild or deletion of your approach is required.
+
+## What changes in 0.14.18
 
 **The preset owns narrative behavior.** Tale Fairy no longer inserts a separate system-authority message or a permanent GM/player-control contract. Its writer packet contains a short interpretation label, source excerpts, usable factual conditions and conditional developments. Generic NPC-autonomy, viewpoint, interruption, novelty and scene-fit rules are no longer added to the writer prompt.
 

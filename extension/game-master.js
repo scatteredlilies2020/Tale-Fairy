@@ -1,4 +1,4 @@
-import { formatPacingPreference, PREPARATION_CONTEXT_LABEL } from './prepared-world.js?v=0.14.18';
+import { formatPacingPreference, PREPARATION_CONTEXT_LABEL } from './prepared-world.js?v=0.14.19';
 
 // Packet semantics only. Narrative behavior belongs to the preset, not here.
 export const TALE_FAIRY_CONTEXT_GUIDE = 'TALE FAIRY CONTEXT: Story references and optional preparation, not a replacement preset. Preset and explicit user instructions govern narration. Notebook proposals are not established history, character knowledge, or required events; current story evidence takes priority over conflicting notebook claims.';
@@ -12,7 +12,7 @@ export const AGENCY_AUDIT_RULE = 'Audit needless player-direction waits/handoffs
 
 // Migrate recognized application-owned framing in old retry packets locally.
 // Saved snapshots, source excerpts and notebook prose must remain untouched.
-export function refreshGameMasterContract(payload) {
+function refreshLegacyContract(payload) {
     const source = String(payload || '');
     const refreshed = source.replace(
         /^(\s*<tale-fairy-context>\s*<living-world-guide>\s*)GAME MASTER RESPONSIBILITY:[^<\r\n]*\r?\nCAUSAL ROLE:[^<\r\n]*\r?\nPLAYER BOUNDARY:[^<\r\n]*(?=\r?\n|<\/living-world-guide>)/u,
@@ -40,6 +40,22 @@ export function refreshGameMasterContract(payload) {
                 .replace(' May emerge naturally without player engagement; outcomes remain open.', ''))
             .join(''))
         .join('');
+}
+
+// Old snapshots remain intact in storage; only their outgoing view omits the
+// private approach. Match the application-owned first field, not quoted labels
+// inside plot evidence or later development/knowledge prose.
+export function refreshGameMasterContract(payload) {
+    const source = refreshLegacyContract(payload);
+    if (!/^\s*<tale-fairy-context>\s*<living-world-guide>\s*TALE FAIRY CONTEXT:/u.test(source)) return source;
+    return source.split(/(<plot-anchor>[\s\S]*?<\/plot-anchor>)/u)
+        .map(part => part.startsWith('<plot-anchor>') ? part : part.replace(/<prepared-world>[\s\S]*?<\/prepared-world>/gu, packet => {
+            const header = /^(<prepared-world>\r?\n)CONDITIONAL PREPARATION:[^\r\n<]*(\r?\n)/u;
+            if (!header.test(packet)) return packet;
+            const updated = packet.replace(header, (_, prefix, newline) => `${prefix}${PREPARATION_CONTEXT_LABEL}${newline}`)
+                .replace(/^(<prepared-world>\r?\n[^\r\n]*\r?\n)RP APPROACH \((?:editable guidance, not new canon or player preferences|provisional story aims, not writing rules or new player preferences)\): [\s\S]*?\r?\n(?=Wider direction \(provisional, not a destination deadline\): |Possible development \(|<\/prepared-world>)/u, '$1');
+            return /^<prepared-world>\r?\n[^\r\n]*\r?\n<\/prepared-world>$/u.test(updated) ? '' : updated;
+        })).join('');
 }
 
 export function isStoryGeneration(type = '') {

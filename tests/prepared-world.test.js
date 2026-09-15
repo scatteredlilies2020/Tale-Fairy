@@ -47,7 +47,8 @@ test('the lasting approach round-trips, survives legacy deltas and can be explic
     assert.equal(normalizeState(JSON.parse(JSON.stringify({ ...defaultState(), preparedWorld: board }))).preparedWorld.approach, approach);
     assert.equal(mergePreparedWorld(board, delta()).approach, approach);
     assert.equal(mergePreparedWorld(board, { ...delta(), approach: '' }).approach, '');
-    assert.match(formatPreparedWorld(board), /RP APPROACH/);
+    assert.doesNotMatch(formatPreparedWorld(board), /RP APPROACH/);
+    assert.ok(!formatPreparedWorld(board).includes(approach));
     assert.equal(compactPreparedForPrompt(board).approach, approach);
     assert.ok(validatePrepared({ ...delta(), approach: {} }).length);
     assert.ok(validatePrepared({ ...delta(), approach: 'x'.repeat(2401) }).length);
@@ -59,6 +60,16 @@ function attach(h, board = mergePreparedWorld(null, delta()), source = h.context
     h.context.chatMetadata = saveState(h.context.chatMetadata, state);
     return { chatId: 'story', inputsKey, messageCount: source.length, fingerprint: fingerprintMessages(source) };
 }
+
+test('approach-only notebooks remain private and do not report injected preparation', () => {
+    const state = defaultState();
+    state.preparedWorld = normalizePreparedWorld({ approach: 'PRIVATE: prioritize exploratory possibilities.' });
+    const before = structuredClone(state);
+    assert.equal(formatPreparedWorld(state.preparedWorld), '');
+    assert.doesNotMatch(buildPromptPayload(state, { preparedUsable: true }), /PRIVATE:|<prepared-world>/);
+    assert.equal(guidanceSnapshot(state, { preparedUsable: true }).preparedContextIncluded, false);
+    assert.deepEqual(state, before);
+});
 
 test('preparation has a bounded native schema and rejects malformed lifecycle data', () => {
     assert.equal(PREPARED_SCHEMA.properties.updates.maxItems, 4);
@@ -182,7 +193,8 @@ test('preparation-only retry packets never revive stale facts and stay frozen', 
     const selected = h.prepare();
     assert.equal(selected.preparedUsable, true);
     assert.match(selected.payload, /<prepared-world>/);
-    assert.match(selected.payload, /OLD APPROACH/);
+    assert.doesNotMatch(selected.payload, /OLD APPROACH/);
+    assert.match(h.state().preparedWorld.approach, /OLD APPROACH/);
     const packet = h.scope.buildGenerationPacket(h.state(), h.context.chat, h.context, 'normal', false);
     assert.doesNotMatch(JSON.stringify(packet.plannerState), /STALE FACT DO NOT RESTORE/);
     const frozen = selected.payload;
@@ -275,7 +287,7 @@ test('compact preparation keeps timing beside entry and the writer receives advi
     assert.equal(compact.items[0].entry, item.entry);
     assert.equal(compact.items[0].hold, item.hold);
     const packet = formatPreparedWorld(board);
-    assert.match(packet, /timing notes are provisional notebook material, not preset overrides/);
+    assert.match(packet, /Timing notes are provisional notebook material, not preset overrides/);
     assert.doesNotMatch(packet, /conflicting inferred hold|silence alone do not suspend NPC activity/);
     assert.match(packet, /Timing consideration \(only if supported by the actual scene\):/);
     assert.doesNotMatch(packet, /^Keep dormant:/m);

@@ -27,10 +27,12 @@ test('old retry framing is migrated without rewriting story quotations or notebo
         const updated = refreshGameMasterContract(source);
         assert.ok(updated.includes(TALE_FAIRY_CONTEXT_GUIDE));
         assert.ok(updated.includes(plot), 'source excerpts are byte-for-byte unchanged');
-        assert.ok(updated.includes(notebook), 'saved proposal prose is byte-for-byte unchanged');
+        const developments = notebook.slice(notebook.indexOf(newline) + newline.length);
+        assert.ok(updated.includes(developments), 'development prose is byte-for-byte unchanged');
+        assert.doesNotMatch(updated.replace(plot, ''), /RP APPROACH|Keep this saved prose/);
         assert.ok(updated.includes(PREPARATION_CONTEXT_LABEL));
         assert.match(updated, /Mira: promised to wait until dawn\. Known to: Mira/);
-        const framing = updated.replace(plot, '').replace(notebook, '');
+        const framing = updated.replace(plot, '').replace(developments, '');
         assert.doesNotMatch(framing, /GAME MASTER RESPONSIBILITY|PLAYER BOUNDARY|DEVELOPMENT:|SCENE FIT|Old universal|suspend NPC activity|express through behavior/);
         if (mode === 'Adaptive') assert.doesNotMatch(framing, /PACING PREFERENCE/);
         else assert.ok(framing.includes(formatPacingPreference(mode.toLowerCase())));
@@ -51,6 +53,37 @@ test('fresh packets send only explicitly saved pacing preferences without mutati
         assert.doesNotMatch(packet, /tale-fairy-authority|GAME MASTER RESPONSIBILITY|PLAYER BOUNDARY|NPCs decide|SCENE FIT|DEVELOPMENT:/);
         assert.deepEqual(state, before);
     }
+});
+
+test('current cached packets omit multiline private approaches without changing archives or quoted labels', () => {
+    for (const newline of ['\n', '\r\n']) for (const label of [
+        'editable guidance, not new canon or player preferences',
+        'provisional story aims, not writing rules or new player preferences',
+    ]) for (const rest of ['',
+        'Wider direction (provisional, not a destination deadline): Explore neighboring towns.',
+        `Possible development (invented premise; active): A letter may arrive.\nPlayable middle: A courier seeks its owner.\nRP APPROACH (${label}): A quoted heading in a letter.\nKnowledge boundary: Only the courier knows.`,
+    ]) {
+        const approach = `RP APPROACH (${label}): PRIVATE FIRST LINE\nPRIVATE SECOND LINE\n\nPRIVATE LAST LINE`;
+        const plot = `<plot-anchor>\nQuoted text:\n${approach}\n</plot-anchor>`.replaceAll('\n', newline);
+        const record = rest.replaceAll('\n', newline);
+        const snapshot = { payload: ['<tale-fairy-context>', '<living-world-guide>', TALE_FAIRY_CONTEXT_GUIDE, plot,
+            '<prepared-world>', PREPARATION_CONTEXT_LABEL, approach.replaceAll('\n', newline), record,
+            '</prepared-world>', '</living-world-guide>', '</tale-fairy-context>'].filter(Boolean).join(newline) };
+        const before = structuredClone(snapshot);
+        const updated = buildPromptPayload(defaultState(), { cachedPayload: snapshot.payload });
+        assert.ok(updated.includes(plot));
+        assert.ok(updated.includes(record));
+        assert.doesNotMatch(updated.replace(plot, ''), /PRIVATE FIRST|PRIVATE SECOND|PRIVATE LAST/);
+        if (!rest) assert.doesNotMatch(updated, /<prepared-world>/);
+        assert.equal(refreshGameMasterContract(updated), updated);
+        assert.deepEqual(snapshot, before);
+        const chat = [{ role: 'system', content: 'Preset stays.' }, { role: 'user', content: 'Continue.' }];
+        ensureGuidanceInChat(chat, updated);
+        assert.doesNotMatch(JSON.stringify(chat).replace(JSON.stringify(plot).slice(1, -1), ''), /PRIVATE FIRST|PRIVATE SECOND|PRIVATE LAST/);
+        assert.equal(ensureGuidanceInText('', updated).includes(updated), true);
+    }
+    const unknown = '<prepared-world>\nRP APPROACH (unknown): Leave unrelated text alone.\n</prepared-world>';
+    assert.equal(refreshGameMasterContract(unknown), unknown);
 });
 
 test('context respects preset messages and configured placement without adding authority', () => {

@@ -178,13 +178,12 @@ export function compactPreparedForPrompt(board = {}) {
 }
 
 const clean = value => String(value).replace(/[<>]/gu, '').trim();
-export const PREPARATION_CONTEXT_LABEL = 'CONDITIONAL PREPARATION: Optional possibilities, not transcript facts, character knowledge, or required next events. Approach and timing notes are provisional notebook material, not preset overrides or additional user instructions.';
+export const PREPARATION_CONTEXT_LABEL = 'CONDITIONAL PREPARATION: Optional possibilities, not transcript facts, character knowledge, or required next events. Timing notes are provisional notebook material, not preset overrides or additional user instructions.';
 export function formatPreparedWorld(value) {
     const board = normalizePreparedWorld(value);
     const selected = board.focus.map(id => board.items.find(item => item.id === id)).filter(item => item && item.status !== 'dormant');
-    if (!board.approach && !board.overview && !selected.length) return '';
+    if (!board.overview && !selected.length) return '';
     const lines = ['<prepared-world>',
-        board.approach ? `RP APPROACH (provisional story aims, not writing rules or new player preferences): ${clean(board.approach)}` : '',
         board.overview ? `Wider direction (provisional, not a destination deadline): ${clean(board.overview)}` : '',
         ...selected.map(item => [
             `Possible development (${item.origin} premise; ${item.status}): ${clean(item.premise)}`,
