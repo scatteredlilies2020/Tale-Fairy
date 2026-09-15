@@ -1,4 +1,4 @@
-import { GAME_MASTER_CONTRACT } from './game-master.js?v=0.14.15';
+import { GAME_MASTER_CONTRACT } from './game-master.js?v=0.14.16';
 
 // These are causal units rather than genre labels. Keeping settlements, places,
 // resources, and situations first-class avoids squeezing a town simulation into

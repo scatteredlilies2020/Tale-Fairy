@@ -209,7 +209,8 @@ test('a wide pivot can update five records atomically without discarding retirem
     assert.equal(validateWorldPlan(pivot).valid, true);
     assert.deepEqual(analysis.applyAnalysis(state, pivot, messages).preparedWorld.items.map(item => item.id), ['home']);
     pivot.prepared.updates = Array.from({ length: 13 }, (_, i) => direction(String(i)));
-    assert.equal(validateWorldPlan(pivot).valid, false);
+    assert.equal(validateWorldPlan(pivot).valid, true);
+    assert.equal(analysis.applyAnalysis(state, pivot, messages).preparedWorld.items.length, 17);
 });
 
 
@@ -240,7 +241,6 @@ test('blank removals still remove records and other malformed updates remain rej
         [direction('bad', { premise: '', middle: {}, status: 'prepared' })],
         [direction('bad', { premise: '', middle: '', status: 'unknown' })],
         [direction('same'), direction('same', { middle: '' })],
-        Array.from({ length: 13 }, (_, i) => direction(`item-${i}`, { middle: '' })),
     ]) assert.throws(() => parseRuntime(plan({ prepared: { approach: '', updates, focus: [] } })));
 });
 
@@ -400,7 +400,6 @@ const rejectedChanges = {
     'missing ID': { updates: [{ premise: 'A proposal.', middle: 'A complete process.', status: 'prepared' }] },
     'object prose': { updates: [direction('new', { middle: { plan: 'text' } })] },
     'mixed prose list': { updates: [direction('new', { middle: ['A process.', { claim: 'unsafe' }] })] },
-    'oversized complete prose': { updates: [direction('new', { middle: 'x'.repeat(1761) })] },
     'invalid lifecycle': { updates: [direction('new', { status: 'canon' })] },
     'conflicting replacements': { updates: [direction('compact'), direction('compact', { middle: 'A contradictory replacement.' })] },
     'conflicting operation kinds': { updates: [direction('compact')], status_changes: [{ id: 'compact', status: 'retired' }] },
@@ -594,11 +593,91 @@ test('bad or conflicting rolling summaries reject atomically without losing save
     const original = analysis.applyAnalysis(defaultState(), parseRuntime({ contract_version: 14,
         prepared: { ...plan().prepared, summary: 'Preserve this earlier conditional direction.' } }), messages);
     const before = structuredClone(original);
-    for (const summary of [{ secret: 'invalid object' }, 'x'.repeat(3601), ['valid prose', 42]]) {
+    for (const summary of [{ secret: 'invalid object' }, ['valid prose', 42]]) {
         assert.throws(() => analysis.applyAnalysis(original, parseRuntime({ contract_version: 14,
             prepared: { summary, updates: [direction('new')], focus: ['new'] } }), messages));
         assert.deepEqual(original, before);
     }
     assert.throws(() => parseRuntime({ contract_version: 14, summary: 'Conflicting root summary.',
         prepared: { summary: 'Nested summary.', updates: [], focus: [] } }), /Conflicting/);
+});
+
+
+test('oversized planner prose preserves saved fields and valid neighbors across live and detached parsing', () => {
+    const original = analysis.applyAnalysis(defaultState(), parseRuntime({ contract_version: 14,
+        prepared: { ...plan().prepared, summary: 'Saved summary remains intact.' } }), messages);
+    const before = structuredClone(original);
+    const wire = { contract_version: 14, prepared: {
+        summary: 's'.repeat(3601), approach: 'a'.repeat(2401),
+        updates: [direction('compact', { middle: 'm'.repeat(1761) }), direction('bad-new', { knowledge: 'k'.repeat(721) }), direction('good')],
+        focus: ['compact', 'bad-new', 'good'],
+    } };
+    for (const content of [JSON.stringify(wire), { choices: [{ message: { content: JSON.stringify(wire) } }] }]) {
+        const parsed = parseRuntime(content);
+        assert.deepEqual(new Set(parsed._taleFairyRecovery.omitted), new Set(['prepared.summary', 'prepared.approach', 'prepared.updates:compact', 'prepared.updates:bad-new']));
+        const next = analysis.applyAnalysis(original, parsed, messages);
+        assert.equal(next.preparedWorld.summary, before.preparedWorld.summary);
+        assert.equal(next.preparedWorld.approach, before.preparedWorld.approach);
+        assert.deepEqual(next.preparedWorld.items[0], before.preparedWorld.items[0]);
+        assert.deepEqual(next.preparedWorld.items.map(item => item.id), ['compact', 'good']);
+        assert.deepEqual(next.preparedWorld.focus, ['good']);
+    }
+    assert.deepEqual(original, before);
+    // Oversized prose must not hide a contradictory status change for its ID.
+    wire.prepared.status_changes = [{ id: 'compact', status: 'retired' }];
+    assert.throws(() => parseRuntime(wire));
+});
+
+test('large complete update and status batches stay atomic without a writing-target capacity error', () => {
+    const wire = { contract_version: 14, prepared: { updates: Array.from({ length: 30 }, (_, i) => direction(`record-${i}`)), focus: ['record-29'] } };
+    const initial = analysis.applyAnalysis(defaultState(), parseRuntime(wire), messages);
+    assert.equal(initial.preparedWorld.items.length, 30);
+    const next = analysis.applyAnalysis(initial, parseRuntime({ contract_version: 14, prepared: {
+        updates: [direction('new')], status_changes: initial.preparedWorld.items.map(item => ({ id: item.id, status: 'retired' })), focus: ['new'],
+    } }), messages);
+    assert.deepEqual(next.preparedWorld.items.map(item => item.id), ['new']);
+    wire.prepared.updates.push(direction('record-29', { premise: 'Conflicting replacement.' }));
+    assert.throws(() => parseRuntime(wire));
+    assert.equal(initial.preparedWorld.items.length, 30);
+});
+
+test('all author notes and long instructions survive saves, rebuilds and the planner prompt', () => {
+    const notes = Array.from({ length: 30 }, (_, i) => ({ kind: 'forbid', text: `Exact user rule ${i}: leave my character decisions to me.`, at: i }));
+    notes[0].text = 'Preserve every qualification. '.repeat(80) + 'NEVER REMOVE THIS ENDING.';
+    const original = defaultState(); original.userNotes = notes;
+    const saved = normalizeState(JSON.parse(JSON.stringify(original)));
+    assert.deepEqual(saved.userNotes, notes);
+    const instruction = 'Preserve this submitted note. '.repeat(70) + 'AND ITS FINAL RESTRICTION.';
+    const input = JSON.parse(analysis.buildWorldPlannerPrompt(messages, saved, instruction, {}, { incremental: true }));
+    assert.deepEqual(input.constraints.notes, notes);
+    assert.equal(input.user_instruction, instruction);
+    const applied = analysis.applyAnalysis(saved, parseRuntime(plan()), messages);
+    assert.deepEqual(applied.userNotes, notes);
+});
+
+test('tight prompts omit whole optional planner fields while preserving exact notes and saved baselines', async () => {
+    const state = analysis.applyAnalysis(defaultState(), parseRuntime(plan()), messages);
+    state.preparedWorld.summary = 'A wider possible direction. '.repeat(130);
+    state.preparedWorld.approach = 'Develop the wider setting. '.repeat(90);
+    state.userNotes = [{ kind: 'forbid', text: 'Keep the exact instructions and their final qualification. '.repeat(200).trim(), at: 1 }];
+    const before = structuredClone(state);
+    const fixedEnvelope = plannerBudgetEnvelope(WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA, PLANNER_OUTPUT_MODE.PROMPT_ONLY);
+    const prompt = await fitPromptToBudget({ fixedEnvelope, tokenBudget: 6000,
+        buildPrompt: effectivePromptTokens => analysis.buildWorldPlannerPrompt(messages, state, '', {}, { incremental: true, effectivePromptTokens }) });
+    const input = JSON.parse(prompt);
+    assert.deepEqual(input.constraints.notes, state.userNotes);
+    assert.ok(input.current.preparedWorld.omitted_fields?.length);
+    for (const key of input.current.preparedWorld.omitted_fields) assert.equal(input.current.preparedWorld[key], '');
+    assert.deepEqual(state, before);
+});
+
+
+test('an impossible prompt budget fails explicitly instead of clipping authoritative notes', async () => {
+    const state = defaultState();
+    state.userNotes = [{ kind: 'forbid', text: 'Keep every exact rule and exception. '.repeat(900).trim(), at: 1 }];
+    const before = structuredClone(state);
+    const fixedEnvelope = plannerBudgetEnvelope(WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA, PLANNER_OUTPUT_MODE.PROMPT_ONLY);
+    await assert.rejects(fitPromptToBudget({ fixedEnvelope, tokenBudget: 6000,
+        buildPrompt: effectivePromptTokens => analysis.buildWorldPlannerPrompt(messages, state, '', {}, { incremental: true, effectivePromptTokens }) }), /could not be fitted/);
+    assert.deepEqual(state, before);
 });

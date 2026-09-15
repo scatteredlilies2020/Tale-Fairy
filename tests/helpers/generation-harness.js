@@ -58,7 +58,7 @@ export function generationHarness(messages, state = stateApi.defaultState(), met
         DOMException, console,
     };
     vm.createContext(scope);
-    for (const name of ['preparedReady', 'runningSourceHasOnlyAppends', 'rebuildState']) {
+    for (const name of ['preparedReady', 'runningSourceHasOnlyAppends', 'rebuildState', 'normalizeUserNote', 'persistClarifiedNote']) {
         const match = source.match(new RegExp(`(?:export )?(?:async )?function ${name}\\([^]*?^}`, 'm'));
         assert.ok(match, name);
         vm.runInContext(match[0].replace(/^export /u, ''), scope);

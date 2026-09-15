@@ -339,3 +339,16 @@ test('rolling planner summary follows source guards, delayed saves and explicit 
     h.context.chat[0].mes = 'A replacement story branch.';
     assert.equal(preparedWorldUsable(h.state().preparedWorld, { ...proof, messages: h.context.chat, fingerprint: fingerprintMessages }), false);
 });
+
+
+test('saving another author note preserves the first note, full prose and rebuild instructions', async () => {
+    const state = defaultState();
+    state.userNotes = Array.from({ length: 20 }, (_, i) => ({ kind: 'forbid', text: `Keep instruction ${i}.`, at: i }));
+    const h = generationHarness(messages(), state);
+    const note = 'A detailed exact instruction. '.repeat(100) + 'Keep this final exception.';
+    await h.scope.persistClarifiedNote(note, 'forbid');
+    assert.equal(h.state().userNotes.length, 21);
+    assert.deepEqual(structuredClone(h.state().userNotes.slice(0, 20)), state.userNotes);
+    assert.equal(h.state().userNotes.at(-1).text, note);
+    assert.deepEqual(structuredClone(h.scope.rebuildState(h.state()).userNotes), structuredClone(h.state().userNotes));
+});

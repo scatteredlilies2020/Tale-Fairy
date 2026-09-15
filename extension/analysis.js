@@ -1,17 +1,17 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.14.15';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.14.16';
 import { leadingGeneratedStatusSummary, sceneStatus } from './transcript-status.js?v=0.14.5';
 import { plotExcerpt } from './generation-context.js?v=0.14.5';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
-import { compactSummarySources } from './summary-context.js?v=0.14.15';
+import { compactSummarySources } from './summary-context.js?v=0.14.16';
 import { relevantExcerpt } from './evidence-selection.js?v=0.13.9';
 import { formatDriftRequest, mergeOffscreenWorld, OFFSCREEN_KINDS } from './offscreen-world.js?v=0.13.9';
-import { CAUSAL_KINDS, normalizeCausalContext } from './causal-context.js?v=0.14.15';
+import { CAUSAL_KINDS, normalizeCausalContext } from './causal-context.js?v=0.14.16';
 import { mergeSituationUpdates, retireManifestedSituations } from './situations.js?v=0.13.9';
-import { PLANNER_AGENCY_RULE, ACTOR_AGENCY_RULE, AGENCY_AUDIT_RULE } from './game-master.js?v=0.14.15';
+import { PLANNER_AGENCY_RULE, ACTOR_AGENCY_RULE, AGENCY_AUDIT_RULE } from './game-master.js?v=0.14.16';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { preparedWorldForPrompt, compactPreparedForPrompt, PREPARED_SCHEMA, PREPARED_RULE, validatePrepared, mergePreparedWorld } from './prepared-world.js?v=0.14.15';
-import { normalizeWorldPlan, preparedRecordForPlanner, validateWorldPlan, mergeWorldPlan } from './world-planner.js?v=0.14.15';
-export { WORLD_PLANNER_SCHEMA, WORLD_PLANNER_SYSTEM } from './world-planner.js?v=0.14.15';
+import { preparedWorldForPrompt, compactPreparedForPrompt, PREPARED_SCHEMA, PREPARED_RULE, validatePrepared, mergePreparedWorld } from './prepared-world.js?v=0.14.16';
+import { normalizeWorldPlan, preparedRecordForPlanner, validateWorldPlan, mergeWorldPlan } from './world-planner.js?v=0.14.16';
+export { WORLD_PLANNER_SCHEMA, WORLD_PLANNER_SYSTEM } from './world-planner.js?v=0.14.16';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
@@ -1252,7 +1252,7 @@ function compactPromptStateForPriority(current = {}) {
             deviation: { level: horizons.deviation?.level, reason: compactText(horizons.deviation?.reason, 140) },
         },
         canonConstraints: (current.canonConstraints || []).slice(-6).map(item => compactText(item, 240)),
-        userNotes: (current.userNotes || []).slice(-2).map(item => ({ kind: item.kind, text: compactText(item.text, 500) })),
+        userNotes: current.userNotes || [],
         contextLedger: compactText(current.contextLedger, 700),
         storyFrame: current.storyFrame,
         narrativeEvents: (current.narrativeEvents || []).slice(-3).map(item => ({ id: compactText(item.id, 60), summary: compactText(item.summary, 120), scope: item.scope, epistemicStatus: item.epistemicStatus, disclosure: item.disclosure, status: item.status, cause: compactText(item.cause, 100), consequences: (item.consequences || []).slice(0, 1).map(value => compactText(value, 100)) })),
@@ -1295,7 +1295,7 @@ function compactPromptStateForBudget(current = {}) {
         hiddenMotives: current.hiddenMotives,
         offscreenWorld: current.offscreenWorld,
         canonConstraints: (current.canonConstraints || []).slice(-4),
-        userNotes: (current.userNotes || []).slice(-2),
+        userNotes: current.userNotes || [],
         contextLedger: current.contextLedger,
         storyFrame: current.storyFrame,
     };
@@ -1998,7 +1998,7 @@ export function buildWorldPlannerPrompt(messages, state, note = '', bootstrap = 
         rp_reference: compactOptionalObject(bootstrap, 1800),
         player_controlled: playerCharacterName(messages) || 'The user controls their own character or side of the simulation.',
         constraints: { notes: s.userNotes, pacing: s.pacing.mode, canon: s.canonConstraints },
-        ...(note ? { user_instruction: compactText(note, 1600) } : {}),
+        ...(note ? { user_instruction: note } : {}),
         notebook_view: { stored: s.plannerContract === 14 ? s.preparedWorld.items.length : 0, shown: s.plannerContract === 14 ? board.items.length : 0 },
         current: {
             memory: s.plannerMemory || s.contextLedger,
@@ -2051,9 +2051,20 @@ export function buildWorldPlannerPrompt(messages, state, note = '', bootstrap = 
         payload.story_evidence.open_threads = compactDormantHooks(storyEvidence.openThreads, 3, 40);
         payload.summary_sources = payload.summary_sources.map(source => ({ ...source, text: relevantExcerpt(source.text, 80, evidenceQuery) }));
     }
-    // Keep supplied memory intact as reference, without asking to rewrite it.
-    // If mandatory constraints + memory + newest evidence cannot fit, the
-    // outer budget guard fails safely rather than silently erasing continuity.
+    // A large retained notebook must not prevent reading the user's exact
+    // instructions. Shed whole optional planner fields, never sentence tails.
+    // Their contents stay in storage and omission is explicit to the planner.
+    for (const key of ['overview', 'summary', 'approach']) {
+        if (size() <= budget) break;
+        if (!payload.current.preparedWorld[key]) continue;
+        payload.current.preparedWorld[key] = '';
+        (payload.current.preparedWorld.omitted_fields ||= []).push(key);
+    }
+    if (size() > budget && payload.current.preparedWorld.retained_index) {
+        payload.current.preparedWorld.retained_index = board.items.map(item => [item.id, item.status]);
+    }
+    // If exact instructions + supplied memory + newest evidence cannot fit,
+    // the guard reports the required budget; never silently discard a rule.
     const { current, historical_evidence, messages: observations, ...reference } = payload;
     return JSON.stringify({ ...reference, current, historical_evidence, messages: observations });
 }

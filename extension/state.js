@@ -1,14 +1,14 @@
 import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.13.9';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
-import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js?v=0.14.15';
-import { defaultCausalContext, defaultSceneProfile, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, normalizeSceneProfile } from './causal-context.js?v=0.14.15';
+import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js?v=0.14.16';
+import { defaultCausalContext, defaultSceneProfile, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, normalizeSceneProfile } from './causal-context.js?v=0.14.16';
 import { normalizeDirectorSample } from './director-sampling.js?v=0.13.9';
 import { defaultOffscreenWorld, normalizeOffscreenWorld, offscreenWorldForPrompt } from './offscreen-world.js?v=0.13.9';
 import { defaultSituationBoard, normalizeSituationBoard } from './situations.js?v=0.13.9';
-import { GAME_MASTER_CONTRACT, isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.15';
+import { GAME_MASTER_CONTRACT, isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.16';
 import { relevantActors } from './evidence-selection.js?v=0.13.9';
-import { defaultPreparedWorld, normalizePreparedWorld, preparedWorldForPrompt, formatPreparedWorld, formatPacingPreference } from './prepared-world.js?v=0.14.15';
+import { defaultPreparedWorld, normalizePreparedWorld, preparedWorldForPrompt, formatPreparedWorld, formatPacingPreference } from './prepared-world.js?v=0.14.16';
 
 export const STATE_KEY = 'livingWorldGuide';
 export const STATE_VERSION = 59;
@@ -367,7 +367,7 @@ function normalizeNote(value = {}) {
     const kind = ['suggest', 'correct', 'establish', 'forbid'].includes(rawKind) ? rawKind : 'suggest';
     return {
         kind,
-        text: rawText.replace(/^\[(?:suggest|correct|establish|forbid)\]\s*/i, '').slice(0, 1000),
+        text: rawText.replace(/^\[(?:suggest|correct|establish|forbid)\]\s*/i, ''),
         at: Math.max(0, Number(value.at) || 0),
     };
 }
@@ -689,7 +689,7 @@ export function normalizeState(input = {}) {
         // v18 already has one, so retain it until the upgrade pass refreshes it.
         canonConstraints: unsafePlannerUpgrade ? [] : cap(value.canonConstraints).map(item => text(item).slice(0, 500)).filter(Boolean),
         canonBootstrapPending: value.canonBootstrapPending === true || plannerUpgradePending,
-        userNotes: cap(value.userNotes).map(normalizeNote).filter(note => note.text),
+        userNotes: (Array.isArray(value.userNotes) ? value.userNotes : []).map(normalizeNote).filter(note => note.text),
         guidance: beatContractUpgrade || recoveryUpgrade ? '' : text(value.guidance).slice(0, 700),
         lastInject: causalContextUpgrade || recoveryUpgrade ? false : value.lastInject === true,
         lastReason: text(value.lastReason).slice(0, 500),
@@ -785,7 +785,7 @@ export function stateForPrompt(state, { query = '' } = {}) {
             constraints: item.constraints.slice(0, 90), agenda: item.agenda.slice(0, 110),
         })),
         canonConstraints: s.canonConstraints.slice(-8).map(item => item.slice(0, 360)),
-        userNotes: s.userNotes.slice(-4),
+        userNotes: s.userNotes,
         lastReason: s.lastReason.slice(0, 180),
         contextLedger: s.contextLedger.slice(0, 1400),
         storyFrame: { frame: s.storyFrame.frame, confidence: s.storyFrame.confidence, basis: s.storyFrame.basis.slice(0, 180) },

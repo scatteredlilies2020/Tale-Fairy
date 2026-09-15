@@ -1,6 +1,6 @@
 // Model-facing replacement. Legacy boards remain readable, but are no longer
 // mandatory work for every generated update. Transport/lifecycle stay separate.
-import { validatePrepared, normalizePreparedWorld, mergePreparedWorld, preparedFieldLimit, PREPARED_APPROACH_LIMIT, PREPARED_SUMMARY_LIMIT } from './prepared-world.js?v=0.14.15';
+import { validatePrepared, normalizePreparedWorld, mergePreparedWorld, preparedFieldLimit, PREPARED_APPROACH_LIMIT, PREPARED_SUMMARY_LIMIT } from './prepared-world.js?v=0.14.16';
 
 const text = maxLength => ({ type: 'string', maxLength });
 const nonblank = maxLength => ({ type: 'string', minLength: 1, maxLength, pattern: '\\S' });
@@ -42,7 +42,7 @@ export const WORLD_PLANNER_SYSTEM = `You are Tale Fairy, preparing durable GM gu
 
 approach: Write a few practical instructions for making THIS RP worthwhile, using rp_reference and explicit user preferences. Preserve their full range of activities and scale. This is not a literary blurb about the latest scene. A local problem is not the premise of the entire RP. Do not add prohibitions, rank activities as lesser, or demand recurring themes unless the user/reference actually asks for that. Where wider intent is unspecified, leave it open. The approach should still work after this location and problem are left behind. On redirection replace incompatible clauses. Omit when unchanged; otherwise return the full replacement. Empty text deliberately clears it.
 
-summary: Maintain a rolling private planner summary from the previous summary, supplied records, accepted evidence and this response’s changes. Preserve wider possibilities, unresolved dependencies and knowledge boundaries even when their detailed records are absent. Correct or remove superseded directions; never turn a proposal into history. Create when absent, replace completely when changed, omit when unchanged. Summarize only supplied material; omitted records remain stored.
+summary: Maintain a rolling private planner summary from the previous summary, supplied records, accepted evidence and this response’s changes. Preserve wider possibilities, unresolved dependencies and knowledge boundaries even when their detailed records are absent. Correct or remove superseded directions; never turn a proposal into history. Create when absent, replace completely when changed, omit when unchanged. Summarize only supplied material; omitted records remain stored. Input omitted_fields marks unavailable saved prose: omit those fields from output unless explicitly replacing them; never clear them because they are absent.
 
 updates: Prepare a few distinct possibilities for the middle and longer term, not next-reply choreography. One local problem normally needs one record, not several disguised as different directions. When the RP has a wider canvas, include an independent possibility beyond that problem. Invent fitting people, places, organizations, discoveries, opportunities or opposition with their own motives; no fixed genre menu or required interruption. premise states the possibility; middle supplies processes and several playable developments; future gives alternative consequences beyond them. future and knowledge are optional: include meaningful continuations or knowledge boundaries when useful; otherwise omit the field. Never output empty strings in an update. Do not prescribe introductions or replay questions. NPCs and systems can act without another player command; the user may refuse, linger or redirect.
 
@@ -131,17 +131,31 @@ export function normalizeWorldPlan(value) {
     else prepared.summary = prose(source.summary);
     if (source.approach == null) delete prepared.approach;
     else prepared.approach = prose(source.approach);
+    const omittedFields = [];
+    for (const [key, limit] of [['summary', PREPARED_SUMMARY_LIMIT], ['approach', PREPARED_APPROACH_LIMIT]]) {
+        if (typeof prepared[key] === 'string' && prepared[key].length > limit) {
+            delete prepared[key]; // Preserve the saved baseline, never clip its meaning.
+            omittedFields.push(`prepared.${key}`);
+        }
+    }
     // Missing/null core prose is the same incomplete form as blank prose.
     // Text lists preserve their complete contents; objects stay invalid.
     // Never borrow old prose to complete a replacement.
     // An incomplete live update is not a replacement for its saved record. Omit
     // only this specific, recoverable defect; keep strict validation for bad
-    // types, identities, duplicate IDs, oversized output and other errors.
+    // types, identities, duplicate IDs and other substantive errors.
     const uniqueIds = new Set(prepared.updates.map(item => item.id));
-    const omitted = prepared.updates.length <= 12 && uniqueIds.size === prepared.updates.length
+    const omitted = uniqueIds.size === prepared.updates.length
         ? prepared.updates.filter(item => {
+            if (Array.isArray(prepared.status_changes) && prepared.status_changes.some(change => change?.id === item.id)) return false;
             const errors = validatePrepared({ overview: '', updates: [item], focus: [] });
-            return errors.length === 1 && errors[0] === 'live prepared records need a premise and playable developments';
+            if (errors.length === 1 && errors[0] === 'live prepared records need a premise and playable developments') return true;
+            // A whole overlong record can be skipped without rejecting valid
+            // neighbors. Invalid types, IDs and lifecycle data still fail.
+            const oversized = ['premise', 'middle', 'future', 'knowledge'].filter(key =>
+                typeof item[key] === 'string' && item[key].length > preparedFieldLimit(key));
+            return oversized.length > 0 && errors.length === oversized.length
+                && errors.every(error => oversized.some(key => error === `prepared.${key} must be text up to ${preparedFieldLimit(key)} characters`));
         }).map(item => item.id) : [];
     if (omitted.length) {
         const omittedIds = new Set(omitted);
@@ -149,8 +163,12 @@ export function normalizeWorldPlan(value) {
         // Incomplete new records cannot be focused. Existing omitted records
         // remain stored, but this response supplies no complete focused update.
         if (Array.isArray(prepared.focus)) prepared.focus = prepared.focus.filter(id => !omittedIds.has(id));
-        normalized._taleFairyRecovery = { omitted: omitted.map(id => `prepared.updates:${id}`) };
+
     }
+    if (omitted.length || omittedFields.length) normalized._taleFairyRecovery = {
+        ...normalized._taleFairyRecovery,
+        omitted: [...new Set([...(normalized._taleFairyRecovery?.omitted || []), ...omittedFields, ...omitted.map(id => `prepared.updates:${id}`)])],
+    };
     return { ...normalized, prepared };
 }
 

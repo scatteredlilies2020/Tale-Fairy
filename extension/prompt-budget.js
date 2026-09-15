@@ -1,5 +1,5 @@
 import { estimateTokenCount } from './token-budget.js?v=0.13.9';
-import { summarySourceAudit } from './summary-context.js?v=0.14.15';
+import { summarySourceAudit } from './summary-context.js?v=0.14.16';
 
 export function plannerEvidenceAudit(prompt, candidates, { fixedEnvelope = '', tokenBudget = 0, tier = '' } = {}) {
     const payload = JSON.parse(prompt);
@@ -38,5 +38,5 @@ export async function fitPromptToBudget({ fixedEnvelope, tokenBudget, buildPromp
         if (smaller >= available) break;
         available = smaller;
     }
-    throw new Error(`Planner context is ${total} tokens and could not be fitted within the ${tokenBudget}-token limit.`);
+    throw new Error(`Planner context is ${total} tokens and could not be fitted within the ${tokenBudget}-token limit. Increase the planner input budget or explicitly revise the saved instructions; no saved notes were removed.`);
 }

@@ -3,7 +3,7 @@ import { estimateTokenCount } from './token-budget.js?v=0.11.96';
 
 // Creative preparation is not historical memory. Never promote a proposal to
 // fact merely because it was saved, injected, or left unobserved for many turns.
-// Bound each response and planner view, never the saved notebook.
+// Writing target and planner-view size, never a saved-notebook capacity.
 export const PREPARED_LIMIT = 12;
 const limits = { id: 80, premise: 320, engine: 240, middle: 440, future: 260,
     entry: 240, hold: 180, invalidates: 220, intervention: 220, knowledge: 180 };
@@ -45,7 +45,7 @@ export function validatePrepared(value) {
     if (value.summary !== undefined && (typeof value.summary !== 'string' || value.summary.length > PREPARED_SUMMARY_LIMIT)) errors.push(`prepared.summary must be text up to ${PREPARED_SUMMARY_LIMIT} characters`);
     // Four is the routine writing target, not the notebook's capacity. A pivot
     // can legitimately retire/dormant several old directions and add a new one.
-    if (!Array.isArray(value.updates) || value.updates.length > PREPARED_LIMIT) errors.push(`prepared.updates must contain at most ${PREPARED_LIMIT} records`);
+    if (!Array.isArray(value.updates)) errors.push('prepared.updates must be an array');
     const ids = new Set();
     for (const item of Array.isArray(value.updates) ? value.updates : []) {
         if (!item || typeof item !== 'object') { errors.push('prepared record must be an object'); continue; }
@@ -59,7 +59,7 @@ export function validatePrepared(value) {
         if (!['retired', 'resolved'].includes(item.status) && ['premise', 'middle'].some(key => typeof item[key] !== 'string' || !item[key].trim())) errors.push('live prepared records need a premise and playable developments');
     }
     if (value.status_changes !== undefined) {
-        if (!Array.isArray(value.status_changes) || value.status_changes.length > PREPARED_LIMIT) errors.push('prepared.status_changes must contain at most twelve records');
+        if (!Array.isArray(value.status_changes)) errors.push('prepared.status_changes must be an array');
         const changedIds = new Set();
         for (const change of Array.isArray(value.status_changes) ? value.status_changes : []) {
             if (!change || typeof change !== 'object' || Array.isArray(change)

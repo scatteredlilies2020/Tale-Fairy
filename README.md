@@ -2,6 +2,10 @@
 
 Tale Fairy is a standalone SillyTavern extension that acts as a **background creative Game Master**, preparing a playable middle and future while the roleplay model writes the story. It combines a persistent private notebook with selective factual world awareness—not a full world simulation, a prose generator, or a fixed event script.
 
+## What changes in 0.14.16
+
+Author notes retain all saved entries and complete text, including through reloads and rebuilds. Oversized optional summary/approach fields and oversized individual developments are omitted with a recovery notice while complete neighboring updates survive; their previous saved versions remain intact. Malformed data and conflicting operations still fail atomically. The 12-operation schema limit is a writing target; complete larger batches are accepted without deleting other records. Tight prompts shed whole optional planner fields before failing, mark those omissions explicitly, and preserve exact user notes. If the protected input itself exceeds the configured budget, planning reports that limit without deleting instructions or exceeding the budget. These changes do not restore text already discarded by older versions.
+
 ## What changes in 0.14.13
 
 First-request prompts now explain field purpose, operation routing, nesting and focus uniqueness at the response boundary. Unchanged approach text can be omitted. Requested prose limits use the same existing storage caps as validation, with concise writing targets stated separately. Complete notebook fields accidentally returned at the root are retained rather than silently ignored; conflicting edits still fail before saving. The priority is keeping usable generated content without extra model requests.
