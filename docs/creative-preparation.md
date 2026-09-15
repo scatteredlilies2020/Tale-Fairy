@@ -1,4 +1,4 @@
-# Creative preparation contract — 0.14.10
+# Creative preparation contract — 0.14.11
 
 ## Purpose
 
@@ -75,3 +75,5 @@ Continuity Memory and generic summaries remain optional evidence. A local source
 ## Verification boundary
 
 Offline tests cover both schemas and application paths, lifecycle, migration, prompt budgets, append/edit compatibility, late completion, source isolation, frozen in-flight selections and revised pre-reply packets, single-generation failure behavior, pacing persistence and policy separation. The live creative/agency scenarios are in [story-evaluation.md](story-evaluation.md). Passing structural tests does not prove a model produces varied long-term material or that a mobile host renders the controls correctly.
+
+When input budgets require compaction, `items` contains only complete retained records. `retained_index` contains lookup tuples `[id, status, premise label]` (or `[id, status]` at tighter budgets), never update-shaped partial objects. These references preserve access to retained IDs for focus/status changes without suggesting incomplete replacements. Missing/null premise or middle uses the same isolated omission recovery as blank core text; stored prose is never borrowed to fill a replacement or overwritten by one.

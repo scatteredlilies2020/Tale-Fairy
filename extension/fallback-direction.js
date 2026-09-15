@@ -1,4 +1,4 @@
-import { applyPlannerAuthorLayer, defaultState, normalizeState } from './state.js?v=0.14.10';
+import { applyPlannerAuthorLayer, defaultState, normalizeState } from './state.js?v=0.14.11';
 import { relevantExcerpt } from './evidence-selection.js?v=0.13.9';
 
 // A failed re-evaluation is not new story evidence. Only an exact-source plan

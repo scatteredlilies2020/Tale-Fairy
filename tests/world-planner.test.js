@@ -284,3 +284,50 @@ test('planner input exposes complete wire content without empty legacy fields to
     assert.equal(item.engine, undefined);
     assert.equal(item.hold, undefined);
 });
+
+test('tight notebook budgets keep complete records separate from retained lookup tuples', () => {
+    const state = analysis.applyAnalysis(defaultState(), parseRuntime(plan({ prepared: {
+        approach: plan().prepared.approach,
+        updates: Array.from({ length: 12 }, (_, i) => direction(`direction-${i}`, {
+            premise: 'A regional trade dispute opens several routes. '.repeat(6),
+            middle: 'Merchants negotiate tolls; rival carriers offer passage and expose competing interests. '.repeat(7),
+            future: 'Cooperation or competition can reshape the route. '.repeat(5),
+        })), focus: ['direction-0'],
+    } })), messages);
+    const before = structuredClone(state);
+    for (const effectivePromptTokens of [800, 1600, 2400]) {
+        const prompt = analysis.buildWorldPlannerPrompt(messages, state, '', {}, { incremental: true, maxPromptTokens: 6000, effectivePromptTokens });
+        const board = JSON.parse(prompt).current.preparedWorld;
+        assert.ok(board.retained_index.length > 0, 'fixture must exercise budget compaction');
+        for (const item of board.items) {
+            assert.equal(typeof item.middle, 'string');
+            assert.ok(item.middle.trim());
+            assert.equal(item.omitted_details_remain_stored, undefined);
+        }
+        assert.equal(new Set([...board.items.map(item => item.id), ...board.retained_index.map(tuple => tuple[0])]).size, 12);
+        for (const tuple of board.retained_index) assert.ok(Array.isArray(tuple) && tuple.length >= 2);
+        assert.doesNotMatch(prompt, /omitted_details_remain_stored/);
+    }
+    assert.deepEqual(state, before, 'prompt compaction never edits stored prose');
+});
+
+test('copied partial rows cannot discard valid peers or replace complete saved records', () => {
+    const original = analysis.applyAnalysis(defaultState(), parseRuntime(plan({ prepared: {
+        ...plan().prepared, updates: [direction('compact'), direction('orchard')], focus: ['compact'],
+    } })), messages);
+    const before = structuredClone(original.preparedWorld.items);
+    const partials = [
+        { id: 'compact', premise: 'A revised premise without developments.', future: 'A later possibility.', status: 'active', omitted_details_remain_stored: true },
+        { id: 'orchard', premise: 'A different incomplete replacement.', middle: null, status: 'dormant' },
+        { id: 'missing-new', status: 'prepared' },
+    ];
+    const result = parseRuntime(plan({ prepared: {
+        approach: original.preparedWorld.approach, updates: [...partials, direction('new-complete')], focus: ['compact', 'missing-new', 'new-complete'],
+    } }));
+    assert.equal(result._taleFairyRecovery.omitted.length, 3);
+    const next = analysis.applyAnalysis(original, result, messages);
+    assert.deepEqual(next.preparedWorld.items.filter(item => item.id !== 'new-complete'), before);
+    assert.ok(next.preparedWorld.items.find(item => item.id === 'new-complete'));
+    assert.deepEqual(next.preparedWorld.focus, ['new-complete']);
+    assert.deepEqual(original.preparedWorld.items, before);
+});

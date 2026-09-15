@@ -2,6 +2,10 @@
 
 Tale Fairy is a standalone SillyTavern extension that acts as a **background creative Game Master**, preparing a playable middle and future while the roleplay model writes the story. It combines a persistent private notebook with selective factual world awareness—not a full world simulation, a prose generator, or a fixed event script.
 
+## What changes in 0.14.11
+
+Tight prompt budgets no longer mix incomplete notebook rows with complete records. Omitted records appear in a separate lookup index, preventing the planner from copying input-only placeholders into content updates. Missing or null core prose is handled like blank prose: preserve the saved record, omit its incomplete replacement, and keep complete neighboring updates. Invalid types and conflicting operations still fail validation. Upgrading permits one fresh replacement attempt for an already-failed current input.
+
 ## What changes in 0.14.10
 
 Content updates require a complete nonblank premise and playable middle. Status changes and removals use a separate `status_changes` list of existing IDs, preserving content without rewriting it. Optional future/knowledge notes are omitted when absent. The prompt-only response shape now includes the nonblank constraints, and planner input omits empty legacy fields. Unchanged records stay out of both update lists.

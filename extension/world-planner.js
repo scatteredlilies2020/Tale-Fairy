@@ -1,6 +1,6 @@
 // Model-facing replacement. Legacy boards remain readable, but are no longer
 // mandatory work for every generated update. Transport/lifecycle stay separate.
-import { validatePrepared } from './prepared-world.js?v=0.14.10';
+import { validatePrepared } from './prepared-world.js?v=0.14.11';
 
 const text = maxLength => ({ type: 'string', maxLength });
 const nonblank = maxLength => ({ type: 'string', minLength: 1, maxLength, pattern: '\\S' });
@@ -38,7 +38,7 @@ approach: Write a few practical instructions for making THIS RP worthwhile, usin
 
 updates: Prepare a few distinct possibilities for the middle and longer term, not next-reply choreography. One local problem normally needs one record, not several disguised as different directions. When the RP has a wider canvas, include an independent possibility beyond that problem. Invent fitting people, places, organizations, discoveries, opportunities or opposition with their own motives; no fixed genre menu or required interruption. premise states the possibility; middle supplies processes and several playable developments; future gives alternative consequences beyond them. future and knowledge are optional: include meaningful continuations or knowledge boundaries when useful; otherwise omit the field. Never output empty strings in an update. Do not prescribe introductions or replay questions. NPCs and systems can act without another player command; the user may refuse, linger or redirect.
 
-Persistence: Choose the operation before writing. updates creates or fully replaces content: each record needs a nonblank id, complete premise and playable middle, plus status prepared/active/dormant. Do not echo unchanged notebook rows. status_changes changes only an EXISTING record's status, using {id,status}; it preserves all prose. Use resolved/retired there to remove a record, never an empty update. Do not put an id in both arrays. Leave both arrays empty when nothing changes. An indexed record with omitted details can still receive a status change without reconstructing its content. Omitted records survive. Usually write zero to two complete updates; initialize a small selection. At most twelve live records. Use prepared for proposals, active after actual story uptake, dormant for unused directions. focus selects up to three retained or completely updated IDs; exclude removed IDs. Prioritize a new direction after a pivot. No expiry or fictional time advance based on message counts.
+Persistence: Choose the operation before writing. updates creates or fully replaces content: each record needs a nonblank id, complete premise and playable middle, plus status prepared/active/dormant. Do not echo unchanged notebook rows. status_changes changes only an EXISTING record's status, using {id,status}; it preserves all prose. Use resolved/retired there to remove a record, never an empty update. Do not put an id in both arrays. Leave both arrays empty when nothing changes. Input retained_index contains lookup tuples [id,status,premise label] (the label may be omitted), not update records. Their full content remains stored. Use them only to choose an existing ID for focus or status_changes; omit unchanged entries. To revise their content, supply a complete update with your own playable middle. Never copy index entries into updates. Omitted records survive. Usually write zero to two complete updates; initialize a small selection. At most twelve live records. Use prepared for proposals, active after actual story uptake, dormant for unused directions. focus selects up to three retained or completely updated IDs; exclude removed IDs. Prioritize a new direction after a pivot. No expiry or fictional time advance based on message counts.
 
 Boundaries: Produce preparation only, not a recap, status panel, cast inventory or replacement memory. Direct observations outrank contradictory summaries/notebook claims. Use minimal existing facts; preserve uncertainty and viewpoint knowledge. Proposals are not established history. player_controlled is the user's side, NOT an NPC: never invent their past, motives, allegiance, decisions, dialogue, feelings or contested outcomes. Offer external situations instead. Explicit user instructions override preparation. If user_instruction supplies an unclassified author note, include note_resolution.kind as suggest, correct, establish or forbid and honor it. Aim for roughly 600–1400 output tokens on routine updates; useful material, not repeated forms.`;
 
@@ -59,11 +59,14 @@ export function normalizeWorldPlan(value) {
     const normalized = { ...value, context: [], memory: '' };
     if (normalized.note_resolution === null) delete normalized.note_resolution;
     const prepared = { ...value.prepared, overview: '', updates: value.prepared.updates.map(item => ({
-        ...item, origin: 'invented', status: item?.status === undefined ? 'prepared' : item.status,
+        ...item, premise: item?.premise ?? '', middle: item?.middle ?? '',
+        origin: 'invented', status: item?.status === undefined ? 'prepared' : item.status,
         // A replacement record must not inherit obsolete legacy permission gates.
         engine: '', entry: '', hold: '', invalidates: '', intervention: '',
     })) };
-    // A blank live update is not a replacement for its saved record. Omit
+    // Missing/null core prose is the same incomplete form as blank prose.
+    // Never coerce arrays/objects or borrow old prose to complete a replacement.
+    // An incomplete live update is not a replacement for its saved record. Omit
     // only this specific, recoverable defect; keep strict validation for bad
     // types, identities, duplicate IDs, oversized output and other errors.
     const uniqueIds = new Set(prepared.updates.map(item => item.id));

@@ -1,17 +1,17 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.14.10';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.14.11';
 import { leadingGeneratedStatusSummary, sceneStatus } from './transcript-status.js?v=0.14.5';
 import { plotExcerpt } from './generation-context.js?v=0.14.5';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
-import { compactSummarySources } from './summary-context.js?v=0.14.10';
+import { compactSummarySources } from './summary-context.js?v=0.14.11';
 import { relevantExcerpt } from './evidence-selection.js?v=0.13.9';
 import { formatDriftRequest, mergeOffscreenWorld, OFFSCREEN_KINDS } from './offscreen-world.js?v=0.13.9';
-import { CAUSAL_KINDS, normalizeCausalContext } from './causal-context.js?v=0.14.10';
+import { CAUSAL_KINDS, normalizeCausalContext } from './causal-context.js?v=0.14.11';
 import { mergeSituationUpdates, retireManifestedSituations } from './situations.js?v=0.13.9';
-import { PLANNER_AGENCY_RULE, ACTOR_AGENCY_RULE, AGENCY_AUDIT_RULE } from './game-master.js?v=0.14.10';
+import { PLANNER_AGENCY_RULE, ACTOR_AGENCY_RULE, AGENCY_AUDIT_RULE } from './game-master.js?v=0.14.11';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { compactPreparedForPrompt, PREPARED_SCHEMA, PREPARED_RULE, validatePrepared, mergePreparedWorld } from './prepared-world.js?v=0.14.10';
-import { normalizeWorldPlan, preparedRecordForPlanner, validateWorldPlan } from './world-planner.js?v=0.14.10';
-export { WORLD_PLANNER_SCHEMA, WORLD_PLANNER_SYSTEM } from './world-planner.js?v=0.14.10';
+import { compactPreparedForPrompt, PREPARED_SCHEMA, PREPARED_RULE, validatePrepared, mergePreparedWorld } from './prepared-world.js?v=0.14.11';
+import { normalizeWorldPlan, preparedRecordForPlanner, validateWorldPlan } from './world-planner.js?v=0.14.11';
+export { WORLD_PLANNER_SCHEMA, WORLD_PLANNER_SYSTEM } from './world-planner.js?v=0.14.11';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
@@ -2025,20 +2025,21 @@ export function buildWorldPlannerPrompt(messages, state, note = '', bootstrap = 
         payload.summary_sources = payload.summary_sources.map(source => ({ ...source, text: relevantExcerpt(source.text, 160, evidenceQuery) }));
     }
     if (size() > budget && s.plannerContract === 14) {
-        payload.current.preparedWorld.items = board.items.map(item => board.focus.includes(item.id) ? preparedRecordForPlanner(item)
-            : { id: item.id, status: item.status, premise: item.premise, future: item.future, omitted_details_remain_stored: true });
+        payload.current.preparedWorld.items = board.items.filter(item => board.focus.includes(item.id)).map(preparedRecordForPlanner);
+        payload.current.preparedWorld.retained_index = board.items.filter(item => !board.focus.includes(item.id))
+            .map(item => [item.id, item.status, item.premise]);
     }
     // Preserve the newest user/assistant pair and earlier whole witnesses.
     while (size() > budget && payload.messages.length > 2) payload.messages.shift();
     if (size() > budget && s.plannerContract === 14) {
-        payload.current.preparedWorld.items = payload.current.preparedWorld.items.map(item => board.focus.includes(item.id) ? item
-            : { id: item.id, status: item.status, omitted_details_remain_stored: true });
+        payload.current.preparedWorld.retained_index = board.items.filter(item => !board.focus.includes(item.id))
+            .map(item => [item.id, item.status]);
     }
     if (size() > budget) payload.rp_reference = compactOptionalObject(bootstrap, 300);
     while (size() > budget && payload.historical_evidence.length) payload.historical_evidence.pop();
     if (size() > budget && s.plannerContract === 14) {
-        payload.current.preparedWorld.items = board.items.map(item => ({ id: item.id, status: item.status,
-            premise: item.premise, omitted_details_remain_stored: true }));
+        payload.current.preparedWorld.items = [];
+        payload.current.preparedWorld.retained_index = board.items.map(item => [item.id, item.status, item.premise]);
     }
     if (storyEvidence && size() > budget) {
         payload.story_evidence.timeline = compactRebuildTimelineEvidence(storyEvidence.timeline, Math.max(400, budget * .14));
