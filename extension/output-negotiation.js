@@ -84,7 +84,7 @@ export function schemaInstruction(schema) {
         if (node.type === 'object' && node.properties) return `{${Object.entries(node.properties)
             .map(([key, value]) => `${key}${node.required?.includes(key) ? '' : '?'}:${shape(value)}`).join(',')}}`;
         if (node.type === 'array') return `[${shape(node.items)}]${node.maxItems === undefined ? '' : `(${node.minItems || 0}..${node.maxItems} items)`}`;
-        return `${node.type || 'object'}${node.maxLength ? `(<=${node.maxLength} chars)` : ''}${node.minimum !== undefined ? `(>=${node.minimum})` : ''}`;
+        return `${node.type || 'object'}${node.minLength ? `(${node.minLength}..${node.maxLength || 'unbounded'} chars)` : node.maxLength ? `(<=${node.maxLength} chars)` : ''}${node.pattern === '\\S' ? '(nonblank)' : ''}${node.minimum !== undefined ? `(>=${node.minimum})` : ''}`;
     };
     return `Response shape (JSON schema shorthand): ? means optional key; | means one allowed value; [] means array. Return JSON values, never these type labels. No extra keys.\n${shape(schema.value)}`;
 }

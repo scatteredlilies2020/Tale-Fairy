@@ -1,8 +1,9 @@
 // Model-facing replacement. Legacy boards remain readable, but are no longer
 // mandatory work for every generated update. Transport/lifecycle stay separate.
-import { validatePrepared } from './prepared-world.js?v=0.14.9';
+import { validatePrepared } from './prepared-world.js?v=0.14.10';
 
 const text = maxLength => ({ type: 'string', maxLength });
+const nonblank = maxLength => ({ type: 'string', minLength: 1, maxLength, pattern: '\\S' });
 export const WORLD_PLANNER_SCHEMA = {
     name: 'tale_fairy_world_notebook_v14', strict: true, returnInvalid: true,
     value: {
@@ -15,12 +16,17 @@ export const WORLD_PLANNER_SCHEMA = {
                 updates: { type: 'array', maxItems: 12, items: {
                     type: 'object', additionalProperties: false,
                     properties: {
-                        id: text(80), premise: text(320), middle: text(440), future: text(260),
-                        knowledge: text(180),
-                        status: { type: 'string', enum: ['prepared', 'active', 'dormant', 'resolved', 'retired'] },
-                    }, required: ['id', 'premise', 'middle', 'future', 'knowledge', 'status'],
+                        id: nonblank(80), premise: nonblank(320), middle: nonblank(440), future: nonblank(260),
+                        knowledge: nonblank(180),
+                        status: { type: 'string', enum: ['prepared', 'active', 'dormant'] },
+                    }, required: ['id', 'premise', 'middle', 'status'],
                 } },
-                focus: { type: 'array', maxItems: 3, items: text(80) },
+                status_changes: { type: 'array', maxItems: 12, items: {
+                    type: 'object', additionalProperties: false, properties: {
+                        id: nonblank(80), status: { type: 'string', enum: ['prepared', 'active', 'dormant', 'resolved', 'retired'] },
+                    }, required: ['id', 'status'],
+                } },
+                focus: { type: 'array', maxItems: 3, items: nonblank(80) },
             }, required: ['approach', 'updates', 'focus'] },
         }, required: ['contract_version', 'prepared'],
     },
@@ -30,11 +36,19 @@ export const WORLD_PLANNER_SYSTEM = `You are Tale Fairy, preparing durable GM gu
 
 approach: Write a few practical instructions for making THIS RP worthwhile, using rp_reference and explicit user preferences. Preserve their full range of activities and scale. This is not a literary blurb about the latest scene. A local problem is not the premise of the entire RP. Do not add prohibitions, rank activities as lesser, or demand recurring themes unless the user/reference actually asks for that. Where wider intent is unspecified, leave it open. The approach should still work after this location and problem are left behind. Keep it unchanged during ordinary dialogue. On a real redirection, replace incompatible clauses rather than appending an exception to them. Return the full approach; empty clears it.
 
-updates: Prepare a few distinct possibilities for the middle and longer term, not next-reply choreography. One local problem normally needs one record, not several disguised as different directions. When the RP has a wider canvas, include an independent possibility beyond that problem. Invent fitting people, places, organizations, discoveries, opportunities or opposition with their own motives; no fixed genre menu or required interruption. premise states the possibility; middle supplies processes and several playable developments; future gives alternative consequences beyond them. knowledge holds necessary secrets, uncertainty or boundaries, otherwise empty. Do not prescribe introductions or replay questions. NPCs and systems can act without another player command; the user may refuse, linger or redirect.
+updates: Prepare a few distinct possibilities for the middle and longer term, not next-reply choreography. One local problem normally needs one record, not several disguised as different directions. When the RP has a wider canvas, include an independent possibility beyond that problem. Invent fitting people, places, organizations, discoveries, opportunities or opposition with their own motives; no fixed genre menu or required interruption. premise states the possibility; middle supplies processes and several playable developments; future gives alternative consequences beyond them. future and knowledge are optional: include meaningful continuations or knowledge boundaries when useful; otherwise omit the field. Never output empty strings in an update. Do not prescribe introductions or replay questions. NPCs and systems can act without another player command; the user may refuse, linger or redirect.
 
-Persistence: Usually change zero to two records; initialize a small selection, not a catalog. Omitted records survive. Every prepared, active or dormant update must contain a complete nonempty premise and middle, even when only its status changes. To leave a record unchanged, omit it from updates and select its id in focus if useful; never send blank placeholder records. Resolved/retired removals may use empty prose. id is only an update handle. Use prepared for unaccepted proposals, active after actual story uptake, dormant for unused directions, resolved/retired to remove finished or contradicted proposals. At most twelve live records. Leave indexed records with omitted details unchanged unless deliberately replacing/removing them. focus selects up to three relevant IDs, most important first; only fitting whole records reach the writer. Prioritize a new direction after a pivot. No expiry or fictional time advance based on message counts.
+Persistence: Choose the operation before writing. updates creates or fully replaces content: each record needs a nonblank id, complete premise and playable middle, plus status prepared/active/dormant. Do not echo unchanged notebook rows. status_changes changes only an EXISTING record's status, using {id,status}; it preserves all prose. Use resolved/retired there to remove a record, never an empty update. Do not put an id in both arrays. Leave both arrays empty when nothing changes. An indexed record with omitted details can still receive a status change without reconstructing its content. Omitted records survive. Usually write zero to two complete updates; initialize a small selection. At most twelve live records. Use prepared for proposals, active after actual story uptake, dormant for unused directions. focus selects up to three retained or completely updated IDs; exclude removed IDs. Prioritize a new direction after a pivot. No expiry or fictional time advance based on message counts.
 
 Boundaries: Produce preparation only, not a recap, status panel, cast inventory or replacement memory. Direct observations outrank contradictory summaries/notebook claims. Use minimal existing facts; preserve uncertainty and viewpoint knowledge. Proposals are not established history. player_controlled is the user's side, NOT an NPC: never invent their past, motives, allegiance, decisions, dialogue, feelings or contested outcomes. Offer external situations instead. Explicit user instructions override preparation. If user_instruction supplies an unclassified author note, include note_resolution.kind as suggest, correct, establish or forbid and honor it. Aim for roughly 600–1400 output tokens on routine updates; useful material, not repeated forms.`;
+
+// Supply the current wire fields, without legacy empty-form padding that a
+// model could mistake for the requested update format.
+export function preparedRecordForPlanner(item) {
+    return Object.fromEntries(['id', 'status', 'premise', 'middle', 'future', 'knowledge']
+        .filter(key => typeof item[key] === 'string' && item[key].trim())
+        .map(key => [key, item[key]]));
+}
 
 // The writer always receives proposals under a conditional heading. Origin is
 // bookkeeping, not an evidence verdict the model must repeatedly classify.

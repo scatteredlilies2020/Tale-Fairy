@@ -187,3 +187,18 @@ test('compact compatibility shapes preserve nested identities, required keys, en
     assert.equal(plannerBudgetEnvelope('system', schema, 'json-schema'), `system\n${JSON.stringify(schema)}`);
     assert.equal(JSON.stringify(schema), before);
 });
+
+
+test('prompt-only model requests retain nonblank string constraints and optional note fields', async () => {
+    const { WORLD_PLANNER_SCHEMA } = await import('../extension/world-planner.js');
+    const shape = schemaInstruction(WORLD_PLANNER_SCHEMA);
+    assert.match(shape, /premise:string\(1\.\.320 chars\)\(nonblank\)/);
+    assert.match(shape, /middle:string\(1\.\.440 chars\)\(nonblank\)/);
+    assert.match(shape, /knowledge\?:string/);
+    assert.match(shape, /status_changes\?:\[\{id:string/);
+    const messages = plannerMessages('system', 'evidence', WORLD_PLANNER_SCHEMA, PLANNER_OUTPUT_MODE.PROMPT_ONLY);
+    assert.equal(messages.at(-1).content, shape);
+    const definition = WORLD_PLANNER_SCHEMA.value.properties.prepared.properties.updates.items.properties.premise;
+    assert.equal(new RegExp(definition.pattern).test('   '), false);
+    assert.equal(new RegExp(definition.pattern).test('An actual possibility.'), true);
+});

@@ -18,7 +18,7 @@ const messages = [{ is_user: true, name: 'Rowan', mes: 'I remain in the council 
 test('replacement instructions stay compact and do not reintroduce generated reporting fields', () => {
     assert.ok(WORLD_PLANNER_SYSTEM.split(/\s+/u).length < 650);
     assert.deepEqual(Object.keys(WORLD_PLANNER_SCHEMA.value.properties).sort(), ['contract_version', 'note_resolution', 'prepared']);
-    assert.deepEqual(Object.keys(WORLD_PLANNER_SCHEMA.value.properties.prepared.properties).sort(), ['approach', 'focus', 'updates']);
+    assert.deepEqual(Object.keys(WORLD_PLANNER_SCHEMA.value.properties.prepared.properties).sort(), ['approach', 'focus', 'status_changes', 'updates']);
 });
 const direction = (id = 'compact', changes = {}) => ({ id, status: 'prepared',
     premise: 'Districts may develop a lasting federation through mutual winter aid.',
@@ -242,4 +242,45 @@ test('blank removals still remove records and other malformed updates remain rej
         [direction('same'), direction('same', { middle: '' })],
         Array.from({ length: 13 }, (_, i) => direction(`item-${i}`, { middle: '' })),
     ]) assert.throws(() => parseRuntime(plan({ prepared: { approach: '', updates, focus: [] } })));
+});
+
+
+test('status-only changes preserve complete content and remove records without empty update forms', () => {
+    const original = analysis.applyAnalysis(defaultState(), parseRuntime(plan({ prepared: {
+        ...plan().prepared, updates: [direction('compact'), direction('orchard')], focus: ['compact'],
+    } })), messages);
+    const before = structuredClone(original.preparedWorld.items);
+    const result = parseRuntime({ contract_version: 14, prepared: { approach: original.preparedWorld.approach,
+        updates: [], status_changes: [{ id: 'compact', status: 'dormant' }, { id: 'orchard', status: 'resolved' }], focus: [],
+    } });
+    assert.equal(result._taleFairyRecovery, undefined);
+    const next = analysis.applyAnalysis(original, result, messages);
+    assert.deepEqual(next.preparedWorld.items, [{ ...before[0], status: 'dormant' }]);
+    assert.deepEqual(original.preparedWorld.items, before);
+});
+
+test('minimal complete updates omit optional notes, while malformed status changes fail atomically', () => {
+    const wire = { contract_version: 14, prepared: { approach: plan().prepared.approach,
+        updates: [{ id: 'compact', status: 'prepared', premise: direction().premise, middle: direction().middle }], focus: ['compact'],
+    } };
+    const original = analysis.applyAnalysis(defaultState(), parseRuntime(wire), messages);
+    assert.equal(original.preparedWorld.items[0].middle, direction().middle);
+    for (const changes of [[{ id: 'absent', status: 'active' }], [{ id: 'compact', status: 'invalid' }],
+        [{ id: 'compact', status: 'active' }, { id: 'compact', status: 'dormant' }],
+        [{ id: 'compact', status: 'active', premise: '' }]]) {
+        const attempt = { contract_version: 14, prepared: { approach: '', updates: [], status_changes: changes, focus: [] } };
+        assert.throws(() => analysis.applyAnalysis(original, parseRuntime(attempt), messages));
+        assert.equal(original.preparedWorld.items[0].status, 'prepared');
+    }
+    assert.throws(() => parseRuntime({ ...wire, prepared: { ...wire.prepared, status_changes: [{ id: 'compact', status: 'active' }] } }));
+});
+
+test('planner input exposes complete wire content without empty legacy fields to copy', () => {
+    const state = analysis.applyAnalysis(defaultState(), parseRuntime(plan()), messages);
+    const input = JSON.parse(analysis.buildWorldPlannerPrompt(messages, state, '', {}, { maxPromptTokens: 30000 }));
+    const item = input.current.preparedWorld.items[0];
+    assert.equal(item.middle, direction().middle);
+    assert.ok(Object.values(item).every(value => typeof value === 'string' && value.trim()));
+    assert.equal(item.engine, undefined);
+    assert.equal(item.hold, undefined);
 });

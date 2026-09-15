@@ -53,6 +53,20 @@ export function validatePrepared(value) {
         if (!statuses.includes(item.status) || !origins.includes(item.origin)) errors.push('prepared status/origin is invalid');
         if (!['retired', 'resolved'].includes(item.status) && ['premise', 'middle'].some(key => typeof item[key] !== 'string' || !item[key].trim())) errors.push('live prepared records need a premise and playable developments');
     }
+    if (value.status_changes !== undefined) {
+        if (!Array.isArray(value.status_changes) || value.status_changes.length > PREPARED_LIMIT) errors.push('prepared.status_changes must contain at most twelve records');
+        const changedIds = new Set();
+        for (const change of Array.isArray(value.status_changes) ? value.status_changes : []) {
+            if (!change || typeof change !== 'object' || Array.isArray(change)
+                || typeof change.id !== 'string' || !change.id.trim() || change.id.length > limits.id
+                || !statuses.includes(change.status) || Object.keys(change).some(key => !['id', 'status'].includes(key))) {
+                errors.push('prepared status changes require only a nonempty id and valid status');
+                continue;
+            }
+            if (ids.has(change.id) || changedIds.has(change.id)) errors.push('prepared ids cannot repeat across updates and status changes');
+            changedIds.add(change.id);
+        }
+    }
     if (!Array.isArray(value.focus) || value.focus.length > 3 || value.focus.some(id => typeof id !== 'string' || !id.trim() || id.length > 80) || new Set(value.focus).size !== value.focus.length) errors.push('prepared.focus must contain up to three unique ids');
     return errors;
 }
@@ -87,6 +101,12 @@ export function mergePreparedWorld(previous, delta) {
     for (const item of delta.updates) {
         if (['resolved', 'retired'].includes(item.status)) items.delete(item.id);
         else items.set(item.id, { ...Object.fromEntries(optionalNotes.map(key => [key, ''])), ...items.get(item.id), ...item });
+    }
+    for (const change of delta.status_changes || []) {
+        const existing = items.get(change.id);
+        if (!existing) throw new Error('Prepared status change refers to an unavailable record.');
+        if (['resolved', 'retired'].includes(change.status)) items.delete(change.id);
+        else items.set(change.id, { ...existing, status: change.status });
     }
     if (items.size > PREPARED_LIMIT) throw new Error('Prepared notebook is full; retire or consolidate records explicitly.');
     if (delta.focus.some(id => !items.has(id))) throw new Error('Prepared focus refers to an unavailable record.');

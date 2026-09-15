@@ -1,4 +1,4 @@
-# Creative preparation contract — 0.14.7
+# Creative preparation contract — 0.14.10
 
 ## Purpose
 
@@ -16,11 +16,11 @@ The source text in plot anchors is still bounded transcript evidence, not newly 
 
 ## Planner output and lifecycle
 
-All new planner requests use contract 14: `{contract_version, prepared: {approach, updates, focus}}`, with optional author-note classification. There is one compact response shape and one generation on every tier. No generated recap, overview, factual memory, actor forms, scene classifications, scratchpad reasoning, offscreen boards or reply audits. Extraneous recap fields from earlier experimental responses are discarded rather than injected. Legacy parsers remain for saved/detached compatibility, not as additional planner work.
+All new planner requests use contract 14: `{contract_version, prepared: {approach, updates, status_changes?, focus}}`, with optional author-note classification. There is one compact response shape and one generation on every tier. No generated recap, overview, factual memory, actor forms, scene classifications, scratchpad reasoning, offscreen boards or reply audits. Extraneous recap fields from earlier experimental responses are discarded rather than injected. Legacy parsers remain for saved/detached compatibility, not as additional planner work.
 
 The first contract-14 result archives legacy proposals in `legacyPreparedWorld` rather than feeding obsolete immediate tasks back into the replacement. Existing factual memory is fallible evidence and user notes remain intact. This archive is preserved in chat state; it is not injected. Runtime state remains version 59 with a separate `plannerContract` marker.
 
-Each update needs a stable `id`, `premise` and playable `middle`. Additional notes can be empty. Missing status safely defaults to `prepared`; invalid supplied statuses are rejected. New preparation is always a proposal, never factual evidence based on a model-supplied origin label. The full `approach` is returned each time; empty explicitly clears it. There is no generated reasoning field.
+Each update needs a stable `id`, `premise` and playable `middle`. Optional future and knowledge notes are omitted when absent. The model-facing schema requires nonblank text whenever these fields are supplied. Missing status safely defaults to `prepared`; invalid supplied statuses are rejected. New preparation is always a proposal, never factual evidence based on a model-supplied origin label. The full `approach` is returned each time; empty explicitly clears it. There is no generated reasoning field.
 
 | Field | Meaning |
 | --- | --- |
@@ -31,7 +31,7 @@ Each update needs a stable `id`, `premise` and playable `middle`. Additional not
 | `knowledge` | GM secrets, relevant boundaries and what characters can discover. |
 | `status` | `prepared`, `active`, `dormant`, `resolved`, or `retired`. |
 
-Updates are deltas, normally zero to two. A major pivot may change up to twelve so retiring old directions does not prevent adding a new one. Omitted records persist; an empty focus selects no records but does not erase them. Order focus by importance: only fitting whole records are injected. Active requires actual transcript uptake, not mere injection. Dormant records are not selected for injection. Resolved/retired updates remove the proposal; accepted consequences remain in actual story history and external continuity. Unknown focus IDs and capacity overflow are rejected, not silently repaired by deleting other ideas. Legacy engine/entry/hold/invalidation/intervention fields are cleared on replacement records. Introductions are the writer's job. Existing factual memory is preserved, not maintained by this job.
+Updates are deltas, normally zero to two. A major pivot may change up to twelve so retiring old directions does not prevent adding a new one. Omitted records persist; an empty focus selects no records but does not erase them. Order focus by importance: only fitting whole records are injected. Active requires actual transcript uptake, not mere injection. Dormant records are not selected for injection. Status changes use `status_changes: [{id,status}]` and preserve the existing prose; resolved/retired changes remove the proposal; accepted consequences remain in actual story history and external continuity. Unknown status/focus IDs, duplicate or conflicting operations, and capacity overflow are rejected, not silently repaired by deleting other ideas. Legacy engine/entry/hold/invalidation/intervention fields are cleared on replacement records. Introductions are the writer's job. Existing factual memory is preserved, not maintained by this job.
 
 The bounded prompt builder compacts retained records into a working index before sacrificing current evidence. Stored records remain intact. Routine/review input defaults are 6,000/14,000 tokens including system and shape; base output caps are 4,096/6,144 (8,192 for rebuild). Planner reasoning is Off on every tier. Only a provider that requires thinking receives a Low compatibility fallback. The writer's reasoning settings are untouched. No model repair or critic chain is used. Full notebook and default-envelope tests protect the basic budget contract, not unbounded history recall.
 

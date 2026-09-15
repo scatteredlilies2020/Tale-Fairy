@@ -1,17 +1,17 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.14.9';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.14.10';
 import { leadingGeneratedStatusSummary, sceneStatus } from './transcript-status.js?v=0.14.5';
 import { plotExcerpt } from './generation-context.js?v=0.14.5';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
-import { compactSummarySources } from './summary-context.js?v=0.14.9';
+import { compactSummarySources } from './summary-context.js?v=0.14.10';
 import { relevantExcerpt } from './evidence-selection.js?v=0.13.9';
 import { formatDriftRequest, mergeOffscreenWorld, OFFSCREEN_KINDS } from './offscreen-world.js?v=0.13.9';
-import { CAUSAL_KINDS, normalizeCausalContext } from './causal-context.js?v=0.14.9';
+import { CAUSAL_KINDS, normalizeCausalContext } from './causal-context.js?v=0.14.10';
 import { mergeSituationUpdates, retireManifestedSituations } from './situations.js?v=0.13.9';
-import { PLANNER_AGENCY_RULE, ACTOR_AGENCY_RULE, AGENCY_AUDIT_RULE } from './game-master.js?v=0.14.9';
+import { PLANNER_AGENCY_RULE, ACTOR_AGENCY_RULE, AGENCY_AUDIT_RULE } from './game-master.js?v=0.14.10';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { compactPreparedForPrompt, PREPARED_SCHEMA, PREPARED_RULE, validatePrepared, mergePreparedWorld } from './prepared-world.js?v=0.14.9';
-import { normalizeWorldPlan, validateWorldPlan } from './world-planner.js?v=0.14.9';
-export { WORLD_PLANNER_SCHEMA, WORLD_PLANNER_SYSTEM } from './world-planner.js?v=0.14.9';
+import { compactPreparedForPrompt, PREPARED_SCHEMA, PREPARED_RULE, validatePrepared, mergePreparedWorld } from './prepared-world.js?v=0.14.10';
+import { normalizeWorldPlan, preparedRecordForPlanner, validateWorldPlan } from './world-planner.js?v=0.14.10';
+export { WORLD_PLANNER_SCHEMA, WORLD_PLANNER_SYSTEM } from './world-planner.js?v=0.14.10';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
@@ -1997,7 +1997,7 @@ export function buildWorldPlannerPrompt(messages, state, note = '', bootstrap = 
         ...(note ? { user_instruction: compactText(note, 1600) } : {}),
         current: {
             memory: s.plannerMemory || s.contextLedger,
-            preparedWorld: s.plannerContract === 14 ? { approach: board.approach, overview: board.overview, focus: board.focus, items: board.items.map(item => ({ ...item })) }
+            preparedWorld: s.plannerContract === 14 ? { approach: board.approach, overview: board.overview, focus: board.focus, items: board.items.map(preparedRecordForPlanner) }
                 : { approach: '', overview: '', focus: [], items: [] },
             // One-time migration evidence, not ongoing mandatory maintenance.
             ...(s.plannerContract !== 14 ? { migration: 'The supplied memory came from a different planner and may be wrong. Reconstruct facts from actual observations. Its old next-reply proposals are archived separately, not tasks for you to perpetuate. Create a fresh lasting approach and directions from the RP itself.' } : {}),
@@ -2025,7 +2025,7 @@ export function buildWorldPlannerPrompt(messages, state, note = '', bootstrap = 
         payload.summary_sources = payload.summary_sources.map(source => ({ ...source, text: relevantExcerpt(source.text, 160, evidenceQuery) }));
     }
     if (size() > budget && s.plannerContract === 14) {
-        payload.current.preparedWorld.items = board.items.map(item => board.focus.includes(item.id) ? { ...item }
+        payload.current.preparedWorld.items = board.items.map(item => board.focus.includes(item.id) ? preparedRecordForPlanner(item)
             : { id: item.id, status: item.status, premise: item.premise, future: item.future, omitted_details_remain_stored: true });
     }
     // Preserve the newest user/assistant pair and earlier whole witnesses.

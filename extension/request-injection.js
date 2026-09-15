@@ -1,5 +1,5 @@
 import { normalizeInjectionRole } from './injection-role.js?v=0.13.9';
-import { GAME_MASTER_CONTRACT } from './game-master.js?v=0.14.9';
+import { GAME_MASTER_CONTRACT } from './game-master.js?v=0.14.10';
 
 const AUTHORITY_PATTERN = /\n?<tale-fairy-authority>[\s\S]*?<\/tale-fairy-authority>\n?/giu;
 export const TALE_FAIRY_AUTHORITY = `<tale-fairy-authority>
