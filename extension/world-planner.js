@@ -1,6 +1,7 @@
+import { stageNotebookCompactions } from './notebook-compaction.js?v=0.14.17';
 // Model-facing replacement. Legacy boards remain readable, but are no longer
 // mandatory work for every generated update. Transport/lifecycle stay separate.
-import { validatePrepared, normalizePreparedWorld, mergePreparedWorld, preparedFieldLimit, PREPARED_APPROACH_LIMIT, PREPARED_SUMMARY_LIMIT } from './prepared-world.js?v=0.14.16';
+import { validatePrepared, normalizePreparedWorld, mergePreparedWorld, preparedFieldLimit, PREPARED_APPROACH_LIMIT, PREPARED_SUMMARY_LIMIT } from './prepared-world.js?v=0.14.17';
 
 const text = maxLength => ({ type: 'string', maxLength });
 const nonblank = maxLength => ({ type: 'string', minLength: 1, maxLength, pattern: '\\S' });
@@ -38,6 +39,14 @@ export const WORLD_PLANNER_SCHEMA = {
     },
 };
 
+WORLD_PLANNER_SCHEMA.value.properties.prepared.properties.consolidations = {
+    type: 'array', maxItems: 2, description: 'When the notebook grows, combine redundant dormant proposals into one shorter development. Never include active, focused, newly changed or unresolved accepted commitments. Originals are archived before replacement.',
+    items: { type: 'object', additionalProperties: false, required: ['ids', 'replacement'], properties: {
+        ids: { type: 'array', minItems: 2, maxItems: 12, uniqueItems: true, items: nonblank(80) },
+        replacement: WORLD_PLANNER_SCHEMA.value.properties.prepared.properties.updates.items,
+    } },
+};
+
 export const WORLD_PLANNER_SYSTEM = `You are Tale Fairy, preparing durable GM guidance for any ongoing RP or simulation. Return the JSON contract in one response, without reasoning, a critic, or a repair pass. The writer handles the next reply; your job is useful direction across many exchanges.
 
 approach: Write a few practical instructions for making THIS RP worthwhile, using rp_reference and explicit user preferences. Preserve their full range of activities and scale. This is not a literary blurb about the latest scene. A local problem is not the premise of the entire RP. Do not add prohibitions, rank activities as lesser, or demand recurring themes unless the user/reference actually asks for that. Where wider intent is unspecified, leave it open. The approach should still work after this location and problem are left behind. On redirection replace incompatible clauses. Omit when unchanged; otherwise return the full replacement. Empty text deliberately clears it.
@@ -46,7 +55,7 @@ summary: Maintain a rolling private planner summary from the previous summary, s
 
 updates: Prepare a few distinct possibilities for the middle and longer term, not next-reply choreography. One local problem normally needs one record, not several disguised as different directions. When the RP has a wider canvas, include an independent possibility beyond that problem. Invent fitting people, places, organizations, discoveries, opportunities or opposition with their own motives; no fixed genre menu or required interruption. premise states the possibility; middle supplies processes and several playable developments; future gives alternative consequences beyond them. future and knowledge are optional: include meaningful continuations or knowledge boundaries when useful; otherwise omit the field. Never output empty strings in an update. Do not prescribe introductions or replay questions. NPCs and systems can act without another player command; the user may refuse, linger or redirect.
 
-Persistence: Choose the operation before writing. updates creates or fully replaces content: each record needs a nonblank id, complete premise and playable middle, plus status prepared/active/dormant. Do not echo unchanged notebook rows. status_changes changes only an EXISTING record's status, using {id,status}; it preserves all prose. Use resolved/retired there to remove a record, never an empty update. Do not put an id in both arrays. Leave both arrays empty when nothing changes. Input retained_index contains lookup tuples [id,status,premise label] (the label may be omitted), not update records. Their full content remains stored. Use index IDs for focus/status_changes; content revisions require complete prose, never copied index tuples. Omitted records survive. Usually write zero to two complete updates; initialize a small selection. Storage has no record-count cap. notebook_view reports stored and selected counts; omitted records remain stored. Reuse IDs for revisions; retire only when the story warrants it, never to free slots. Use prepared for proposals, active after actual story uptake, dormant for unused directions. focus selects up to three retained or completely updated IDs; exclude removed IDs. Prioritize a new direction after a pivot. No expiry or fictional time advance based on message counts.
+Persistence: updates creates or fully replaces content: each record needs a nonblank id, complete premise and playable middle, plus status prepared/active/dormant. Omit unchanged rows. status_changes changes only an EXISTING record's status, using {id,status}; it preserves all prose. Use resolved/retired there to remove a record, never an empty update. Do not put an id in both arrays. Leave both arrays empty when nothing changes. Input retained_index contains lookup tuples [id,status,premise label] (the label may be omitted), not update records. Their full content remains stored. Use index IDs for focus/status_changes; content revisions require complete prose, never copied index tuples. Omitted records survive. Usually write zero to two complete updates; initialize a small selection. Use optional consolidations=[{ids,replacement}] to roll overlapping dormant proposals into one shorter complete development; preserve independent choices. Never consolidate active/focused plans or unresolved accepted commitments. Storage has no record-count cap. notebook_view reports stored and selected counts. Reuse IDs for revisions; retire only when the story warrants it, never to free slots. Use prepared for proposals, active after actual story uptake, dormant for unused directions. focus selects up to three retained or completely updated IDs; exclude removed IDs. Prioritize a new direction after a pivot. No expiry or fictional time advance based on message counts.
 
 Boundaries: Produce preparation only, not a recap, status panel, cast inventory or replacement memory. Direct observations outrank contradictory summaries/notebook claims. Use minimal existing facts; preserve uncertainty and viewpoint knowledge. Proposals are not established history. player_controlled is the user's side, NOT an NPC: never invent their past, motives, allegiance, decisions, dialogue, feelings or contested outcomes. Offer external situations instead. Explicit user instructions override preparation. Classify an unclassified user_instruction with note_resolution.kind (suggest/correct/establish/forbid) and honor it. Aim for roughly 600–1400 output tokens on routine updates; useful material, not repeated forms.`;
 
@@ -86,7 +95,7 @@ function distinctIdenticalOperations(items) {
 function notebookFields(value) {
     if (value.prepared != null && (typeof value.prepared !== 'object' || Array.isArray(value.prepared))) return value.prepared;
     const source = { ...(value.prepared || {}) };
-    for (const key of ['approach', 'summary', 'updates', 'status_changes', 'focus']) {
+    for (const key of ['approach', 'summary', 'updates', 'status_changes', 'focus', 'consolidations']) {
         if (!Object.hasOwn(value, key)) continue;
         if (source[key] == null) source[key] = value[key];
         else if (JSON.stringify(source[key]) === JSON.stringify(value[key])) continue;
@@ -114,7 +123,7 @@ export function normalizeWorldPlan(value) {
     // Scene recaps from experimental/older responses are not another source of
     // writer facts. Retain factual memory separately; this job is preparation.
     const normalized = { ...value, context: [], memory: '' };
-    for (const key of ['approach', 'summary', 'updates', 'status_changes', 'focus']) delete normalized[key];
+    for (const key of ['approach', 'summary', 'updates', 'status_changes', 'focus', 'consolidations']) delete normalized[key];
     if (normalized.note_resolution === null) delete normalized.note_resolution;
     const prepared = { ...source, overview: '',
         focus: plannerFocus(source.focus, undefined, Infinity),
@@ -204,5 +213,6 @@ export function mergeWorldPlan(previous, raw) {
         // editing an unavailable record still fails in the content merge.
         return !terminal || exists;
     });
-    return mergePreparedWorld(prior, { ...value.prepared, status_changes: statusChanges, focus: plannerFocus(value.prepared.focus, available) });
+    const merged = mergePreparedWorld(prior, { ...value.prepared, status_changes: statusChanges, focus: plannerFocus(value.prepared.focus, available) });
+    return stageNotebookCompactions(merged, value.prepared.consolidations, prior);
 }

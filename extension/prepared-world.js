@@ -94,6 +94,11 @@ export function normalizePreparedWorld(value) {
         inputsKey: String(value.source.inputsKey || ''),
         startedAt: Math.max(0, Number(value.source.startedAt) || 0),
     };
+    if (Array.isArray(value.archives)) safe.archives = value.archives.filter(item =>
+        /^tale-fairy-archive-[a-f0-9]{64}\.json$/.test(item?.file) && item.hash === item.file.slice(19, -5))
+        .map(item => ({ file: item.file, hash: item.hash, count: Math.max(0, Number(item.count) || 0), replacementId: String(item.replacementId || '') }));
+    if (Array.isArray(value.compactions)) safe.compactions = structuredClone(value.compactions);
+    if (value.compactionError) safe.compactionError = String(value.compactionError).slice(0, 300);
     return safe;
 }
 
@@ -145,7 +150,7 @@ export function stampPreparedWorld(value, source) {
 // Keep the full notebook in storage, but retrieve a bounded working view.
 // Full records can be supplied by the UI; prompt omissions never delete them.
 export function preparedWorldForPrompt(value, { query = '' } = {}) {
-    const { source, ...board } = normalizePreparedWorld(value);
+    const { source, archives, compactions, compactionError, ...board } = normalizePreparedWorld(value);
     if (board.items.length <= PREPARED_LIMIT) return board;
     const terms = evidenceTerms(query);
     const ranked = board.items.map((item, index) => ({ item, index,
@@ -153,7 +158,12 @@ export function preparedWorldForPrompt(value, { query = '' } = {}) {
         score: evidenceRelevance(Object.values(item).join(' '), terms),
     })).sort((a, b) => Number(b.focused) - Number(a.focused) || b.score - a.score
         || Number(b.item.status === 'active') - Number(a.item.status === 'active') || b.index - a.index);
-    const selected = new Set(ranked.slice(0, PREPARED_LIMIT).map(({ item }) => item.id));
+    const candidates = board.items.length > 24 ? board.items.filter(item => item.status === 'dormant' && !board.focus.includes(item.id)).slice(0, 4) : [];
+    const selected = new Set([...board.focus, ...candidates.map(item => item.id)]);
+    for (const { item } of ranked) {
+        if (selected.size >= PREPARED_LIMIT) break;
+        selected.add(item.id);
+    }
     return { ...board, items: board.items.filter(item => selected.has(item.id)),
         retained: 'Selected working view; all omitted records remain stored. No storage slot limit or automatic retirement.' };
 }

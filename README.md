@@ -2,6 +2,14 @@
 
 Tale Fairy is a standalone SillyTavern extension that acts as a **background creative Game Master**, preparing a playable middle and future while the roleplay model writes the story. It combines a persistent private notebook with selective factual world awareness—not a full world simulation, a prose generator, or a fixed event script.
 
+## What changes in 0.14.17
+
+The planner can now consolidate overlapping dormant, invented proposals into one shorter stored development. This replaces active notebook records, rather than merely adding a summary to the prompt. Active or focused plans, established material, author instructions and exact prerequisite/knowledge boundaries remain protected. Invalid or non-shrinking consolidations are skipped; this does not impose a notebook capacity or require extra model calls.
+
+Before replacing records, Tale Fairy writes their complete originals to a separate content-addressed JSON file in SillyTavern's user files and reads it back to verify it. Archive failures leave the original notebook intact. The notebook panel shows archive counts and download links. Summaries can be consolidated again on later planner passes. Reload the browser to activate this behavior; it runs when the planner supplies a valid consolidation, without a manual rescan.
+
+Archives remain part of your data: include user files when backing up or moving a chat. This reduces active notebook data, not necessarily total disk usage. Historical regeneration snapshots remain intact for reproducibility; author instructions are never replaced with generated summaries.
+
 ## What changes in 0.14.16
 
 Author notes retain all saved entries and complete text, including through reloads and rebuilds. Oversized optional summary/approach fields and oversized individual developments are omitted with a recovery notice while complete neighboring updates survive; their previous saved versions remain intact. Malformed data and conflicting operations still fail atomically. The 12-operation schema limit is a writing target; complete larger batches are accepted without deleting other records. Tight prompts shed whole optional planner fields before failing, mark those omissions explicitly, and preserve exact user notes. If the protected input itself exceeds the configured budget, planning reports that limit without deleting instructions or exceeding the budget. These changes do not restore text already discarded by older versions.

@@ -18,7 +18,7 @@ const messages = [{ is_user: true, name: 'Rowan', mes: 'I remain in the council 
 test('replacement instructions stay compact and do not reintroduce generated reporting fields', () => {
     assert.ok(WORLD_PLANNER_SYSTEM.split(/\s+/u).length < 650);
     assert.deepEqual(Object.keys(WORLD_PLANNER_SCHEMA.value.properties).sort(), ['contract_version', 'note_resolution', 'prepared']);
-    assert.deepEqual(Object.keys(WORLD_PLANNER_SCHEMA.value.properties.prepared.properties).sort(), ['approach', 'focus', 'status_changes', 'summary', 'updates']);
+    assert.deepEqual(Object.keys(WORLD_PLANNER_SCHEMA.value.properties.prepared.properties).sort(), ['approach', 'consolidations', 'focus', 'status_changes', 'summary', 'updates']);
 });
 const direction = (id = 'compact', changes = {}) => ({ id, status: 'prepared',
     premise: 'Districts may develop a lasting federation through mutual winter aid.',
