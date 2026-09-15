@@ -5,7 +5,7 @@ import { buildPlotAnchor, cachedGenerationContext, GENERATION_CACHE_LIMIT, GENER
 import { estimateTokenCount } from '../extension/token-budget.js';
 import { buildPromptPayload, defaultState, fingerprintMessages, saveState } from '../extension/state.js';
 import { createSafetyFallbackState } from '../extension/fallback-direction.js';
-import { GAME_MASTER_CONTRACT } from '../extension/game-master.js';
+import { TALE_FAIRY_CONTEXT_GUIDE } from '../extension/game-master.js';
 
 const input = () => [{ is_user: false, name: 'Mira', mes: 'Mira guards the sealed letter. She promised not to deliver it until dawn.' }, { is_user: true, mes: 'I ask Mira who sent the letter.' }];
 
@@ -49,7 +49,7 @@ test('reload, regenerate, swipe, and deletion refresh old policy without rebuild
         const original = h.prepare().payload;
         const metadata = structuredClone(h.context.chatMetadata);
         const entry = metadata[GENERATION_CONTEXT_KEY].entries[0];
-        entry.payload = original.replace(GAME_MASTER_CONTRACT, 'GAME MASTER RESPONSIBILITY: Old responsibility.\nCAUSAL ROLE: Old role.\nPLAYER BOUNDARY: Old boundary.');
+        entry.payload = original.replace(TALE_FAIRY_CONTEXT_GUIDE, 'GAME MASTER RESPONSIBILITY: Old responsibility.\nCAUSAL ROLE: Old role.\nPLAYER BOUNDARY: Old boundary.');
         const oldCache = JSON.stringify(metadata[GENERATION_CONTEXT_KEY]);
         const reopened = generationHarness([...input(), { is_user: false, mes: 'Discarded: Mira burns the letter.' }], h.state(), metadata);
         for (const type of ['regenerate', 'swipe']) {
@@ -652,7 +652,7 @@ test('cached injection stays disabled for non-story calls and appears exactly on
     }
     assert.equal(buildPromptPayload(h.state(), { cachedPayload, enabled: false }), '');
     assert.equal(cachedPayload.match(/<plot-anchor>/gu).length, 1);
-    assert.equal(cachedPayload.match(/GAME MASTER RESPONSIBILITY/gu).length, 1);
+    assert.equal(cachedPayload.match(/TALE FAIRY CONTEXT:/gu).length, 1);
 });
 
 for (const type of ['swipe', 'regenerate']) test(`${type} tolerates surrounding whitespace and line endings through edit/update events`, async () => {

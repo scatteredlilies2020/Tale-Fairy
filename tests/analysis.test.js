@@ -609,7 +609,7 @@ test('provider payload exposes clean conditions and withholds tentative metadata
     assert.doesNotMatch(payload, /Harbor merchants/);
     assert.doesNotMatch(payload, /Harbor shortages|shipping ledgers|scheduled arrival/i);
     assert.doesNotMatch(payload, /confidence|relevance|mira-doubt/i);
-    assert.match(payload, /writing model chooses every concrete action/i);
+    assert.match(payload, /Preset and explicit user instructions govern narration/i);
 });
 
 test('stateForPrompt retains private condition metadata for future planning', () => {

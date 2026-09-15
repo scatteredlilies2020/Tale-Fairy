@@ -1,4 +1,4 @@
-import { GAME_MASTER_CONTRACT } from './game-master.js?v=0.14.17';
+import { TALE_FAIRY_CONTEXT_GUIDE } from './game-master.js?v=0.14.18';
 
 // These are causal units rather than genre labels. Keeping settlements, places,
 // resources, and situations first-class avoids squeezing a town simulation into
@@ -11,34 +11,11 @@ export const CAUSAL_KINDS = Object.freeze([
 const KINDS = new Set(CAUSAL_KINDS);
 const DISCLOSURES = new Set(['open', 'limited', 'private']);
 const CONFIDENCES = new Set(['established', 'strong', 'tentative']);
-const MODES = new Set(['light', 'balanced', 'fun']);
 const PHASES = new Set(['establishing', 'developing', 'turning', 'landing', 'aftermath', 'transition']);
 const DIRECTIONS = new Set(['preserve', 'brighten', 'darken', 'release', 'intensify']);
 const PRESSURES = new Set(['none', 'latent', 'active', 'high', 'saturated']);
 const INTRUSIONS = new Set(['closed', 'incidental', 'socially-open', 'dramatically-open', 'primed']);
 const NOVELTY = new Set(['none', 'incidental', 'context-native', 'meaningful', 'major']);
-
-const MODE_TREATMENT = Object.freeze({
-    light: 'DEVELOPMENT: Subtle, within the current activity.',
-    balanced: 'DEVELOPMENT: Natural, proportionate to current conditions.',
-    fun: 'DEVELOPMENT: Bolder when supported by current conditions.',
-});
-
-const INTRUSION_TREATMENT = Object.freeze({
-    closed: 'Keep outside pressure dormant unless the latest intent or an actual causal entry warrants it.',
-    incidental: 'Favor the current activity; a fitting NPC action or encounter may develop within it.',
-    'socially-open': 'Existing pressure may enter through natural social contact.',
-    'dramatically-open': 'Existing pressure may enter through a credible route.',
-    primed: 'Converging causes may arrive; no event is required.',
-});
-
-const NOVELTY_TREATMENT = Object.freeze({
-    none: 'Favor the established activity; no novelty merely to fill space.',
-    incidental: 'Incidental novelty fits readily; meaningful developments remain possible through a credible entry.',
-    'context-native': 'New details must fit the setting and activity.',
-    meaningful: 'Consequential novelty needs a credible setting-native cause and entry.',
-    major: 'Major turns need credible preparation and room for player intervention, not forced results.',
-});
 
 function text(value, limit = 240) {
     return String(value ?? '').trim().replace(/\s+/gu, ' ').slice(0, limit);
@@ -127,25 +104,20 @@ function section(label, items) {
 export function formatCausalContext(value, options = {}) {
     const context = normalizeCausalContext(value);
     if (!hasUsableCausalContext(context)) return '';
-    const modeValue = String(options.mode ?? '').trim().toLowerCase();
-    const mode = MODES.has(modeValue) ? modeValue : 'balanced';
-    const sceneProfile = normalizeSceneProfile(options.sceneProfile);
     const conditions = providerCausalConditions(context);
     const open = conditions.filter(item => item.disclosure === 'open');
     const limited = conditions.filter(item => item.disclosure === 'limited');
     const privateItems = conditions.filter(item => item.disclosure === 'private');
     const situations = context.optionalSituations;
     return [
-        'RELEVANT UNDERLYING CONDITIONS — causal context, not required events or predetermined outcomes. Use what fits; the writing model chooses every concrete action.',
+        'RELEVANT UNDERLYING CONDITIONS — causal context, not required events or predetermined outcomes.',
         section('Current conditions:', open),
-        section('Limited knowledge — do not make universally known:', limited),
-        section('Private conditions — express through behavior unless disclosure becomes natural in-world:', privateItems),
+        section('Limited knowledge:', limited),
+        section('Private conditions:', privateItems),
         situations.length ? [
-            'OPTIONAL SITUATIONAL OPENINGS — possibilities, not facts or required events. May emerge naturally without player engagement; outcomes remain open.',
+            'OPTIONAL SITUATIONAL OPENINGS — possibilities, not facts or required events.',
             ...situations.map(item => `- ${item.premise} It is available if someone naturally ${item.entry.replace(/^[Tt]o\s+/u, '')}.`),
         ].join('\n') : '',
-        MODE_TREATMENT[mode],
-        options.includeRules === false ? '' : GAME_MASTER_CONTRACT,
-        options.includeSceneFit === false ? '' : `SCENE FIT (provisional; latest user intent wins): ${INTRUSION_TREATMENT[sceneProfile.intrusion]} ${NOVELTY_TREATMENT[sceneProfile.noveltyCeiling]}`,
+        options.includeRules === false ? '' : TALE_FAIRY_CONTEXT_GUIDE,
     ].filter(Boolean).join('\n');
 }

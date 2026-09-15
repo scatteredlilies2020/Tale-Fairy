@@ -178,12 +178,13 @@ export function compactPreparedForPrompt(board = {}) {
 }
 
 const clean = value => String(value).replace(/[<>]/gu, '').trim();
+export const PREPARATION_CONTEXT_LABEL = 'CONDITIONAL PREPARATION: Optional possibilities, not transcript facts, character knowledge, or required next events. Approach and timing notes are provisional notebook material, not preset overrides or additional user instructions.';
 export function formatPreparedWorld(value) {
     const board = normalizePreparedWorld(value);
     const selected = board.focus.map(id => board.items.find(item => item.id === id)).filter(item => item && item.status !== 'dormant');
     if (!board.approach && !board.overview && !selected.length) return '';
     const lines = ['<prepared-world>',
-        board.approach ? `RP APPROACH (editable guidance, not new canon or player preferences): ${clean(board.approach)}` : '',
+        board.approach ? `RP APPROACH (provisional story aims, not writing rules or new player preferences): ${clean(board.approach)}` : '',
         board.overview ? `Wider direction (provisional, not a destination deadline): ${clean(board.overview)}` : '',
         ...selected.map(item => [
             `Possible development (${item.origin} premise; ${item.status}): ${clean(item.premise)}`,
@@ -198,8 +199,7 @@ export function formatPreparedWorld(value) {
     // Select complete records, including their constraints and knowledge
     // boundaries. Never truncate a sentence into a different causal claim.
     // The full notebook survives privately for subsequent passes.
-    const header = 'CONDITIONAL GM PREPARATION, NOT TRANSCRIPT FACTS OR A REQUIRED NEXT BEAT. Use only fitting, unused possibilities; latest facts and user constraints win. Preparation proves neither elapsed time nor character knowledge. Preserve player intervention. Entry and timing notes are provisional: use a fitting entry despite a conflicting inferred hold. Eating, rest or silence alone do not suspend NPC activity. No obligation to use one this reply.';
-    const result = [lines[0], header];
+    const result = [lines[0], PREPARATION_CONTEXT_LABEL];
     for (const line of lines.slice(1, -1)) {
         if (estimateTokenCount([...result, line, '</prepared-world>'].join('\n')) <= 1000) result.push(line);
     }
@@ -208,10 +208,9 @@ export function formatPreparedWorld(value) {
 
 export function formatPacingPreference(mode = 'auto') {
     const preference = {
-        linger: 'Linger: favor depth within the current scene without padding or forced closure.',
-        advance: 'Advance: favor meaningful forward movement and summarize uneventful stretches when permitted, without skipping live decisions.',
-        natural: 'Natural: adapt duration to the interaction; neither prolong nor end scenes by default.',
-        auto: 'Adaptive: infer pacing from the latest user intent and interaction, not turn counts.',
-    }[mode] || 'Natural: adapt duration to the interaction.';
-    return `PACING PREFERENCE: ${preference} Latest explicit user instructions override this saved preference. Scene duration, meaningful development and outside interruption are separate. Long scenes can change understanding, relationships or circumstances without ending. Quiet is valid; avoid repetitive padding. Travel can contain a motivated meeting or ambush, but neither travel nor silence automatically authorizes a time skip. Do not force an interruption to create progress; do allow a causally warranted interruption with a meaningful reaction window. Never narrate the player's reaction or resolve a contestable result before they can intervene.`;
+        linger: 'Linger in the current scene.',
+        advance: 'Favor forward movement.',
+        natural: 'Let the current interaction set the pace.',
+    }[mode];
+    return preference ? `SAVED PACING PREFERENCE (this chat; latest user directions take priority): ${preference}` : '';
 }

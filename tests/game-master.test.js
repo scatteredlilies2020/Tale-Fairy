@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { GAME_MASTER_CONTRACT, PLANNER_AGENCY_RULE, ACTOR_AGENCY_RULE, AGENCY_AUDIT_RULE, isStoryGeneration, refreshGameMasterContract } from '../extension/game-master.js';
+import { TALE_FAIRY_CONTEXT_GUIDE, PLANNER_AGENCY_RULE, ACTOR_AGENCY_RULE, AGENCY_AUDIT_RULE, isStoryGeneration, refreshGameMasterContract } from '../extension/game-master.js';
 import { buildPromptPayload, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, loadState, saveState } from '../extension/state.js';
 import { hasUsableCausalContext } from '../extension/causal-context.js';
 import { SYSTEM, INCREMENTAL_SYSTEM, ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, buildAnalysisPrompt } from '../extension/analysis.js';
@@ -28,9 +28,9 @@ function stateWithFacts() {
     return state;
 }
 
-test('permanent rules are lean, genre-neutral, and leave pacing to active instructions', () => {
+test('permanent framing describes packet semantics without imposing narrative behavior', () => {
     const payload = buildPromptPayload(defaultState());
-    assert.ok(payload.includes(GAME_MASTER_CONTRACT));
+    assert.ok(payload.includes(TALE_FAIRY_CONTEXT_GUIDE));
     for (const rule of [
         /without awaiting player direction/,
         /NPCs decide, act, finish actions/,
@@ -44,11 +44,12 @@ test('permanent rules are lean, genre-neutral, and leave pacing to active instru
         /Never author the player character's choices/,
         /within viewpoint knowledge/,
         /Explicit user\/OOC instructions and established facts take priority/,
-    ]) assert.match(payload, rule);
+    ]) assert.doesNotMatch(payload, rule);
     assert.doesNotMatch(payload, /Every reply changes the current situation meaningfully|Match the scene's tone and pace|time passage proportionate/i);
-    assert.equal(payload.match(/GAME MASTER RESPONSIBILITY/g)?.length, 1);
-    assert.ok(GAME_MASTER_CONTRACT.split(/\s+/u).length <= 190, 'Permanent rules must stay concise');
-    assert.ok(estimateTokenCount(GAME_MASTER_CONTRACT) < 380, 'Permanent policy must remain bounded');
+    assert.equal(payload.match(/TALE FAIRY CONTEXT:/g)?.length, 1);
+    assert.match(payload, /Preset and explicit user instructions govern narration/);
+    assert.doesNotMatch(payload, /PACING PREFERENCE|SCENE FIT|DEVELOPMENT:|PLAYER BOUNDARY|HELD/);
+    assert.ok(estimateTokenCount(TALE_FAIRY_CONTEXT_GUIDE) < 100, 'Packet framing must remain small');
     assert.doesNotMatch(payload, /fleeing|enemy|combat|replacement hooks|punishment|reset availability|world-stall/i);
 });
 
@@ -67,7 +68,7 @@ test('cached policy refresh changes only the leading contract, not facts or quot
         const updated = refreshGameMasterContract(cachedPayload);
         const body = cachedPayload.slice(cachedPayload.indexOf('<plot-anchor>'));
         assert.equal(updated.slice(updated.indexOf('<plot-anchor>')), body);
-        assert.ok(updated.includes(GAME_MASTER_CONTRACT));
+        assert.ok(updated.includes(TALE_FAIRY_CONTEXT_GUIDE));
         assert.equal(refreshGameMasterContract(updated), updated);
         assert.equal(buildPromptPayload(stateWithFacts(), { cachedPayload }), updated);
         for (const generationType of ['quiet', 'impersonate', 'tool-analysis']) {
@@ -101,7 +102,7 @@ test('fresh facts augment rules; unavailable facts never leak through a rules-on
     assert.equal(stale.sceneProfile.promise, '');
     const fresh = buildPromptPayload(state, { guidanceUsable: true });
     assert.match(fresh, /The merchant: is away making a delivery/);
-    assert.equal(fresh.match(/GAME MASTER RESPONSIBILITY/g)?.length, 1);
+    assert.equal(fresh.match(/TALE FAIRY CONTEXT:/g)?.length, 1);
     assert.doesNotMatch(buildPromptPayload(state), /merchant|delivery/);
 });
 
@@ -112,7 +113,7 @@ test('disabled, quiet, and impersonation requests contain no GM rules', () => {
         assert.equal(buildPromptPayload(state, { generationType, guidanceUsable: true }), '');
     }
     for (const generationType of ['', 'normal', 'swipe', 'regenerate', 'continue']) {
-        assert.ok(buildPromptPayload(defaultState(), { generationType }).includes(GAME_MASTER_CONTRACT));
+        assert.ok(buildPromptPayload(defaultState(), { generationType }).includes(TALE_FAIRY_CONTEXT_GUIDE));
     }
     assert.equal(buildPromptPayload(state, { enabled: false, guidanceUsable: true }), '');
 });
@@ -242,7 +243,7 @@ test('final request hooks remove GM material from quiet/impersonation and leave 
     const story = { type: 'normal', messages: [{ role: 'user', content: 'I observe.' }] };
     sandbox.ensureProviderChatRequestGuidance(story);
     sandbox.ensureProviderChatRequestGuidance(story);
-    assert.equal(JSON.stringify(story).match(/GAME MASTER RESPONSIBILITY/g)?.length, 1);
+    assert.equal(JSON.stringify(story).match(/TALE FAIRY CONTEXT:/g)?.length, 1);
     assert.equal(proofs, 2);
 });
 
@@ -255,7 +256,7 @@ test('rules-only injection replaces stale material exactly once across chat role
         ensureGuidanceInChat(chat, rules, options);
         ensureGuidanceInChat(chat, rules, options);
         assert.equal(chatHasCurrentGuidance(chat, rules), true);
-        assert.equal(JSON.stringify(chat).match(/GAME MASTER RESPONSIBILITY/g)?.length, 1);
+        assert.equal(JSON.stringify(chat).match(/TALE FAIRY CONTEXT:/g)?.length, 1);
         assert.doesNotMatch(JSON.stringify(chat), /merchant|delivery/);
         ensureGuidanceInChat(chat, '', options);
         assert.doesNotMatch(JSON.stringify(chat), /tale-fairy-context/);
@@ -265,7 +266,7 @@ test('rules-only injection replaces stale material exactly once across chat role
     text = ensureGuidanceInText(text, rules);
     assert.equal(textHasCurrentGuidance(text, rules), true);
     assert.doesNotMatch(text, /merchant|delivery/);
-    assert.equal(text.match(/GAME MASTER RESPONSIBILITY/g)?.length, 1);
+    assert.equal(text.match(/TALE FAIRY CONTEXT:/g)?.length, 1);
 });
 
 function transportHarness() {
@@ -352,7 +353,7 @@ test('final fetch boundary cannot re-add GM rules to non-story or disabled reque
             assert.equal(Boolean(extractTaleFairyContext(JSON.parse(outbound))), isStoryGeneration(type));
             assert.doesNotMatch(outbound, /merchant|delivery/);
             assert.match(outbound, /I observe/);
-            if (isStoryGeneration(type)) assert.equal(outbound.match(/GAME MASTER RESPONSIBILITY/g)?.length, 1);
+            if (isStoryGeneration(type)) assert.equal(outbound.match(/TALE FAIRY CONTEXT:/g)?.length, 1);
         }
     }
     assert.equal(proofs.length, 8, 'Only four story types across two APIs should be verified');

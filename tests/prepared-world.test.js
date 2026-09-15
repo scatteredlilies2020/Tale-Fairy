@@ -116,11 +116,11 @@ test('saved notebook survives normalization without promoting inventions or inje
     assert.equal(state.pacing.mode, 'linger');
     assert.deepEqual(normalizeState({ version: 58 }).preparedWorld, defaultPreparedWorld());
     const out = formatPreparedWorld(state.preparedWorld);
-    assert.match(out, /CONDITIONAL GM PREPARATION, NOT TRANSCRIPT FACTS/);
+    assert.match(out, /CONDITIONAL PREPARATION: Optional possibilities, not transcript facts/);
     assert.match(out, /Playable middle:/);
     assert.match(out, /Beyond it:/);
     assert.doesNotMatch(out, /private-id|mill-town|inputsKey|fingerprint/);
-    assert.match(out, /no obligation to use one/i);
+    assert.match(out, /Optional possibilities/);
     const dormant = mergePreparedWorld(board, { overview: '', updates: [{ ...record(), status: 'dormant' }], focus: ['mill-town'] });
     assert.doesNotMatch(formatPreparedWorld(dormant), /Driving process:/);
     assert.equal('source' in preparedWorldForPrompt(stampPreparedWorld(board, { chatId: 'story' })), false);
@@ -237,12 +237,13 @@ test('writer policy, preview and verification distinguish preparation from fresh
     assert.doesNotMatch(payload, /RELEVANT UNDERLYING CONDITIONS/);
     assert.equal(guidanceSnapshot(state, { preparedUsable: true }).preparedContextIncluded, true);
     assert.match(generationPreviewDescription({ future: true }), /Conditional preparation/);
-    for (const mode of ['auto', 'linger', 'natural', 'advance']) {
-        assert.match(formatPacingPreference(mode), /Latest explicit user instructions override/);
-        assert.match(formatPacingPreference(mode), /Scene duration, meaningful development and outside interruption are separate/);
+    for (const mode of ['auto', 'unknown', '']) assert.equal(formatPacingPreference(mode), '');
+    for (const mode of ['linger', 'natural', 'advance']) {
+        assert.match(formatPacingPreference(mode), /latest user directions take priority/);
+        assert.doesNotMatch(formatPacingPreference(mode), /Scene duration|NPC|reaction|interruption|time skip/);
     }
-    assert.match(formatPacingPreference('linger'), /without padding or forced closure/);
-    assert.match(formatPacingPreference('advance'), /without skipping live decisions/);
+    assert.match(formatPacingPreference('linger'), /Linger in the current scene/);
+    assert.match(formatPacingPreference('advance'), /Favor forward movement/);
     assert.equal(buildPromptPayload(state, { preparedUsable: true, generationType: 'quiet' }), '');
 });
 
@@ -274,7 +275,8 @@ test('compact preparation keeps timing beside entry and the writer receives advi
     assert.equal(compact.items[0].entry, item.entry);
     assert.equal(compact.items[0].hold, item.hold);
     const packet = formatPreparedWorld(board);
-    assert.match(packet, /use a fitting entry despite a conflicting inferred hold/);
+    assert.match(packet, /timing notes are provisional notebook material, not preset overrides/);
+    assert.doesNotMatch(packet, /conflicting inferred hold|silence alone do not suspend NPC activity/);
     assert.match(packet, /Timing consideration \(only if supported by the actual scene\):/);
     assert.doesNotMatch(packet, /^Keep dormant:/m);
 });
@@ -283,7 +285,7 @@ test('compact preparation keeps timing beside entry and the writer receives advi
 test('writer budget selects whole preparations with all their boundaries and keeps omitted records stored', () => {
     const items = ['first', 'second', 'third'].map(id => ({ ...record(id),
         premise: `Proposal ${id}: ` + record().premise,
-        middle: record().middle.repeat(3),
+        middle: record().middle.repeat(4),
         knowledge: `Only the keeper knows secret-${id}.`,
         invalidates: `Never use ${id} if the bridge has fallen.`,
     }));

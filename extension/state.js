@@ -1,14 +1,14 @@
 import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.13.9';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
-import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js?v=0.14.17';
-import { defaultCausalContext, defaultSceneProfile, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, normalizeSceneProfile } from './causal-context.js?v=0.14.17';
+import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js?v=0.14.18';
+import { defaultCausalContext, defaultSceneProfile, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, normalizeSceneProfile } from './causal-context.js?v=0.14.18';
 import { normalizeDirectorSample } from './director-sampling.js?v=0.13.9';
 import { defaultOffscreenWorld, normalizeOffscreenWorld, offscreenWorldForPrompt } from './offscreen-world.js?v=0.13.9';
 import { defaultSituationBoard, normalizeSituationBoard } from './situations.js?v=0.13.9';
-import { GAME_MASTER_CONTRACT, isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.17';
+import { TALE_FAIRY_CONTEXT_GUIDE, isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.18';
 import { relevantActors } from './evidence-selection.js?v=0.13.9';
-import { defaultPreparedWorld, normalizePreparedWorld, preparedWorldForPrompt, formatPreparedWorld, formatPacingPreference } from './prepared-world.js?v=0.14.17';
+import { defaultPreparedWorld, normalizePreparedWorld, preparedWorldForPrompt, formatPreparedWorld, formatPacingPreference } from './prepared-world.js?v=0.14.18';
 
 export const STATE_KEY = 'livingWorldGuide';
 export const STATE_VERSION = 59;
@@ -916,11 +916,10 @@ export function buildPromptPayload(state, { enabled = true, generationType = '',
     if (cachedPayload) return refreshGameMasterContract(cachedPayload);
     const s = normalizeState(state);
     const snapshot = guidanceSnapshot(s, { guidanceUsable, causalContext, sceneProfile });
-    const selectedMode = directorSample?.mode || mode || s.mode;
     const dynamicPrompt = snapshot.dynamicContextIncluded
-        ? formatCausalContext(snapshot.causalContext, { mode: selectedMode, sceneProfile: snapshot.sceneProfile, includeRules: false, includeSceneFit: s.plannerContract !== 14 }) : '';
+        ? formatCausalContext(snapshot.causalContext, { includeRules: false }) : '';
     const preparedPrompt = preparedUsable ? formatPreparedWorld(preparedWorld || s.preparedWorld) : '';
-    const statePrompt = [GAME_MASTER_CONTRACT, formatPacingPreference(s.pacing.mode), plotAnchor, dynamicPrompt, preparedPrompt].filter(Boolean).join('\n');
+    const statePrompt = [TALE_FAIRY_CONTEXT_GUIDE, formatPacingPreference(s.pacing.mode), plotAnchor, dynamicPrompt, preparedPrompt].filter(Boolean).join('\n');
     const guidancePrompt = `\n<living-world-guide>\n${statePrompt}\n</living-world-guide>`;
     return `<tale-fairy-context>${guidancePrompt}\n</tale-fairy-context>`;
 }

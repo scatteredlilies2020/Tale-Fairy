@@ -1,7 +1,7 @@
-import { stageNotebookCompactions } from './notebook-compaction.js?v=0.14.17';
+import { stageNotebookCompactions } from './notebook-compaction.js?v=0.14.18';
 // Model-facing replacement. Legacy boards remain readable, but are no longer
 // mandatory work for every generated update. Transport/lifecycle stay separate.
-import { validatePrepared, normalizePreparedWorld, mergePreparedWorld, preparedFieldLimit, PREPARED_APPROACH_LIMIT, PREPARED_SUMMARY_LIMIT } from './prepared-world.js?v=0.14.17';
+import { validatePrepared, normalizePreparedWorld, mergePreparedWorld, preparedFieldLimit, PREPARED_APPROACH_LIMIT, PREPARED_SUMMARY_LIMIT } from './prepared-world.js?v=0.14.18';
 
 const text = maxLength => ({ type: 'string', maxLength });
 const nonblank = maxLength => ({ type: 'string', minLength: 1, maxLength, pattern: '\\S' });
@@ -15,7 +15,7 @@ export const WORLD_PLANNER_SCHEMA = {
             contract_version: { type: 'integer', const: 14 },
             note_resolution: { type: 'object', properties: { kind: { type: 'string', enum: ['suggest', 'correct', 'establish', 'forbid'] } }, required: ['kind'], additionalProperties: false },
             prepared: { type: 'object', additionalProperties: false, properties: {
-                approach: { ...text(PREPARED_APPROACH_LIMIT), description: 'Omit when unchanged. Otherwise provide the complete replacement, aiming for 800 characters. Empty text deliberately clears it.' },
+                approach: { ...text(PREPARED_APPROACH_LIMIT), description: 'Story-specific aims grounded in supplied references and explicit user preferences, not general writing rules or a replacement preset. Omit when unchanged. Otherwise provide the complete replacement, aiming for 800 characters. Empty text deliberately clears it.' },
                 summary: { ...text(PREPARED_SUMMARY_LIMIT), description: 'Rolling private planner summary. Create when absent; update when developments change. Return a complete replacement, aiming for 1200 characters; omit when unchanged. Preserve wider possibilities and unresolved dependencies from the previous summary; new evidence can correct or resolve them. This is conditional preparation, not story history. Empty text deliberately clears it.' },
                 updates: { type: 'array', maxItems: 12, items: {
                     type: 'object', additionalProperties: false,
@@ -49,7 +49,9 @@ WORLD_PLANNER_SCHEMA.value.properties.prepared.properties.consolidations = {
 
 export const WORLD_PLANNER_SYSTEM = `You are Tale Fairy, preparing durable GM guidance for any ongoing RP or simulation. Return the JSON contract in one response, without reasoning, a critic, or a repair pass. The writer handles the next reply; your job is useful direction across many exchanges.
 
-approach: Write a few practical instructions for making THIS RP worthwhile, using rp_reference and explicit user preferences. Preserve their full range of activities and scale. This is not a literary blurb about the latest scene. A local problem is not the premise of the entire RP. Do not add prohibitions, rank activities as lesser, or demand recurring themes unless the user/reference actually asks for that. Where wider intent is unspecified, leave it open. The approach should still work after this location and problem are left behind. On redirection replace incompatible clauses. Omit when unchanged; otherwise return the full replacement. Empty text deliberately clears it.
+These instructions govern private preparation only. The writer's preset and explicit user instructions govern narrative behavior, style, viewpoint, player control and NPC autonomy. Supply story material, not competing instructions for those responsibilities. The saved pacing value auto means follow the preset, not an additional pacing policy.
+
+approach: Summarize THIS RP's story-specific aims and commitments supported by rp_reference and explicit user preferences. Preserve their full range of activities and scale. This is not a literary blurb about the latest scene. A local problem is not the premise of the entire RP. Do not add prohibitions, rank activities as lesser, or demand recurring themes unless the user/reference actually asks for that. Where wider intent is unspecified, leave it open. The approach should still work after this location and problem are left behind. Do not generate general writing rules, style/viewpoint mandates, player-control rules, NPC-autonomy rules, or a replacement preset. Revisit an existing approach that contains those mandates: replace it with supported story aims, or clear it if none are supported. On redirection replace incompatible clauses. Omit when unchanged; otherwise return the full replacement. Empty text deliberately clears it.
 
 summary: Maintain a rolling private planner summary from the previous summary, supplied records, accepted evidence and this response’s changes. Preserve wider possibilities, unresolved dependencies and knowledge boundaries even when their detailed records are absent. Correct or remove superseded directions; never turn a proposal into history. Create when absent, replace completely when changed, omit when unchanged. Summarize only supplied material; omitted records remain stored. Input omitted_fields marks unavailable saved prose: omit those fields from output unless explicitly replacing them; never clear them because they are absent.
 

@@ -1,5 +1,5 @@
 import { estimateTokenCount } from './token-budget.js?v=0.13.9';
-import { summarySourceAudit } from './summary-context.js?v=0.14.17';
+import { summarySourceAudit } from './summary-context.js?v=0.14.18';
 
 export function plannerEvidenceAudit(prompt, candidates, { fixedEnvelope = '', tokenBudget = 0, tier = '' } = {}) {
     const payload = JSON.parse(prompt);

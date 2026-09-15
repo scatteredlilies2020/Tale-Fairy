@@ -9,7 +9,7 @@ This is a prompt-and-state design, not a creativity guarantee. Both the routine 
 ## Three separate layers
 
 1. **Factual reference:** actual conversation, saved continuity, and optional summaries. The new planner does not generate a second scene recap or overwrite factual memory. Source freshness still matters; proposals never establish history.
-2. **Persistent preparation:** `preparedWorld` in per-chat state. `approach` contains generated RP-specific guidance for how to make this RP worthwhile across scenes; `items` holds up to 12 records; `focus` selects up to three for the writer. A private source proof binds the board to its source prefix and author/card/lore input key.
+2. **Persistent preparation:** `preparedWorld` in per-chat state. `approach` contains provisional story-specific aims grounded in references and explicit preferences, not general writing rules or a replacement preset; the working view supplies up to 12 records; `focus` selects up to three for the writer. A private source proof binds the board to its source prefix and author/card/lore input key.
 3. **Writer packet:** permanent agency rules, saved pacing preference, grounded plot anchor and compatible conditional preparation. The selected packet is frozen for request verification; a newer compatible pre-reply plan can serve subsequent requests and retries. Legacy/fallback factual slices remain supported, but new preparation does not generate them.
 
 The source text in plot anchors is still bounded transcript evidence, not newly generated prose. The creative notebook asks the model to distill meaning rather than copy repetitive narration. Unselected notebook entries and source hashes are not injected.
@@ -45,9 +45,9 @@ Prompt fitting retains representatives of available source kinds and compresses 
 
 ## Pacing and realization
 
-Adaptive, Linger, Natural and Advance are saved per chat. Latest explicit user instructions override the preference. No English-only keyword gate controls creative entry. A preference change updates packet dependencies; an already compatible notebook can survive that preference-only change, while the active planner is refreshed.
+Follow preset (the existing `auto` value), Linger, Natural and Advance are saved per chat. Follow preset adds no writer pacing instruction; other choices add only a short saved preference, subordinate to latest explicit user directions. The legacy Light/Balanced/Fun narrative-mode control is removed. No English-only keyword gate controls creative entry. A preference change updates packet dependencies; an already compatible notebook can survive that preference-only change, while the active planner is refreshed.
 
-Duration, progress and outside interruption are independent. Linger does not require padding or freeze NPC agency; Advance does not allow skipping player choices. Travel is an opportunity for a causally fitting encounter, not automatic permission to timeskip or finish an ambush. Scene-fit classifications are provisional rather than permanent prohibitions. Plans have no turn-based activation countdown.
+The preset and explicit user instructions govern narrative behavior, viewpoint, player control and NPC autonomy. Tale Fairy supplies facts and optional preparation, not a separate system-authority message, permanent GM contract or scene-fit policy. Private planning instructions govern preparation only. Existing generated approach text remains saved and labeled provisional; future planner updates are instructed to revise or clear unsupported mandates rather than treating them as user preferences. Plans have no turn-based activation countdown.
 
 Example, illustrative rather than a tested model output:
 

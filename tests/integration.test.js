@@ -16,12 +16,12 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest, browser runtime, and detached plugin share the release version', () => {
-    assert.equal(manifest.version, '0.14.17');
-    assert.equal(manifest.js, 'extension/index.js?v=0.14.17');
-    assert.equal(manifest.css, 'extension/style.css?v=0.14.17');
+    assert.equal(manifest.version, '0.14.18');
+    assert.equal(manifest.js, 'extension/index.js?v=0.14.18');
+    assert.equal(manifest.css, 'extension/style.css?v=0.14.18');
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.14\.17'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.14\.17'/);
+    assert.match(pluginSource, /const VERSION = '0\.14\.18'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.14\.18'/);
 });
 
 test('planner input proof travels through normal saves and detached recovery', () => {
@@ -35,6 +35,12 @@ test('planner and story context have separate visible status indicators', () => 
     assert.match(template, /Planner: <span data-role="analysis-status">/);
     assert.match(template, /Story context: <span data-role="injection-status">/);
     assert.match(template, /No request verified on this page/);
+});
+
+test('removed narrative mode has no dangling settings bindings', () => {
+    assert.doesNotMatch(template, /data-setting="mode"/);
+    assert.doesNotMatch(source, /data-setting="mode"/);
+    assert.match(template, /Follow preset \(default\)/);
 });
 
 test('live and recovered planner results bound diagnostic prose before strict validation', () => {
@@ -57,8 +63,8 @@ test('roleplay injection never migrates the user default into a system message',
 });
 
 test('runtime uses causal context and deferred world state without prescriptive beat-director dependency', () => {
-    assert.match(source, /from '\.\/causal-context\.js\?v=0\.14\.17'/);
-    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.14\.17'/);
+    assert.match(source, /from '\.\/causal-context\.js\?v=0\.14\.18'/);
+    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.14\.18'/);
     assert.doesNotMatch(source, /beat-director/);
     assert.doesNotMatch(stateSource, /beat-director/);
     assert.match(stateSource, /export const STATE_VERSION = 59/);
@@ -86,8 +92,8 @@ test('planner contracts return active world conditions rather than future branch
 test('provider context exposes only clean relevant conditions', () => {
     assert.match(causalSource, /RELEVANT UNDERLYING CONDITIONS/);
     assert.match(causalSource, /causal context, not required events or predetermined outcomes/i);
-    assert.match(gmSource, /CAUSAL ROLE: Use relevant conditions and conditional preparation/i);
-    assert.match(gmSource, /writing model chooses realization and rhythm/i);
+    assert.match(gmSource, /Preset and explicit user instructions govern narration/i);
+    assert.match(gmSource, /Notebook proposals are not established history/i);
     assert.doesNotMatch(gmSource, /SELF-PROPELLING MOVEMENT|Every reply changes the current situation/i);
     assert.doesNotMatch(causalSource, /question|interrogat/i);
     assert.match(causalSource, /confidence !== 'tentative'/);

@@ -164,16 +164,15 @@ test('provider-bound request receives only clean relevant causal conditions', ()
 
     assert.equal(ensureGuidanceInChat(chat, prompt, { role: 'user', depth: 1, inlineLatestUser: true }), true);
     assert.equal(chatHasCurrentGuidance(chat, prompt), true);
-    assert.equal(chat.length, 2);
-    assert.equal(chat[0].role, 'system');
-    assert.doesNotMatch(chat[0].content, /Mira|Grain reserves/);
-    chat.shift(); // Dynamic evidence remains in the user-role slice.
+    assert.equal(chat.length, 1);
+    assert.equal(chat[0].role, 'user');
+    assert.doesNotMatch(chat[0].content, /tale-fairy-authority/);
     assert.match(chat[0].content, /Mira: suspects the report is false/);
     assert.match(chat[0].content, /Grain reserves: are falling faster than reported/);
     assert.doesNotMatch(chat[0].content, /Merchants|confidence|relevance|Private evidence/i);
-    assert.match(chat[0].content, /writing model chooses every concrete action/i);
+    assert.match(chat[0].content, /Preset and explicit user instructions govern narration/i);
     assert.match(chat[0].content, /Tell me what happened\.$/);
     assert.equal(chat[0].content.match(/<tale-fairy-context>/g)?.length, 1);
-    // Includes permanent GM/agency rules as well as the concise dynamic slice.
-    assert.ok(prompt.length < 6500);
+    // Only packet semantics and relevant conditions, not a universal GM policy.
+    assert.ok(prompt.length < 2000);
 });

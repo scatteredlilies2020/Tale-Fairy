@@ -16,7 +16,11 @@ const messages = [{ is_user: true, name: 'Rowan', mes: 'I remain in the council 
     { is_user: false, mes: 'The council rejects the emergency tax. Iona begins asking the districts about a voluntary compact. The winter harvest is not known yet.' }];
 
 test('replacement instructions stay compact and do not reintroduce generated reporting fields', () => {
-    assert.ok(WORLD_PLANNER_SYSTEM.split(/\s+/u).length < 650);
+    assert.ok(WORLD_PLANNER_SYSTEM.split(/\s+/u).length < 750);
+    assert.match(WORLD_PLANNER_SYSTEM, /These instructions govern private preparation only/);
+    assert.match(WORLD_PLANNER_SYSTEM, /Do not generate general writing rules/);
+    assert.match(WORLD_PLANNER_SYSTEM, /Revisit an existing approach/);
+    assert.match(WORLD_PLANNER_SCHEMA.value.properties.prepared.properties.approach.description, /not general writing rules/);
     assert.deepEqual(Object.keys(WORLD_PLANNER_SCHEMA.value.properties).sort(), ['contract_version', 'note_resolution', 'prepared']);
     assert.deepEqual(Object.keys(WORLD_PLANNER_SCHEMA.value.properties.prepared.properties).sort(), ['approach', 'consolidations', 'focus', 'status_changes', 'summary', 'updates']);
 });
@@ -68,7 +72,8 @@ test('new wire contract runs through production parser, persistence and actual r
     const request = [{ role: 'system', content: 'Use literary prose.' }, { role: 'user', content: 'I listen.' }];
     ensureGuidanceInChat(request, payload, { role: 'user', depth: 1, inlineLatestUser: true });
     assert.match(JSON.stringify(request), /competing regional compacts/);
-    assert.ok(request.some(item => item.role === 'system' && item.content.includes('<tale-fairy-authority>')));
+    assert.deepEqual(request.filter(item => item.role === 'system'), [{ role: 'system', content: 'Use literary prose.' }]);
+    assert.doesNotMatch(JSON.stringify(request), /tale-fairy-authority/);
 });
 
 test('raw, wrapped and content-block world contracts survive transport extraction', () => {
@@ -87,7 +92,7 @@ test('lasting directions survive forty appended messages without presenting stal
     const payload = buildPromptPayload(state, { guidanceUsable: false, preparedUsable: usable });
     assert.match(payload, /successive seasons/);
     assert.match(payload, /Make governing consequential/);
-    assert.match(payload, /NOT TRANSCRIPT FACTS OR A REQUIRED NEXT BEAT/);
+    assert.match(payload, /not transcript facts, character knowledge, or required next events/);
     assert.doesNotMatch(payload, /is seeking district views/);
     assert.equal(state.preparedWorld.items[0].status, 'prepared');
 });

@@ -80,18 +80,18 @@ test('knowledge routes survive storage without promoting beliefs or leaking priv
     assert.match(output, /Mira: suspects the report is false/);
     assert.match(output, /Known to: Mira; others need an in-world learning route/);
     assert.match(output, /Her own comparison of two ledgers/);
-    assert.match(output, /(?:belief, not|suspicion is not) objective truth/);
+    assert.match(output, /Private conditions:/);
+    assert.doesNotMatch(output, /Mira: knows the report is false/);
     assert.doesNotMatch(output, /Merchants/);
     assert.deepEqual(normalizeCausalContext({ conditions }).conditions[0].knownBy, []);
 });
 
-test('quiet-scene guidance values meaningful progress without forcing conflict or player emotions', () => {
+test('quiet-scene context leaves narrative behavior to the preset', () => {
     const output = formatCausalContext({ conditions: [{ ...conditions[0], subject: 'Lucia', condition: 'is finishing the shared tea ritual', disclosure: 'open' }], inject: true }, { sceneProfile: { phase: 'landing', intrusion: 'closed', noveltyCeiling: 'none' } });
-    assert.match(output, /CAUSAL ROLE: Use relevant conditions and conditional preparation/i);
-    assert.match(output, /writing model chooses realization and rhythm/i);
+    assert.match(output, /Preset and explicit user instructions govern narration/i);
+    assert.match(output, /Lucia: is finishing the shared tea ritual/);
     assert.doesNotMatch(output, /meaningfully, even during rest or inactivity|quiet progress needs no interruption or new conflict/i);
-    assert.match(output, /Never author the player character's choices, dialogue, consent, thoughts, feelings/);
-    assert.match(output, /Explicit user\/OOC instructions and established facts take priority/);
+    assert.doesNotMatch(output, /Never author|PLAYER BOUNDARY|SCENE FIT|DEVELOPMENT:/);
 });
 
 test('formatter exposes natural-language causes without internal metadata', () => {
@@ -99,16 +99,16 @@ test('formatter exposes natural-language causes without internal metadata', () =
     assert.match(output, /Mira: suspects the report is false\./);
     assert.match(output, /Grain reserves: are falling faster than reported\./);
     assert.doesNotMatch(output, /Merchants|confidence|relevance|"id"|mira/);
-    assert.match(output, /writing model chooses every concrete action/i);
-    assert.match(output, /writing model chooses realization and rhythm/i);
+    assert.match(output, /Preset and explicit user instructions govern narration/i);
+    assert.match(output, /Notebook proposals are not established history/i);
     assert.doesNotMatch(output, /self-propelling movement|every reply changes the current situation|Develop what is underway|lasting change in circumstances/i);
     assert.doesNotMatch(output, /question|interrogat/i);
 });
 
-test('private disclosure shapes behavior without requiring revelation', () => {
+test('private disclosure labels knowledge without prescribing narration', () => {
     const output = formatCausalContext({ conditions: [conditions[0]], inject: true });
     assert.match(output, /Private conditions/);
-    assert.match(output, /unless disclosure becomes natural in-world/i);
+    assert.doesNotMatch(output, /express through behavior|unless disclosure becomes natural in-world/i);
 });
 
 test('v56 migration clears prescribed beats rather than treating them as causes', () => {
@@ -144,16 +144,14 @@ test('provider payload includes only clean causal context', () => {
     assert.doesNotMatch(payload, /Secret harbor debt|convoy vanished|private ledger/i);
 });
 
-test('scene profile bounds outside pressure and preserves explicit OOC authority', () => {
+test('legacy scene profiles do not impose outside pressure or novelty policies', () => {
     const state = analyzed();
     state.sceneProfile.intrusion = 'closed';
     state.sceneProfile.noveltyCeiling = 'none';
     const payload = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
-    assert.match(payload, /Keep outside pressure dormant/i);
-    assert.match(payload, /Favor the established activity; no novelty merely to fill space/i);
-    assert.match(payload, /writing model chooses realization and rhythm/i);
+    assert.doesNotMatch(payload, /Keep outside pressure dormant|Favor the established activity|SCENE FIT|DEVELOPMENT:/i);
     assert.doesNotMatch(payload, /quiet progress needs no interruption or new conflict/i);
-    assert.match(payload, /Explicit user\/OOC instructions and established facts take priority/i);
+    assert.match(payload, /Preset and explicit user instructions govern narration/i);
     assert.doesNotMatch(payload, /combat|bureaucratic|opposition may be/i);
 });
 
@@ -165,8 +163,7 @@ test('dynamic guidance remains lean across modes and scene boundaries without du
                     conditions: [conditions[0]], inject: true,
                     optionalSituations: [{ premise: 'A rehearsal space may be available.', entry: 'checks the club noticeboard' }],
                 }, { mode, sceneProfile: { intrusion, noveltyCeiling }, includeRules: false });
-                assert.match(output, /DEVELOPMENT:/);
-                assert.match(output, /SCENE FIT \(provisional/);
+                assert.doesNotMatch(output, /DEVELOPMENT:|SCENE FIT/);
                 assert.match(output, /possibilities, not facts or required events/);
                 assert.match(output, /Private conditions/);
                 assert.match(output, /Keep awareness local/);
@@ -177,9 +174,9 @@ test('dynamic guidance remains lean across modes and scene boundaries without du
     }
 });
 
-test('missing, tentative-only, and stale state retain only GM rules; disabled state injects nothing', () => {
+test('missing, tentative-only, and stale state retain only context framing; disabled state injects nothing', () => {
     const rulesOnly = buildPromptPayload(defaultState(), { enabled: true, guidanceUsable: true });
-    assert.match(rulesOnly, /GAME MASTER RESPONSIBILITY/);
+    assert.match(rulesOnly, /TALE FAIRY CONTEXT:/);
     assert.equal(buildPromptPayload(analyzed(), { enabled: false, guidanceUsable: true }), '');
     const uncertain = analyzed(); uncertain.causalContext = normalizeCausalContext({ conditions: [conditions[2]], inject: true });
     assert.equal(buildPromptPayload(uncertain, { enabled: true, guidanceUsable: true }), rulesOnly);

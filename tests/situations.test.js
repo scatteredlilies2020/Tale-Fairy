@@ -34,9 +34,10 @@ test('provider formatting keeps openings optional and hides internal metadata', 
     assert.match(output, /OPTIONAL SITUATIONAL OPENINGS/);
     assert.match(output, /unclaimed/);
     assert.doesNotMatch(output, /confidence|relevance|situation-board/i);
-    assert.match(output, /outcomes remain open/i);
-    assert.match(output, /Never author the player character's choices, dialogue, consent/);
-    assert.match(output, /May emerge naturally without player engagement/);
+    assert.match(output, /not required events or predetermined outcomes/i);
+    assert.doesNotMatch(output, /Never author the player character's choices, dialogue, consent/);
+    assert.match(output, /Preset and explicit user instructions govern narration/);
+    assert.doesNotMatch(output, /May emerge naturally without player engagement/);
     assert.doesNotMatch(output, /Use only if the latest action naturally engages one/);
 });
 
