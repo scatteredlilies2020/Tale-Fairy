@@ -77,16 +77,21 @@ export function schemaInstruction(schema) {
     // Schema's repeated property/type/required scaffolding. Native transports
     // still receive the original machine schema and validation stays unchanged.
     const shape = node => {
+        const { description, ...definition } = node;
+        const value = describe(definition);
+        return description ? `${value} [${description}]` : value;
+    };
+    const describe = node => {
         if (node.const !== undefined) return JSON.stringify(node.const);
         if (node.enum) return node.enum.map(value => JSON.stringify(value)).join('|');
         if (node.anyOf) return node.anyOf.map(shape).join('|');
         if (node.type === 'object' && !node.properties) return JSON.stringify(node);
         if (node.type === 'object' && node.properties) return `{${Object.entries(node.properties)
             .map(([key, value]) => `${key}${node.required?.includes(key) ? '' : '?'}:${shape(value)}`).join(',')}}`;
-        if (node.type === 'array') return `[${shape(node.items)}]${node.maxItems === undefined ? '' : `(${node.minItems || 0}..${node.maxItems} items)`}`;
+        if (node.type === 'array') return `[${shape(node.items)}]${node.maxItems === undefined ? '' : `(${node.minItems || 0}..${node.maxItems} items)`}${node.uniqueItems ? '(unique items)' : ''}`;
         return `${node.type || 'object'}${node.minLength ? `(${node.minLength}..${node.maxLength || 'unbounded'} chars)` : node.maxLength ? `(<=${node.maxLength} chars)` : ''}${node.pattern === '\\S' ? '(nonblank)' : ''}${node.minimum !== undefined ? `(>=${node.minimum})` : ''}`;
     };
-    return `Response shape (JSON schema shorthand): ? means optional key; | means one allowed value; [] means array. Return JSON values, never these type labels. No extra keys.\n${shape(schema.value)}`;
+    return `Response shape (JSON schema shorthand): ? means optional key; | means one allowed value; [] means array. Return JSON values, never these type labels. No extra keys.\n${shape(schema.value)}${schema.description ? `\n\n${schema.description}` : ''}`;
 }
 
 export function plannerBudgetEnvelope(system, schema, mode = PLANNER_OUTPUT_MODE.JSON_SCHEMA) {

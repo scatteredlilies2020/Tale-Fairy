@@ -1,40 +1,45 @@
 // Model-facing replacement. Legacy boards remain readable, but are no longer
 // mandatory work for every generated update. Transport/lifecycle stay separate.
-import { validatePrepared, normalizePreparedWorld, mergePreparedWorld } from './prepared-world.js?v=0.14.12';
+import { validatePrepared, normalizePreparedWorld, mergePreparedWorld, preparedFieldLimit, PREPARED_APPROACH_LIMIT } from './prepared-world.js?v=0.14.13';
 
 const text = maxLength => ({ type: 'string', maxLength });
 const nonblank = maxLength => ({ type: 'string', minLength: 1, maxLength, pattern: '\\S' });
+const proseField = (key, target) => ({ ...nonblank(preparedFieldLimit(key)), description: `Aim for at most ${target} characters; the schema maximum is the existing storage limit. Preserve complete meaning.` });
 export const WORLD_PLANNER_SCHEMA = {
     name: 'tale_fairy_world_notebook_v14', strict: true, returnInvalid: true,
+    description: 'JSON nesting: only contract_version, prepared and optional note_resolution belong at the root. Put approach, updates, status_changes and focus INSIDE prepared. Before sending this single response, check every operation: unchanged content is omitted; status-only changes go in status_changes; every updates record has id, premise, middle and status. Keep at most three distinct available focus IDs. Each ID occurs in only one operation. Respect notebook_capacity; do not add beyond free slots without an explicit retirement. Use JSON strings for prose, not lists or objects. If space is tight, return fewer complete updates, never partial records. Close the JSON object; return no commentary.',
     value: {
         type: 'object', additionalProperties: false,
         properties: {
             contract_version: { type: 'integer', const: 14 },
             note_resolution: { type: 'object', properties: { kind: { type: 'string', enum: ['suggest', 'correct', 'establish', 'forbid'] } }, required: ['kind'], additionalProperties: false },
             prepared: { type: 'object', additionalProperties: false, properties: {
-                approach: text(800),
+                approach: { ...text(PREPARED_APPROACH_LIMIT), description: 'Omit when unchanged. Otherwise provide the complete replacement, aiming for 800 characters. Empty text deliberately clears it.' },
                 updates: { type: 'array', maxItems: 12, items: {
                     type: 'object', additionalProperties: false,
                     properties: {
-                        id: nonblank(80), premise: nonblank(320), middle: nonblank(440), future: nonblank(260),
-                        knowledge: nonblank(180),
+                        id: { ...nonblank(80), description: 'Exact existing ID for a replacement, or a new stable ID for new content.' },
+                        premise: { ...proseField('premise', 320), description: 'Complete premise in one JSON string; aim for 320 characters.' },
+                        middle: { ...proseField('middle', 440), description: 'Complete playable developments in one JSON string; aim for 440 characters. Never omit or replace with a status-only patch.' },
+                        future: proseField('future', 260),
+                        knowledge: proseField('knowledge', 180),
                         status: { type: 'string', enum: ['prepared', 'active', 'dormant'] },
                     }, required: ['id', 'premise', 'middle', 'status'],
                 } },
-                status_changes: { type: 'array', maxItems: 12, items: {
+                status_changes: { type: 'array', maxItems: 12, description: 'Use this array for status-only changes and removals of existing IDs, preserving all stored prose.', items: {
                     type: 'object', additionalProperties: false, properties: {
                         id: nonblank(80), status: { type: 'string', enum: ['prepared', 'active', 'dormant', 'resolved', 'retired'] },
                     }, required: ['id', 'status'],
                 } },
-                focus: { type: 'array', maxItems: 3, items: nonblank(80) },
-            }, required: ['approach', 'updates', 'focus'] },
+                focus: { type: 'array', maxItems: 3, uniqueItems: true, description: 'Choose zero to three distinct retained or completely updated IDs; never removed IDs.', items: nonblank(80) },
+            }, required: ['updates', 'focus'] },
         }, required: ['contract_version', 'prepared'],
     },
 };
 
 export const WORLD_PLANNER_SYSTEM = `You are Tale Fairy, preparing durable GM guidance for any ongoing RP or simulation. Return the JSON contract in one response, without reasoning, a critic, or a repair pass. The writer handles the next reply; your job is useful direction across many exchanges.
 
-approach: Write a few practical instructions for making THIS RP worthwhile, using rp_reference and explicit user preferences. Preserve their full range of activities and scale. This is not a literary blurb about the latest scene. A local problem is not the premise of the entire RP. Do not add prohibitions, rank activities as lesser, or demand recurring themes unless the user/reference actually asks for that. Where wider intent is unspecified, leave it open. The approach should still work after this location and problem are left behind. Keep it unchanged during ordinary dialogue. On a real redirection, replace incompatible clauses rather than appending an exception to them. Return the full approach; empty clears it.
+approach: Write a few practical instructions for making THIS RP worthwhile, using rp_reference and explicit user preferences. Preserve their full range of activities and scale. This is not a literary blurb about the latest scene. A local problem is not the premise of the entire RP. Do not add prohibitions, rank activities as lesser, or demand recurring themes unless the user/reference actually asks for that. Where wider intent is unspecified, leave it open. The approach should still work after this location and problem are left behind. Keep it unchanged during ordinary dialogue. On a real redirection, replace incompatible clauses rather than appending an exception to them. Omit approach when unchanged; otherwise return the full replacement. Empty text deliberately clears it.
 
 updates: Prepare a few distinct possibilities for the middle and longer term, not next-reply choreography. One local problem normally needs one record, not several disguised as different directions. When the RP has a wider canvas, include an independent possibility beyond that problem. Invent fitting people, places, organizations, discoveries, opportunities or opposition with their own motives; no fixed genre menu or required interruption. premise states the possibility; middle supplies processes and several playable developments; future gives alternative consequences beyond them. future and knowledge are optional: include meaningful continuations or knowledge boundaries when useful; otherwise omit the field. Never output empty strings in an update. Do not prescribe introductions or replay questions. NPCs and systems can act without another player command; the user may refuse, linger or redirect.
 
@@ -73,10 +78,26 @@ function distinctIdenticalOperations(items) {
     });
 }
 
+// Some prompt-only responses put complete notebook fields at the root.
+// Preserve their content; conflicting operation IDs are still validated below.
+function notebookFields(value) {
+    if (value.prepared != null && (typeof value.prepared !== 'object' || Array.isArray(value.prepared))) return value.prepared;
+    const source = { ...(value.prepared || {}) };
+    for (const key of ['approach', 'updates', 'status_changes', 'focus']) {
+        if (!Object.hasOwn(value, key)) continue;
+        if (source[key] == null) source[key] = value[key];
+        else if (JSON.stringify(source[key]) === JSON.stringify(value[key])) continue;
+        else if (Array.isArray(source[key]) && Array.isArray(value[key])) source[key] = [...source[key], ...value[key]];
+        else throw new Error(`Conflicting root and prepared.${key} fields.`);
+    }
+    return source;
+}
+
 // The same normalization is used for live responses and detached recovery.
 export function normalizeWorldPlan(value) {
-    const source = value?.prepared;
-    if (value?.contract_version !== 14 || !source || typeof source !== 'object' || Array.isArray(source)
+    if (value?.contract_version !== 14) return value;
+    const source = notebookFields(value);
+    if ( !source || typeof source !== 'object' || Array.isArray(source)
         || !(Array.isArray(source.updates) || Array.isArray(source.status_changes)
             || typeof prose(source.approach) === 'string' || typeof source.focus === 'string' || Array.isArray(source.focus))) return value;
     const updates = source.updates ?? [];
@@ -90,6 +111,7 @@ export function normalizeWorldPlan(value) {
     // Scene recaps from experimental/older responses are not another source of
     // writer facts. Retain factual memory separately; this job is preparation.
     const normalized = { ...value, context: [], memory: '' };
+    for (const key of ['approach', 'updates', 'status_changes', 'focus']) delete normalized[key];
     if (normalized.note_resolution === null) delete normalized.note_resolution;
     const prepared = { ...source, overview: '',
         focus: plannerFocus(source.focus, undefined, Infinity),

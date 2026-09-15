@@ -507,3 +507,27 @@ test('replayed removals are idempotent without permitting activation of missing 
         status_changes: [{ id: 'compact', status: 'active' }],
     } }), messages), /unavailable/);
 });
+
+
+test('complete notebook fields at the wrong JSON level are preserved through parsing and saving', () => {
+    for (const prepared of [undefined, { approach: plan().prepared.approach }, { updates: [direction('orchard')] }]) {
+        const raw = { contract_version: 14, prepared, updates: [direction('compact')], focus: ['compact'] };
+        const before = structuredClone(raw);
+        const parsed = parseRuntime(raw);
+        const next = analysis.applyAnalysis(defaultState(), parsed, messages);
+        assert.ok(next.preparedWorld.items.some(item => item.id === 'compact'));
+        if (prepared?.updates) assert.ok(next.preparedWorld.items.some(item => item.id === 'orchard'));
+        assert.deepEqual(next.preparedWorld.focus, ['compact']);
+        assert.equal(parsed.updates, undefined, 'canonical response has one notebook location');
+        assert.deepEqual(raw, before);
+    }
+});
+
+test('mixed nesting deduplicates identical content but does not hide conflicting edits', () => {
+    const raw = { contract_version: 14, prepared: { updates: [direction('compact')], focus: ['compact'] }, updates: [direction('compact')], focus: ['compact'] };
+    const next = analysis.applyAnalysis(defaultState(), parseRuntime(raw), messages);
+    assert.equal(next.preparedWorld.items.length, 1);
+    raw.updates = [direction('compact', { middle: 'A contradictory replacement.' })];
+    assert.throws(() => parseRuntime(raw));
+    assert.throws(() => parseRuntime({ contract_version: 14, prepared: { approach: 'A', updates: [] }, approach: 'B' }));
+});

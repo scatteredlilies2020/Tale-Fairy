@@ -12,7 +12,8 @@ const optionalNotes = fields.filter(key => !['id', 'premise', 'middle'].includes
 // Schema lengths are writing targets. Preserve modest prose overruns intact
 // instead of losing the whole plan or cutting off its final constraints.
 const overviewStorageLimit = 3600;
-const storageLimit = key => key === 'id' ? limits.id : limits[key] * 4;
+export const PREPARED_APPROACH_LIMIT = 2400;
+export const preparedFieldLimit = key => key === 'id' ? limits.id : limits[key] * 4;
 const string = maxLength => ({ type: 'string', maxLength });
 export const PREPARED_SCHEMA = {
     type: 'object', additionalProperties: false,
@@ -37,7 +38,7 @@ export function validatePrepared(value) {
     const errors = [];
     if (!value || typeof value !== 'object' || Array.isArray(value)) return ['prepared must be an object'];
     if (typeof value.overview !== 'string' || value.overview.length > overviewStorageLimit) errors.push(`prepared.overview must be text up to ${overviewStorageLimit} characters`);
-    if (value.approach !== undefined && (typeof value.approach !== 'string' || value.approach.length > 2400)) errors.push('prepared.approach must be text up to 2400 characters');
+    if (value.approach !== undefined && (typeof value.approach !== 'string' || value.approach.length > PREPARED_APPROACH_LIMIT)) errors.push('prepared.approach must be text up to 2400 characters');
     // Four is the routine writing target, not the notebook's capacity. A pivot
     // can legitimately retire/dormant several old directions and add a new one.
     if (!Array.isArray(value.updates) || value.updates.length > PREPARED_LIMIT) errors.push(`prepared.updates must contain at most ${PREPARED_LIMIT} records`);
@@ -46,7 +47,7 @@ export function validatePrepared(value) {
         if (!item || typeof item !== 'object') { errors.push('prepared record must be an object'); continue; }
         for (const key of fields) {
             if (item[key] === undefined && optionalNotes.includes(key)) continue;
-            if (typeof item[key] !== 'string' || item[key].length > storageLimit(key)) errors.push(`prepared.${key} must be text up to ${storageLimit(key)} characters`);
+            if (typeof item[key] !== 'string' || item[key].length > preparedFieldLimit(key)) errors.push(`prepared.${key} must be text up to ${preparedFieldLimit(key)} characters`);
         }
         if (typeof item.id !== 'string' || !item.id.trim() || ids.has(item.id)) errors.push('prepared ids must be nonempty and unique');
         ids.add(item.id);
@@ -77,7 +78,7 @@ export function normalizePreparedWorld(value) {
     const safe = defaultPreparedWorld();
     if (!value || typeof value !== 'object') return safe;
     safe.overview = typeof value.overview === 'string' ? value.overview.slice(0, overviewStorageLimit) : '';
-    safe.approach = typeof value.approach === 'string' ? value.approach.slice(0, 2400) : '';
+    safe.approach = typeof value.approach === 'string' ? value.approach.slice(0, PREPARED_APPROACH_LIMIT) : '';
     safe.items = (Array.isArray(value.items) ? value.items : []).filter(item =>
         validatePrepared({ overview: '', updates: [item], focus: [] }).length === 0).slice(-PREPARED_LIMIT)
         .map(item => ({ ...Object.fromEntries(optionalNotes.map(key => [key, ''])), ...item }));

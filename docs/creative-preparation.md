@@ -1,4 +1,4 @@
-# Creative preparation contract — 0.14.12
+# Creative preparation contract — 0.14.13
 
 ## Purpose
 
@@ -95,3 +95,6 @@ The v14 live and detached paths share normalization, validation, and content mer
 | Invalid IDs/status targets, conflicting edits, oversized prose, or notebook overflow | Reject atomically; keep saved state unchanged and expose the rejection reason. |
 
 The regression matrix exercises presentation variants through both response envelopes and checks saved-content invariants, rejection atomicity, capacity, truncation, compaction, and migration. These cases supplement the existing generation cancellation and reconnect tests.
+
+
+First-response guidance preserves schema descriptions and unique-item constraints in prompt-only transports. Writing targets are distinguished from the unchanged storage limits; omitting an unchanged approach avoids both repetition and conflicting length instructions. Root-level notebook fields are moved into the prepared notebook; identical operations deduplicate and incompatible edits remain rejected. Acceptance tests check retained generated records, not merely whether an empty remainder validates.

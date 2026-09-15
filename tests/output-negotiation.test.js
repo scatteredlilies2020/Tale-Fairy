@@ -192,8 +192,8 @@ test('compact compatibility shapes preserve nested identities, required keys, en
 test('prompt-only model requests retain nonblank string constraints and optional note fields', async () => {
     const { WORLD_PLANNER_SCHEMA } = await import('../extension/world-planner.js');
     const shape = schemaInstruction(WORLD_PLANNER_SCHEMA);
-    assert.match(shape, /premise:string\(1\.\.320 chars\)\(nonblank\)/);
-    assert.match(shape, /middle:string\(1\.\.440 chars\)\(nonblank\)/);
+    assert.match(shape, /premise:string\(1\.\.1280 chars\)\(nonblank\)/);
+    assert.match(shape, /middle:string\(1\.\.1760 chars\)\(nonblank\)/);
     assert.match(shape, /knowledge\?:string/);
     assert.match(shape, /status_changes\?:\[\{id:string/);
     const messages = plannerMessages('system', 'evidence', WORLD_PLANNER_SCHEMA, PLANNER_OUTPUT_MODE.PROMPT_ONLY);
@@ -201,4 +201,33 @@ test('prompt-only model requests retain nonblank string constraints and optional
     const definition = WORLD_PLANNER_SCHEMA.value.properties.prepared.properties.updates.items.properties.premise;
     assert.equal(new RegExp(definition.pattern).test('   '), false);
     assert.equal(new RegExp(definition.pattern).test('An actual possibility.'), true);
+});
+
+test('first-response instructions retain field purpose, uniqueness and operation routing', async () => {
+    const { WORLD_PLANNER_SCHEMA } = await import('../extension/world-planner.js');
+    const before = JSON.stringify(WORLD_PLANNER_SCHEMA);
+    const guide = schemaInstruction(WORLD_PLANNER_SCHEMA);
+    assert.match(guide, /Complete playable developments in one JSON string/);
+    assert.match(guide, /status-only changes go in status_changes/);
+    assert.match(guide, /unique items/);
+    assert.match(guide, /fewer complete updates, never partial records/);
+    for (const mode of [PLANNER_OUTPUT_MODE.PROMPT_ONLY, PLANNER_OUTPUT_MODE.JSON_OBJECT]) {
+        assert.ok(plannerMessages('system', 'evidence', WORLD_PLANNER_SCHEMA, mode).at(-1).content.includes(WORLD_PLANNER_SCHEMA.description));
+        assert.ok(plannerPrompt('evidence', WORLD_PLANNER_SCHEMA, mode).endsWith(WORLD_PLANNER_SCHEMA.description));
+        assert.ok(plannerBudgetEnvelope('system', WORLD_PLANNER_SCHEMA, mode).includes(WORLD_PLANNER_SCHEMA.description));
+    }
+    assert.equal(JSON.stringify(WORLD_PLANNER_SCHEMA), before);
+});
+
+
+test('requested planner limits match storage checks and unchanged approach can be omitted', async () => {
+    const { WORLD_PLANNER_SCHEMA } = await import('../extension/world-planner.js');
+    const { preparedFieldLimit, PREPARED_APPROACH_LIMIT } = await import('../extension/prepared-world.js');
+    const prepared = WORLD_PLANNER_SCHEMA.value.properties.prepared;
+    assert.equal(prepared.required.includes('approach'), false);
+    assert.equal(prepared.properties.approach.maxLength, PREPARED_APPROACH_LIMIT);
+    for (const key of ['id', 'premise', 'middle', 'future', 'knowledge']) {
+        assert.equal(prepared.properties.updates.items.properties[key].maxLength, preparedFieldLimit(key));
+    }
+    assert.match(schemaInstruction(WORLD_PLANNER_SCHEMA), /Omit when unchanged/);
 });
