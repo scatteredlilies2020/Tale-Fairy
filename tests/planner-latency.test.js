@@ -217,3 +217,29 @@ for (const rebuild of [false, true]) test(`actual ${rebuild ? 'rebuild' : 'first
     await pending;
     assert.deepEqual(h.errors, []);
 });
+
+
+test('the story Stop button preserves and completes the automatic fallback planner', async () => {
+    const h = harness();
+    h.context.chat.push({ is_user: false, mes: 'Discarded future.' });
+    await h.emit('GENERATION_STARTED', 'regenerate');
+    await h.flush();
+    await h.settle();
+    assert.equal(h.requests.length, 1);
+    const request = h.requests[0];
+    assert.equal(request.meta.allowOneAssistantAppend, true);
+    assert.equal(request.meta.messageCount, messages.length);
+    for (let i = 0; i < 3; i++) {
+        await h.emit('GENERATION_STOPPED');
+        await h.emit('GENERATION_ENDED');
+        await h.flush();
+        await h.settle();
+    }
+    assert.equal(h.requests.length, 1);
+    assert.equal(request.signal.aborted, false);
+    const pending = h.scope.analysisPromise;
+    request.finish();
+    await pending;
+    assert.deepEqual(h.errors, []);
+    assert.equal(h.prepare('regenerate').preparedUsable, true);
+});

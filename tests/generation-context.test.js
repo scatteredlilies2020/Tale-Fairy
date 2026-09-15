@@ -455,7 +455,7 @@ test('duplicate transcript updates keep the active planner and its latest-turn q
 });
 
 test('rapid retries keep injecting and resume exactly one latest-turn job after cancellation settles', async () => {
-    const h = generationHarness(input());
+    const h = generationHarness(input(), readyPlan());
     const payload = h.prepare().payload;
     h.context.chat.push({ is_user: false, mes: 'First attempt.' });
     h.scope.analysisPromise = Promise.resolve();
@@ -483,7 +483,7 @@ test('rapid retries keep injecting and resume exactly one latest-turn job after 
 });
 
 for (const type of ['swipe', 'regenerate']) test(`${type} reuses exact pre-reply context across host events, stops, and repeated attempts`, async () => {
-    const h = generationHarness(input());
+    const h = generationHarness(input(), readyPlan());
     const original = h.prepare('normal').payload;
     h.context.chat.push({ is_user: false, mes: 'Discarded: the letter bursts into flame.' });
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -658,7 +658,9 @@ test('cached injection stays disabled for non-story calls and appears exactly on
 for (const type of ['swipe', 'regenerate']) test(`${type} tolerates surrounding whitespace and line endings through edit/update events`, async () => {
     const messages = input();
     messages[1].mes += '\nI wait for her answer.';
-    const h = generationHarness(messages);
+    const state = readyPlan();
+    state.lastAnalysisFingerprint = fingerprintMessages(messages);
+    const h = generationHarness(messages, state);
     const original = h.prepare().payload;
     h.context.chat.push({ is_user: false, mes: 'Discarded attempt.' });
     h.context.chat[1].mes = `  ${h.context.chat[1].mes.replaceAll('\n', '\r\n')}  \r\n`;
@@ -776,4 +778,56 @@ test('whitespace rollback rebinds restored memory without mutating the saved sna
     assert.equal(h.state().contextLedger, state.contextLedger);
     assert.equal(h.state().lastAnalysisFingerprint, fingerprintMessages(h.context.chat.slice(0, -1)));
     assert.equal(JSON.stringify(packet), before);
+});
+
+
+test('starting or stopping a replacement starts one missing planner without waiting for reload', async () => {
+    for (const event of ['GENERATION_STARTED', 'GENERATION_STOPPED']) {
+        const h = generationHarness(input());
+        h.prepare();
+        h.context.chat.push({ is_user: false, mes: 'Discarded future.' });
+        h.scope.deferReplacementPlanning();
+        await h.emit(event, 'regenerate');
+        await h.flush();
+        assert.equal(h.calls.length, 1);
+        assert.deepEqual(h.calls[0].messages, input());
+        assert.equal(h.calls[0].allowOneAssistantAppend, true);
+        for (let i = 0; i < 3; i++) {
+            await h.emit('GENERATION_STOPPED');
+            await h.emit('GENERATION_ENDED');
+            await h.flush();
+        }
+        assert.equal(h.calls.length, 1, 'stop/end notifications do not form a retry loop');
+    }
+});
+
+test('a cached failed fallback with retained preparation still gets one fresh pre-reply attempt', async () => {
+    const h = generationHarness(input(), readyPlan());
+    const fallback = createSafetyFallbackState(h.state(), { messages: input(), chatId: 'story', fingerprint: fingerprintMessages(input()), reason: 'Invalid prepared update' });
+    h.context.updateChatMetadata(saveState(h.context.chatMetadata, fallback));
+    h.prepare();
+    const packet = h.context.chatMetadata[GENERATION_CONTEXT_KEY].entries.at(-1);
+    packet.selection.preparedUsable = true;
+    h.context.chat.push({ is_user: false, mes: 'Discarded future.' });
+    await h.emit('GENERATION_STARTED', 'regenerate');
+    await h.flush();
+    assert.equal(h.calls.length, 1, 'retained preparation cannot disguise a failed evaluation as success');
+    const restored = generationHarness(structuredClone(h.context.chat), h.state(), structuredClone(h.context.chatMetadata));
+    await restored.scope.refreshCurrentPlanIfNeeded();
+    assert.equal(restored.calls.length, 0, 'the attempt guard survives reload');
+});
+
+
+test('Tale Fairy Stop analysis and chat changes prevent deferred generation callbacks from restarting work', async () => {
+    for (const change of ['stop-analysis', 'chat']) {
+        const h = generationHarness(input());
+        h.context.chat.push({ is_user: false, mes: 'Discarded future.' });
+        await h.emit('GENERATION_STARTED', 'regenerate');
+        await h.emit('GENERATION_STOPPED');
+        await h.emit('GENERATION_ENDED');
+        if (change === 'stop-analysis') h.scope.interruptAnalysis('User stopped Tale Fairy.', 'Stopped');
+        else h.context.getCurrentChatId = () => 'other-chat';
+        await h.flush();
+        assert.equal(h.calls.length, 0, change);
+    }
 });

@@ -1,4 +1,4 @@
-import { compactContinuityPrompt, formatPlanningEvidence } from './continuity.js?v=0.14.7';
+import { compactContinuityPrompt, formatPlanningEvidence } from './continuity.js?v=0.14.8';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { evidenceRelevance, relevantExcerpt } from './evidence-selection.js?v=0.13.9';
 

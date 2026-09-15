@@ -4,42 +4,42 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, buildStoryEvidence, storyEvidenceQuery, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.7';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.7';
-import { isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.7';
+import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, buildStoryEvidence, storyEvidenceQuery, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.8';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.8';
+import { isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.8';
 import { selectSituationalOpenings } from './situations.js?v=0.13.9';
-import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.14.7';
+import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.14.8';
 import { resolveInjectionPlacement } from './injection-placement.js?v=0.13.9';
 import { DEFAULT_INJECTION_ROLE, normalizeInjectionRole } from './injection-role.js?v=0.13.9';
 import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.13.9';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.14.7';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.14.8';
 import { normalizeModelListResponse } from './models.js?v=0.13.9';
-import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, plannerOutputTokenBudget, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.14.7';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.14.7';
+import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, plannerOutputTokenBudget, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.14.8';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.14.8';
 import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.13.9';
-import { collectSummarySources } from './summary-context.js?v=0.14.7';
+import { collectSummarySources } from './summary-context.js?v=0.14.8';
 import { estimateTokenCount } from './token-budget.js?v=0.13.9';
-import { fitPromptToBudget, plannerEvidenceAudit } from './prompt-budget.js?v=0.14.7';
-import { DEFAULT_ROUTINE_INPUT, DEFAULT_REVIEW_INPUT, normalizeInputBudget, plannerBudgets } from './planner-budgets.js?v=0.14.7';
+import { fitPromptToBudget, plannerEvidenceAudit } from './prompt-budget.js?v=0.14.8';
+import { DEFAULT_ROUTINE_INPUT, DEFAULT_REVIEW_INPUT, normalizeInputBudget, plannerBudgets } from './planner-budgets.js?v=0.14.8';
 import { relevantActors } from './evidence-selection.js?v=0.13.9';
-import { completionText } from './completion-response.js?v=0.14.7';
+import { completionText } from './completion-response.js?v=0.14.8';
 import { sampleDirectorSignals } from './director-sampling.js?v=0.13.9';
 import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerBudgetEnvelope, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.14.5';
 import { clearPlannerRecoveryRepair, clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.13.10';
 import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.13.9';
-import { hasUsableCausalContext } from './causal-context.js?v=0.14.7';
+import { hasUsableCausalContext } from './causal-context.js?v=0.14.8';
 import { formatHiddenMotives } from './scratchpad-format.js?v=0.13.9';
-import { WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA } from './world-planner.js?v=0.14.7';
-import { buildWorldPlannerPrompt } from './analysis.js?v=0.14.7';
-import { defaultPreparedWorld, preparedWorldUsable, unchangedSourcePrefix, stampPreparedWorld } from './prepared-world.js?v=0.14.7';
+import { WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA } from './world-planner.js?v=0.14.8';
+import { buildWorldPlannerPrompt } from './analysis.js?v=0.14.8';
+import { defaultPreparedWorld, preparedWorldUsable, unchangedSourcePrefix, stampPreparedWorld } from './prepared-world.js?v=0.14.8';
 import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.9';
-import { canRetainSuccessfulPlan, createSafetyFallbackState } from './fallback-direction.js?v=0.14.7';
+import { canRetainSuccessfulPlan, createSafetyFallbackState } from './fallback-direction.js?v=0.14.8';
 import { classifyAssistantReply } from './response-usability.js?v=0.13.9';
 import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.5';
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.14.7';
+const RUNTIME_VERSION = '0.14.8';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -881,13 +881,16 @@ async function repairDeferredReplacementPlan() {
     const chatId = String(context.getCurrentChatId?.() || '');
     const inputKey = plotInputKey(chatId, messages, generationInputs(context, state));
     const packet = cachedGenerationContext(context.chatMetadata?.[GENERATION_CONTEXT_KEY], inputKey, chatId);
-    if ((packet?.selection.preparedUsable || packet?.selection.usable && hasPlannerConditions(packet.selection.causalContext))) return state;
+    const packetState = packet?.plannerState || state;
+    const failedPlan = !hasPlannerConditions(packetState.causalContext) && /planner fallback/iu.test(packetState.lastReason);
+    if (!failedPlan && (packet?.selection.preparedUsable || packet?.selection.usable && hasPlannerConditions(packet.selection.causalContext))) return state;
     const pending = context.chatMetadata[REPLACEMENT_PENDING_KEY];
     if (pending.repairAttemptedKey === inputKey) {
         renderAnalysisActivity('Missing retry plan · automatic repair already attempted; Guide now can retry', false);
         return state;
     }
-    // One bounded migration/repair on chat load, not one evaluation per swipe.
+    // One bounded repair per pre-reply input, including a cached fallback.
+    // Generation start/stop and chat load share this persisted attempt marker.
     // Persist the attempt before starting so refreshes cannot cause a call loop.
     context.updateChatMetadata({ [REPLACEMENT_PENDING_KEY]: { ...pending, repairAttemptedKey: inputKey } });
     scheduleVerificationPersistence(context);
@@ -916,8 +919,10 @@ function prepareGenerationGuide(state, type) {
             ...archived.selection, plotAnchor, guidanceUsable: archived.selection.usable,
         }) : refreshGameMasterContract(archived.payload);
         generationGuideSelection = { ...archived.selection, plotAnchor, chatId, inputKey, replacement, regeneration: replacement, payload, reused: true };
-        renderInjectionActivity(archived.selection.usable && hasPlannerConditions(archived.selection.causalContext)
-            ? 'Cached plot context ready · no new planner calls' : 'Cached scene excerpts ready · planner context unavailable; no new planner calls');
+        renderInjectionActivity(retryPlannerActive(context) ? 'Cached context included · planner updating in background'
+            : archived.selection.preparedUsable ? 'Cached conditional preparation ready'
+            : archived.selection.usable && hasPlannerConditions(archived.selection.causalContext)
+                ? 'Cached plot context ready' : 'Cached scene excerpts included · no current planner context');
     };
     if (!refreshPlan && (archived?.selection.preparedUsable || archived?.selection.usable && hasPlannerConditions(archived.selection.causalContext))) {
         reuseArchived();
@@ -3077,8 +3082,17 @@ eventSource.on(event_types.GENERATION_STARTED, (type, _options, dryRun) => {
     if (dryRun) return;
     clearAutomaticReplyRepair();
     activeGenerationType = String(type || '');
-    if (type === 'swipe' || type === 'regenerate') deferReplacementPlanning();
-    else if (isStoryGeneration(type)) {
+    if (type === 'swipe' || type === 'regenerate') {
+        deferReplacementPlanning();
+        // Reusing a packet with only fallback text is not a completed plan.
+        // Start its bounded repair without making story generation wait.
+        const repairChatId = String(currentContext().getCurrentChatId?.() || '');
+        const stopSequence = analysisStopSequence;
+        setTimeout(() => {
+            if (stopSequence !== analysisStopSequence || repairChatId !== String(currentContext().getCurrentChatId?.() || '')) return;
+            void repairDeferredReplacementPlan();
+        }, 0);
+    } else if (isStoryGeneration(type)) {
         const context = currentContext();
         // Continue is a real continuation, unlike a replacement. Release the
         // deferred selected reply even when no new user message was appended.
@@ -3097,12 +3111,20 @@ eventSource.on(event_types.GENERATION_ENDED, () => {
     // empty generations do not emit it consistently. Recheck after the host
     // finishes committing the result so Tale Fairy cannot remain stranded
     // with only a used/stale direction.
+    const scheduledChatId = String(currentContext().getCurrentChatId?.() || '');
+    const stopSequence = analysisStopSequence;
     setTimeout(() => {
         const context = currentContext();
         const chatId = String(context.getCurrentChatId?.() || '');
         const messages = messagesFromChat(context.chat || []);
         const state = loadState(context.chatMetadata);
-        if (!getSettings().enabled || !chatId || !messages.length || isDirectionCurrent(state, messages, chatId)) return;
+        if (stopSequence !== analysisStopSequence || chatId !== scheduledChatId
+            || !getSettings().enabled || !chatId || !messages.length) return;
+        if (replacementPlanningDeferred(context)) {
+            void repairDeferredReplacementPlan();
+            return;
+        }
+        if (isDirectionCurrent(state, messages, chatId)) return;
         void queueLatestAnalysis({ chatId, allowStaleContinuity: true });
     }, 0);
 });
@@ -3119,12 +3141,20 @@ if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPE
     // Some host paths emit GENERATION_STOPPED without MESSAGE_RECEIVED or a
     // reliable trailing GENERATION_ENDED. Recover the successor directly so
     // the board cannot remain stranded on a consumed direction.
+    const scheduledChatId = String(currentContext().getCurrentChatId?.() || '');
+    const stopSequence = analysisStopSequence;
     setTimeout(() => {
         const context = currentContext();
         const chatId = String(context.getCurrentChatId?.() || '');
         const messages = messagesFromChat(context.chat || []);
         const state = loadState(context.chatMetadata);
-        if (!getSettings().enabled || !chatId || !messages.length || isDirectionCurrent(state, messages, chatId)) return;
+        if (stopSequence !== analysisStopSequence || chatId !== scheduledChatId
+            || !getSettings().enabled || !chatId || !messages.length) return;
+        if (replacementPlanningDeferred(context)) {
+            void repairDeferredReplacementPlan();
+            return;
+        }
+        if (isDirectionCurrent(state, messages, chatId)) return;
         void queueLatestAnalysis({ chatId, allowStaleContinuity: true });
     }, 0);
 });
