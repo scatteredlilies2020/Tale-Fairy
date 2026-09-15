@@ -43,10 +43,10 @@ test('a quoted panel and ordinary prose are not promoted to current scene status
 
 test('the provider plot anchor retains scene facts separately from a topic-focused excerpt', () => {
     const anchor = buildPlotAnchor([{ is_user: false, mes: `${panel}\n\n${body}` }, { is_user: true, mes: 'What about the other soldiers?' }]);
-    assert.match(anchor, /Scene status from accepted reply/);
+    assert.match(anchor, /Scene status:/);
     assert.match(anchor, /10:50 AM/);
     assert.match(anchor, /miller's common room/);
-    assert.match(anchor, /later explicit user changes take priority/);
+    assert.doesNotMatch(anchor, /take priority|not an assumed|not new instructions/);
 });
 
 test('the complete routine envelope preserves multiline status and both sides of the exchange', async () => {

@@ -1,4 +1,4 @@
-import { applyPlannerAuthorLayer, defaultState, normalizeState } from './state.js?v=0.14.19';
+import { applyPlannerAuthorLayer, defaultState, normalizeState } from './state.js?v=0.14.20';
 import { relevantExcerpt } from './evidence-selection.js?v=0.13.9';
 
 // A failed re-evaluation is not new story evidence. Only an exact-source plan
@@ -78,7 +78,7 @@ function fallbackCausalConditions({ currentBeat = '', location = '', time = '', 
             id: 'fallback-transcript-excerpt',
             kind: 'situation',
             subject: user ? 'Latest user contribution' : 'Latest accepted scene',
-            condition: source ? `Source excerpt (not an assumed outcome): ${cleanClause(relevantExcerpt(source.mes, 75, assistant?.mes || ''), 230)}` : 'No plot facts have been supplied yet; do not invent prior events.',
+            condition: source ? `Source excerpt: ${cleanClause(relevantExcerpt(source.mes, 75, assistant?.mes || ''), 230)}` : 'Opening scene.',
             disclosure: 'open',
             confidence: 'established',
             relevance: 'Continue from this actual transcript contribution, without treating a request or intention as a completed outcome.',

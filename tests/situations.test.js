@@ -31,12 +31,12 @@ test('quiet closed scenes suppress openings while engaged activity can select on
 
 test('provider formatting keeps openings optional and hides internal metadata', () => {
     const output = formatCausalContext({ inject: true, conditions: [{ id: 'c', kind: 'situation', subject: 'Harbor office', condition: 'keeps current manifests', disclosure: 'open', confidence: 'strong', relevance: 'current' }], optionalSituations: [{ premise: 'A delayed manifest has left one cargo entry unclaimed.', entry: 'someone checks records or asks about the delay' }] });
-    assert.match(output, /OPTIONAL SITUATIONAL OPENINGS/);
+    assert.match(output, /POSSIBLE OPENINGS:/);
     assert.match(output, /unclaimed/);
     assert.doesNotMatch(output, /confidence|relevance|situation-board/i);
-    assert.match(output, /not required events or predetermined outcomes/i);
+    assert.doesNotMatch(output, /not required events or predetermined outcomes/i);
     assert.doesNotMatch(output, /Never author the player character's choices, dialogue, consent/);
-    assert.match(output, /Preset and explicit user instructions govern narration/);
+    assert.match(output, /TALE FAIRY CONTEXT:/);
     assert.doesNotMatch(output, /May emerge naturally without player engagement/);
     assert.doesNotMatch(output, /Use only if the latest action naturally engages one/);
 });

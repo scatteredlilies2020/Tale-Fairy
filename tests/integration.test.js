@@ -15,13 +15,22 @@ const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.me
 const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json', import.meta.url), 'utf8'));
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
+test('settings explanations stay concise', () => {
+    const explanations = [...template.matchAll(/<small>([\s\S]*?)<\/small>/gu)].map(match => match[1]);
+    assert.ok(explanations.length > 20);
+    for (const explanation of explanations) {
+        assert.ok(explanation.trim().split(/\s+/u).length <= 40, explanation);
+        assert.doesNotMatch(explanation, /not a competing|not history|never injected|without making enemies/i);
+    }
+});
+
 test('manifest, browser runtime, and detached plugin share the release version', () => {
-    assert.equal(manifest.version, '0.14.19');
-    assert.equal(manifest.js, 'extension/index.js?v=0.14.19');
-    assert.equal(manifest.css, 'extension/style.css?v=0.14.19');
+    assert.equal(manifest.version, '0.14.20');
+    assert.equal(manifest.js, 'extension/index.js?v=0.14.20');
+    assert.equal(manifest.css, 'extension/style.css?v=0.14.20');
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.14\.19'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.14\.19'/);
+    assert.match(pluginSource, /const VERSION = '0\.14\.20'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.14\.20'/);
 });
 
 test('planner input proof travels through normal saves and detached recovery', () => {
@@ -63,8 +72,8 @@ test('roleplay injection never migrates the user default into a system message',
 });
 
 test('runtime uses causal context and deferred world state without prescriptive beat-director dependency', () => {
-    assert.match(source, /from '\.\/causal-context\.js\?v=0\.14\.19'/);
-    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.14\.19'/);
+    assert.match(source, /from '\.\/causal-context\.js\?v=0\.14\.20'/);
+    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.14\.20'/);
     assert.doesNotMatch(source, /beat-director/);
     assert.doesNotMatch(stateSource, /beat-director/);
     assert.match(stateSource, /export const STATE_VERSION = 59/);
@@ -91,9 +100,9 @@ test('planner contracts return active world conditions rather than future branch
 
 test('provider context exposes only clean relevant conditions', () => {
     assert.match(causalSource, /RELEVANT UNDERLYING CONDITIONS/);
-    assert.match(causalSource, /causal context, not required events or predetermined outcomes/i);
-    assert.match(gmSource, /Preset and explicit user instructions govern narration/i);
-    assert.match(gmSource, /Notebook proposals are not established history/i);
+    assert.match(causalSource, /RELEVANT UNDERLYING CONDITIONS:/);
+    assert.match(gmSource, /TALE FAIRY CONTEXT:'/);
+    assert.doesNotMatch(gmSource, /Notebook proposals are not established history/i);
     assert.doesNotMatch(gmSource, /SELF-PROPELLING MOVEMENT|Every reply changes the current situation/i);
     assert.doesNotMatch(causalSource, /question|interrogat/i);
     assert.match(causalSource, /confidence !== 'tentative'/);
@@ -166,15 +175,15 @@ test('planner token budgets, retries, and nonblocking behavior remain compatible
 test('settings describe private simulation and causal injection without branch controls', () => {
     assert.match(template, /World and future preparation/i);
     assert.match(template, /causal context|underlying conditions/i);
-    assert.match(template, /slice of life and households through towns, organizations, countries, ecosystems/i);
-    assert.match(template, /without making enemies, combat, or escalation mandatory/i);
+    assert.match(template, /prepares story context and possible developments at the current scale/i);
+    assert.doesNotMatch(template, /competing GM policy|not history or mandatory|adapts its causal units/i);
     assert.doesNotMatch(template, /one primary NPC\/world response and two redirect-safe alternatives/i);
     assert.doesNotMatch(template, /one compatible external branch/i);
     assert.match(template, /data-setting="pacing"/);
 });
 
 test('Continuity remains optional one-way evidence rather than an authority dependency', () => {
-    assert.match(template, /Reads Continuity's existing snapshot as one optional summary provider/i);
+    assert.match(template, /Reads Continuity's existing snapshot alongside other summary sources/i);
     const binding = source.slice(source.indexOf('function bindContinuityBridge'), source.indexOf('// The generation interceptor runs'));
     assert.match(binding, /bridge\.subscribe\(snapshot/);
     assert.match(binding, /reconcileStateWithContinuity/);

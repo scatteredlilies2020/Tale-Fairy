@@ -178,19 +178,19 @@ export function compactPreparedForPrompt(board = {}) {
 }
 
 const clean = value => String(value).replace(/[<>]/gu, '').trim();
-export const PREPARATION_CONTEXT_LABEL = 'CONDITIONAL PREPARATION: Optional possibilities, not transcript facts, character knowledge, or required next events. Timing notes are provisional notebook material, not preset overrides or additional user instructions.';
+export const PREPARATION_CONTEXT_LABEL = 'POSSIBLE DEVELOPMENTS:';
 export function formatPreparedWorld(value) {
     const board = normalizePreparedWorld(value);
     const selected = board.focus.map(id => board.items.find(item => item.id === id)).filter(item => item && item.status !== 'dormant');
     if (!board.overview && !selected.length) return '';
     const lines = ['<prepared-world>',
-        board.overview ? `Wider direction (provisional, not a destination deadline): ${clean(board.overview)}` : '',
+        board.overview ? `Wider direction: ${clean(board.overview)}` : '',
         ...selected.map(item => [
             `Possible development (${item.origin} premise; ${item.status}): ${clean(item.premise)}`,
             item.engine ? `Driving process: ${clean(item.engine)}` : '', `Playable middle: ${clean(item.middle)}`,
             item.future ? `Beyond it: ${clean(item.future)}` : '',
-            item.entry ? `Entry: ${clean(item.entry)}` : '', item.hold ? `Timing consideration (only if supported by the actual scene): ${clean(item.hold)}` : '',
-            item.invalidates ? `Do not use if: ${clean(item.invalidates)}` : '', item.intervention ? `Player intervention: ${clean(item.intervention)}` : '',
+            item.entry ? `Entry: ${clean(item.entry)}` : '', item.hold ? `Timing: ${clean(item.hold)}` : '',
+            item.invalidates ? `Invalidated by: ${clean(item.invalidates)}` : '', item.intervention ? `Player intervention: ${clean(item.intervention)}` : '',
             item.knowledge ? `Knowledge boundary: ${clean(item.knowledge)}` : '',
         ].filter(Boolean).join('\n')),
         '</prepared-world>',
@@ -211,5 +211,5 @@ export function formatPacingPreference(mode = 'auto') {
         advance: 'Favor forward movement.',
         natural: 'Let the current interaction set the pace.',
     }[mode];
-    return preference ? `SAVED PACING PREFERENCE (this chat; latest user directions take priority): ${preference}` : '';
+    return preference ? `SAVED PACING PREFERENCE: ${preference}` : '';
 }

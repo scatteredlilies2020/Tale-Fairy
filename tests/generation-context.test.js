@@ -10,13 +10,13 @@ import { TALE_FAIRY_CONTEXT_GUIDE } from '../extension/game-master.js';
 const input = () => [{ is_user: false, name: 'Mira', mes: 'Mira guards the sealed letter. She promised not to deliver it until dawn.' }, { is_user: true, mes: 'I ask Mira who sent the letter.' }];
 
 test('startup preview explains missing or deferred planner context instead of implying an evaluation failed', () => {
-    assert.match(generationPreviewDescription(), /Opening this preview does not run an evaluation/);
-    assert.match(generationPreviewDescription({ deferred: true }), /Planning is deferred after a retry/);
-    assert.match(generationPreviewDescription({ planning: true }), /planner works in the background/);
-    assert.match(generationPreviewDescription({ planning: true, deferred: true }), /planner works in the background/);
-    assert.match(generationPreviewDescription({ prepared: true, nextReady: true }), /now cached for the next retry/);
-    assert.match(generationPreviewDescription({ reused: true }), /no planner context in this packet/);
-    assert.match(generationPreviewDescription({ reused: true, dynamic: true }), /Reused plot anchor and causal context/);
+    assert.equal(generationPreviewDescription(), 'Scene excerpts · awaiting planner context');
+    assert.match(generationPreviewDescription({ deferred: true }), /Continue resumes planning/);
+    assert.match(generationPreviewDescription({ planning: true }), /planning in the background/);
+    assert.match(generationPreviewDescription({ planning: true, deferred: true }), /planning in the background/);
+    assert.match(generationPreviewDescription({ prepared: true, nextReady: true }), /ready for the next retry/);
+    assert.equal(generationPreviewDescription({ reused: true }), 'Reused scene excerpts');
+    assert.match(generationPreviewDescription({ reused: true, dynamic: true }), /Reused scene excerpts and current conditions/);
 });
 
 test('reopening after a retry preserves deferred planning and distinguishes continuation from retry context', async () => {
@@ -252,7 +252,7 @@ test('reported ledger entities become readable bounded prose, never executable m
     const html = plotExcerpt('&lt;script&gt;bad()&lt;/script&gt;<style>.bad{}</style><p>Mira waits.</p>', 50);
     assert.equal(html, 'Mira waits.');
     assert.doesNotThrow(() => plotExcerpt('&#x110000; &#xD800; &#0;', 50));
-    assert.match(generationPreviewDescription({ prepared: true }), /Guide now can repair/);
+    assert.match(generationPreviewDescription({ prepared: true }), /use Guide now to refresh planning/);
     assert.doesNotMatch(generationPreviewDescription({ prepared: true }), /Opening this preview/);
 });
 
@@ -641,7 +641,7 @@ test('plot anchor selects grounded relevant threads and actors, never irrelevant
     assert.doesNotMatch(anchor, /crown|Waiting for its recipient/);
     assert.doesNotMatch(buildPlotAnchor(input(), { state, stateCurrent: false }), /Sender remains unknown/);
     assert.match(buildPlotAnchor([], { bootstrap: { scenario: 'A letter waits at the harbor.' } }), /letter waits at the harbor/);
-    assert.match(buildPlotAnchor([]), /No plot facts/);
+    assert.match(buildPlotAnchor([]), /Opening scene\./);
 });
 
 test('cached injection stays disabled for non-story calls and appears exactly once', () => {

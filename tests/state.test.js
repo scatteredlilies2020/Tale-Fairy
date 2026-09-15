@@ -78,7 +78,7 @@ test('knowledge routes survive storage without promoting beliefs or leaking priv
     assert.deepEqual(restored.causalContext.conditions[0].knownBy, ['Mira']);
     const output = formatCausalContext(restored.causalContext);
     assert.match(output, /Mira: suspects the report is false/);
-    assert.match(output, /Known to: Mira; others need an in-world learning route/);
+    assert.match(output, /Known to: Mira\./);
     assert.match(output, /Her own comparison of two ledgers/);
     assert.match(output, /Private conditions:/);
     assert.doesNotMatch(output, /Mira: knows the report is false/);
@@ -88,7 +88,7 @@ test('knowledge routes survive storage without promoting beliefs or leaking priv
 
 test('quiet-scene context leaves narrative behavior to the preset', () => {
     const output = formatCausalContext({ conditions: [{ ...conditions[0], subject: 'Lucia', condition: 'is finishing the shared tea ritual', disclosure: 'open' }], inject: true }, { sceneProfile: { phase: 'landing', intrusion: 'closed', noveltyCeiling: 'none' } });
-    assert.match(output, /Preset and explicit user instructions govern narration/i);
+    assert.match(output, /TALE FAIRY CONTEXT:/);
     assert.match(output, /Lucia: is finishing the shared tea ritual/);
     assert.doesNotMatch(output, /meaningfully, even during rest or inactivity|quiet progress needs no interruption or new conflict/i);
     assert.doesNotMatch(output, /Never author|PLAYER BOUNDARY|SCENE FIT|DEVELOPMENT:/);
@@ -99,8 +99,8 @@ test('formatter exposes natural-language causes without internal metadata', () =
     assert.match(output, /Mira: suspects the report is false\./);
     assert.match(output, /Grain reserves: are falling faster than reported\./);
     assert.doesNotMatch(output, /Merchants|confidence|relevance|"id"|mira/);
-    assert.match(output, /Preset and explicit user instructions govern narration/i);
-    assert.match(output, /Notebook proposals are not established history/i);
+    assert.match(output, /TALE FAIRY CONTEXT:/);
+    assert.doesNotMatch(output, /Notebook proposals are not established history/i);
     assert.doesNotMatch(output, /self-propelling movement|every reply changes the current situation|Develop what is underway|lasting change in circumstances/i);
     assert.doesNotMatch(output, /question|interrogat/i);
 });
@@ -151,7 +151,7 @@ test('legacy scene profiles do not impose outside pressure or novelty policies',
     const payload = buildPromptPayload(state, { enabled: true, guidanceUsable: true });
     assert.doesNotMatch(payload, /Keep outside pressure dormant|Favor the established activity|SCENE FIT|DEVELOPMENT:/i);
     assert.doesNotMatch(payload, /quiet progress needs no interruption or new conflict/i);
-    assert.match(payload, /Preset and explicit user instructions govern narration/i);
+    assert.match(payload, /TALE FAIRY CONTEXT:/);
     assert.doesNotMatch(payload, /combat|bureaucratic|opposition may be/i);
 });
 
@@ -164,9 +164,9 @@ test('dynamic guidance remains lean across modes and scene boundaries without du
                     optionalSituations: [{ premise: 'A rehearsal space may be available.', entry: 'checks the club noticeboard' }],
                 }, { mode, sceneProfile: { intrusion, noveltyCeiling }, includeRules: false });
                 assert.doesNotMatch(output, /DEVELOPMENT:|SCENE FIT/);
-                assert.match(output, /possibilities, not facts or required events/);
+                assert.match(output, /POSSIBLE OPENINGS:/);
                 assert.match(output, /Private conditions/);
-                assert.match(output, /Keep awareness local/);
+                assert.doesNotMatch(output, /Keep awareness local|infer additional knowers/);
                 assert.doesNotMatch(output, /undefined|GAME MASTER RESPONSIBILITY|PLAYER BOUNDARY|SELF-PROPELLING MOVEMENT/);
                 assert.ok(output.split(/\s+/u).length < 150, 'Single-condition dynamic fixture must stay lean');
             }

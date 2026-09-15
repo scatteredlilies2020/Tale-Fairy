@@ -16,8 +16,7 @@
 
       <div class="living-world-guide-card">
         <h4>World and future preparation</h4>
-        <small>Tale Fairy adapts its causal units and cadence to the current scale—from slice of life and households through towns, organizations, countries, ecosystems, and wider worlds. It may fill open setting space with compatible information and setting-native challenges without making enemies, combat, or escalation mandatory.</small>
-        <small>Your preset controls writing style, viewpoint, player control and NPC behavior. Tale Fairy supplies story context and optional developments, not a competing GM policy. Planning never blocks story generation. Compatible conditional preparation remains available across new turns; outdated scene facts are withheld. If no compatible plan exists, current transcript grounding remains.</small>
+        <small>Tale Fairy prepares story context and possible developments at the current scale. Planning runs in the background; your preset controls the writing.</small>
         <div class="living-world-guide-grid">
           <label>Scene pacing (this chat)
             <select class="text_pole" data-setting="pacing">
@@ -26,38 +25,38 @@
               <option value="natural">Natural</option>
               <option value="advance">Advance</option>
             </select>
-            <small>Follow preset adds no pacing instruction. Other choices send only a brief saved preference for this chat; latest user directions take priority.</small>
+            <small>Use your preset's pacing or save a preference for this chat.</small>
           </label>
           <label>Recent raw context budget (tokens)
             <input class="text_pole" type="number" data-setting="recent-budget" min="1000" max="12000" step="500" value="6000">
-            <small>Raw-context ceiling. Routine updates use up to 3,000 tokens; broad reviews up to 4,500; rebuilds use this setting. Both sides of the newest exchange get reserved space. Separate retrieval checks up to 400 earlier messages for relevant evidence; older history relies on summaries.</small>
+            <small>Recent-message limit: up to 3,000 tokens for routine updates, 4,500 for reviews, and this setting for rebuilds. Earlier context comes from retrieval and summaries.</small>
           </label>
           <label>Summary retrieval pool (tokens)
             <input class="text_pole" type="number" data-setting="summary-budget" min="1000" max="8000" step="500" value="4000">
-            <small>Candidate-pool ceiling: routine updates use up to 1,200 tokens; broad reviews up to 2,400; rebuilds use this setting. Selects relevant passages from Continuity, summaries, recaps, memory, and World Info. Final input fitting can reduce the pool. The Scratchpad reports final included evidence separately.</small>
+            <small>Summary retrieval limit: up to 1,200 tokens for routine updates, 2,400 for reviews, and this setting for rebuilds. Final inclusion depends on the input budget.</small>
           </label>
           <label>Total planner input ceiling / rebuild budget (tokens)
             <input class="text_pole" type="number" data-setting="budget" min="9000" max="30000" step="1000" value="16000">
-              <small>Includes instructions, schema, and story evidence. Caps every pass, including the targets below. Initialization and Full Rebuild use this limit and up to 8,192 output tokens. Optional reasoning stays off.</small>
+              <small>Total input limit for every pass, including instructions and evidence. Initialization and rebuilds use this budget, with up to 8,192 output tokens.</small>
           </label>
           <label>Routine planner input target (tokens)
             <input class="text_pole" type="number" data-setting="routine-budget" min="6000" max="30000" step="1000" value="6000">
-              <small>Default: 6,000, subject to the total ceiling. Routine updates target 600–1,400 output tokens with a 4,096 ceiling and optional reasoning off. Larger inputs leave more space for evidence.</small>
+              <small>Input target within the total limit. Routine output targets 600–1,400 tokens, capped at 4,096.</small>
           </label>
           <label>Broad-review input target (tokens)
             <input class="text_pole" type="number" data-setting="review-budget" min="9000" max="30000" step="1000" value="14000">
-              <small>Default: 14,000, subject to the total ceiling. Up to 6,144 output tokens with optional reasoning off. All planning remains background-only.</small>
+              <small>Input target within the total limit. Review output is capped at 6,144 tokens.</small>
           </label>
           <label>Broad story review interval (assistant replies)
             <input class="text_pole" type="number" data-setting="full-review-interval" min="3" max="20" step="1" value="12">
-            <small>Default: 12. Compact world-notebook updates run in the background after accepted replies, without a separate story audit. Corrections, major scene shifts, and manual reevaluation can trigger a wider review earlier. Raw-history retrieval is bounded; summary discovery may inspect the full chat. Neither blocks generation.</small>
+            <small>Replies between broad reviews. Corrections and major scene shifts can trigger an earlier review. Routine updates follow accepted replies.</small>
           </label>
         </div>
         <label class="checkbox_label">
           <input type="checkbox" data-setting="continuity">
           <span>Use Continuity context when available</span>
         </label>
-        <small>Reads Continuity's existing snapshot as one optional summary provider without triggering extraction or writing to Continuity Memory. Tale Fairy also discovers other available summary and world-state sources.</small>
+        <small>Reads Continuity's existing snapshot alongside other summary sources.</small>
       </div>
 
       <div class="living-world-guide-card">
@@ -90,10 +89,10 @@
               <option value="system">System</option>
               <option value="assistant">Assistant</option>
             </select>
-            <small>Applied to every chat-message injection path. User is the provider-compatible default.</small>
+            <small>Message role for story context. Default: User.</small>
           </label>
         </div>
-        <small>Prompt Manager positions apply exactly on Chat Completion APIs. Other APIs use the closest safe main-prompt anchor. At-depth placement works across APIs.</small>
+        <small>At-depth works across APIs. Other positions follow Prompt Manager on Chat Completion APIs and use the nearest main-prompt position elsewhere.</small>
       </div>
 
       <div class="living-world-guide-card">
@@ -105,7 +104,7 @@
             <option value="__direct_openrouter__">Direct OpenRouter</option>
           </select>
         </label>
-        <small>Choose the active model, a Connection Manager profile, or a direct provider. Connection profiles supply the endpoint, model, and authentication.</small>
+        <small>Use your active model, a saved connection profile, or a direct API.</small>
         <label>World notebook reasoning
           <select class="text_pole" data-setting="reasoning" disabled>
             <option value="auto">Auto (selected profile)</option>
@@ -117,14 +116,14 @@
             <option value="max">Maximum</option>
           </select>
         </label>
-        <small>All notebook updates, reviews and rebuilds disable optional reasoning. Providers that require reasoning receive one compatibility retry at Low. Planning runs in the background and does not hold up chat. Your roleplay model's settings are unchanged.</small>
+        <small>Planner reasoning is off, with a Low retry for providers that require it. Your roleplay model keeps its own settings.</small>
         <label>Planner temperature
           <div class="living-world-guide-temperature">
             <input type="range" data-setting="temperature-slider" min="0" max="2" step="0.05" value="1">
             <input class="text_pole" type="number" data-setting="temperature" min="0" max="2" step="0.05" value="1" inputmode="decimal">
           </div>
         </label>
-        <small>Controls Tale Fairy's creative preparation variety only. Lower values are steadier; higher values consider more varied compatible possibilities. It does not change the roleplay model's temperature. Models that reject temperature automatically use their provider default.</small>
+        <small>Planner creativity: lower is steadier; higher adds variety. Unsupported models use their provider default.</small>
 
         <div class="living-world-guide-card-inset" data-source-panel="direct" hidden>
           <b data-role="direct-title">Direct planner API</b>
@@ -148,26 +147,26 @@
           <label>Model ID (manual or selected)
             <input class="text_pole" type="text" data-setting="model" placeholder="gpt-4.1-mini">
           </label>
-          <small>Fetch Models uses the API URL and saved key above. Manual model IDs remain available for endpoints that do not expose a model list.</small>
+          <small>Fetch models using the URL and saved key, or enter a model ID.</small>
         </div>
       </div>
 
       <div class="living-world-guide-card">
         <h4>Guide controls</h4>
         <div class="living-world-guide-button-row">
-          <button class="menu_button" data-action="guide" type="button" title="Refresh the current scene with a lightweight evaluation; keep saved history. Repeated clicks share the running request."><i class="fa-solid fa-wand-magic-sparkles"></i> <span data-role="guide-label">Guide now</span></button>
-          <button class="menu_button" data-action="rebuild" type="button" title="Delete the accumulated guide state, then reconstruct it from the current chat and context"><i class="fa-solid fa-arrows-rotate"></i> Full rebuild</button>
+          <button class="menu_button" data-action="guide" type="button" title="Refresh context and plans"><i class="fa-solid fa-wand-magic-sparkles"></i> <span data-role="guide-label">Guide now</span></button>
+          <button class="menu_button" data-action="rebuild" type="button" title="Replace the notebook using current chat context"><i class="fa-solid fa-arrows-rotate"></i> Full rebuild</button>
           <button class="menu_button" data-action="stop" type="button" disabled><i class="fa-solid fa-stop"></i> Stop analysis</button>
-          <button class="menu_button" data-action="reset-settings" type="button" title="Restore Tale Fairy configuration defaults without deleting guide state"><i class="fa-solid fa-arrow-rotate-left"></i> Reset settings</button>
+          <button class="menu_button" data-action="reset-settings" type="button" title="Restore default settings; keep the notebook"><i class="fa-solid fa-arrow-rotate-left"></i> Reset settings</button>
           <button class="menu_button" data-action="reset" type="button"><i class="fa-solid fa-trash-can"></i> Delete guide state</button>
         </div>
-        <small>Re-evaluate updates both creative preparation and current context while retaining unused plans. Full rebuild replaces the notebook and reconstructs world context from available evidence; pacing and author notes survive. Invalid model output uses a local fallback, not a second AI correction. Full chat reading is not required for routine updates. Reset settings keeps simulation state; saved API passwords remain in SillyTavern but are no longer selected.</small>
+        <small>Guide now / Re-evaluate refreshes context and plans. Full rebuild replaces the notebook while keeping pacing and author notes. Reset settings keeps the notebook and stored API keys, and resets the selected connection.</small>
         <div class="living-world-guide-grid living-world-guide-note-grid">
           <label>AI-assisted instruction
             <textarea class="text_pole" data-setting="note" rows="3" placeholder="Write naturally. Tale Fairy will understand whether this is a suggestion, correction, canon detail, or hard exclusion."></textarea>
           </label>
         </div>
-        <small>Tale Fairy infers your intent in the same planner call. If it is genuinely unsure, it will ask. Suggestions stay optional, corrections replace planner mistakes, canon details become established, and hard exclusions must never be proposed or injected.</small>
+        <small>Add a suggestion, correction, canon detail, or exclusion. Tale Fairy applies it to the notebook and asks if clarification is needed.</small>
         <div class="living-world-guide-button-row">
           <button class="menu_button" data-action="note" type="button"><i class="fa-solid fa-check"></i> Apply with AI</button>
           <button class="menu_button" data-action="board" type="button"><i class="fa-solid fa-clipboard-list"></i> Show/Hide Planner Scratchpad</button>
@@ -179,12 +178,12 @@
           </div>
           <section>
             <h5>Writer guidance preview</h5>
-            <small>Exact selected request guidance: current facts when fresh, and compatible conditional preparation. Prepared events are possibilities, not history or mandatory next beats. The writer checks entry, contradictions, pacing and player reaction against the actual exchange.</small>
+            <small>The story context and possible developments selected for the writer.</small>
             <div data-role="scratchpad-request-verification">No fresh Tale Fairy causal context is ready.</div>
           </section>
           <section>
               <h5>Private RP approach and story directions</h5>
-              <small>The approach guides Tale Fairy's preparation and selection privately; it is never injected into the writer. Only selected non-dormant developments and relevant context reach the writer. Ordinary turns preserve useful material; redirection revises affected material. Your preset and instructions govern narration.</small>
+              <small>The private approach guides planning. Selected developments and relevant context go to the writer.</small>
             <div data-role="scratchpad-prepared">No prepared material yet.</div>
             <div data-role="scratchpad-archives"></div>
           </section>
@@ -198,27 +197,27 @@
           </section>
           <section>
             <h5>World lore and RP-specific canon</h5>
-            <small>Inferred baseline lore stays provisional. Supplied rules, distinctive continuity facts, and established departures override it.</small>
+            <small>Setting references and established story details.</small>
             <div data-role="scratchpad-lore">No generated lore model yet.</div>
           </section>
           <section data-role="scratchpad-hidden-motives-section" hidden>
             <h5>Hidden motives and explanations (private)</h5>
-            <small>Open hypothesis space for why notable timing, pressure, invitations, refusals, or opportunities are happening. Ranked likely explanations come first. Wild-cards are optional and only retained when they genuinely fit the uncertainty; this board is never injected or treated as canon.</small>
+            <small>Private hypotheses about current events, ranked by likelihood.</small>
             <div data-role="scratchpad-hidden-motives"></div>
           </section>
           <section>
             <h5>Active world conditions</h5>
-            <small>A few supported facts or attributed motivations useful now, kept separate from proposed futures. Empty is valid when no additional current conditions help. The replacement does not generate separate actor forms or reasoning scratchpads.</small>
+            <small>Relevant facts and motivations for the current situation.</small>
             <div data-role="scratchpad-next-guides">No generated causal context yet.</div>
           </section>
           <section data-role="scratchpad-response-audit-section" hidden>
             <h5>Observed response effect (private)</h5>
-            <small>Checks the previous reply for movement, repetition, escalation, player control, and continuity drift. This evidence informs later planning; it is never injected and never triggers automatic regeneration.</small>
+            <small>Private review of the previous reply's movement, repetition, and continuity.</small>
             <div data-role="scratchpad-response-audit"></div>
           </section>
           <section data-role="scratchpad-continuity-section" hidden>
             <h5>Continuity evidence</h5>
-            <small>Factual context for planning, never dormant triggers, delivery promises, or a scheduled event queue.</small>
+            <small>Offscreen facts used in planning.</small>
             <div data-role="scratchpad-continuity-processes"></div>
           </section>
           <section data-role="scratchpad-entities-section" hidden>

@@ -1,4 +1,4 @@
-import { TALE_FAIRY_CONTEXT_GUIDE } from './game-master.js?v=0.14.19';
+import { TALE_FAIRY_CONTEXT_GUIDE } from './game-master.js?v=0.14.20';
 
 // These are causal units rather than genre labels. Keeping settlements, places,
 // resources, and situations first-class avoids squeezing a town simulation into
@@ -90,8 +90,7 @@ function statement(item) {
     const subject = text(item.subject, 120).replace(/[.!?]+$/u, '');
     const condition = text(item.condition, 280).replace(/[.!?]+$/u, '');
     if (!subject || !condition) return '';
-    const knowledge = item.knownBy.length ? ` Known to: ${item.knownBy.join(', ')}; others need an in-world learning route.`
-        : item.disclosure !== 'open' ? ' Keep awareness local; do not infer additional knowers.' : '';
+    const knowledge = item.knownBy.length ? ` Known to: ${item.knownBy.join(', ')}.` : '';
     const learning = item.learnedFrom ? ` Learning route: ${item.learnedFrom.replace(/[.!?]+$/u, '')}.` : '';
     return `${subject}: ${condition}.${knowledge}${learning}`;
 }
@@ -110,13 +109,13 @@ export function formatCausalContext(value, options = {}) {
     const privateItems = conditions.filter(item => item.disclosure === 'private');
     const situations = context.optionalSituations;
     return [
-        'RELEVANT UNDERLYING CONDITIONS — causal context, not required events or predetermined outcomes.',
+        'RELEVANT UNDERLYING CONDITIONS:',
         section('Current conditions:', open),
         section('Limited knowledge:', limited),
         section('Private conditions:', privateItems),
         situations.length ? [
-            'OPTIONAL SITUATIONAL OPENINGS — possibilities, not facts or required events.',
-            ...situations.map(item => `- ${item.premise} It is available if someone naturally ${item.entry.replace(/^[Tt]o\s+/u, '')}.`),
+            'POSSIBLE OPENINGS:',
+            ...situations.map(item => `- ${item.premise} Entry: ${item.entry}.`),
         ].join('\n') : '',
         options.includeRules === false ? '' : TALE_FAIRY_CONTEXT_GUIDE,
     ].filter(Boolean).join('\n');

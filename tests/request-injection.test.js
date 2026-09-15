@@ -170,7 +170,7 @@ test('provider-bound request receives only clean relevant causal conditions', ()
     assert.match(chat[0].content, /Mira: suspects the report is false/);
     assert.match(chat[0].content, /Grain reserves: are falling faster than reported/);
     assert.doesNotMatch(chat[0].content, /Merchants|confidence|relevance|Private evidence/i);
-    assert.match(chat[0].content, /Preset and explicit user instructions govern narration/i);
+    assert.match(chat[0].content, /TALE FAIRY CONTEXT:/);
     assert.match(chat[0].content, /Tell me what happened\.$/);
     assert.equal(chat[0].content.match(/<tale-fairy-context>/g)?.length, 1);
     // Only packet semantics and relevant conditions, not a universal GM policy.

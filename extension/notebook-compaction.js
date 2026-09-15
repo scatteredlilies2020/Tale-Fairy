@@ -1,4 +1,4 @@
-import { normalizePreparedWorld, validatePrepared } from './prepared-world.js?v=0.14.19';
+import { normalizePreparedWorld, validatePrepared } from './prepared-world.js?v=0.14.20';
 
 const boundaries = ['engine', 'entry', 'hold', 'invalidates', 'intervention', 'knowledge'];
 const recordBytes = value => new TextEncoder().encode(JSON.stringify(value)).length;

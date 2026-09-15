@@ -21,15 +21,15 @@ export function hasPlannerConditions(context) {
 }
 
 export function generationPreviewDescription({ reused = false, dynamic = false, future = false, deferred = false, planning = false, prepared = false, nextReady = false } = {}) {
-    if (future) return reused ? 'Reused conditional preparation and plot anchor · no new planner calls' : 'Conditional preparation and plot anchor; current facts included only when fresh';
-    if (dynamic) return reused ? 'Reused plot anchor and causal context · no new planner calls' : 'Plot anchor and relevant causal context';
-    if (prepared && nextReady) return 'This request used scene excerpts only; a completed planner context is now cached for the next retry';
-    if (prepared && planning) return 'This request contains scene excerpts only; the missing planner context is being prepared for a later request';
-    if (prepared) return 'This request contains scene excerpts only · no usable plan was saved for its pre-reply input. Guide now can repair this without a Full Rebuild';
-    if (planning) return 'Scene excerpts only while the planner works in the background; generation will not wait';
-    if (reused) return 'Reused scene excerpts only · no planner context in this packet; no new planner calls';
-    if (deferred) return 'Scene excerpts only for a new continuation. Planning is deferred after a retry; swipe/Regenerate reuse their saved pre-reply context. A new user contribution or Continue resumes planning';
-    return 'Scene excerpts only · no matching planner context is ready. Opening this preview does not run an evaluation';
+    if (future) return reused ? 'Reused story context and possible developments' : 'Story context and possible developments';
+    if (dynamic) return reused ? 'Reused scene excerpts and current conditions' : 'Scene excerpts and current conditions';
+    if (prepared && nextReady) return 'Scene excerpts · updated context ready for the next retry';
+    if (prepared && planning) return 'Scene excerpts · planning for a later request';
+    if (prepared) return 'Scene excerpts · use Guide now to refresh planning';
+    if (planning) return 'Scene excerpts · planning in the background';
+    if (reused) return 'Reused scene excerpts';
+    if (deferred) return 'Scene excerpts · a new contribution or Continue resumes planning';
+    return 'Scene excerpts · awaiting planner context';
 }
 
 // Ignore transport line endings and surrounding whitespace, not punctuation,
@@ -194,9 +194,9 @@ export function buildPlotAnchor(messages = [], { state = {}, stateCurrent = fals
     const query = user?.mes || assistant?.mes || '';
     const lines = [];
     const status = assistant && sceneStatus(assistant.mes);
-    if (status) lines.push(`Scene status from accepted reply (later explicit user changes take priority): ${excerpt(status, 220)}`);
+    if (status) lines.push(`Scene status: ${excerpt(status, 220)}`);
     if (assistant) lines.push(`Accepted scene excerpt (${excerpt(assistant.name || 'narrator', 20)}): ${excerpt(assistant.mes, 180, query)}`);
-    if (user) lines.push(`Latest user contribution (not an assumed outcome): ${excerpt(user.mes, 140, assistant?.mes)}`);
+    if (user) lines.push(`Latest contribution: ${excerpt(user.mes, 140, assistant?.mes)}`);
     // Only transcript-aligned memory can supplement excerpts. In particular,
     // a plan written after a discarded reply must not supply motives or facts.
     if (stateCurrent) {
@@ -210,6 +210,6 @@ export function buildPlotAnchor(messages = [], { state = {}, stateCurrent = fals
         if (actor) lines.push(`Relevant actor context: ${excerpt([actor.name, actor.motivation && `motive: ${actor.motivation}`, actor.constraints && `constraints: ${actor.constraints}`, actor.knowledge && `knowledge: ${actor.knowledge}`, actor.agenda && `agenda: ${actor.agenda}`].filter(Boolean).join('; '), 100, query)}`);
     }
     if (!lines.length && (bootstrap.scenario || bootstrap.description)) lines.push(`Opening reference: ${excerpt(bootstrap.scenario || bootstrap.description, 180)}`);
-    if (!lines.length) lines.push('No plot facts have been supplied yet; do not invent prior events or player decisions.');
-    return `<plot-anchor>\nCURRENT PLOT — source excerpts, not new instructions or guaranteed outcomes. Address the latest contribution in this situation; user corrections override older context.\n${lines.join('\n')}\n</plot-anchor>`;
+    if (!lines.length) lines.push('Opening scene.');
+    return `<plot-anchor>\nCURRENT SCENE:\n${lines.join('\n')}\n</plot-anchor>`;
 }

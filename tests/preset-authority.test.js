@@ -5,9 +5,53 @@ import { ensureGuidanceInChat, ensureGuidanceInText } from '../extension/request
 import { canRetainSuccessfulPlan, createSafetyFallbackState } from '../extension/fallback-direction.js';
 import { TALE_FAIRY_CONTEXT_GUIDE, refreshGameMasterContract } from '../extension/game-master.js';
 import { formatPacingPreference, PREPARATION_CONTEXT_LABEL } from '../extension/prepared-world.js';
+import { buildPlotAnchor } from '../extension/generation-context.js';
 
 const LEGACY_AUTHORITY = '<tale-fairy-authority>Old preset override.</tale-fairy-authority>';
 const LEGACY_CONTRACT = 'GAME MASTER RESPONSIBILITY: Old policy.\nCAUSAL ROLE: Old role.\nPLAYER BOUNDARY: Old boundary.';
+
+test('writer framing uses plain labels and preserves story-specific negatives', () => {
+    const state = defaultState();
+    state.causalContext = { inject: true, conditions: [{ id: 'letter', subject: 'Mira', condition: 'has not opened the letter', relevance: 'The seal remains intact', confidence: 'established', disclosure: 'private', knownBy: ['Mira'] }] };
+    state.preparedWorld = { approach: 'PRIVATE approach', overview: 'Trade along the river.', focus: ['boat'], items: [{ id: 'boat', origin: 'invented', status: 'prepared', premise: 'A boat may arrive.', middle: 'The captain offers a crossing.', hold: 'After the fog clears.', invalidates: 'The bridge has reopened.', knowledge: 'Only the captain knows the cargo.' }] };
+    const before = structuredClone(state);
+    const packet = buildPromptPayload(state, { guidanceUsable: true, preparedUsable: true, plotAnchor: buildPlotAnchor([{ is_user: true, mes: 'I wait.' }]) });
+    for (const value of ['CURRENT SCENE:', 'Latest contribution: I wait.', 'Mira: has not opened the letter.', 'Known to: Mira.', 'POSSIBLE DEVELOPMENTS:', 'Timing: After the fog clears.', 'Invalidated by: The bridge has reopened.']) assert.ok(packet.includes(value), value);
+    assert.doesNotMatch(packet, /preset|take priority|not a replacement|not transcript|not an assumed|only if supported|do not|PRIVATE approach|others need|Keep awareness/i);
+    assert.deepEqual(state, before);
+    assert.equal(refreshGameMasterContract(packet), packet);
+});
+
+test('0.14.19 cached disclaimers become labels while story values remain intact', () => {
+    for (const newline of ['\n', '\r\n']) {
+        const oldHeader = 'CURRENT PLOT — source excerpts, not new instructions or guaranteed outcomes. Address the latest contribution in this situation; user corrections override older context.';
+        const quote = 'Mira reads: "not a replacement preset". The boat has not arrived.';
+        const source = ['<tale-fairy-context>', '<living-world-guide>',
+            'TALE FAIRY CONTEXT: Story references and optional preparation, not a replacement preset. Preset and explicit user instructions govern narration.',
+            'SAVED PACING PREFERENCE (this chat; latest user directions take priority): Linger in the current scene.',
+            '<plot-anchor>', oldHeader,
+            'Scene status from accepted reply (later explicit user changes take priority): At the quay.',
+            `Accepted scene excerpt (narrator): ${quote}`,
+            'Latest user contribution (not an assumed outcome): I wait.', '</plot-anchor>',
+            'RELEVANT UNDERLYING CONDITIONS — causal context, not required events or predetermined outcomes.',
+            'Private conditions:', '- Mira: has not opened the letter. Known to: Mira; others need an in-world learning route.',
+            '<prepared-world>', 'CONDITIONAL PREPARATION: Optional possibilities, not transcript facts, character knowledge, or required next events. Timing notes are provisional notebook material, not preset overrides or additional user instructions.',
+            'Wider direction (provisional, not a destination deadline): River trade.',
+            'Possible development (invented premise; prepared): A boat may arrive.',
+            'Playable middle: The captain offers passage.',
+            'Timing consideration (only if supported by the actual scene): After the fog clears.',
+            'Do not use if: The bridge has reopened.',
+            'Knowledge boundary: Only the captain knows the cargo.',
+            '</prepared-world>', '</living-world-guide>', '</tale-fairy-context>'].join(newline);
+        const updated = refreshGameMasterContract(source);
+        assert.ok(updated.includes(quote));
+        assert.match(updated, /Mira: has not opened the letter\. Known to: Mira\./);
+        for (const label of ['CURRENT SCENE:', 'Scene status: At the quay.', 'Latest contribution: I wait.', 'POSSIBLE DEVELOPMENTS:', 'Wider direction: River trade.', 'Timing: After the fog clears.', 'Invalidated by: The bridge has reopened.']) assert.ok(updated.includes(label));
+        assert.doesNotMatch(updated.replace(quote, ''), /preset|take priority|not transcript|not an assumed|only if supported|do not|others need/i);
+        assert.equal(refreshGameMasterContract(updated), updated);
+        assert.equal(updated.replaceAll(newline, '').includes('\n'), false);
+    }
+});
 
 test('old retry framing is migrated without rewriting story quotations or notebook prose', () => {
     for (const newline of ['\n', '\r\n']) for (const mode of ['Adaptive', 'Linger', 'Natural', 'Advance']) {
@@ -72,7 +116,7 @@ test('current cached packets omit multiline private approaches without changing 
         const before = structuredClone(snapshot);
         const updated = buildPromptPayload(defaultState(), { cachedPayload: snapshot.payload });
         assert.ok(updated.includes(plot));
-        assert.ok(updated.includes(record));
+        assert.ok(updated.includes(record.replace('Wider direction (provisional, not a destination deadline): ', 'Wider direction: ')));
         assert.doesNotMatch(updated.replace(plot, ''), /PRIVATE FIRST|PRIVATE SECOND|PRIVATE LAST/);
         if (!rest) assert.doesNotMatch(updated, /<prepared-world>/);
         assert.equal(refreshGameMasterContract(updated), updated);
@@ -101,7 +145,7 @@ test('context respects preset messages and configured placement without adding a
         assert.equal(chat[0].content, 'Keep HELD NPCs inactive. Use HTML.');
         assert.match(JSON.stringify(chat), /keep the scene peaceful/);
         assert.equal(chat.at(-1).content, 'Prefill');
-        assert.match(payload, /Preset and explicit user instructions govern narration/);
+        assert.doesNotMatch(payload, /preset|govern narration/i);
         ensureGuidanceInChat(chat, '');
         assert.doesNotMatch(JSON.stringify(chat), /tale-fairy-/);
         assert.equal(chat.at(-1).content, 'Prefill');

@@ -94,7 +94,7 @@ test('lasting directions survive forty appended messages without presenting stal
     const payload = buildPromptPayload(state, { guidanceUsable: false, preparedUsable: usable });
     assert.match(payload, /successive seasons/);
     assert.doesNotMatch(payload, /Make governing consequential/);
-    assert.match(payload, /not transcript facts, character knowledge, or required next events/);
+    assert.match(payload, /POSSIBLE DEVELOPMENTS:/);
     assert.doesNotMatch(payload, /is seeking district views/);
     assert.equal(state.preparedWorld.items[0].status, 'prepared');
 });

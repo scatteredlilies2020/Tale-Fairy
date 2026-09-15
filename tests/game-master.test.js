@@ -47,7 +47,7 @@ test('permanent framing describes packet semantics without imposing narrative be
     ]) assert.doesNotMatch(payload, rule);
     assert.doesNotMatch(payload, /Every reply changes the current situation meaningfully|Match the scene's tone and pace|time passage proportionate/i);
     assert.equal(payload.match(/TALE FAIRY CONTEXT:/g)?.length, 1);
-    assert.match(payload, /Preset and explicit user instructions govern narration/);
+    assert.doesNotMatch(payload, /preset|not a|not established|govern narration/i);
     assert.doesNotMatch(payload, /PACING PREFERENCE|SCENE FIT|DEVELOPMENT:|PLAYER BOUNDARY|HELD/);
     assert.ok(estimateTokenCount(TALE_FAIRY_CONTEXT_GUIDE) < 100, 'Packet framing must remain small');
     assert.doesNotMatch(payload, /fleeing|enemy|combat|replacement hooks|punishment|reset availability|world-stall/i);
