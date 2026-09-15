@@ -211,3 +211,35 @@ test('a wide pivot can update five records atomically without discarding retirem
     pivot.prepared.updates = Array.from({ length: 13 }, (_, i) => direction(String(i)));
     assert.equal(validateWorldPlan(pivot).valid, false);
 });
+
+
+test('blank prepared placeholders do not discard valid updates or overwrite saved developments', () => {
+    const original = analysis.applyAnalysis(defaultState(), parseRuntime(plan()), messages);
+    const saved = structuredClone(original.preparedWorld.items[0]);
+    const wire = plan({ prepared: { approach: plan().prepared.approach, updates: [
+        direction('compact', { premise: '', middle: '', status: 'dormant' }),
+        direction('unfinished-new', { middle: '' }),
+        direction('new-opportunity'),
+    ], focus: ['compact', 'unfinished-new', 'new-opportunity'] } });
+    const result = parseRuntime({ choices: [{ message: { content: JSON.stringify(wire) } }] });
+    assert.equal(result._taleFairyRecovery.omitted.length, 2);
+    assert.deepEqual(result.prepared.updates.map(item => item.id), ['new-opportunity']);
+    const updated = analysis.applyAnalysis(original, result, messages);
+    assert.deepEqual(updated.preparedWorld.items.find(item => item.id === 'compact'), saved);
+    assert.ok(updated.preparedWorld.items.some(item => item.id === 'new-opportunity'));
+    assert.ok(!updated.preparedWorld.items.some(item => item.id === 'unfinished-new'));
+    assert.deepEqual(updated.preparedWorld.focus, ['new-opportunity']);
+    assert.equal(original.preparedWorld.items.length, 1, 'input state is unchanged');
+});
+
+test('blank removals still remove records and other malformed updates remain rejected', () => {
+    const original = analysis.applyAnalysis(defaultState(), parseRuntime(plan()), messages);
+    const removal = parseRuntime(plan({ prepared: { approach: '', updates: [direction('compact', { premise: '', middle: '', status: 'retired' })], focus: [] } }));
+    assert.equal(analysis.applyAnalysis(original, removal, messages).preparedWorld.items.length, 0);
+    for (const updates of [
+        [direction('bad', { premise: '', middle: {}, status: 'prepared' })],
+        [direction('bad', { premise: '', middle: '', status: 'unknown' })],
+        [direction('same'), direction('same', { middle: '' })],
+        Array.from({ length: 13 }, (_, i) => direction(`item-${i}`, { middle: '' })),
+    ]) assert.throws(() => parseRuntime(plan({ prepared: { approach: '', updates, focus: [] } })));
+});

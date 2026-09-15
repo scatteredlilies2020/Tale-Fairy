@@ -831,3 +831,19 @@ test('Tale Fairy Stop analysis and chat changes prevent deferred generation call
         assert.equal(h.calls.length, 0, change);
     }
 });
+
+
+test('an older failed repair gets one attempt with blank-update recovery, then remains bounded', async () => {
+    const h = generationHarness(input());
+    h.context.chat.push({ is_user: false, mes: 'Discarded future.' });
+    await h.emit('GENERATION_STARTED', 'regenerate');
+    await h.flush();
+    assert.equal(h.calls.length, 1);
+    delete h.context.chatMetadata[REPLACEMENT_PENDING_KEY].repairPolicyVersion;
+    const restored = generationHarness(structuredClone(h.context.chat), h.state(), structuredClone(h.context.chatMetadata));
+    await restored.scope.refreshCurrentPlanIfNeeded();
+    assert.equal(restored.calls.length, 1);
+    await restored.scope.refreshCurrentPlanIfNeeded();
+    assert.equal(restored.calls.length, 1);
+    assert.equal(restored.context.chatMetadata[REPLACEMENT_PENDING_KEY].repairPolicyVersion, 2);
+});

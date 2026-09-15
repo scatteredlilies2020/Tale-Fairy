@@ -2,6 +2,10 @@
 
 Tale Fairy is a standalone SillyTavern extension that acts as a **background creative Game Master**, preparing a playable middle and future while the roleplay model writes the story. It combines a persistent private notebook with selective factual world awareness—not a full world simulation, a prose generator, or a fixed event script.
 
+## What changes in 0.14.9
+
+Blank live notebook updates are omitted individually while valid updates and existing saved records survive. Tale Fairy reports that incomplete updates were omitted; it does not invent missing developments or make a second model correction pass. Other invalid fields still fail validation. A fallback left by the previous repair policy gets one fresh attempt on reload, with the attempt marker saved before generation.
+
 ## What changes in 0.14.8
 
 A replacement reply with missing or failed planner context starts one background attempt from its pre-reply input. Generation start, Stop, end, and reload share the same saved attempt guard. Stopping the story preserves a compatible running planner; Tale Fairy's own Stop analysis still cancels it. Retained preparation no longer disguises a failed fallback as a completed evaluation. Model instructions explicitly require complete premise and middle text for live record updates; invalid output still falls back safely without a correction loop.

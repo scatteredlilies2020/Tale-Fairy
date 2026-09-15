@@ -1,6 +1,6 @@
 // Model-facing replacement. Legacy boards remain readable, but are no longer
 // mandatory work for every generated update. Transport/lifecycle stay separate.
-import { validatePrepared } from './prepared-world.js?v=0.14.8';
+import { validatePrepared } from './prepared-world.js?v=0.14.9';
 
 const text = maxLength => ({ type: 'string', maxLength });
 export const WORLD_PLANNER_SCHEMA = {
@@ -44,11 +44,29 @@ export function normalizeWorldPlan(value) {
     // writer facts. Retain factual memory separately; this job is preparation.
     const normalized = { ...value, context: [], memory: '' };
     if (normalized.note_resolution === null) delete normalized.note_resolution;
-    return { ...normalized, prepared: { ...value.prepared, overview: '', updates: value.prepared.updates.map(item => ({
+    const prepared = { ...value.prepared, overview: '', updates: value.prepared.updates.map(item => ({
         ...item, origin: 'invented', status: item?.status === undefined ? 'prepared' : item.status,
         // A replacement record must not inherit obsolete legacy permission gates.
         engine: '', entry: '', hold: '', invalidates: '', intervention: '',
-    })) } };
+    })) };
+    // A blank live update is not a replacement for its saved record. Omit
+    // only this specific, recoverable defect; keep strict validation for bad
+    // types, identities, duplicate IDs, oversized output and other errors.
+    const uniqueIds = new Set(prepared.updates.map(item => item.id));
+    const omitted = prepared.updates.length <= 12 && uniqueIds.size === prepared.updates.length
+        ? prepared.updates.filter(item => {
+            const errors = validatePrepared({ overview: '', updates: [item], focus: [] });
+            return errors.length === 1 && errors[0] === 'live prepared records need a premise and playable developments';
+        }).map(item => item.id) : [];
+    if (omitted.length) {
+        const omittedIds = new Set(omitted);
+        prepared.updates = prepared.updates.filter(item => !omittedIds.has(item.id));
+        // Incomplete new records cannot be focused. Existing omitted records
+        // remain stored, but this response supplies no complete focused update.
+        if (Array.isArray(prepared.focus)) prepared.focus = prepared.focus.filter(id => !omittedIds.has(id));
+        normalized._taleFairyRecovery = { omitted: omitted.map(id => `prepared.updates:${id}`) };
+    }
+    return { ...normalized, prepared };
 }
 
 export function validateWorldPlan(raw) {
