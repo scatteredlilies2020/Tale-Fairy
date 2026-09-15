@@ -1,17 +1,17 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.14.11';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.14.12';
 import { leadingGeneratedStatusSummary, sceneStatus } from './transcript-status.js?v=0.14.5';
 import { plotExcerpt } from './generation-context.js?v=0.14.5';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
-import { compactSummarySources } from './summary-context.js?v=0.14.11';
+import { compactSummarySources } from './summary-context.js?v=0.14.12';
 import { relevantExcerpt } from './evidence-selection.js?v=0.13.9';
 import { formatDriftRequest, mergeOffscreenWorld, OFFSCREEN_KINDS } from './offscreen-world.js?v=0.13.9';
-import { CAUSAL_KINDS, normalizeCausalContext } from './causal-context.js?v=0.14.11';
+import { CAUSAL_KINDS, normalizeCausalContext } from './causal-context.js?v=0.14.12';
 import { mergeSituationUpdates, retireManifestedSituations } from './situations.js?v=0.13.9';
-import { PLANNER_AGENCY_RULE, ACTOR_AGENCY_RULE, AGENCY_AUDIT_RULE } from './game-master.js?v=0.14.11';
+import { PLANNER_AGENCY_RULE, ACTOR_AGENCY_RULE, AGENCY_AUDIT_RULE } from './game-master.js?v=0.14.12';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { compactPreparedForPrompt, PREPARED_SCHEMA, PREPARED_RULE, validatePrepared, mergePreparedWorld } from './prepared-world.js?v=0.14.11';
-import { normalizeWorldPlan, preparedRecordForPlanner, validateWorldPlan } from './world-planner.js?v=0.14.11';
-export { WORLD_PLANNER_SCHEMA, WORLD_PLANNER_SYSTEM } from './world-planner.js?v=0.14.11';
+import { compactPreparedForPrompt, PREPARED_SCHEMA, PREPARED_RULE, validatePrepared, mergePreparedWorld } from './prepared-world.js?v=0.14.12';
+import { normalizeWorldPlan, preparedRecordForPlanner, validateWorldPlan, mergeWorldPlan } from './world-planner.js?v=0.14.12';
+export { WORLD_PLANNER_SCHEMA, WORLD_PLANNER_SYSTEM } from './world-planner.js?v=0.14.12';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
@@ -349,6 +349,10 @@ function extractJson(raw) {
                 // Routine updates merge into retained state. Missing ancillary
                 // deltas are no-ops, not empty replacements for saved facts.
                 // A rebuild cannot use this path to claim it rebuilt the world.
+                if (finished.contract_version === 14 && finished.prepared
+                    && typeof finished.prepared.approach === 'string' && Array.isArray(finished.prepared.updates)) {
+                    return { ...finished, _taleFairyRecovery: { omitted: ['unfinished trailing fields'] } };
+                }
                 if (finished.contract_version !== 13 || !finished.prepared || !finished.current || !finished.context) break;
                 const optional = {
                     situations: [],
@@ -1995,6 +1999,7 @@ export function buildWorldPlannerPrompt(messages, state, note = '', bootstrap = 
         player_controlled: playerCharacterName(messages) || 'The user controls their own character or side of the simulation.',
         constraints: { notes: s.userNotes, pacing: s.pacing.mode, canon: s.canonConstraints },
         ...(note ? { user_instruction: compactText(note, 1600) } : {}),
+        notebook_capacity: { limit: 12, stored: s.plannerContract === 14 ? board.items.length : 0, free: s.plannerContract === 14 ? Math.max(0, 12 - board.items.length) : 12 },
         current: {
             memory: s.plannerMemory || s.contextLedger,
             preparedWorld: s.plannerContract === 14 ? { approach: board.approach, overview: board.overview, focus: board.focus, items: board.items.map(preparedRecordForPlanner) }
@@ -2913,7 +2918,9 @@ export function applyAnalysis(state, result, messages) {
     const value = normalizeWorldPlan(result && typeof result === 'object' ? useSpecificPlayerName(result, playerName) : {});
     const migrating = value.contract_version === 14 && next.plannerContract !== 14;
     if (migrating) next.legacyPreparedWorld = next.preparedWorld;
-    next.preparedWorld = mergePreparedWorld(migrating ? null : next.preparedWorld, value.prepared);
+    next.preparedWorld = value.contract_version === 14
+        ? mergeWorldPlan(migrating ? null : next.preparedWorld, value)
+        : mergePreparedWorld(next.preparedWorld, value.prepared);
     if (value.contract_version === 14) {
         const checked = validateWorldPlan(value);
         if (!checked.valid) throw new AnalysisValidationError('Invalid world notebook', checked.errors);

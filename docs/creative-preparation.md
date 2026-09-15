@@ -1,4 +1,4 @@
-# Creative preparation contract — 0.14.11
+# Creative preparation contract — 0.14.12
 
 ## Purpose
 
@@ -77,3 +77,21 @@ Continuity Memory and generic summaries remain optional evidence. A local source
 Offline tests cover both schemas and application paths, lifecycle, migration, prompt budgets, append/edit compatibility, late completion, source isolation, frozen in-flight selections and revised pre-reply packets, single-generation failure behavior, pacing persistence and policy separation. The live creative/agency scenarios are in [story-evaluation.md](story-evaluation.md). Passing structural tests does not prove a model produces varied long-term material or that a mobile host renders the controls correctly.
 
 When input budgets require compaction, `items` contains only complete retained records. `retained_index` contains lookup tuples `[id, status, premise label]` (or `[id, status]` at tighter budgets), never update-shaped partial objects. These references preserve access to retained IDs for focus/status changes without suggesting incomplete replacements. Missing/null premise or middle uses the same isolated omission recovery as blank core text; stored prose is never borrowed to fill a replacement or overwritten by one.
+
+
+## Response acceptance
+
+The v14 live and detached paths share normalization, validation, and content merging. The wire schema continues to request complete records; compatibility handling does not invent missing prose or silently evict stored records.
+
+| Response issue | Acceptance policy |
+| --- | --- |
+| Excess, duplicate, blank, malformed, or unavailable focus IDs | Keep the first three unique available references after content/status changes; preserve every notebook record. |
+| Missing/null optional notes or operation arrays | No-op for omitted operations; no invented notes. Missing/null approach preserves the prior approach; explicit empty text clears it. |
+| Lists of prose strings | Join every supplied string in order; mixed/object values remain invalid. |
+| Exact `{id,status}` in the content-update array | Route to status changes and validate its existing target; any prose field keeps it a content replacement. |
+| Identical repeated operations | Apply once, regardless of field order. Replaying an already completed removal is a no-op. Conflicting operations still fail. |
+| Blank/missing core prose | Omit that incomplete replacement and preserve its saved record and complete neighbors. |
+| Cutoff after a fully closed prepared object | Accept the complete notebook; omit unfinished trailing fields. A cutoff inside its prose still fails. |
+| Invalid IDs/status targets, conflicting edits, oversized prose, or notebook overflow | Reject atomically; keep saved state unchanged and expose the rejection reason. |
+
+The regression matrix exercises presentation variants through both response envelopes and checks saved-content invariants, rejection atomicity, capacity, truncation, compaction, and migration. These cases supplement the existing generation cancellation and reconnect tests.

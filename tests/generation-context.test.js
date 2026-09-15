@@ -845,5 +845,5 @@ test('an older failed repair gets one attempt with blank-update recovery, then r
     assert.equal(restored.calls.length, 1);
     await restored.scope.refreshCurrentPlanIfNeeded();
     assert.equal(restored.calls.length, 1);
-    assert.equal(restored.context.chatMetadata[REPLACEMENT_PENDING_KEY].repairPolicyVersion, 4);
+    assert.equal(restored.context.chatMetadata[REPLACEMENT_PENDING_KEY].repairPolicyVersion, 5);
 });

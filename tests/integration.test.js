@@ -16,12 +16,12 @@ const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json'
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
 test('manifest, browser runtime, and detached plugin share the release version', () => {
-    assert.equal(manifest.version, '0.14.11');
-    assert.equal(manifest.js, 'extension/index.js?v=0.14.11');
-    assert.equal(manifest.css, 'extension/style.css?v=0.14.11');
+    assert.equal(manifest.version, '0.14.12');
+    assert.equal(manifest.js, 'extension/index.js?v=0.14.12');
+    assert.equal(manifest.css, 'extension/style.css?v=0.14.12');
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.14\.11'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.14\.11'/);
+    assert.match(pluginSource, /const VERSION = '0\.14\.12'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.14\.12'/);
 });
 
 test('planner input proof travels through normal saves and detached recovery', () => {
@@ -57,8 +57,8 @@ test('roleplay injection never migrates the user default into a system message',
 });
 
 test('runtime uses causal context and deferred world state without prescriptive beat-director dependency', () => {
-    assert.match(source, /from '\.\/causal-context\.js\?v=0\.14\.11'/);
-    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.14\.11'/);
+    assert.match(source, /from '\.\/causal-context\.js\?v=0\.14\.12'/);
+    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.14\.12'/);
     assert.doesNotMatch(source, /beat-director/);
     assert.doesNotMatch(stateSource, /beat-director/);
     assert.match(stateSource, /export const STATE_VERSION = 59/);

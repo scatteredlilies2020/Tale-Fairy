@@ -4,42 +4,42 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, buildStoryEvidence, storyEvidenceQuery, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.11';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.11';
-import { isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.11';
+import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, buildStoryEvidence, storyEvidenceQuery, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.12';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.12';
+import { isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.12';
 import { selectSituationalOpenings } from './situations.js?v=0.13.9';
-import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.14.11';
+import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.14.12';
 import { resolveInjectionPlacement } from './injection-placement.js?v=0.13.9';
 import { DEFAULT_INJECTION_ROLE, normalizeInjectionRole } from './injection-role.js?v=0.13.9';
 import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.13.9';
-import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.14.11';
+import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.14.12';
 import { normalizeModelListResponse } from './models.js?v=0.13.9';
-import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, plannerOutputTokenBudget, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.14.11';
-import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.14.11';
+import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, plannerOutputTokenBudget, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.14.12';
+import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.14.12';
 import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.13.9';
-import { collectSummarySources } from './summary-context.js?v=0.14.11';
+import { collectSummarySources } from './summary-context.js?v=0.14.12';
 import { estimateTokenCount } from './token-budget.js?v=0.13.9';
-import { fitPromptToBudget, plannerEvidenceAudit } from './prompt-budget.js?v=0.14.11';
-import { DEFAULT_ROUTINE_INPUT, DEFAULT_REVIEW_INPUT, normalizeInputBudget, plannerBudgets } from './planner-budgets.js?v=0.14.11';
+import { fitPromptToBudget, plannerEvidenceAudit } from './prompt-budget.js?v=0.14.12';
+import { DEFAULT_ROUTINE_INPUT, DEFAULT_REVIEW_INPUT, normalizeInputBudget, plannerBudgets } from './planner-budgets.js?v=0.14.12';
 import { relevantActors } from './evidence-selection.js?v=0.13.9';
-import { completionText } from './completion-response.js?v=0.14.11';
+import { completionText } from './completion-response.js?v=0.14.12';
 import { sampleDirectorSignals } from './director-sampling.js?v=0.13.9';
-import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerBudgetEnvelope, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.14.11';
+import { customOutputPayload, detachedPlannerFailure, isUnsupportedStructuredOutputError, negotiateOutputModes, plannerMessages, plannerOutputModes, plannerBudgetEnvelope, plannerPrompt, PLANNER_OUTPUT_MODE, stripStructuredOutputControls } from './output-negotiation.js?v=0.14.12';
 import { clearPlannerRecoveryRepair, clearPlannerFailed, clearPlannerPending, markPlannerFailed, markPlannerPending, plannerFailedForSnapshot, plannerWasInterrupted, waitForPlannerHandoff } from './planner-lifecycle.js?v=0.13.10';
 import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.13.9';
-import { hasUsableCausalContext } from './causal-context.js?v=0.14.11';
+import { hasUsableCausalContext } from './causal-context.js?v=0.14.12';
 import { formatHiddenMotives } from './scratchpad-format.js?v=0.13.9';
-import { WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA } from './world-planner.js?v=0.14.11';
-import { buildWorldPlannerPrompt } from './analysis.js?v=0.14.11';
-import { defaultPreparedWorld, preparedWorldUsable, unchangedSourcePrefix, stampPreparedWorld } from './prepared-world.js?v=0.14.11';
+import { WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA } from './world-planner.js?v=0.14.12';
+import { buildWorldPlannerPrompt } from './analysis.js?v=0.14.12';
+import { defaultPreparedWorld, preparedWorldUsable, unchangedSourcePrefix, stampPreparedWorld } from './prepared-world.js?v=0.14.12';
 import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.9';
-import { canRetainSuccessfulPlan, createSafetyFallbackState } from './fallback-direction.js?v=0.14.11';
+import { canRetainSuccessfulPlan, createSafetyFallbackState } from './fallback-direction.js?v=0.14.12';
 import { classifyAssistantReply } from './response-usability.js?v=0.13.9';
 import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.5';
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.14.11';
+const RUNTIME_VERSION = '0.14.12';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -885,7 +885,7 @@ async function repairDeferredReplacementPlan() {
     const failedPlan = !hasPlannerConditions(packetState.causalContext) && /planner fallback/iu.test(packetState.lastReason);
     if (!failedPlan && (packet?.selection.preparedUsable || packet?.selection.usable && hasPlannerConditions(packet.selection.causalContext))) return state;
     const pending = context.chatMetadata[REPLACEMENT_PENDING_KEY];
-    if (pending.repairAttemptedKey === inputKey && pending.repairPolicyVersion === 4) {
+    if (pending.repairAttemptedKey === inputKey && pending.repairPolicyVersion === 5) {
         renderAnalysisActivity('Missing retry plan · automatic repair already attempted; Guide now can retry', false);
         return state;
     }
@@ -893,7 +893,7 @@ async function repairDeferredReplacementPlan() {
     // Generation start/stop and chat load share this persisted attempt marker.
     // Policy 3 permits one retry with explicit status changes and nonblank
     // content updates. Persist before starting so reloads cannot form a loop.
-    context.updateChatMetadata({ [REPLACEMENT_PENDING_KEY]: { ...pending, repairAttemptedKey: inputKey, repairPolicyVersion: 4 } });
+    context.updateChatMetadata({ [REPLACEMENT_PENDING_KEY]: { ...pending, repairAttemptedKey: inputKey, repairPolicyVersion: 5 } });
     scheduleVerificationPersistence(context);
     renderAnalysisActivity('Repairing missing pre-reply plan once · generation will not wait', true);
     return analyzeNow({ force: true, messages, allowOneAssistantAppend: true });
@@ -1766,7 +1766,7 @@ async function recoverDetachedPlannerJobs() {
             lastAnalysisError = '';
             renderBoard(next);
             renderAnalysisActivity(result._taleFairyRecovery
-                ? 'Guidance recovered · incomplete updates omitted'
+                ? 'Guidance ready · incomplete parts omitted'
                 : 'Recovered planner result completed while this page was unavailable', false);
             return { active: false, recovered: true, state: next };
         }
@@ -2367,7 +2367,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         lastAnalysisError = '';
         finalStatus = userNote && !resolvedNote
             ? 'Note not applied · try again'
-            : result._taleFairyRecovery ? `Guidance recovered · incomplete updates omitted · ${elapsedLabel(Date.now() - startedAt)}`
+            : result._taleFairyRecovery ? `Guidance ready · incomplete parts omitted · ${elapsedLabel(Date.now() - startedAt)}`
             : `Active world context ready · ${elapsedLabel(Date.now() - startedAt)}`;
         renderBoard(next);
         return next;
@@ -2415,7 +2415,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
                         await persist(fallback, { chatId, fingerprint: fallbackFingerprint, messageCount: fallbackSource.length, allowOneAssistantAppend });
                         clearPlannerFailed(plannerStorage(), chatId);
                         cancelAnalysisRetry();
-                        finalStatus = `Safety fallback ready · planner ${isPlannerTimeoutError(error) ? 'timed out' : 'output was unusable'}`;
+                        finalStatus = `Safety fallback ready · ${isPlannerTimeoutError(error) ? 'planner timed out' : analysisErrorMessage(error).replace(/^Planner violated its strict output contract: /u, '').slice(0, 160)}`;
                         renderBoard(fallback);
                         return fallback;
                     }
@@ -2661,7 +2661,7 @@ async function reevaluateGuideState() {
     state.plannerSchedule.manualRequested = true;
     const metadata = saveState(context.chatMetadata, state);
     if (replacement) metadata[REPLACEMENT_PENDING_KEY] = { ...metadata[REPLACEMENT_PENDING_KEY],
-        repairAttemptedKey: plotInputKey(chatId, messages, generationInputs(context, state)), repairPolicyVersion: 4 };
+        repairAttemptedKey: plotInputKey(chatId, messages, generationInputs(context, state)), repairPolicyVersion: 5 };
     context.updateChatMetadata(metadata);
     scheduleVerificationPersistence(context);
     return analyzeNow({ force: true, messages, allowOneAssistantAppend: replacement });

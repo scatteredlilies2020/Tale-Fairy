@@ -319,7 +319,7 @@ test('copied partial rows cannot discard valid peers or replace complete saved r
     const partials = [
         { id: 'compact', premise: 'A revised premise without developments.', future: 'A later possibility.', status: 'active', omitted_details_remain_stored: true },
         { id: 'orchard', premise: 'A different incomplete replacement.', middle: null, status: 'dormant' },
-        { id: 'missing-new', status: 'prepared' },
+        { id: 'missing-new', status: 'prepared', premise: '' },
     ];
     const result = parseRuntime(plan({ prepared: {
         approach: original.preparedWorld.approach, updates: [...partials, direction('new-complete')], focus: ['compact', 'missing-new', 'new-complete'],
@@ -330,4 +330,180 @@ test('copied partial rows cannot discard valid peers or replace complete saved r
     assert.ok(next.preparedWorld.items.find(item => item.id === 'new-complete'));
     assert.deepEqual(next.preparedWorld.focus, ['new-complete']);
     assert.deepEqual(original.preparedWorld.items, before);
+});
+
+const focusVariants = [
+    ['missing', 'compact', 'compact', 'orchard', 'harbor', 'hills'],
+    [' ', null, {}, 9, ' compact ', 'orchard', 'harbor', 'hills'],
+    ['x'.repeat(81), 'compact', 'orchard', 'harbor'],
+    'compact', null, undefined, {}, [],
+];
+for (const [index, focus] of focusVariants.entries()) {
+    for (const variant of ['standard', 'missing-optionals', 'null-optionals', 'prose-lists', 'repeated-identical']) {
+        test(`response acceptance matrix: focus ${index}, ${variant}, live and detached`, () => {
+            const original = analysis.applyAnalysis(defaultState(), parseRuntime(plan()), messages);
+            const before = structuredClone(original);
+            const updates = ['orchard', 'harbor', 'hills'].map(id => direction(id));
+            const prepared = { approach: original.preparedWorld.approach, updates, focus };
+            if (variant === 'missing-optionals') delete prepared.approach;
+            if (variant === 'null-optionals') {
+                prepared.approach = null;
+                prepared.status_changes = null;
+                for (const item of updates) { item.future = null; item.knowledge = null; }
+            }
+            if (variant === 'prose-lists') {
+                for (const item of updates) item.middle = [item.middle, 'Preserve the final condition.'];
+            }
+            if (variant === 'repeated-identical') {
+                updates.push(Object.fromEntries(Object.entries(updates[0]).reverse()));
+                prepared.status_changes = [{ id: 'compact', status: 'active' }, { status: 'active', id: 'compact' }];
+            }
+            const wire = JSON.stringify({ contract_version: 14, prepared });
+            const live = analysis.applyAnalysis(original, parseRuntime({ choices: [{ message: { content: wire } }] }), messages);
+            const detached = analysis.applyAnalysis(original, parseRuntime(wire), messages);
+            assert.deepEqual(live.preparedWorld, detached.preparedWorld);
+            assert.equal(live.plannerContract, detached.plannerContract);
+            assert.deepEqual(original, before, 'acceptance must not mutate its source');
+            assert.equal(live.preparedWorld.items.length, 4, 'focus cannot prune the notebook');
+            assert.equal(live.preparedWorld.approach, original.preparedWorld.approach, 'missing is not an explicit clear');
+            assert.ok(live.preparedWorld.focus.length <= 3);
+            assert.equal(new Set(live.preparedWorld.focus).size, live.preparedWorld.focus.length);
+            assert.ok(live.preparedWorld.focus.every(id => live.preparedWorld.items.some(item => item.id === id)));
+            if (index < 3) assert.deepEqual(live.preparedWorld.focus, ['compact', 'orchard', 'harbor'], 'filter unavailable references before capping');
+            if (variant === 'prose-lists') assert.ok(live.preparedWorld.items.find(item => item.id === 'orchard').middle.endsWith('Preserve the final condition.'));
+        });
+    }
+}
+
+test('advisory focus cannot invalidate retirement or restore a removed record', () => {
+    const original = analysis.applyAnalysis(defaultState(), parseRuntime(plan()), messages);
+    const next = analysis.applyAnalysis(original, parseRuntime(plan({ prepared: {
+        updates: [direction('orchard')], status_changes: [{ id: 'compact', status: 'retired' }], focus: ['compact', 'missing', 'orchard'],
+    } })), messages);
+    assert.deepEqual(next.preparedWorld.items.map(item => item.id), ['orchard']);
+    assert.deepEqual(next.preparedWorld.focus, ['orchard']);
+});
+
+test('status-only and approach-only responses preserve omitted notebook content', () => {
+    const original = analysis.applyAnalysis(defaultState(), parseRuntime(plan()), messages);
+    const status = analysis.applyAnalysis(original, parseRuntime({ contract_version: 14, prepared: { status_changes: [{ id: 'compact', status: 'dormant' }] } }), messages);
+    assert.equal(status.preparedWorld.items[0].middle, original.preparedWorld.items[0].middle);
+    assert.equal(status.preparedWorld.approach, original.preparedWorld.approach);
+    const cleared = analysis.applyAnalysis(original, parseRuntime({ contract_version: 14, prepared: { approach: '', updates: null } }), messages);
+    assert.equal(cleared.preparedWorld.approach, '');
+    assert.deepEqual(cleared.preparedWorld.items, original.preparedWorld.items);
+});
+
+const rejectedChanges = {
+    'wrong update container': { updates: {} },
+    'null record': { updates: [null] },
+    'missing ID': { updates: [{ premise: 'A proposal.', middle: 'A complete process.', status: 'prepared' }] },
+    'object prose': { updates: [direction('new', { middle: { plan: 'text' } })] },
+    'mixed prose list': { updates: [direction('new', { middle: ['A process.', { claim: 'unsafe' }] })] },
+    'oversized complete prose': { updates: [direction('new', { middle: 'x'.repeat(1761) })] },
+    'invalid lifecycle': { updates: [direction('new', { status: 'canon' })] },
+    'conflicting replacements': { updates: [direction('compact'), direction('compact', { middle: 'A contradictory replacement.' })] },
+    'conflicting operation kinds': { updates: [direction('compact')], status_changes: [{ id: 'compact', status: 'retired' }] },
+    'conflicting status operations': { updates: [], status_changes: [{ id: 'compact', status: 'active' }, { id: 'compact', status: 'retired' }] },
+    'unavailable status target': { updates: [direction('valid')], status_changes: [{ id: 'missing', status: 'active' }] },
+    'invalid optional prose': { updates: [direction('new', { knowledge: 123 })] },
+    'invalid approach': { approach: {} },
+};
+for (const [label, change] of Object.entries(rejectedChanges)) test(`substantive rejection is atomic: ${label}`, () => {
+    const original = analysis.applyAnalysis(defaultState(), parseRuntime(plan()), messages);
+    const before = structuredClone(original);
+    assert.throws(() => analysis.applyAnalysis(original, parseRuntime(plan({ prepared: { ...plan().prepared, ...change } })), messages));
+    assert.deepEqual(original, before);
+});
+
+test('capacity overflow cannot evict retained content, while explicit retirement makes room', () => {
+    const original = analysis.applyAnalysis(defaultState(), parseRuntime(plan({ prepared: {
+        ...plan().prepared, updates: Array.from({ length: 12 }, (_, i) => direction(`record-${i}`)), focus: ['record-0'],
+    } })), messages);
+    const before = structuredClone(original);
+    const wire = plan({ prepared: { updates: [direction('new')], focus: ['new'] } });
+    assert.throws(() => analysis.applyAnalysis(original, parseRuntime(wire), messages), /full/);
+    assert.deepEqual(original, before);
+    wire.prepared.status_changes = [{ id: 'record-11', status: 'retired' }];
+    const next = analysis.applyAnalysis(original, parseRuntime(wire), messages);
+    assert.equal(next.preparedWorld.items.length, 12);
+    assert.ok(next.preparedWorld.items.some(item => item.id === 'new'));
+});
+
+test('cutoff recovery requires a completely closed notebook and preserves complete prose', () => {
+    const wire = { contract_version: 14, prepared: { ...plan().prepared } };
+    const complete = JSON.stringify(wire);
+    for (const raw of [complete.slice(0, -1), complete.slice(0, -1) + ',"note_resolution":{"kind":"sug']) {
+        const parsed = parseRuntime(raw);
+        assert.ok(parsed._taleFairyRecovery);
+        const next = analysis.applyAnalysis(defaultState(), parsed, messages);
+        assert.equal(next.preparedWorld.items[0].middle, direction().middle);
+    }
+    const cutoff = complete.indexOf('middle') + 15;
+    assert.throws(() => parseRuntime(complete.slice(0, cutoff)), /cut off/);
+});
+
+
+test('empty malformed envelopes cannot masquerade as successful no-change plans', () => {
+    for (const prepared of [{}, { approach: null, updates: null }, { focus: {} }, null, []]) {
+        assert.throws(() => parseRuntime({ contract_version: 14, prepared }));
+    }
+});
+
+test('model sees capacity of the current notebook, not the archived migration notebook', () => {
+    const state = analysis.applyAnalysis(defaultState(), parseRuntime(plan()), messages);
+    const input = JSON.parse(analysis.buildWorldPlannerPrompt(messages, state, '', {}, { incremental: true }));
+    assert.deepEqual(input.notebook_capacity, { limit: 12, stored: 1, free: 11 });
+    state.plannerContract = 13;
+    const migration = JSON.parse(analysis.buildWorldPlannerPrompt(messages, state, '', {}, { incremental: true }));
+    assert.deepEqual(migration.notebook_capacity, { limit: 12, stored: 0, free: 12 });
+});
+
+
+test('misplaced exact status operations preserve prose, focus, and complete content peers', () => {
+    const original = analysis.applyAnalysis(defaultState(), parseRuntime(plan()), messages);
+    const before = structuredClone(original);
+    const result = parseRuntime(plan({ prepared: { updates: [direction('orchard'), { id: 'compact', status: 'active' }],
+        status_changes: [{ id: 'compact', status: 'active' }], focus: ['compact', 'orchard'] } }));
+    assert.equal(result._taleFairyRecovery, undefined);
+    assert.equal(result.prepared.status_changes.length, 1);
+    const next = analysis.applyAnalysis(original, result, messages);
+    assert.deepEqual(next.preparedWorld.items.find(item => item.id === 'compact'), { ...original.preparedWorld.items[0], status: 'active' });
+    assert.deepEqual(next.preparedWorld.focus, ['compact', 'orchard']);
+    assert.equal(next.preparedWorld.items.length, 2);
+    assert.deepEqual(original, before);
+});
+
+test('status-shaped records still reject unknown IDs, conflicts, and invalid lifecycle values', () => {
+    const original = analysis.applyAnalysis(defaultState(), parseRuntime(plan()), messages);
+    const before = structuredClone(original);
+    for (const prepared of [
+        { updates: [{ id: 'missing', status: 'active' }] },
+        { updates: [{ id: 'compact', status: 'invented-status' }] },
+        { updates: [{ id: 'compact', status: 'active' }], status_changes: [{ id: 'compact', status: 'retired' }] },
+        { updates: [direction('compact'), { id: 'compact', status: 'active' }] },
+    ]) assert.throws(() => analysis.applyAnalysis(original, parseRuntime({ contract_version: 14, prepared }), messages));
+    assert.deepEqual(original, before);
+});
+
+test('partial content with a status cannot be mistaken for a status-only operation', () => {
+    const original = analysis.applyAnalysis(defaultState(), parseRuntime(plan()), messages);
+    const next = analysis.applyAnalysis(original, parseRuntime({ contract_version: 14, prepared: {
+        updates: [{ id: 'compact', status: 'active', future: 'A changed outcome with missing core prose.' }, direction('orchard')], focus: ['orchard'],
+    } }), messages);
+    assert.deepEqual(next.preparedWorld.items.find(item => item.id === 'compact'), original.preparedWorld.items[0]);
+});
+
+
+test('replayed removals are idempotent without permitting activation of missing records', () => {
+    const original = analysis.applyAnalysis(defaultState(), parseRuntime(plan()), messages);
+    const delta = parseRuntime({ contract_version: 14, prepared: {
+        updates: [direction('orchard')], status_changes: [{ id: 'compact', status: 'retired' }], focus: ['compact', 'orchard'],
+    } });
+    const first = analysis.applyAnalysis(original, delta, messages);
+    const second = analysis.applyAnalysis(first, delta, messages);
+    assert.deepEqual(second.preparedWorld, first.preparedWorld);
+    assert.throws(() => analysis.applyAnalysis(second, parseRuntime({ contract_version: 14, prepared: {
+        status_changes: [{ id: 'compact', status: 'active' }],
+    } }), messages), /unavailable/);
 });
