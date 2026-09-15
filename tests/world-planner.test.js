@@ -18,7 +18,7 @@ const messages = [{ is_user: true, name: 'Rowan', mes: 'I remain in the council 
 test('replacement instructions stay compact and do not reintroduce generated reporting fields', () => {
     assert.ok(WORLD_PLANNER_SYSTEM.split(/\s+/u).length < 650);
     assert.deepEqual(Object.keys(WORLD_PLANNER_SCHEMA.value.properties).sort(), ['contract_version', 'note_resolution', 'prepared']);
-    assert.deepEqual(Object.keys(WORLD_PLANNER_SCHEMA.value.properties.prepared.properties).sort(), ['approach', 'focus', 'status_changes', 'updates']);
+    assert.deepEqual(Object.keys(WORLD_PLANNER_SCHEMA.value.properties.prepared.properties).sort(), ['approach', 'focus', 'status_changes', 'summary', 'updates']);
 });
 const direction = (id = 'compact', changes = {}) => ({ id, status: 'prepared',
     premise: 'Districts may develop a lasting federation through mutual winter aid.',
@@ -416,13 +416,16 @@ for (const [label, change] of Object.entries(rejectedChanges)) test(`substantive
     assert.deepEqual(original, before);
 });
 
-test('capacity overflow cannot evict retained content, while explicit retirement makes room', () => {
+test('planner accepts the thirteenth record without evicting retained content', () => {
     const original = analysis.applyAnalysis(defaultState(), parseRuntime(plan({ prepared: {
         ...plan().prepared, updates: Array.from({ length: 12 }, (_, i) => direction(`record-${i}`)), focus: ['record-0'],
     } })), messages);
     const before = structuredClone(original);
     const wire = plan({ prepared: { updates: [direction('new')], focus: ['new'] } });
-    assert.throws(() => analysis.applyAnalysis(original, parseRuntime(wire), messages), /full/);
+    const expanded = normalizeState(JSON.parse(JSON.stringify(analysis.applyAnalysis(original, parseRuntime(wire), messages))));
+    assert.equal(expanded.preparedWorld.items.length, 13);
+    assert.deepEqual(expanded.preparedWorld.items.slice(0, 12), original.preparedWorld.items);
+    assert.deepEqual(expanded.preparedWorld.focus, ['new']);
     assert.deepEqual(original, before);
     wire.prepared.status_changes = [{ id: 'record-11', status: 'retired' }];
     const next = analysis.applyAnalysis(original, parseRuntime(wire), messages);
@@ -450,13 +453,14 @@ test('empty malformed envelopes cannot masquerade as successful no-change plans'
     }
 });
 
-test('model sees capacity of the current notebook, not the archived migration notebook', () => {
+test('model sees selected and stored counts without a storage capacity', () => {
     const state = analysis.applyAnalysis(defaultState(), parseRuntime(plan()), messages);
     const input = JSON.parse(analysis.buildWorldPlannerPrompt(messages, state, '', {}, { incremental: true }));
-    assert.deepEqual(input.notebook_capacity, { limit: 12, stored: 1, free: 11 });
+    assert.deepEqual(input.notebook_view, { stored: 1, shown: 1 });
+    assert.equal(input.notebook_capacity, undefined);
     state.plannerContract = 13;
     const migration = JSON.parse(analysis.buildWorldPlannerPrompt(messages, state, '', {}, { incremental: true }));
-    assert.deepEqual(migration.notebook_capacity, { limit: 12, stored: 0, free: 12 });
+    assert.deepEqual(migration.notebook_view, { stored: 0, shown: 0 });
 });
 
 
@@ -530,4 +534,71 @@ test('mixed nesting deduplicates identical content but does not hide conflicting
     raw.updates = [direction('compact', { middle: 'A contradictory replacement.' })];
     assert.throws(() => parseRuntime(raw));
     assert.throws(() => parseRuntime({ contract_version: 14, prepared: { approach: 'A', updates: [] }, approach: 'B' }));
+});
+
+
+test('a thousand saved developments fit routine and review budgets without losing storage or latest instructions', async () => {
+    const state = analysis.applyAnalysis(defaultState(), parseRuntime(plan()), messages);
+    const template = state.preparedWorld.items[0];
+    state.preparedWorld.items = Array.from({ length: 1000 }, (_, i) => ({ ...template, id: `record-${i}` }));
+    state.preparedWorld.items[0].premise = 'The Zareph glassmakers await a visit.';
+    state.preparedWorld.focus = ['record-1'];
+    state.preparedWorld.summary = 'UNFINISHED POSSIBILITY: distant glassmakers might seek winter aid; no agreement has happened. '.repeat(30);
+    const latest = [...messages, { is_user: true, mes: 'Return to the Zareph glassmakers. Let me choose how to approach them.' }];
+    const before = structuredClone(state);
+    const fixedEnvelope = plannerBudgetEnvelope(WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA, PLANNER_OUTPUT_MODE.PROMPT_ONLY);
+    for (const [incremental, tokenBudget] of [[true, 6000], [false, 14000]]) {
+        const prompt = await fitPromptToBudget({ fixedEnvelope, tokenBudget,
+            buildPrompt: effectivePromptTokens => analysis.buildWorldPlannerPrompt(latest, state, '', {}, { incremental, effectivePromptTokens, maxPromptTokens: tokenBudget }) });
+        const input = JSON.parse(prompt);
+        assert.deepEqual(input.notebook_view, { stored: 1000, shown: 12 });
+        assert.equal(input.current.preparedWorld.summary, state.preparedWorld.summary);
+        assert.equal(input.messages.at(-1).content, latest.at(-1).mes);
+        assert.match(JSON.stringify(input.current.preparedWorld), /record-0["\s,]/);
+        assert.deepEqual(input.current.preparedWorld.focus, ['record-1']);
+    }
+    assert.deepEqual(state, before);
+});
+
+
+test('rolling summary survives planner updates and persistence, stays private, and can be explicitly cleared', () => {
+    const summary = 'PRIVATE PLAN: Winter aid might grow into federation; representation remains unresolved. No agreement exists yet.';
+    const wire = { contract_version: 14, prepared: { ...plan().prepared, summary } };
+    const original = analysis.applyAnalysis(defaultState(), parseRuntime(wire), messages);
+    const saved = normalizeState(JSON.parse(JSON.stringify(original)));
+    assert.equal(saved.preparedWorld.summary, summary);
+    assert.equal(JSON.parse(analysis.buildWorldPlannerPrompt(messages, saved)).current.preparedWorld.summary, summary);
+    assert.doesNotMatch(buildPromptPayload(saved, { preparedUsable: true }), /PRIVATE PLAN/);
+    assert.match(buildPromptPayload(saved, { preparedUsable: true }), /competing regional compacts/);
+    for (const extra of [{}, { summary: null }]) {
+        const next = analysis.applyAnalysis(saved, parseRuntime({ contract_version: 14,
+            prepared: { updates: [direction('new')], focus: ['new'], ...extra } }), messages);
+        assert.equal(next.preparedWorld.summary, summary);
+        assert.equal(next.preparedWorld.items.length, 2);
+    }
+    const revised = 'PRIVATE PLAN: Voluntary aid remains possible, but a federation is no longer being pursued.';
+    for (const content of [JSON.stringify({ contract_version: 14, prepared: { summary: revised, updates: [], focus: ['compact'] } }),
+        { choices: [{ message: { content: JSON.stringify({ contract_version: 14, summary: revised, prepared: { updates: [], focus: ['compact'] } }) } }] }]) {
+        const next = analysis.applyAnalysis(saved, parseRuntime(content), messages);
+        assert.equal(next.preparedWorld.summary, revised);
+        assert.deepEqual(next.preparedWorld.items, saved.preparedWorld.items);
+    }
+    const cleared = analysis.applyAnalysis(saved, parseRuntime({ contract_version: 14,
+        prepared: { summary: '', updates: [], focus: ['compact'] } }), messages);
+    assert.equal(cleared.preparedWorld.summary, '');
+    assert.deepEqual(cleared.preparedWorld.items, saved.preparedWorld.items);
+    assert.equal(saved.preparedWorld.summary, summary);
+});
+
+test('bad or conflicting rolling summaries reject atomically without losing saved details', () => {
+    const original = analysis.applyAnalysis(defaultState(), parseRuntime({ contract_version: 14,
+        prepared: { ...plan().prepared, summary: 'Preserve this earlier conditional direction.' } }), messages);
+    const before = structuredClone(original);
+    for (const summary of [{ secret: 'invalid object' }, 'x'.repeat(3601), ['valid prose', 42]]) {
+        assert.throws(() => analysis.applyAnalysis(original, parseRuntime({ contract_version: 14,
+            prepared: { summary, updates: [direction('new')], focus: ['new'] } }), messages));
+        assert.deepEqual(original, before);
+    }
+    assert.throws(() => parseRuntime({ contract_version: 14, summary: 'Conflicting root summary.',
+        prepared: { summary: 'Nested summary.', updates: [], focus: [] } }), /Conflicting/);
 });

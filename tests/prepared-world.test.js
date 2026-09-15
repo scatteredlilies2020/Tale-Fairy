@@ -91,7 +91,7 @@ test('a usable plan survives prose overruns and blank optional notes without los
     }
 });
 
-test('deltas retain unused material, explicitly retire it, and never silently overflow', () => {
+test('deltas retain unused material beyond the working limit and retire only explicitly', () => {
     let board = mergePreparedWorld(null, delta());
     board = mergePreparedWorld(board, { overview: '', updates: [record('bridge')], focus: ['bridge'] });
     assert.equal(board.items.length, 2);
@@ -101,7 +101,10 @@ test('deltas retain unused material, explicitly retire it, and never silently ov
     assert.deepEqual(board.items.map(x => x.id), ['bridge']);
     assert.throws(() => mergePreparedWorld(board, { overview: '', updates: [], focus: ['missing'] }), /unavailable/);
     for (let i = 1; i < PREPARED_LIMIT; i++) board = mergePreparedWorld(board, { overview: '', updates: [record(`thread-${i}`)], focus: [] });
-    assert.throws(() => mergePreparedWorld(board, { overview: '', updates: [record('overflow')], focus: [] }), /full/);
+    const expanded = mergePreparedWorld(board, { overview: '', updates: [record('overflow')], focus: ['overflow'] });
+    assert.equal(expanded.items.length, PREPARED_LIMIT + 1);
+    assert.deepEqual(normalizePreparedWorld(JSON.parse(JSON.stringify(expanded))), expanded);
+    assert.deepEqual(expanded.items.slice(0, -1), board.items);
     assert.equal(board.items.length, PREPARED_LIMIT);
 });
 
@@ -297,4 +300,42 @@ test('writer budget selects whole preparations with all their boundaries and kee
         } else assert.ok(!output.includes(item.knowledge));
     }
     assert.equal(JSON.stringify(board), before);
+});
+
+
+test('large saved notebooks retrieve old relevant records and keep focused boundaries intact', () => {
+    const items = Array.from({ length: 200 }, (_, i) => record(`record-${i}`));
+    items[0].premise = 'The glassmakers of Zareph await a promised visit.';
+    items[1].status = 'active';
+    const board = normalizePreparedWorld({ items, focus: ['record-2'], overview: 'A long journey.' });
+    const before = structuredClone(board);
+    const view = preparedWorldForPrompt(board, { query: 'Return to Zareph and the glassmakers.' });
+    assert.equal(view.items.length, PREPARED_LIMIT);
+    for (const id of ['record-0', 'record-1', 'record-2', 'record-199']) {
+        assert.deepEqual(view.items.find(item => item.id === id), board.items.find(item => item.id === id));
+    }
+    const revised = mergePreparedWorld(board, { overview: '', updates: [{ ...items[3], middle: 'A newly revised direction.' }], focus: board.focus });
+    assert.ok(preparedWorldForPrompt(revised).items.some(item => item.id === 'record-3'));
+    const retired = mergePreparedWorld(revised, { overview: '', updates: [], status_changes: [{ id: 'record-0', status: 'retired' }], focus: board.focus });
+    assert.equal(retired.items.length, 199);
+    assert.ok(!retired.items.some(item => item.id === 'record-0'));
+    assert.deepEqual(board, before);
+    const saved = normalizeState(JSON.parse(JSON.stringify({ ...defaultState(), preparedWorld: revised })));
+    assert.deepEqual(saved.preparedWorld, revised);
+});
+
+
+test('rolling planner summary follows source guards, delayed saves and explicit rebuild', async () => {
+    const h = generationHarness(messages());
+    const proof = attach(h, mergePreparedWorld(null, { ...delta(), summary: 'PRIVATE BASELINE: a distant bargain remains possible.' }));
+    const incoming = h.state();
+    incoming.preparedWorld = stampPreparedWorld(mergePreparedWorld(incoming.preparedWorld,
+        { ...delta(), summary: 'PRIVATE REVISION: the bargain depends on finding winter fuel.' }), proof);
+    h.context.chat.push({ is_user: false, mes: 'Another accepted conversation.' });
+    await h.scope.persist(incoming, proof);
+    assert.equal(h.state().preparedWorld.summary, incoming.preparedWorld.summary);
+    assert.doesNotMatch(h.prepare().payload, /PRIVATE BASELINE|PRIVATE REVISION/);
+    assert.equal(h.scope.rebuildState(h.state()).preparedWorld.summary, '');
+    h.context.chat[0].mes = 'A replacement story branch.';
+    assert.equal(preparedWorldUsable(h.state().preparedWorld, { ...proof, messages: h.context.chat, fingerprint: fingerprintMessages }), false);
 });

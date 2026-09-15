@@ -1,17 +1,17 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.14.13';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.14.15';
 import { leadingGeneratedStatusSummary, sceneStatus } from './transcript-status.js?v=0.14.5';
 import { plotExcerpt } from './generation-context.js?v=0.14.5';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
-import { compactSummarySources } from './summary-context.js?v=0.14.13';
+import { compactSummarySources } from './summary-context.js?v=0.14.15';
 import { relevantExcerpt } from './evidence-selection.js?v=0.13.9';
 import { formatDriftRequest, mergeOffscreenWorld, OFFSCREEN_KINDS } from './offscreen-world.js?v=0.13.9';
-import { CAUSAL_KINDS, normalizeCausalContext } from './causal-context.js?v=0.14.13';
+import { CAUSAL_KINDS, normalizeCausalContext } from './causal-context.js?v=0.14.15';
 import { mergeSituationUpdates, retireManifestedSituations } from './situations.js?v=0.13.9';
-import { PLANNER_AGENCY_RULE, ACTOR_AGENCY_RULE, AGENCY_AUDIT_RULE } from './game-master.js?v=0.14.13';
+import { PLANNER_AGENCY_RULE, ACTOR_AGENCY_RULE, AGENCY_AUDIT_RULE } from './game-master.js?v=0.14.15';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { compactPreparedForPrompt, PREPARED_SCHEMA, PREPARED_RULE, validatePrepared, mergePreparedWorld } from './prepared-world.js?v=0.14.13';
-import { normalizeWorldPlan, preparedRecordForPlanner, validateWorldPlan, mergeWorldPlan } from './world-planner.js?v=0.14.13';
-export { WORLD_PLANNER_SCHEMA, WORLD_PLANNER_SYSTEM } from './world-planner.js?v=0.14.13';
+import { preparedWorldForPrompt, compactPreparedForPrompt, PREPARED_SCHEMA, PREPARED_RULE, validatePrepared, mergePreparedWorld } from './prepared-world.js?v=0.14.15';
+import { normalizeWorldPlan, preparedRecordForPlanner, validateWorldPlan, mergeWorldPlan } from './world-planner.js?v=0.14.15';
+export { WORLD_PLANNER_SCHEMA, WORLD_PLANNER_SYSTEM } from './world-planner.js?v=0.14.15';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
@@ -1992,18 +1992,18 @@ export function buildWorldPlannerPrompt(messages, state, note = '', bootstrap = 
     }));
     const first = selected.filter(item => item.kind === 'recent')[0]?.index ?? messages.length;
     const witnesses = retrieveOlderHistoricalEvidence(messages, s, first, new Set(selected.map(item => item.index)), 2);
-    const board = s.preparedWorld;
+    const board = preparedWorldForPrompt(s.preparedWorld, { query: [note, ...messages.slice(-4).map(message => message?.mes || '')].join('\n') });
     const payload = {
         task: options.bootstrapScan || options.fullRebuild ? 'initialize_world_notebook' : broad ? 'review_wider_developments' : 'update_world_notebook',
         rp_reference: compactOptionalObject(bootstrap, 1800),
         player_controlled: playerCharacterName(messages) || 'The user controls their own character or side of the simulation.',
         constraints: { notes: s.userNotes, pacing: s.pacing.mode, canon: s.canonConstraints },
         ...(note ? { user_instruction: compactText(note, 1600) } : {}),
-        notebook_capacity: { limit: 12, stored: s.plannerContract === 14 ? board.items.length : 0, free: s.plannerContract === 14 ? Math.max(0, 12 - board.items.length) : 12 },
+        notebook_view: { stored: s.plannerContract === 14 ? s.preparedWorld.items.length : 0, shown: s.plannerContract === 14 ? board.items.length : 0 },
         current: {
             memory: s.plannerMemory || s.contextLedger,
-            preparedWorld: s.plannerContract === 14 ? { approach: board.approach, overview: board.overview, focus: board.focus, items: board.items.map(preparedRecordForPlanner) }
-                : { approach: '', overview: '', focus: [], items: [] },
+            preparedWorld: s.plannerContract === 14 ? { approach: board.approach, summary: board.summary, overview: board.overview, focus: board.focus, items: board.items.map(preparedRecordForPlanner) }
+                : { approach: '', summary: '', overview: '', focus: [], items: [] },
             // One-time migration evidence, not ongoing mandatory maintenance.
             ...(s.plannerContract !== 14 ? { migration: 'The supplied memory came from a different planner and may be wrong. Reconstruct facts from actual observations. Its old next-reply proposals are archived separately, not tasks for you to perpetuate. Create a fresh lasting approach and directions from the RP itself.' } : {}),
         },
@@ -2285,8 +2285,9 @@ export function buildAnalysisPrompt(messages, state, note = '', bootstrap = {}, 
     // premise/hold boundaries instead of clipping their clauses to make room.
     // This working index is a delta target, not a replacement for stored data.
     if (estimateTokenCount(serialized) > budget && payload.current.preparedWorld) {
-        const board = normalizeState(state).preparedWorld;
+        const board = preparedWorldForPrompt(normalizeState(state).preparedWorld, { query: evidenceQuery });
         payload.current.preparedWorld = {
+            summary: board.summary,
             overview: board.overview,
             focus: board.focus,
             items: board.items.map(({ id, status, origin, premise, hold }) => ({ id, status, origin, premise, hold })),
