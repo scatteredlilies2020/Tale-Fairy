@@ -1998,7 +1998,9 @@ export function buildWorldPlannerPrompt(messages, state, note = '', bootstrap = 
     const protectedIds = new Set([board.attention.local[0], board.attention.wider[0]].filter(Boolean));
     const payload = {
         task: options.bootstrapScan || options.fullRebuild ? 'initialize_world_notebook' : broad ? 'review_wider_developments' : 'update_world_notebook',
-        rp_reference: compactOptionalObject(bootstrap, 1800),
+        // Source authority is not a disposable planner summary. Keep complete
+        // fields; the outer budget guard must fail rather than hide tail rules.
+        rp_reference: compactOptionalObject(bootstrap, Infinity),
         player_controlled: playerCharacterName(messages) || 'The user controls their own character or side of the simulation.',
         constraints: { notes: s.userNotes, pacing: s.pacing.mode, canon: s.canonConstraints },
         ...(note ? { user_instruction: note } : {}),
@@ -2044,7 +2046,6 @@ export function buildWorldPlannerPrompt(messages, state, note = '', bootstrap = 
         payload.current.preparedWorld.retained_index = board.items.filter(item => !protectedIds.has(item.id))
             .map(item => [item.id, item.status]);
     }
-    if (size() > budget) payload.rp_reference = compactOptionalObject(bootstrap, 300);
     while (size() > budget && payload.historical_evidence.length) payload.historical_evidence.pop();
     // Complete local/wider witnesses stay protected even after all lookup
     // descriptions have been shed; do not replace them with an empty view.

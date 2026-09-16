@@ -189,6 +189,16 @@ test('compact compatibility shapes preserve nested identities, required keys, en
 });
 
 
+test('exclusive operation variants retain their full contract in compatibility instructions', () => {
+    const schema = { value: { oneOf: [
+        { type: 'object', required: ['action'], properties: { action: { const: 'retain' } } },
+        { type: 'object', required: ['action', 'reason'], properties: { action: { const: 'retire' }, reason: { type: 'string', maxLength: 900 } } },
+    ] } };
+    const before = structuredClone(schema);
+    assert.match(schemaInstruction(schema), /exactly one of \(\{action:"retain"\} \| \{action:"retire",reason:string\(<=900 chars\)\}\)/);
+    assert.deepEqual(schema, before);
+});
+
 test('prompt-only model requests retain nonblank string constraints and optional note fields', async () => {
     const { WORLD_PLANNER_SCHEMA } = await import('../extension/world-planner.js');
     const shape = schemaInstruction(WORLD_PLANNER_SCHEMA);

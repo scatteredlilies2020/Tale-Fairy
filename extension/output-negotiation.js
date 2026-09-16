@@ -85,6 +85,7 @@ export function schemaInstruction(schema) {
         if (node.const !== undefined) return JSON.stringify(node.const);
         if (node.enum) return node.enum.map(value => JSON.stringify(value)).join('|');
         if (node.anyOf) return node.anyOf.map(shape).join('|');
+        if (node.oneOf) return `exactly one of (${node.oneOf.map(shape).join(' | ')})`;
         if (node.type === 'object' && !node.properties) return JSON.stringify(node);
         if (node.type === 'object' && node.properties) return `{${Object.entries(node.properties)
             .map(([key, value]) => `${key}${node.required?.includes(key) ? '' : '?'}:${shape(value)}`).join(',')}}`;

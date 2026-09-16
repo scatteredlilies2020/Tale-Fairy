@@ -112,6 +112,30 @@ test('an impossible protected-view budget reports failure without dropping notes
     assert.deepEqual(state, before);
 });
 
+test('source premise and tail rules survive budget pressure ahead of generated framing', () => {
+    const state = { ...defaultState(), plannerContract: 14, preparedWorld: seed() };
+    state.preparedWorld.approach = 'Continue this local investigation. '.repeat(30);
+    const bootstrap = { description: 'Setting detail. '.repeat(250) + 'Travel town to town, including quests and dungeons. Every spell needs an original name.',
+        persona: 'Elizabeth and Annabelle are one person.' };
+    const before = structuredClone({ state, bootstrap });
+    for (const incremental of [false, true]) {
+        const input = JSON.parse(buildWorldPlannerPrompt(messages, state, '', bootstrap, { effectivePromptTokens: 800, incremental }));
+        assert.deepEqual(input.rp_reference, bootstrap);
+        assert.ok(input.current.preparedWorld.omitted_fields.includes('approach'));
+    }
+    assert.deepEqual({ state, bootstrap }, before);
+});
+
+test('oversized source fails explicitly instead of quietly truncating its authority', async () => {
+    const bootstrap = { description: 'Complete source authority. '.repeat(6000) + 'No permanent obligations.' };
+    const before = structuredClone(bootstrap);
+    await assert.rejects(fitPromptToBudget({ tokenBudget: 6000,
+        fixedEnvelope: plannerBudgetEnvelope(WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA),
+        buildPrompt: effectivePromptTokens => buildWorldPlannerPrompt(messages, defaultState(), '', bootstrap, { effectivePromptTokens }),
+    }), /could not be fitted/);
+    assert.deepEqual(bootstrap, before);
+});
+
 test('a complete quiet situation reaches chat and text requests; private trajectories stay in the notebook', () => {
     const content = 'The cooperative opens a shared nursery. Growers want to preserve local pear varieties; retired gardener Ada wants company and offers to teach grafting. Families can contribute space, cuttings or regular visits, giving each a different stake in the nursery. Ada enjoys teaching but needs others to take over watering when she visits her grandchildren. A dependable shared routine could let the nursery expand; occasional visitors can still exchange skills and stories without committing to its upkeep.';
     const raw = wire([record('orchard', 'cooperative')], ['orchard'], [{ id: 'orchard', material: content, knowledge: 'Only the growers have seen the planting list.' }]);
