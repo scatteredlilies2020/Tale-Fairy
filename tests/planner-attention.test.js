@@ -112,8 +112,8 @@ test('an impossible protected-view budget reports failure without dropping notes
     assert.deepEqual(state, before);
 });
 
-test('only affirmative writer material reaches chat and text requests; private trajectories stay in the notebook', () => {
-    const content = 'The cooperative opens a shared nursery. Growers pool seedlings and arrange weekend planting sessions.';
+test('a complete quiet situation reaches chat and text requests; private trajectories stay in the notebook', () => {
+    const content = 'The cooperative opens a shared nursery. Growers want to preserve local pear varieties; retired gardener Ada wants company and offers to teach grafting. Families can contribute space, cuttings or regular visits, giving each a different stake in the nursery. Ada enjoys teaching but needs others to take over watering when she visits her grandchildren. A dependable shared routine could let the nursery expand; occasional visitors can still exchange skills and stories without committing to its upkeep.';
     const raw = wire([record('orchard', 'cooperative')], ['orchard'], [{ id: 'orchard', material: content, knowledge: 'Only the growers have seen the planting list.' }]);
     const parsed = extractJson(JSON.stringify(raw));
     assert.equal(validateAnalysisResult(parsed).valid, true);

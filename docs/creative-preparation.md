@@ -1,4 +1,4 @@
-# Creative preparation contract — 0.14.21
+# Creative preparation contract — 0.14.22
 
 ## Purpose
 
@@ -33,7 +33,11 @@ Each new-schema update needs a stable `id`, `premise`, playable `middle`, status
 | `family` | Stable causal grouping: several leads to one mystery share a family. Not a mandatory genre lane. |
 | `dependency` | The motive/process sustaining this possibility, or the other problem on which it depends. |
 
-`writer` is a complete replacement selection of zero to three `{id, material, knowledge?}` entries referencing focused, available, nondormant records. Material is concrete story content, not an instruction to change style or execute a next-reply sequence. It may introduce encounters, opportunities, projects, institutional changes and strong NPC initiatives. Interest is not restricted to tension. Its schema limit is 1,600 characters per material field and 720 per knowledge field; the concise writing target is 400 characters. The formatter selects whole entries up to 1,000 estimated tokens. It never copies the private notebook's middle/future as fallback. Invalid entries or references reject atomically. Older responses omitting writer apply private preparation with an empty writer selection. Existing saved notebooks lacking the field request a background refresh, without a rebuild or deletion. Historical retry snapshots stay intact; recognized legacy notebook blocks are omitted only from the outgoing view.
+`writer` is a complete replacement selection of zero to three `{id, material, knowledge?}` entries referencing focused, available, nondormant records. Each entry distills a substantive situation: specific aims or processes, initiative, and a meaningful condition that could change them. The writer receives enough causal substance to support interaction; it need not invent the underlying idea. Incidental props, dialogue, encounter order and outcomes remain open. Distinctive objects and places remain useful when they matter to the situation. Generic hooks and menus of interchangeable clues do not substitute for developed material. Quiet pleasures, relationships, cooperation and work deserve the same preparation as conflict; no danger or interruption is required.
+
+Its schema limit remains 1,600 characters per material field and 720 per knowledge field; the concise writing target is 400–700 characters. The formatter selects whole entries up to 1,000 estimated tokens. It never copies the private notebook's middle/future as fallback, but the separately authored material must preserve the motives and conditions the writer needs. Invalid entries or references reject atomically. Older responses omitting writer apply private preparation with an empty writer selection. Existing saved notebooks lacking the field request a background refresh, without a rebuild or deletion. Historical retry snapshots stay intact; recognized legacy notebook blocks are omitted only from the outgoing view.
+
+On subsequent evaluations the planner is asked to revise unused choreography in selected records into open situations while preserving accepted events. Observations, interpretations and proposed secrets remain distinct, including what characters have actually learned. There is no one-clue-per-reply quota or new writer authority block. Existing saved selections remain available until a successful evaluation replaces them; upgrading alone does not rewrite a chat's notebook or retry history.
 
 Updates are deltas, normally zero to two. A major pivot may exceed the twelve-operation writing target so retiring old directions does not prevent adding a new one. Omitted records persist; an empty focus selects no records but does not erase them. Order writer entries by importance: only fitting whole entries are injected. Active requires actual transcript uptake, not mere injection. Dormant records are not selected for injection. Status changes use `status_changes: [{id,status}]` and preserve the existing prose; resolved/retired changes remove the proposal; accepted consequences remain in actual story history and external continuity. Unknown nonterminal status IDs and conflicting operations are rejected; advisory focus is filtered to available records. Saved notebooks have no record-count cap. The working view normally reserves six records for local relevance and six for rotating wider review, splitting smaller notebooks where possible. Family labels help diversify the latter but do not prove independence. This is planner attention, not compulsory foreground rotation. Legacy engine/entry/hold/invalidation/intervention fields are cleared on replacement records. The planner supplies concrete possibilities; the writer realizes them under the user's preset. Existing factual memory is preserved, not maintained by this job.
 
@@ -55,11 +59,11 @@ The preset and explicit user instructions govern narrative behavior, viewpoint, 
 
 Example, illustrative rather than a tested model output:
 
-> Development: A mill town buys warmth from a buried creature. The millers are hosting a winter supper to recruit fuel carriers; the creature has begun requesting songs as part of its payment.
+> Development: A mill town buys warmth from a buried creature. The millers want dependable fuel carriers; the creature wants company through the winter and has begun requesting songs as payment. A miller enjoys reviving half-forgotten local songs and wants travelers to contribute their own. Shared music could make warmth affordable without extra hauling, but the creature values regular company more than a single impressive performance.
 >
 > Knowledge: The millers know where the warmth comes from. Visitors know the mill stays warm through the snow.
 
-Alternative fuel supplies, changing relationships and possible regional trade belong in the private middle/future fields, not this writer packet. The town and supper are concrete usable content rather than a command to introduce tension. This material can remain unused across exchanges; a possible town is not a compulsory stop.
+A fuller exploration of fuel arrangements and regional trade belongs in the private middle/future fields. The writer packet retains enough motive and circumstance to support several approaches without fixing a supper scene or an encounter sequence. This material can remain unused across exchanges; a possible town is not a compulsory stop.
 
 ## Background work and safety
 

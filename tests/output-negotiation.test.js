@@ -207,7 +207,13 @@ test('first-response instructions retain field purpose, uniqueness and operation
     const { WORLD_PLANNER_SCHEMA } = await import('../extension/world-planner.js');
     const before = JSON.stringify(WORLD_PLANNER_SCHEMA);
     const guide = schemaInstruction(WORLD_PLANNER_SCHEMA);
-    assert.match(guide, /Complete playable developments in one JSON string/);
+    const prepared = WORLD_PLANNER_SCHEMA.value.properties.prepared.properties;
+    for (const key of ['premise', 'middle', 'future', 'knowledge']) {
+        assert.ok(guide.includes(prepared.updates.items.properties[key].description), `${key} purpose survives shorthand serialization`);
+    }
+    for (const key of ['material', 'knowledge']) {
+        assert.ok(guide.includes(prepared.writer.items.properties[key].description), `writer ${key} purpose survives shorthand serialization`);
+    }
     assert.match(guide, /status-only changes go in status_changes/);
     assert.match(guide, /unique items/);
     assert.match(guide, /fewer complete updates, never partial records/);

@@ -25,12 +25,12 @@ test('settings explanations stay concise', () => {
 });
 
 test('manifest, browser runtime, and detached plugin share the release version', () => {
-    assert.equal(manifest.version, '0.14.21');
-    assert.equal(manifest.js, 'extension/index.js?v=0.14.21');
-    assert.equal(manifest.css, 'extension/style.css?v=0.14.21');
+    assert.equal(manifest.version, '0.14.22');
+    assert.equal(manifest.js, 'extension/index.js?v=0.14.22');
+    assert.equal(manifest.css, 'extension/style.css?v=0.14.22');
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.14\.21'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.14\.21'/);
+    assert.match(pluginSource, /const VERSION = '0\.14\.22'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.14\.22'/);
 });
 
 test('planner input proof travels through normal saves and detached recovery', () => {
@@ -72,8 +72,8 @@ test('roleplay injection never migrates the user default into a system message',
 });
 
 test('runtime uses causal context and deferred world state without prescriptive beat-director dependency', () => {
-    assert.match(source, /from '\.\/causal-context\.js\?v=0\.14\.21'/);
-    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.14\.21'/);
+    assert.match(source, /from '\.\/causal-context\.js\?v=0\.14\.22'/);
+    assert.match(stateSource, /from '\.\/causal-context\.js\?v=0\.14\.22'/);
     assert.doesNotMatch(source, /beat-director/);
     assert.doesNotMatch(stateSource, /beat-director/);
     assert.match(stateSource, /export const STATE_VERSION = 59/);

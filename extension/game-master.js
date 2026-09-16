@@ -1,4 +1,4 @@
-import { formatPacingPreference, PREPARATION_CONTEXT_LABEL } from './prepared-world.js?v=0.14.21';
+import { formatPacingPreference, PREPARATION_CONTEXT_LABEL } from './prepared-world.js?v=0.14.22';
 
 export const TALE_FAIRY_CONTEXT_GUIDE = 'TALE FAIRY CONTEXT:';
 

@@ -2,7 +2,15 @@
 
 Tale Fairy is a standalone SillyTavern extension that acts as a **background creative Game Master**, preparing a playable middle and future while the roleplay model writes the story. It combines a persistent private notebook with selective factual world awareness—not a full world simulation, a prose generator, or a fixed event script.
 
-## What changes in 0.14.21 (testing)
+## What changes in 0.14.22 (testing)
+
+Preparation now concentrates detail in motives, relationships, independent initiatives and conditional consequences. Writer entries retain enough of that substance to support interaction while leaving incidental props, dialogue and encounter order open. Quiet pleasures, work and relationships receive the same attention as conflict, within the RP's scope. Observations, interpretations and proposed secrets remain distinct. There is no per-reply clue quota.
+
+The planner system and field descriptions share this mandate. Writer material targets 400–700 characters within the existing storage and injection limits. During future evaluations, selected unused choreography can be revised while accepted events are preserved. Reload SillyTavern to load the updated extension, then use **Guide now / Re-evaluate** for a fresh selection immediately, or wait for the next normal evaluation. Existing selections and retry history are not rewritten by the update.
+
+Verification: the full offline test suite passes on Node 24, including routine/review budget fitting, field-description serialization, and a complete quiet situation reaching chat/text requests. One isolated replay through the configured planner failed at the transport/provider step before usable output; the source chat remained unchanged. This is a prompt change; model compliance and creative quality still need observation in actual play. See [the preparation contract](docs/creative-preparation.md).
+
+## What changes in 0.14.21
 
 **Wider planner attention and separately authored writer material.** The notebook working view reserves space for current relevance and rotating wider review. At the 12-record limit, six records serve each purpose. Smaller notebooks share the space too. Final prompt fitting preserves a complete local and wider witness where available; an impossible protected budget reports a limit instead of silently dropping both. The Scratchpad reports the final local/wider counts.
 

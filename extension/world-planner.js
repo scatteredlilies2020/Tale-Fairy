@@ -1,7 +1,7 @@
-import { stageNotebookCompactions } from './notebook-compaction.js?v=0.14.21';
+import { stageNotebookCompactions } from './notebook-compaction.js?v=0.14.22';
 // Model-facing replacement. Legacy boards remain readable, but are no longer
 // mandatory work for every generated update. Transport/lifecycle stay separate.
-import { validatePrepared, normalizePreparedWorld, mergePreparedWorld, preparedFieldLimit, PREPARED_APPROACH_LIMIT, PREPARED_SUMMARY_LIMIT, WRITER_MATERIAL_LIMIT } from './prepared-world.js?v=0.14.21';
+import { validatePrepared, normalizePreparedWorld, mergePreparedWorld, preparedFieldLimit, PREPARED_APPROACH_LIMIT, PREPARED_SUMMARY_LIMIT, WRITER_MATERIAL_LIMIT } from './prepared-world.js?v=0.14.22';
 
 const text = maxLength => ({ type: 'string', maxLength });
 const nonblank = maxLength => ({ type: 'string', minLength: 1, maxLength, pattern: '\\S' });
@@ -21,10 +21,10 @@ export const WORLD_PLANNER_SCHEMA = {
                     type: 'object', additionalProperties: false,
                     properties: {
                         id: { ...nonblank(80), description: 'Exact existing ID for a replacement, or a new stable ID for new content.' },
-                        premise: { ...proseField('premise', 320), description: 'Complete premise in one JSON string; aim for 320 characters.' },
-                        middle: { ...proseField('middle', 440), description: 'Complete playable developments in one JSON string; aim for 440 characters. Never omit or replace with a status-only patch.' },
-                        future: proseField('future', 260),
-                        knowledge: proseField('knowledge', 180),
+                        premise: { ...proseField('premise', 320), description: 'Specific proposed situation: people or processes, their aims and why these matter. One complete JSON string; aim for 320 characters.' },
+                        middle: { ...proseField('middle', 440), description: 'What sustains or complicates the situation, independent initiatives and how different interventions could change it; no ordered scene beats. One complete JSON string; aim for 440 characters.' },
+                        future: { ...proseField('future', 260), description: 'Consequences that differ with choices or changing conditions, not a promised ending. Aim for 260 characters.' },
+                        knowledge: { ...proseField('knowledge', 180), description: 'Separate observed facts, interpretations and proposed secrets; say who knows what. Aim for 180 characters.' },
                         family: { ...nonblank(80), description: 'Stable shared causal-family ID, not a genre or character label. Records serving the same problem share it.' },
                         dependency: { ...nonblank(640), description: 'What sustains this possibility independently, or which other problem it depends on. Private, not writer instructions.' },
                         status: { type: 'string', enum: ['prepared', 'active', 'dormant'] },
@@ -38,8 +38,8 @@ export const WORLD_PLANNER_SCHEMA = {
                 focus: { type: 'array', maxItems: 3, uniqueItems: true, description: 'Choose zero to three distinct retained or completely updated IDs; never removed IDs.', items: nonblank(80) },
                 writer: { type: 'array', maxItems: 3, description: 'Complete replacement of writer-facing material; [] is valid. Only this selection is injected, not notebook middles or futures.', items: {
                     type: 'object', additionalProperties: false, properties: {
-                        id: nonblank(80), material: { ...nonblank(WRITER_MATERIAL_LIMIT), description: 'Concrete story development or situation linked to this focused ID; aim for 400 characters. Affirmative motives, activities, encounters, opportunities and changing circumstances, not prose/pacing instructions.' },
-                        knowledge: text(720),
+                        id: nonblank(80), material: { ...nonblank(WRITER_MATERIAL_LIMIT), description: 'Self-contained proposed situation: specific aims, relationships or processes, initiative and a meaningful condition that could change them. Preserve causal substance; aim for 400-700 characters. Leave encounter order, incidental props, dialogue and outcomes open. No narration rules or vague hooks.' },
+                        knowledge: { ...text(720), description: 'Observed facts versus interpretations and proposed secrets, with character access. Carry any boundary needed to interpret this material.' },
                     }, required: ['id', 'material'],
                 } },
             }, required: ['updates', 'focus', 'writer'] },
@@ -63,11 +63,11 @@ approach: Private planner guidance, never injected into the writer. Ground this 
 
 summary: Carry forward wider possibilities, unresolved dependencies and knowledge boundaries from supplied records, previous summary and accepted evidence. Correct superseded material. Proposals remain preparation, not history. omitted_fields marks unavailable saved prose, not permission to erase it.
 
-updates: Prepare distinct middle/longer-term possibilities, not next-reply choreography. One local problem normally needs one record, not several disguised as different directions. When the RP has a wider canvas, include an independently motivated possibility beyond that problem. Invent fitting people, places, organizations, activities and opportunities. premise describes the possibility; middle supplies playable processes; optional future gives alternative continuations and knowledge preserves relevant boundaries. Omit empty optional notes. NPCs and systems can act without another player command.
+updates: Prepare substantive situations across exchanges. Specify who wants what and why, what sustains or complicates it, what they can do independently, and what different interventions could change. Invent fitting people, relationships, places and processes. premise establishes the possibility; middle develops its workings; future explores conditional consequences; knowledge separates observation, interpretation and proposed secrets. Evidence of behavior need not establish identity or motive. One local problem normally needs one record. Develop independent possibilities across this RP's wider canvas, including relationships, ordinary pleasures, work and discovery. Quiet situations deserve specific desires and opportunities; conflict or danger is not required. Omit empty optional notes.
 
 Attention: local and wider IDs are separate review sets, not a foreground schedule. Consider the wider RP even during a long scene. family groups developments serving one underlying problem; different agents, locations or horizons do not make independent families. dependency explains whether a development survives removal of the current problem and why. Classify new or deliberately revised records; unknown legacy families remain unknown. Preserve meaningful independent material without genre quotas or compulsory new subplots. Respect closed scenarios.
 
-writer: Return a complete selection of up to three {id,material,knowledge?} entries referencing focused records, or []. Only these entries reach the writer. Keep the notebook's middle/future/approach private. Supply creative, concrete encounters, NPC initiatives, opportunities and developing circumstances. Interest can come from ordinary life, affection, work, discovery, cooperation or institutions as well as opposition. Influence the story through its content, not instructions about narration, style or pace. Express strong motives and established commitments directly; hesitation and obstacles need story support. Describe a playable situation rather than a sequence of next-reply steps or a distant outcome. Preserve necessary knowledge distinctions within the material. Broader review need not introduce anything into the current scene.
+writer: Return a complete selection of up to three {id,material,knowledge?} entries referencing focused records, or []. Only these entries reach the writer; middle/future/approach stay private. Distill each situation into self-contained material retaining its distinctive motives or processes, initiative and what could change them. Supply enough substance to support interaction without requiring the writer to invent the underlying idea. Express strong motives and established commitments directly; hesitation and obstacles need story support. Leave incidental props, dialogue, encounter order and outcomes open. A distinctive object or place is useful when it matters causally; menus of interchangeable clues and vague hooks are insufficient. Revise unused choreography in selected records into open situations while preserving accepted events. Keep proposed secrets separate from characters' knowledge and deductions provisional. Influence through content, not narration rules, per-reply quotas or mandatory beats. Broader review need not introduce anything into the current scene.
 
 Persistence: updates fully replaces content using id, premise, middle and status prepared/active/dormant; omit unchanged rows. status_changes={id,status} changes EXISTING records without rewriting prose; resolved/retired removes them. Never put an id in both arrays. retained_index contains lookup tuples, not complete records; unavailable prose must not be copied into replacements or writer material. Omitted records survive. Usually change zero to two records. consolidations may combine redundant dormant proposals with originals archived; preserve independent families, active/focused plans and accepted commitments. Storage has no record-count cap. focus selects up to three available IDs. Active requires actual story uptake, not injection. Review rotation never advances fictional time.
 
