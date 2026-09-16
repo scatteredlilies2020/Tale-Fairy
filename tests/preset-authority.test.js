@@ -19,7 +19,7 @@ test('writer framing uses plain labels and preserves story-specific negatives', 
     for (const value of ['CURRENT SCENE:', 'Latest contribution: I wait.', 'Mira: has not opened the letter.', 'Known to: Mira.', 'POSSIBLE DEVELOPMENTS:', 'Timing: After the fog clears.', 'Invalidated by: The bridge has reopened.']) assert.ok(packet.includes(value), value);
     assert.doesNotMatch(packet, /preset|take priority|not a replacement|not transcript|not an assumed|only if supported|do not|PRIVATE approach|others need|Keep awareness/i);
     assert.deepEqual(state, before);
-    assert.equal(refreshGameMasterContract(packet), packet);
+    assert.doesNotMatch(refreshGameMasterContract(packet), /<prepared-world>/, 'legacy notebook projection is omitted from outgoing cached view');
 });
 
 test('0.14.19 cached disclaimers become labels while story values remain intact', () => {
@@ -46,7 +46,8 @@ test('0.14.19 cached disclaimers become labels while story values remain intact'
         const updated = refreshGameMasterContract(source);
         assert.ok(updated.includes(quote));
         assert.match(updated, /Mira: has not opened the letter\. Known to: Mira\./);
-        for (const label of ['CURRENT SCENE:', 'Scene status: At the quay.', 'Latest contribution: I wait.', 'POSSIBLE DEVELOPMENTS:', 'Wider direction: River trade.', 'Timing: After the fog clears.', 'Invalidated by: The bridge has reopened.']) assert.ok(updated.includes(label));
+        for (const label of ['CURRENT SCENE:', 'Scene status: At the quay.', 'Latest contribution: I wait.']) assert.ok(updated.includes(label));
+        assert.doesNotMatch(updated, /<prepared-world>|Playable middle:|Wider direction:/);
         assert.doesNotMatch(updated.replace(quote, ''), /preset|take priority|not transcript|not an assumed|only if supported|do not|others need/i);
         assert.equal(refreshGameMasterContract(updated), updated);
         assert.equal(updated.replaceAll(newline, '').includes('\n'), false);
@@ -72,9 +73,10 @@ test('old retry framing is migrated without rewriting story quotations or notebo
         assert.ok(updated.includes(TALE_FAIRY_CONTEXT_GUIDE));
         assert.ok(updated.includes(plot), 'source excerpts are byte-for-byte unchanged');
         const developments = notebook.slice(notebook.indexOf(newline) + newline.length);
-        assert.ok(updated.includes(developments), 'development prose is byte-for-byte unchanged');
+        assert.ok(source.includes(developments), 'saved source remains byte-for-byte unchanged');
+        assert.ok(!updated.includes(developments), 'legacy notebook prose is private in the outgoing view');
         assert.doesNotMatch(updated.replace(plot, ''), /RP APPROACH|Keep this saved prose/);
-        assert.ok(updated.includes(PREPARATION_CONTEXT_LABEL));
+        assert.ok(!updated.replace(plot, '').includes(PREPARATION_CONTEXT_LABEL));
         assert.match(updated, /Mira: promised to wait until dawn\. Known to: Mira/);
         const framing = updated.replace(plot, '').replace(developments, '');
         assert.doesNotMatch(framing, /GAME MASTER RESPONSIBILITY|PLAYER BOUNDARY|DEVELOPMENT:|SCENE FIT|Old universal|suspend NPC activity|express through behavior/);
@@ -116,7 +118,7 @@ test('current cached packets omit multiline private approaches without changing 
         const before = structuredClone(snapshot);
         const updated = buildPromptPayload(defaultState(), { cachedPayload: snapshot.payload });
         assert.ok(updated.includes(plot));
-        assert.ok(updated.includes(record.replace('Wider direction (provisional, not a destination deadline): ', 'Wider direction: ')));
+        if (record) assert.ok(!updated.replace(plot, '').includes(record));
         assert.doesNotMatch(updated.replace(plot, ''), /PRIVATE FIRST|PRIVATE SECOND|PRIVATE LAST/);
         if (!rest) assert.doesNotMatch(updated, /<prepared-world>/);
         assert.equal(refreshGameMasterContract(updated), updated);

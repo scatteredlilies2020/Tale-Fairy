@@ -1,5 +1,5 @@
 import { estimateTokenCount } from './token-budget.js?v=0.13.9';
-import { summarySourceAudit } from './summary-context.js?v=0.14.20';
+import { summarySourceAudit } from './summary-context.js?v=0.14.21';
 
 export function plannerEvidenceAudit(prompt, candidates, { fixedEnvelope = '', tokenBudget = 0, tier = '' } = {}) {
     const payload = JSON.parse(prompt);
@@ -15,6 +15,8 @@ export function plannerEvidenceAudit(prompt, candidates, { fixedEnvelope = '', t
         timelineEpochCount: payload.story_evidence?.timeline?.length || 0,
         openThreadCount: payload.story_evidence?.open_threads?.length || 0,
         actorCount: payload.current?.entities?.length || 0,
+        notebookLocalCount: payload.notebook_view?.attention?.local?.length || 0,
+        notebookWiderCount: payload.notebook_view?.attention?.wider?.length || 0,
     };
 }
 

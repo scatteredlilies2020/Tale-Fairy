@@ -1,14 +1,14 @@
-import { stageNotebookCompactions } from './notebook-compaction.js?v=0.14.20';
+import { stageNotebookCompactions } from './notebook-compaction.js?v=0.14.21';
 // Model-facing replacement. Legacy boards remain readable, but are no longer
 // mandatory work for every generated update. Transport/lifecycle stay separate.
-import { validatePrepared, normalizePreparedWorld, mergePreparedWorld, preparedFieldLimit, PREPARED_APPROACH_LIMIT, PREPARED_SUMMARY_LIMIT } from './prepared-world.js?v=0.14.20';
+import { validatePrepared, normalizePreparedWorld, mergePreparedWorld, preparedFieldLimit, PREPARED_APPROACH_LIMIT, PREPARED_SUMMARY_LIMIT, WRITER_MATERIAL_LIMIT } from './prepared-world.js?v=0.14.21';
 
 const text = maxLength => ({ type: 'string', maxLength });
 const nonblank = maxLength => ({ type: 'string', minLength: 1, maxLength, pattern: '\\S' });
 const proseField = (key, target) => ({ ...nonblank(preparedFieldLimit(key)), description: `Aim for at most ${target} characters; the schema maximum is the existing storage limit. Preserve complete meaning.` });
 export const WORLD_PLANNER_SCHEMA = {
     name: 'tale_fairy_world_notebook_v14', strict: true, returnInvalid: true,
-    description: 'JSON nesting: only contract_version, prepared and optional note_resolution belong at the root. Put approach, summary, updates, status_changes and focus INSIDE prepared. Before sending this single response, check every operation: unchanged content is omitted; status-only changes go in status_changes; every updates record has id, premise, middle and status. Keep at most three distinct available focus IDs. Each ID occurs in only one operation. The input is a selected working view; omitted records remain stored and do not block additions. Use JSON strings for prose, not lists or objects. If space is tight, return fewer complete updates, never partial records. Close the JSON object; return no commentary.',
+    description: 'JSON nesting: only contract_version, prepared and optional note_resolution belong at the root. Put approach, summary, updates, status_changes, focus and writer INSIDE prepared. Before sending this single response, check every operation: unchanged content is omitted; status-only changes go in status_changes; every updates record has id, premise, middle, status, family and dependency. Keep at most three distinct available focus IDs. Each ID occurs in only one update/status operation. Supply writer as a complete selection referencing focused IDs. The input is a selected working view; omitted records remain stored and do not block additions. Use JSON strings for prose, not lists or objects. If space is tight, return fewer complete updates, never partial records. Close the JSON object; return no commentary.',
     value: {
         type: 'object', additionalProperties: false,
         properties: {
@@ -25,8 +25,10 @@ export const WORLD_PLANNER_SCHEMA = {
                         middle: { ...proseField('middle', 440), description: 'Complete playable developments in one JSON string; aim for 440 characters. Never omit or replace with a status-only patch.' },
                         future: proseField('future', 260),
                         knowledge: proseField('knowledge', 180),
+                        family: { ...nonblank(80), description: 'Stable shared causal-family ID, not a genre or character label. Records serving the same problem share it.' },
+                        dependency: { ...nonblank(640), description: 'What sustains this possibility independently, or which other problem it depends on. Private, not writer instructions.' },
                         status: { type: 'string', enum: ['prepared', 'active', 'dormant'] },
-                    }, required: ['id', 'premise', 'middle', 'status'],
+                    }, required: ['id', 'premise', 'middle', 'status', 'family', 'dependency'],
                 } },
                 status_changes: { type: 'array', maxItems: 12, description: 'Use this array for status-only changes and removals of existing IDs, preserving all stored prose.', items: {
                     type: 'object', additionalProperties: false, properties: {
@@ -34,7 +36,13 @@ export const WORLD_PLANNER_SCHEMA = {
                     }, required: ['id', 'status'],
                 } },
                 focus: { type: 'array', maxItems: 3, uniqueItems: true, description: 'Choose zero to three distinct retained or completely updated IDs; never removed IDs.', items: nonblank(80) },
-            }, required: ['updates', 'focus'] },
+                writer: { type: 'array', maxItems: 3, description: 'Complete replacement of writer-facing material; [] is valid. Only this selection is injected, not notebook middles or futures.', items: {
+                    type: 'object', additionalProperties: false, properties: {
+                        id: nonblank(80), material: { ...nonblank(WRITER_MATERIAL_LIMIT), description: 'Concrete story development or situation linked to this focused ID; aim for 400 characters. Affirmative motives, activities, encounters, opportunities and changing circumstances, not prose/pacing instructions.' },
+                        knowledge: text(720),
+                    }, required: ['id', 'material'],
+                } },
+            }, required: ['updates', 'focus', 'writer'] },
         }, required: ['contract_version', 'prepared'],
     },
 };
@@ -47,24 +55,28 @@ WORLD_PLANNER_SCHEMA.value.properties.prepared.properties.consolidations = {
     } },
 };
 
-export const WORLD_PLANNER_SYSTEM = `You are Tale Fairy, preparing durable GM guidance for any ongoing RP or simulation. Return the JSON contract in one response, without reasoning, a critic, or a repair pass. The writer handles the next reply; your job is useful direction across many exchanges.
+export const WORLD_PLANNER_SYSTEM = `You are Tale Fairy, a creative story planner for any RP or simulation. Return the JSON contract in one response, without reasoning, a critic, or a repair pass. Maintain wider possibilities and supply concrete story material useful across exchanges.
 
-These instructions govern private preparation only. The writer's preset and explicit user instructions govern narrative behavior, style, viewpoint, player control and NPC autonomy. Supply story material, not competing instructions for those responsibilities. The saved pacing value auto means follow the preset, not an additional pacing policy.
+These instructions govern private preparation only. The writer's preset governs style, viewpoint and narrative behavior. Supply story material, not a replacement preset. Pacing auto follows the preset.
 
-approach: Private planner guidance, never injected into the writer. Use it to develop, preserve and select possibilities across scenes. Ground THIS RP's aims in rp_reference and explicit user preferences, preserving their full range of activities and scale. A local problem is not the whole premise. Leave unspecified wider intent open; do not invent prohibitions or compulsory themes. Do not generate general writing rules or a replacement preset. Revisit an existing approach containing such mandates: replace them with supported story aims, or clear it if none are supported. On redirection replace incompatible clauses. Omit when unchanged; otherwise replace completely. Empty text deliberately clears it. Do not copy approach instructions into premise, middle, future, knowledge or other writer-facing fields: describe possible story content, not how to narrate it.
+approach: Private planner guidance, never injected into the writer. Ground this RP's aims in rp_reference and explicit preferences, including their full range and scale. A local problem is not the whole premise. Do not generate general writing rules or compulsory themes. Revisit an existing approach containing such mandates; replace unsupported clauses or clear it. Do not copy approach instructions into premise, middle, future, knowledge or writer material. Omit unchanged approach/summary; replace changed text completely; empty text clears it.
 
-summary: Maintain a rolling private planner summary from the previous summary, supplied records, accepted evidence and this response’s changes. Preserve wider possibilities, unresolved dependencies and knowledge boundaries even when their detailed records are absent. Correct or remove superseded directions; never turn a proposal into history. Create when absent, replace completely when changed, omit when unchanged. Summarize only supplied material; omitted records remain stored. Input omitted_fields marks unavailable saved prose: omit those fields from output unless explicitly replacing them; never clear them because they are absent.
+summary: Carry forward wider possibilities, unresolved dependencies and knowledge boundaries from supplied records, previous summary and accepted evidence. Correct superseded material. Proposals remain preparation, not history. omitted_fields marks unavailable saved prose, not permission to erase it.
 
-updates: Prepare a few distinct possibilities for the middle and longer term, not next-reply choreography. One local problem normally needs one record, not several disguised as different directions. When the RP has a wider canvas, include an independent possibility beyond that problem. Invent fitting people, places, organizations, discoveries, opportunities or opposition with their own motives; no fixed genre menu or required interruption. premise states the possibility; middle supplies processes and several playable developments; future gives alternative consequences beyond them. future and knowledge are optional: include meaningful continuations or knowledge boundaries when useful; otherwise omit the field. Never output empty strings in an update. Do not prescribe introductions or replay questions. NPCs and systems can act without another player command; the user may refuse, linger or redirect.
+updates: Prepare distinct middle/longer-term possibilities, not next-reply choreography. One local problem normally needs one record, not several disguised as different directions. When the RP has a wider canvas, include an independently motivated possibility beyond that problem. Invent fitting people, places, organizations, activities and opportunities. premise describes the possibility; middle supplies playable processes; optional future gives alternative continuations and knowledge preserves relevant boundaries. Omit empty optional notes. NPCs and systems can act without another player command.
 
-Persistence: updates creates or fully replaces content: each record needs a nonblank id, complete premise and playable middle, plus status prepared/active/dormant. Omit unchanged rows. status_changes changes only an EXISTING record's status, using {id,status}; it preserves all prose. Use resolved/retired there to remove a record, never an empty update. Do not put an id in both arrays. Leave both arrays empty when nothing changes. Input retained_index contains lookup tuples [id,status,premise label] (the label may be omitted), not update records. Their full content remains stored. Use index IDs for focus/status_changes; content revisions require complete prose, never copied index tuples. Omitted records survive. Usually write zero to two complete updates; initialize a small selection. Use optional consolidations=[{ids,replacement}] to roll overlapping dormant proposals into one shorter complete development; preserve independent choices. Never consolidate active/focused plans or unresolved accepted commitments. Storage has no record-count cap. notebook_view reports stored and selected counts. Reuse IDs for revisions; retire only when the story warrants it, never to free slots. Use prepared for proposals, active after actual story uptake, dormant for unused directions. focus selects up to three retained or completely updated IDs; exclude removed IDs. Prioritize a new direction after a pivot. No expiry or fictional time advance based on message counts.
+Attention: local and wider IDs are separate review sets, not a foreground schedule. Consider the wider RP even during a long scene. family groups developments serving one underlying problem; different agents, locations or horizons do not make independent families. dependency explains whether a development survives removal of the current problem and why. Classify new or deliberately revised records; unknown legacy families remain unknown. Preserve meaningful independent material without genre quotas or compulsory new subplots. Respect closed scenarios.
 
-Boundaries: Produce preparation only, not a recap, status panel, cast inventory or replacement memory. Direct observations outrank contradictory summaries/notebook claims. Use minimal existing facts; preserve uncertainty and viewpoint knowledge. Proposals are not established history. player_controlled is the user's side, NOT an NPC: never invent their past, motives, allegiance, decisions, dialogue, feelings or contested outcomes. Offer external situations instead. Explicit user instructions override preparation. Classify an unclassified user_instruction with note_resolution.kind (suggest/correct/establish/forbid) and honor it. Aim for roughly 600–1400 output tokens on routine updates; useful material, not repeated forms.`;
+writer: Return a complete selection of up to three {id,material,knowledge?} entries referencing focused records, or []. Only these entries reach the writer. Keep the notebook's middle/future/approach private. Supply creative, concrete encounters, NPC initiatives, opportunities and developing circumstances. Interest can come from ordinary life, affection, work, discovery, cooperation or institutions as well as opposition. Influence the story through its content, not instructions about narration, style or pace. Express strong motives and established commitments directly; hesitation and obstacles need story support. Describe a playable situation rather than a sequence of next-reply steps or a distant outcome. Preserve necessary knowledge distinctions within the material. Broader review need not introduce anything into the current scene.
+
+Persistence: updates fully replaces content using id, premise, middle and status prepared/active/dormant; omit unchanged rows. status_changes={id,status} changes EXISTING records without rewriting prose; resolved/retired removes them. Never put an id in both arrays. retained_index contains lookup tuples, not complete records; unavailable prose must not be copied into replacements or writer material. Omitted records survive. Usually change zero to two records. consolidations may combine redundant dormant proposals with originals archived; preserve independent families, active/focused plans and accepted commitments. Storage has no record-count cap. focus selects up to three available IDs. Active requires actual story uptake, not injection. Review rotation never advances fictional time.
+
+Boundaries: Produce preparation only, not a recap or replacement memory. Direct observations and explicit user instructions outrank notebook claims. player_controlled identifies the user's side: preserve their ownership of past choices, motives, decisions, dialogue, feelings and contested outcomes. Supply external developments instead. Distinguish inventions from accepted events and secrets from character knowledge. Classify user_instruction with note_resolution.kind (suggest/correct/establish/forbid). Aim for 600–1400 routine output tokens.`;
 
 // Supply the current wire fields, without legacy empty-form padding that a
 // model could mistake for the requested update format.
 export function preparedRecordForPlanner(item) {
-    return Object.fromEntries(['id', 'status', 'premise', 'middle', 'future', 'knowledge']
+    return Object.fromEntries(['id', 'status', 'premise', 'middle', 'future', 'knowledge', 'family', 'dependency']
         .filter(key => typeof item[key] === 'string' && item[key].trim())
         .map(key => [key, item[key]]));
 }
@@ -97,7 +109,7 @@ function distinctIdenticalOperations(items) {
 function notebookFields(value) {
     if (value.prepared != null && (typeof value.prepared !== 'object' || Array.isArray(value.prepared))) return value.prepared;
     const source = { ...(value.prepared || {}) };
-    for (const key of ['approach', 'summary', 'updates', 'status_changes', 'focus', 'consolidations']) {
+    for (const key of ['approach', 'summary', 'updates', 'status_changes', 'focus', 'consolidations', 'writer']) {
         if (!Object.hasOwn(value, key)) continue;
         if (source[key] == null) source[key] = value[key];
         else if (JSON.stringify(source[key]) === JSON.stringify(value[key])) continue;
@@ -125,14 +137,19 @@ export function normalizeWorldPlan(value) {
     // Scene recaps from experimental/older responses are not another source of
     // writer facts. Retain factual memory separately; this job is preparation.
     const normalized = { ...value, context: [], memory: '' };
-    for (const key of ['approach', 'summary', 'updates', 'status_changes', 'focus', 'consolidations']) delete normalized[key];
+    for (const key of ['approach', 'summary', 'updates', 'status_changes', 'focus', 'consolidations', 'writer']) delete normalized[key];
     if (normalized.note_resolution === null) delete normalized.note_resolution;
     const prepared = { ...source, overview: '',
+        // Older/in-flight responses remain usable private preparation. Never
+        // manufacture writer instructions by copying their private futures.
+        writer: source.writer === undefined ? [] : source.writer,
         focus: plannerFocus(source.focus, undefined, Infinity),
         status_changes: distinctIdenticalOperations(Array.isArray(statusChanges) ? [...statusChanges, ...explicitStatuses] : statusChanges),
         updates: distinctIdenticalOperations(updates.filter(item => !isStatusOnly(item)).map(item => ({
             id: item?.id, premise: prose(item?.premise ?? ''), middle: prose(item?.middle ?? ''),
             future: prose(item?.future ?? ''), knowledge: prose(item?.knowledge ?? ''),
+            ...(item?.family !== undefined ? { family: item.family } : {}),
+            ...(item?.dependency !== undefined ? { dependency: prose(item.dependency) } : {}),
             origin: 'invented', status: item?.status === undefined ? 'prepared' : item.status,
             // A replacement must not inherit obsolete legacy permission gates.
             engine: '', entry: '', hold: '', invalidates: '', intervention: '',
@@ -215,6 +232,10 @@ export function mergeWorldPlan(previous, raw) {
         // editing an unavailable record still fails in the content merge.
         return !terminal || exists;
     });
-    const merged = mergePreparedWorld(prior, { ...value.prepared, status_changes: statusChanges, focus: plannerFocus(value.prepared.focus, available) });
+    const focus = plannerFocus(value.prepared.focus, available);
+    if (value.prepared.writer.some(item => !focus.includes(item.id))) throw new Error('Writer material must reference selected available notebook records.');
+    const merged = mergePreparedWorld(prior, { ...value.prepared, status_changes: statusChanges, focus });
+    if (merged.writer.length !== value.prepared.writer.length) throw new Error('Writer material cannot reference dormant notebook records.');
+    merged.reviewCursor = (prior.reviewCursor || 0) + 1;
     return stageNotebookCompactions(merged, value.prepared.consolidations, prior);
 }

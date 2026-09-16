@@ -16,6 +16,23 @@ const optionalNotes = fields.filter(key => !['id', 'premise', 'middle'].includes
 const overviewStorageLimit = 3600;
 export const PREPARED_APPROACH_LIMIT = 2400;
 export const PREPARED_SUMMARY_LIMIT = 3600;
+export const WRITER_MATERIAL_LIMIT = 1600;
+// These fields describe causal relationships, not genre quotas. Missing legacy
+// labels remain unknown; distinct IDs alone are not proof of independence.
+const dependencyFields = { family: 80, dependency: 640 };
+export function validateWriterMaterial(value) {
+    if (!Array.isArray(value) || value.length > 3) return ['prepared.writer must contain zero to three developments'];
+    const ids = new Set();
+    return value.flatMap(item => {
+        if (!item || typeof item !== 'object' || Array.isArray(item)
+            || typeof item.id !== 'string' || !item.id.trim() || item.id.length > 80 || ids.has(item.id)
+            || typeof item.material !== 'string' || !item.material.trim() || item.material.length > WRITER_MATERIAL_LIMIT
+            || (item.knowledge !== undefined && (typeof item.knowledge !== 'string' || item.knowledge.length > 720))
+            || Object.keys(item).some(key => !['id', 'material', 'knowledge'].includes(key))) return ['Invalid writer development'];
+        ids.add(item.id);
+        return [];
+    });
+}
 export const preparedFieldLimit = key => key === 'id' ? limits.id : limits[key] * 4;
 const string = maxLength => ({ type: 'string', maxLength });
 export const PREPARED_SCHEMA = {
@@ -43,6 +60,7 @@ export function validatePrepared(value) {
     if (typeof value.overview !== 'string' || value.overview.length > overviewStorageLimit) errors.push(`prepared.overview must be text up to ${overviewStorageLimit} characters`);
     if (value.approach !== undefined && (typeof value.approach !== 'string' || value.approach.length > PREPARED_APPROACH_LIMIT)) errors.push('prepared.approach must be text up to 2400 characters');
     if (value.summary !== undefined && (typeof value.summary !== 'string' || value.summary.length > PREPARED_SUMMARY_LIMIT)) errors.push(`prepared.summary must be text up to ${PREPARED_SUMMARY_LIMIT} characters`);
+    if (value.writer !== undefined) errors.push(...validateWriterMaterial(value.writer));
     // Four is the routine writing target, not the notebook's capacity. A pivot
     // can legitimately retire/dormant several old directions and add a new one.
     if (!Array.isArray(value.updates)) errors.push('prepared.updates must be an array');
@@ -52,6 +70,9 @@ export function validatePrepared(value) {
         for (const key of fields) {
             if (item[key] === undefined && optionalNotes.includes(key)) continue;
             if (typeof item[key] !== 'string' || item[key].length > preparedFieldLimit(key)) errors.push(`prepared.${key} must be text up to ${preparedFieldLimit(key)} characters`);
+        }
+        for (const [key, limit] of Object.entries(dependencyFields)) {
+            if (item[key] !== undefined && (typeof item[key] !== 'string' || item[key].length > limit)) errors.push(`prepared.${key} must be text up to ${limit} characters`);
         }
         if (typeof item.id !== 'string' || !item.id.trim() || ids.has(item.id)) errors.push('prepared ids must be nonempty and unique');
         ids.add(item.id);
@@ -88,6 +109,10 @@ export function normalizePreparedWorld(value) {
         validatePrepared({ overview: '', updates: [item], focus: [] }).length === 0)
         .map(item => ({ ...Object.fromEntries(optionalNotes.map(key => [key, ''])), ...item }));
     safe.focus = (Array.isArray(value.focus) ? value.focus : []).filter(id => safe.items.some(item => item.id === id)).slice(0, 3);
+    if (value.writer !== undefined) safe.writer = validateWriterMaterial(value.writer).length ? [] : value.writer
+        .filter(item => safe.focus.includes(item.id) && safe.items.some(record => record.id === item.id && ['active', 'prepared'].includes(record.status)))
+        .map(item => ({ ...item }));
+    if (Number.isSafeInteger(value.reviewCursor) && value.reviewCursor >= 0) safe.reviewCursor = value.reviewCursor;
     if (value.source && typeof value.source === 'object') safe.source = {
         chatId: String(value.source.chatId || ''), fingerprint: String(value.source.fingerprint || ''),
         messageCount: Math.max(0, Number(value.source.messageCount) || 0),
@@ -124,9 +149,9 @@ export function mergePreparedWorld(previous, delta) {
         else items.set(change.id, { ...existing, status: change.status });
     }
     if (delta.focus.some(id => !items.has(id))) throw new Error('Prepared focus refers to an unavailable record.');
-    return { ...prior, summary: delta.summary === undefined ? prior.summary : delta.summary.trim(),
+    return normalizePreparedWorld({ ...prior, ...(delta.writer !== undefined ? { writer: delta.writer } : {}), summary: delta.summary === undefined ? prior.summary : delta.summary.trim(),
         approach: delta.approach === undefined ? prior.approach : delta.approach.trim(),
-        overview: delta.overview.trim() || prior.overview, items: [...items.values()], focus: [...delta.focus] };
+        overview: delta.overview.trim() || prior.overview, items: [...items.values()], focus: [...delta.focus] });
 }
 
 // Prefix proof permits any number of appended turns, never an edit, swipe,
@@ -150,22 +175,47 @@ export function stampPreparedWorld(value, source) {
 // Keep the full notebook in storage, but retrieve a bounded working view.
 // Full records can be supplied by the UI; prompt omissions never delete them.
 export function preparedWorldForPrompt(value, { query = '' } = {}) {
-    const { source, archives, compactions, compactionError, ...board } = normalizePreparedWorld(value);
-    if (board.items.length <= PREPARED_LIMIT) return board;
+    const { source, archives, compactions, compactionError, writer, ...board } = normalizePreparedWorld(value);
     const terms = evidenceTerms(query);
     const ranked = board.items.map((item, index) => ({ item, index,
         focused: board.focus.includes(item.id),
         score: evidenceRelevance(Object.values(item).join(' '), terms),
     })).sort((a, b) => Number(b.focused) - Number(a.focused) || b.score - a.score
         || Number(b.item.status === 'active') - Number(a.item.status === 'active') || b.index - a.index);
-    const candidates = board.items.length > 24 ? board.items.filter(item => item.status === 'dormant' && !board.focus.includes(item.id)).slice(0, 4) : [];
-    const selected = new Set([...board.focus, ...candidates.map(item => item.id)]);
+    const local = new Set(board.focus);
+    const localLimit = Math.max(local.size, Math.ceil(Math.min(board.items.length, PREPARED_LIMIT) / 2));
     for (const { item } of ranked) {
-        if (selected.size >= PREPARED_LIMIT) break;
-        selected.add(item.id);
+        if (local.size >= localLimit) break;
+        local.add(item.id);
     }
+    // Reserve half of even a small notebook for wider review. Focus itself is
+    // bounded by three; no fictional quota or new record is manufactured.
+    // Rotate over stable IDs within relevance tiers, not insertion order. Each
+    // successful planner merge advances this cursor, never fictional time.
+    const scores = new Map(ranked.map(({ item, score }) => [item.id, score]));
+    const pool = board.items.filter(item => !local.has(item.id)).sort((a, b) => scores.get(a.id) - scores.get(b.id) || a.id.localeCompare(b.id));
+    const offset = pool.length ? (board.reviewCursor || 0) % pool.length : 0;
+    const rotated = [...pool.slice(offset), ...pool.slice(0, offset)];
+    const wider = [];
+    const families = new Set(board.items.filter(item => local.has(item.id)).map(item => item.family).filter(Boolean));
+    // Always reserve a rotating witness, even when its family's labels overlap.
+    // Labels guide the remaining coverage but cannot permanently starve a row.
+    if (rotated.length) wider.push(rotated[0].id);
+    if (rotated[0]?.family) families.add(rotated[0].family);
+    for (const item of rotated) {
+        if (wider.length >= PREPARED_LIMIT / 2) break;
+        if (wider.includes(item.id) || item.family && families.has(item.family)) continue;
+        wider.push(item.id);
+        if (item.family) families.add(item.family);
+    }
+    for (const item of rotated) {
+        if (wider.length >= PREPARED_LIMIT / 2) break;
+        if (!wider.includes(item.id)) wider.push(item.id);
+    }
+    const selected = new Set([...local, ...wider]);
     return { ...board, items: board.items.filter(item => selected.has(item.id)),
-        retained: 'Selected working view; all omitted records remain stored. No storage slot limit or automatic retirement.' };
+        attention: { local: [...local], wider },
+        retained: 'Local relevance and rotating wider review have separate space. Wider review is not a request to introduce these records. Omitted records remain stored; labels are provisional causal groupings, not proof of independence.' };
 }
 
 export function compactPreparedForPrompt(board = {}) {
@@ -181,6 +231,16 @@ const clean = value => String(value).replace(/[<>]/gu, '').trim();
 export const PREPARATION_CONTEXT_LABEL = 'POSSIBLE DEVELOPMENTS:';
 export function formatPreparedWorld(value) {
     const board = normalizePreparedWorld(value);
+    if (board.writer !== undefined) {
+        const lines = ['<prepared-world>', PREPARATION_CONTEXT_LABEL];
+        for (const entry of board.writer) {
+            const item = board.items.find(item => item.id === entry.id);
+            const block = [`Development (${item.origin} material; ${item.status}): ${clean(entry.material)}`,
+                entry.knowledge ? `Knowledge: ${clean(entry.knowledge)}` : ''].filter(Boolean).join('\n');
+            if (estimateTokenCount([...lines, block, '</prepared-world>'].join('\n')) <= 1000) lines.push(block);
+        }
+        return lines.length > 2 ? [...lines, '</prepared-world>'].join('\n') : '';
+    }
     const selected = board.focus.map(id => board.items.find(item => item.id === id)).filter(item => item && item.status !== 'dormant');
     if (!board.overview && !selected.length) return '';
     const lines = ['<prepared-world>',

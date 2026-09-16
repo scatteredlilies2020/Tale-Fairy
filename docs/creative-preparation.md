@@ -1,4 +1,4 @@
-# Creative preparation contract — 0.14.13
+# Creative preparation contract — 0.14.21
 
 ## Purpose
 
@@ -9,18 +9,18 @@ This is a prompt-and-state design, not a creativity guarantee. Both the routine 
 ## Three separate layers
 
 1. **Factual reference:** actual conversation, saved continuity, and optional summaries. The new planner does not generate a second scene recap or overwrite factual memory. Source freshness still matters; proposals never establish history.
-2. **Persistent preparation:** `preparedWorld` in per-chat state. `approach` contains private planner guidance grounded in references and explicit preferences, used to develop, preserve and select possibilities. It stays saved and visible in the notebook but is never injected into the writer. The working view supplies up to 12 records; `focus` selects up to three for the writer. A private source proof binds the board to its source prefix and author/card/lore input key.
-3. **Writer packet:** permanent agency rules, saved pacing preference, grounded plot anchor and compatible conditional preparation. The selected packet is frozen for request verification; a newer compatible pre-reply plan can serve subsequent requests and retries. Legacy/fallback factual slices remain supported, but new preparation does not generate them.
+2. **Persistent preparation:** `preparedWorld` in per-chat state. Approach, summary, middle and future remain private planner input. A bounded working view shares up to 12 records between current relevance and rotating wider review. `family` groups records serving the same causal problem; `dependency` describes their dependence or independent motive. Labels are provisional, not proof of narrative variety. A private source proof binds the board to its source prefix and author/card/lore input key.
+3. **Writer packet:** saved pacing preference, grounded plot anchor and separately authored `writer` entries. No permanent agency contract or separate system authority is injected. The selected packet is frozen for request verification; a newer compatible pre-reply plan can serve subsequent requests and retries. Legacy/fallback factual slices remain supported, but new preparation does not generate them.
 
 The source text in plot anchors is still bounded transcript evidence, not newly generated prose. The creative notebook asks the model to distill meaning rather than copy repetitive narration. Unselected notebook entries and source hashes are not injected.
 
 ## Planner output and lifecycle
 
-All new planner requests use contract 14: `{contract_version, prepared: {approach, updates, status_changes?, focus}}`, with optional author-note classification. There is one compact response shape and one generation on every tier. No generated recap, overview, factual memory, actor forms, scene classifications, scratchpad reasoning, offscreen boards or reply audits. Extraneous recap fields from earlier experimental responses are discarded rather than injected. Legacy parsers remain for saved/detached compatibility, not as additional planner work.
+All new planner requests use contract 14: `{contract_version, prepared: {approach?, summary?, updates, status_changes?, focus, writer}}`, with optional author-note classification and consolidation. There is one compact response shape and one generation on every tier. No generated recap, overview, factual memory, actor forms, scene classifications, scratchpad reasoning, offscreen boards or reply audits. Extraneous recap fields from earlier experimental responses are discarded rather than injected. Legacy parsers remain for saved/detached compatibility, not as additional planner work.
 
 The first contract-14 result archives legacy proposals in `legacyPreparedWorld` rather than feeding obsolete immediate tasks back into the replacement. Existing factual memory is fallible evidence and user notes remain intact. This archive is preserved in chat state; it is not injected. Runtime state remains version 59 with a separate `plannerContract` marker.
 
-Each update needs a stable `id`, `premise` and playable `middle`. Optional future and knowledge notes are omitted when absent. The model-facing schema requires nonblank text whenever these fields are supplied. Missing status safely defaults to `prepared`; invalid supplied statuses are rejected. New preparation is always a proposal, never factual evidence based on a model-supplied origin label. The full `approach` is returned each time; empty explicitly clears it. There is no generated reasoning field.
+Each new-schema update needs a stable `id`, `premise`, playable `middle`, status, `family` and `dependency`. Legacy updates without dependency labels remain accepted; omitted labels do not erase existing ones. Optional future and knowledge notes are omitted when absent. Missing status safely defaults to `prepared`; invalid supplied statuses are rejected. New preparation is always a proposal, never factual evidence based on a model-supplied origin label. Omitted approach preserves its previous value; empty explicitly clears it. There is no generated reasoning field.
 
 | Field | Meaning |
 | --- | --- |
@@ -30,12 +30,16 @@ Each update needs a stable `id`, `premise` and playable `middle`. Optional futur
 | `future` | What could grow beyond the middle, not a guaranteed endpoint. |
 | `knowledge` | GM secrets, relevant boundaries and what characters can discover. |
 | `status` | `prepared`, `active`, `dormant`, `resolved`, or `retired`. |
+| `family` | Stable causal grouping: several leads to one mystery share a family. Not a mandatory genre lane. |
+| `dependency` | The motive/process sustaining this possibility, or the other problem on which it depends. |
 
-Updates are deltas, normally zero to two. A major pivot may exceed the twelve-operation writing target so retiring old directions does not prevent adding a new one. Omitted records persist; an empty focus selects no records but does not erase them. Order focus by importance: only fitting whole records are injected. Active requires actual transcript uptake, not mere injection. Dormant records are not selected for injection. Status changes use `status_changes: [{id,status}]` and preserve the existing prose; resolved/retired changes remove the proposal; accepted consequences remain in actual story history and external continuity. Unknown nonterminal status IDs and conflicting operations are rejected; advisory focus is filtered to available records. Saved notebooks have no record-count cap. A bounded working view retrieves focused, relevant, active and recent records without deleting the rest. Legacy engine/entry/hold/invalidation/intervention fields are cleared on replacement records. Introductions are the writer's job. Existing factual memory is preserved, not maintained by this job.
+`writer` is a complete replacement selection of zero to three `{id, material, knowledge?}` entries referencing focused, available, nondormant records. Material is concrete story content, not an instruction to change style or execute a next-reply sequence. It may introduce encounters, opportunities, projects, institutional changes and strong NPC initiatives. Interest is not restricted to tension. Its schema limit is 1,600 characters per material field and 720 per knowledge field; the concise writing target is 400 characters. The formatter selects whole entries up to 1,000 estimated tokens. It never copies the private notebook's middle/future as fallback. Invalid entries or references reject atomically. Older responses omitting writer apply private preparation with an empty writer selection. Existing saved notebooks lacking the field request a background refresh, without a rebuild or deletion. Historical retry snapshots stay intact; recognized legacy notebook blocks are omitted only from the outgoing view.
+
+Updates are deltas, normally zero to two. A major pivot may exceed the twelve-operation writing target so retiring old directions does not prevent adding a new one. Omitted records persist; an empty focus selects no records but does not erase them. Order writer entries by importance: only fitting whole entries are injected. Active requires actual transcript uptake, not mere injection. Dormant records are not selected for injection. Status changes use `status_changes: [{id,status}]` and preserve the existing prose; resolved/retired changes remove the proposal; accepted consequences remain in actual story history and external continuity. Unknown nonterminal status IDs and conflicting operations are rejected; advisory focus is filtered to available records. Saved notebooks have no record-count cap. The working view normally reserves six records for local relevance and six for rotating wider review, splitting smaller notebooks where possible. Family labels help diversify the latter but do not prove independence. This is planner attention, not compulsory foreground rotation. Legacy engine/entry/hold/invalidation/intervention fields are cleared on replacement records. The planner supplies concrete possibilities; the writer realizes them under the user's preset. Existing factual memory is preserved, not maintained by this job.
 
 The optional `prepared.summary` is a rolling private planner baseline: create it when absent, preserve omitted older possibilities and unresolved dependencies, and replace it when new evidence or deliberate revisions change them. Omission/null preserves it; an explicit empty string clears it. It is saved with the notebook and its source proof, displayed in the notebook panel, and supplied to subsequent planner calls; it is never injected into the writer. The writing target is 1,200 characters with a 3,600-character schema maximum. Oversized generated summary/approach text is omitted without clipping; the prior saved value survives and complete neighboring developments still apply. Oversized individual developments are likewise omitted as whole records. Recovery is reported, while malformed types and conflicting operations still fail. Author notes keep their complete text and all entries; prompt fitting never drops older notes to make room. Whole optional planner fields can be omitted from a tight prompt, with `omitted_fields` telling the planner to preserve them unless deliberately replacing them. A protected input too large for the configured budget still reports an error rather than losing instructions. Full records remain available for retrieval, since a summary is not lossless or proof of complete archive coverage. The first summary for an existing notebook covers only supplied material, and expands as other records are retrieved. This uses the existing planner call and branch/retry protections.
 
-The bounded prompt builder compacts retained records into a working index before sacrificing current evidence. Stored records remain intact. Routine/review input defaults are 6,000/14,000 tokens including system and shape; base output caps are 4,096/6,144 (8,192 for rebuild). Planner reasoning is Off on every tier. Only a provider that requires thinking receives a Low compatibility fallback. The writer's reasoning settings are untouched. No model repair or critic chain is used. Full notebook and default-envelope tests protect the basic budget contract, not unbounded history recall.
+The bounded prompt builder protects a complete local and wider record where available, alongside protected instructions. Other selected records can become lookup references; stored records remain intact. The final audit reports full local/wider records actually supplied after fitting. If protected input cannot fit, the request reports a budget error rather than silently removing these witnesses. Routine/review input defaults are 6,000/14,000 tokens including system and shape; base output caps are 4,096/6,144 (8,192 for rebuild). Planner reasoning is Off on every tier. Only a provider that requires thinking receives a Low compatibility fallback. The writer's reasoning settings are untouched. No model repair or critic chain is used. Full notebook and default-envelope tests protect the basic budget contract, not unbounded history recall.
 
 ## Broad source evidence
 
@@ -51,22 +55,16 @@ The preset and explicit user instructions govern narrative behavior, viewpoint, 
 
 Example, illustrative rather than a tested model output:
 
-> Wider direction: Explore distinct local experiences along a long journey, not a jump to its endpoint.
+> Development: A mill town buys warmth from a buried creature. The millers are hosting a winter supper to recruit fuel carriers; the creature has begun requesting songs as part of its payment.
 >
-> Possible development: A mill town buys warmth from a buried creature. Its millers need winter fuel; the creature is learning to bargain.
->
-> Middle: Meet the carriers, discover the heating works, and investigate a different fuel source or negotiate continued supply. Either path can change local relationships.
->
-> Beyond: A regional trade may form—or neighboring towns may reject this dependency.
->
-> Boundaries: Introduce observable clues, not automatic knowledge. Leave room to investigate or refuse. Drop it if accepted events or user constraints contradict it.
+> Knowledge: The millers know where the warmth comes from. Visitors know the mill stays warm through the snow.
 
-This material can remain unused across many exchanges. A possible town is not a compulsory stop; its process supplies several experiences rather than one scripted resolution.
+Alternative fuel supplies, changing relationships and possible regional trade belong in the private middle/future fields, not this writer packet. The town and supper are concrete usable content rather than a command to introduce tension. This material can remain unused across exchanges; a possible town is not a compulsory stop.
 
 ## Background work and safety
 
 - Generation never awaits a planner. Ordinary appended messages retain the running job and coalesce one latest follow-up.
-- Local prefix hashing permits preparation to remain usable across any number of ordinary appended turns. It does not semantically prove every entry still fits; the writer must check current events and user directions. Selected whole records and any legacy wider direction share a 1,000-estimated-token injection budget; the private approach consumes none of it.
+- Local prefix hashing permits preparation to remain usable across any number of ordinary appended turns. It does not semantically prove every entry still fits. Selected whole writer entries share a 1,000-estimated-token injection budget; private approach, summary, middle and future consume none of it.
 - A late append-compatible result updates preparation and its contract/archive bookkeeping, not newer factual memory, scene state or scheduling. Older same-source completion timestamps cannot displace a newer prepared result.
 - An edited/deleted/swiped source or changed relevant input fails compatibility. Conditional status is not permission to import a discarded branch. Retries reuse the latest compatible pre-reply packet and rollback-safe factual snapshot. A newer completed same-source analysis can update the next request, while an in-flight selection remains frozen.
 - Invalid output does not trigger a second generated correction. Local JSON cleanup and strict validation remain. Unsupported provider options can be negotiated before a result exists; ordinary connection failures do not start an automatic retry chain.
@@ -94,7 +92,8 @@ The v14 live and detached paths share normalization, validation, and content mer
 | Identical repeated operations | Apply once, regardless of field order. Replaying an already completed removal is a no-op. Conflicting operations still fail. |
 | Blank/missing core prose | Omit that incomplete replacement and preserve its saved record and complete neighbors. |
 | Cutoff after a fully closed prepared object | Accept the complete notebook; omit unfinished trailing fields. A cutoff inside its prose still fails. |
-| Invalid IDs/status targets, conflicting edits, oversized prose, or notebook overflow | Reject atomically; keep saved state unchanged and expose the rejection reason. |
+| Oversized summary/approach or individual development prose | Omit the whole recoverable field/record and report recovery; preserve prior saved content. |
+| Invalid IDs/status targets, conflicting edits, malformed types, or invalid writer material/references | Reject atomically; keep saved state unchanged and expose the rejection reason. There is no notebook record-count cap. |
 
 The regression matrix exercises presentation variants through both response envelopes and checks saved-content invariants, rejection atomicity, capacity, truncation, compaction, and migration. These cases supplement the existing generation cancellation and reconnect tests.
 

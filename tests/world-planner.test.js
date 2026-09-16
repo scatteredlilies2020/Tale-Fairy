@@ -24,7 +24,7 @@ test('replacement instructions stay compact and do not reintroduce generated rep
     assert.match(WORLD_PLANNER_SYSTEM, /Do not copy approach instructions into premise, middle, future, knowledge/);
     assert.match(WORLD_PLANNER_SCHEMA.value.properties.prepared.properties.approach.description, /not general writing rules/);
     assert.deepEqual(Object.keys(WORLD_PLANNER_SCHEMA.value.properties).sort(), ['contract_version', 'note_resolution', 'prepared']);
-    assert.deepEqual(Object.keys(WORLD_PLANNER_SCHEMA.value.properties.prepared.properties).sort(), ['approach', 'consolidations', 'focus', 'status_changes', 'summary', 'updates']);
+    assert.deepEqual(Object.keys(WORLD_PLANNER_SCHEMA.value.properties.prepared.properties).sort(), ['approach', 'consolidations', 'focus', 'status_changes', 'summary', 'updates', 'writer']);
 });
 const direction = (id = 'compact', changes = {}) => ({ id, status: 'prepared',
     premise: 'Districts may develop a lasting federation through mutual winter aid.',
@@ -32,9 +32,10 @@ const direction = (id = 'compact', changes = {}) => ({ id, status: 'prepared',
     future: 'A shared council, competing regional compacts, or a narrower aid agreement may emerge over successive seasons.',
     entry: 'District delegates or local projects can bring the differing interests into play.',
     knowledge: 'No agreement or harvest outcome is established yet.', ...changes });
+const writer = () => [{ id: 'compact', material: 'Iona organizes a winter-aid trial. Growers offer carts in exchange for transport guarantees.', knowledge: 'Only Iona has the district responses.' }];
 const plan = (changes = {}) => ({ contract_version: 14, memory: 'The emergency tax was rejected. Iona has begun asking districts about voluntary cooperation.',
     context: [{ subject: 'Iona', condition: 'is seeking district views, not waiting for Rowan to direct her', knowledge: 'The winter harvest remains unknown.' }],
-    prepared: { approach: 'Make governing consequential through district interests, limited resources and relationships that change through enacted policy. Leave Rowan free to negotiate, withdraw or prioritize family; no preordained federation.', overview: 'Local winter aid could grow into durable political cooperation, or reveal limits to federation.', updates: [direction()], focus: ['compact'] }, ...changes });
+    prepared: { approach: 'Make governing consequential through district interests, limited resources and relationships that change through enacted policy. Leave Rowan free to negotiate, withdraw or prioritize family; no preordained federation.', overview: 'Local winter aid could grow into durable political cooperation, or reveal limits to federation.', updates: [direction()], focus: ['compact'], writer: writer() }, ...changes });
 const runtime = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
 const parserSource = runtime.slice(runtime.indexOf('function parseAnalysisResponse('), runtime.indexOf('async function acknowledgeDetachedPlannerJob('));
 const names = ['extractJson', 'normalizeAnalysisActorUpdates', 'normalizeAnalysisDiagnostics', 'abstractIncrementalVisibleBranches', 'validateAnalysisResult', 'transcriptHeadAlignmentErrors', 'AnalysisValidationError'];
@@ -54,7 +55,7 @@ test('preparation-only response applies without recap fields and preserves exist
     assert.equal(state.preparedWorld.overview, '');
     assert.deepEqual(state.causalContext.conditions, []);
     const payload = buildPromptPayload(state, { guidanceUsable: true, preparedUsable: true });
-    assert.match(payload, /successive seasons/);
+    assert.doesNotMatch(payload, /successive seasons|<prepared-world>/, 'legacy response has no separately authored writer material');
     assert.doesNotMatch(payload, /historical commitment|factual memory/);
 });
 
@@ -67,13 +68,14 @@ test('new wire contract runs through production parser, persistence and actual r
     assert.equal(isDirectionCurrent(state, messages, 'story'), true, 'fresh notebook is not mistaken for uninitialized legacy state');
     assert.equal(isGuidanceUsable(state, messages, 'story'), false, 'no factual recap to inject');
     const payload = buildPromptPayload(state, { guidanceUsable: true, preparedUsable: true });
-    assert.match(payload, /competing regional compacts/);
+    assert.match(payload, /Iona organizes a winter-aid trial/);
+    assert.doesNotMatch(payload, /competing regional compacts|Playable middle:|Beyond it:/);
     assert.doesNotMatch(payload, /Make governing consequential/);
-    assert.match(payload, /No agreement or harvest outcome is established yet/);
+    assert.match(payload, /Only Iona has the district responses/);
     assert.doesNotMatch(payload, /SCENE FIT/);
     const request = [{ role: 'system', content: 'Use literary prose.' }, { role: 'user', content: 'I listen.' }];
     ensureGuidanceInChat(request, payload, { role: 'user', depth: 1, inlineLatestUser: true });
-    assert.match(JSON.stringify(request), /competing regional compacts/);
+    assert.match(JSON.stringify(request), /Iona organizes a winter-aid trial/);
     assert.deepEqual(request.filter(item => item.role === 'system'), [{ role: 'system', content: 'Use literary prose.' }]);
     assert.doesNotMatch(JSON.stringify(request), /tale-fairy-authority/);
 });
@@ -92,7 +94,8 @@ test('lasting directions survive forty appended messages without presenting stal
     const usable = preparedWorldUsable(state.preparedWorld, { chatId: 'story', inputsKey: 'inputs', messages: later, fingerprint: fingerprintMessages });
     assert.equal(usable, true);
     const payload = buildPromptPayload(state, { guidanceUsable: false, preparedUsable: usable });
-    assert.match(payload, /successive seasons/);
+    assert.match(payload, /Iona organizes a winter-aid trial/);
+    assert.doesNotMatch(payload, /successive seasons/);
     assert.doesNotMatch(payload, /Make governing consequential/);
     assert.match(payload, /POSSIBLE DEVELOPMENTS:/);
     assert.doesNotMatch(payload, /is seeking district views/);
@@ -109,7 +112,7 @@ test('the approach still reaches the private planner but not the writer packet o
     ensureGuidanceInChat(request, payload);
     assert.ok(!JSON.stringify(request).includes(state.preparedWorld.approach));
     assert.doesNotMatch(payload, /RP APPROACH/);
-    assert.match(payload, /Districts may develop a lasting federation/);
+    assert.match(payload, /Iona organizes a winter-aid trial/);
     assert.deepEqual(state, before);
 });
 
@@ -118,7 +121,7 @@ test('redirecting the RP shelves affected directions without erasing unrelated l
     original.prepared.updates.push(direction('family', { premise: 'A family could restore its abandoned orchard.', middle: 'Relatives debate shared work and inheritance.', future: 'Restoration could support the next generation.' }));
     let state = analysis.applyAnalysis(defaultState(), original, messages);
     const later = [...messages, { is_user: true, mes: 'Leave national politics aside. I spend the summer with my family.' }];
-    state = analysis.applyAnalysis(state, plan({ memory: '', context: [], prepared: { approach: 'Develop family life through shared work and conflicting hopes across generations, without turning every disagreement into a crisis.', overview: 'Family ties and the orchard can develop across the summer.', updates: [direction('compact', { status: 'dormant' })], focus: ['family'] } }), later);
+    state = analysis.applyAnalysis(state, plan({ memory: '', context: [], prepared: { approach: 'Develop family life through shared work and conflicting hopes across generations, without turning every disagreement into a crisis.', overview: 'Family ties and the orchard can develop across the summer.', updates: [direction('compact', { status: 'dormant' })], focus: ['family'], writer: [{ id: 'family', material: 'Relatives organize work on the abandoned orchard.' }] } }), later);
     assert.equal(state.preparedWorld.items.length, 2);
     assert.equal(state.preparedWorld.items.find(item => item.id === 'compact').status, 'dormant');
     assert.equal(state.plannerMemory, '');
@@ -223,7 +226,7 @@ test('generated contract is preparation only and retains wider RP reference and 
 });
 
 test('a wide pivot can update five records atomically without discarding retirements', () => {
-    const initial = plan({ prepared: { ...plan().prepared, updates: ['a', 'b', 'c', 'd'].map(id => direction(id)), focus: ['a'] } });
+    const initial = plan({ prepared: { ...plan().prepared, writer: [], updates: ['a', 'b', 'c', 'd'].map(id => direction(id)), focus: ['a'] } });
     const state = analysis.applyAnalysis(defaultState(), initial, messages);
     const pivot = plan({ prepared: { approach: 'Build relationships over the summer.', overview: 'Family and community.',
         updates: [...['a', 'b', 'c', 'd'].map(id => direction(id, { status: 'retired' })), direction('home')], focus: ['home'] } });
@@ -438,7 +441,7 @@ for (const [label, change] of Object.entries(rejectedChanges)) test(`substantive
 
 test('planner accepts the thirteenth record without evicting retained content', () => {
     const original = analysis.applyAnalysis(defaultState(), parseRuntime(plan({ prepared: {
-        ...plan().prepared, updates: Array.from({ length: 12 }, (_, i) => direction(`record-${i}`)), focus: ['record-0'],
+        ...plan().prepared, writer: [], updates: Array.from({ length: 12 }, (_, i) => direction(`record-${i}`)), focus: ['record-0'],
     } })), messages);
     const before = structuredClone(original);
     const wire = plan({ prepared: { updates: [direction('new')], focus: ['new'] } });
@@ -476,11 +479,11 @@ test('empty malformed envelopes cannot masquerade as successful no-change plans'
 test('model sees selected and stored counts without a storage capacity', () => {
     const state = analysis.applyAnalysis(defaultState(), parseRuntime(plan()), messages);
     const input = JSON.parse(analysis.buildWorldPlannerPrompt(messages, state, '', {}, { incremental: true }));
-    assert.deepEqual(input.notebook_view, { stored: 1, shown: 1 });
+    assert.deepEqual(input.notebook_view, { stored: 1, shown: 1, attention: { local: ['compact'], wider: [] } });
     assert.equal(input.notebook_capacity, undefined);
     state.plannerContract = 13;
     const migration = JSON.parse(analysis.buildWorldPlannerPrompt(messages, state, '', {}, { incremental: true }));
-    assert.deepEqual(migration.notebook_view, { stored: 0, shown: 0 });
+    assert.deepEqual(migration.notebook_view, { stored: 0, shown: 0, attention: { local: [], wider: [] } });
 });
 
 
@@ -526,7 +529,8 @@ test('replayed removals are idempotent without permitting activation of missing 
     } });
     const first = analysis.applyAnalysis(original, delta, messages);
     const second = analysis.applyAnalysis(first, delta, messages);
-    assert.deepEqual(second.preparedWorld, first.preparedWorld);
+    assert.deepEqual({ ...second.preparedWorld, reviewCursor: first.preparedWorld.reviewCursor }, first.preparedWorld);
+    assert.equal(second.preparedWorld.reviewCursor, first.preparedWorld.reviewCursor + 1, 'review attention advances without changing story records');
     assert.throws(() => analysis.applyAnalysis(second, parseRuntime({ contract_version: 14, prepared: {
         status_changes: [{ id: 'compact', status: 'active' }],
     } }), messages), /unavailable/);
@@ -571,7 +575,10 @@ test('a thousand saved developments fit routine and review budgets without losin
         const prompt = await fitPromptToBudget({ fixedEnvelope, tokenBudget,
             buildPrompt: effectivePromptTokens => analysis.buildWorldPlannerPrompt(latest, state, '', {}, { incremental, effectivePromptTokens, maxPromptTokens: tokenBudget }) });
         const input = JSON.parse(prompt);
-        assert.deepEqual(input.notebook_view, { stored: 1000, shown: 12 });
+        assert.equal(input.notebook_view.stored, 1000);
+        assert.equal(input.notebook_view.shown, input.current.preparedWorld.items.length);
+        assert.ok(input.notebook_view.attention.local.length);
+        assert.ok(input.notebook_view.attention.wider.length);
         assert.equal(input.current.preparedWorld.summary, state.preparedWorld.summary);
         assert.equal(input.messages.at(-1).content, latest.at(-1).mes);
         assert.match(JSON.stringify(input.current.preparedWorld), /record-0["\s,]/);
@@ -589,7 +596,7 @@ test('rolling summary survives planner updates and persistence, stays private, a
     assert.equal(saved.preparedWorld.summary, summary);
     assert.equal(JSON.parse(analysis.buildWorldPlannerPrompt(messages, saved)).current.preparedWorld.summary, summary);
     assert.doesNotMatch(buildPromptPayload(saved, { preparedUsable: true }), /PRIVATE PLAN/);
-    assert.match(buildPromptPayload(saved, { preparedUsable: true }), /competing regional compacts/);
+    assert.match(buildPromptPayload(saved, { preparedUsable: true }), /Iona organizes a winter-aid trial/);
     for (const extra of [{}, { summary: null }]) {
         const next = analysis.applyAnalysis(saved, parseRuntime({ contract_version: 14,
             prepared: { updates: [direction('new')], focus: ['new'], ...extra } }), messages);

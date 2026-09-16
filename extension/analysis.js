@@ -1,17 +1,17 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.14.20';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.14.21';
 import { leadingGeneratedStatusSummary, sceneStatus } from './transcript-status.js?v=0.14.5';
-import { plotExcerpt } from './generation-context.js?v=0.14.20';
+import { plotExcerpt } from './generation-context.js?v=0.14.21';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
-import { compactSummarySources } from './summary-context.js?v=0.14.20';
+import { compactSummarySources } from './summary-context.js?v=0.14.21';
 import { relevantExcerpt } from './evidence-selection.js?v=0.13.9';
 import { formatDriftRequest, mergeOffscreenWorld, OFFSCREEN_KINDS } from './offscreen-world.js?v=0.13.9';
-import { CAUSAL_KINDS, normalizeCausalContext } from './causal-context.js?v=0.14.20';
+import { CAUSAL_KINDS, normalizeCausalContext } from './causal-context.js?v=0.14.21';
 import { mergeSituationUpdates, retireManifestedSituations } from './situations.js?v=0.13.9';
-import { PLANNER_AGENCY_RULE, ACTOR_AGENCY_RULE, AGENCY_AUDIT_RULE } from './game-master.js?v=0.14.20';
+import { PLANNER_AGENCY_RULE, ACTOR_AGENCY_RULE, AGENCY_AUDIT_RULE } from './game-master.js?v=0.14.21';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { preparedWorldForPrompt, compactPreparedForPrompt, PREPARED_SCHEMA, PREPARED_RULE, validatePrepared, mergePreparedWorld } from './prepared-world.js?v=0.14.20';
-import { normalizeWorldPlan, preparedRecordForPlanner, validateWorldPlan, mergeWorldPlan } from './world-planner.js?v=0.14.20';
-export { WORLD_PLANNER_SCHEMA, WORLD_PLANNER_SYSTEM } from './world-planner.js?v=0.14.20';
+import { preparedWorldForPrompt, compactPreparedForPrompt, PREPARED_SCHEMA, PREPARED_RULE, validatePrepared, mergePreparedWorld } from './prepared-world.js?v=0.14.21';
+import { normalizeWorldPlan, preparedRecordForPlanner, validateWorldPlan, mergeWorldPlan } from './world-planner.js?v=0.14.21';
+export { WORLD_PLANNER_SCHEMA, WORLD_PLANNER_SYSTEM } from './world-planner.js?v=0.14.21';
 
 export const DEFAULT_PROMPT_TOKEN_BUDGET = 16000;
 
@@ -1993,13 +1993,17 @@ export function buildWorldPlannerPrompt(messages, state, note = '', bootstrap = 
     const first = selected.filter(item => item.kind === 'recent')[0]?.index ?? messages.length;
     const witnesses = retrieveOlderHistoricalEvidence(messages, s, first, new Set(selected.map(item => item.index)), 2);
     const board = preparedWorldForPrompt(s.preparedWorld, { query: [note, ...messages.slice(-4).map(message => message?.mes || '')].join('\n') });
+    // Protect complete witnesses from both attention sets through final budget
+    // fitting. A lookup tuple is not enough to reconsider a neglected plan.
+    const protectedIds = new Set([board.attention.local[0], board.attention.wider[0]].filter(Boolean));
     const payload = {
         task: options.bootstrapScan || options.fullRebuild ? 'initialize_world_notebook' : broad ? 'review_wider_developments' : 'update_world_notebook',
         rp_reference: compactOptionalObject(bootstrap, 1800),
         player_controlled: playerCharacterName(messages) || 'The user controls their own character or side of the simulation.',
         constraints: { notes: s.userNotes, pacing: s.pacing.mode, canon: s.canonConstraints },
         ...(note ? { user_instruction: note } : {}),
-        notebook_view: { stored: s.plannerContract === 14 ? s.preparedWorld.items.length : 0, shown: s.plannerContract === 14 ? board.items.length : 0 },
+        notebook_view: { stored: s.plannerContract === 14 ? s.preparedWorld.items.length : 0, shown: s.plannerContract === 14 ? board.items.length : 0,
+            attention: s.plannerContract === 14 ? board.attention : { local: [], wider: [] } },
         current: {
             memory: s.plannerMemory || s.contextLedger,
             preparedWorld: s.plannerContract === 14 ? { approach: board.approach, summary: board.summary, overview: board.overview, focus: board.focus, items: board.items.map(preparedRecordForPlanner) }
@@ -2030,22 +2034,20 @@ export function buildWorldPlannerPrompt(messages, state, note = '', bootstrap = 
         payload.summary_sources = payload.summary_sources.map(source => ({ ...source, text: relevantExcerpt(source.text, 160, evidenceQuery) }));
     }
     if (size() > budget && s.plannerContract === 14) {
-        payload.current.preparedWorld.items = board.items.filter(item => board.focus.includes(item.id)).map(preparedRecordForPlanner);
-        payload.current.preparedWorld.retained_index = board.items.filter(item => !board.focus.includes(item.id))
+        payload.current.preparedWorld.items = board.items.filter(item => protectedIds.has(item.id)).map(preparedRecordForPlanner);
+        payload.current.preparedWorld.retained_index = board.items.filter(item => !protectedIds.has(item.id))
             .map(item => [item.id, item.status, item.premise]);
     }
     // Preserve the newest user/assistant pair and earlier whole witnesses.
     while (size() > budget && payload.messages.length > 2) payload.messages.shift();
     if (size() > budget && s.plannerContract === 14) {
-        payload.current.preparedWorld.retained_index = board.items.filter(item => !board.focus.includes(item.id))
+        payload.current.preparedWorld.retained_index = board.items.filter(item => !protectedIds.has(item.id))
             .map(item => [item.id, item.status]);
     }
     if (size() > budget) payload.rp_reference = compactOptionalObject(bootstrap, 300);
     while (size() > budget && payload.historical_evidence.length) payload.historical_evidence.pop();
-    if (size() > budget && s.plannerContract === 14) {
-        payload.current.preparedWorld.items = [];
-        payload.current.preparedWorld.retained_index = board.items.map(item => [item.id, item.status, item.premise]);
-    }
+    // Complete local/wider witnesses stay protected even after all lookup
+    // descriptions have been shed; do not replace them with an empty view.
     if (storyEvidence && size() > budget) {
         payload.story_evidence.timeline = compactRebuildTimelineEvidence(storyEvidence.timeline, Math.max(400, budget * .14));
         payload.story_evidence.open_threads = compactDormantHooks(storyEvidence.openThreads, 3, 40);
@@ -2061,7 +2063,13 @@ export function buildWorldPlannerPrompt(messages, state, note = '', bootstrap = 
         (payload.current.preparedWorld.omitted_fields ||= []).push(key);
     }
     if (size() > budget && payload.current.preparedWorld.retained_index) {
-        payload.current.preparedWorld.retained_index = board.items.map(item => [item.id, item.status]);
+        payload.current.preparedWorld.retained_index = board.items.filter(item => !protectedIds.has(item.id)).map(item => [item.id, item.status]);
+    }
+    if (s.plannerContract === 14) {
+        const shown = new Set(payload.current.preparedWorld.items.map(item => item.id));
+        payload.notebook_view.shown = shown.size;
+        payload.notebook_view.attention = Object.fromEntries(Object.entries(board.attention)
+            .map(([key, ids]) => [key, ids.filter(id => shown.has(id))]));
     }
     // If exact instructions + supplied memory + newest evidence cannot fit,
     // the guard reports the required budget; never silently discard a rule.

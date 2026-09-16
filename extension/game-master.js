@@ -1,4 +1,4 @@
-import { formatPacingPreference, PREPARATION_CONTEXT_LABEL } from './prepared-world.js?v=0.14.20';
+import { formatPacingPreference, PREPARATION_CONTEXT_LABEL } from './prepared-world.js?v=0.14.21';
 
 export const TALE_FAIRY_CONTEXT_GUIDE = 'TALE FAIRY CONTEXT:';
 
@@ -58,6 +58,11 @@ export function refreshGameMasterContract(payload) {
 function refreshPreparedLabels(packet) {
     const header = /^(<prepared-world>\r?\n)(?:CONDITIONAL PREPARATION:[^\r\n<]*|POSSIBLE DEVELOPMENTS:)(\r?\n)/u;
     if (!header.test(packet)) return packet;
+    if (/^<prepared-world>\r?\nPOSSIBLE DEVELOPMENTS:\r?\nDevelopment \(/u.test(packet)) return packet;
+    // Historical packets remain saved verbatim. Their old notebook projection
+    // has no independently authored writer material, so omit that whole block
+    // from the outgoing view instead of guessing which sentences are usable.
+    if (/^Possible development \(|^Wider direction(?: \(|:)|^Playable middle:/mu.test(packet)) return '';
     const updated = packet.replace(header, (_, prefix, newline) => `${prefix}${PREPARATION_CONTEXT_LABEL}${newline}`)
         .replace(/^(<prepared-world>\r?\n[^\r\n]*\r?\n)RP APPROACH \((?:editable guidance, not new canon or player preferences|provisional story aims, not writing rules or new player preferences)\): [\s\S]*?\r?\n(?=Wider direction(?: \(provisional, not a destination deadline\))?: |Possible development \(|<\/prepared-world>)/u, '$1');
     return /^<prepared-world>\r?\n[^\r\n]*\r?\n<\/prepared-world>$/u.test(updated) ? '' : updated

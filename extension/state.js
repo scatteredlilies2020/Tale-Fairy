@@ -1,14 +1,14 @@
 import { defaultAuthorBoard, normalizeAuthorBoard, refreshAuthorBoardFromLegacy } from './author-board.js?v=0.13.9';
 import { defaultConductorState, formatConductorContract, normalizeConductorState } from './conductor.js';
 import { defaultPacingState, normalizePacingState } from './pacing.js';
-import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js?v=0.14.20';
-import { defaultCausalContext, defaultSceneProfile, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, normalizeSceneProfile } from './causal-context.js?v=0.14.20';
+import { defaultPlannerSchedule, markPlannerCompleted, normalizePlannerSchedule } from './planner-scheduler.js?v=0.14.21';
+import { defaultCausalContext, defaultSceneProfile, formatCausalContext, hasUsableCausalContext, normalizeCausalContext, normalizeSceneProfile } from './causal-context.js?v=0.14.21';
 import { normalizeDirectorSample } from './director-sampling.js?v=0.13.9';
 import { defaultOffscreenWorld, normalizeOffscreenWorld, offscreenWorldForPrompt } from './offscreen-world.js?v=0.13.9';
 import { defaultSituationBoard, normalizeSituationBoard } from './situations.js?v=0.13.9';
-import { TALE_FAIRY_CONTEXT_GUIDE, isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.20';
+import { TALE_FAIRY_CONTEXT_GUIDE, isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.21';
 import { relevantActors } from './evidence-selection.js?v=0.13.9';
-import { defaultPreparedWorld, normalizePreparedWorld, preparedWorldForPrompt, formatPreparedWorld, formatPacingPreference } from './prepared-world.js?v=0.14.20';
+import { defaultPreparedWorld, normalizePreparedWorld, preparedWorldForPrompt, formatPreparedWorld, formatPacingPreference } from './prepared-world.js?v=0.14.21';
 
 export const STATE_KEY = 'livingWorldGuide';
 export const STATE_VERSION = 59;
@@ -642,7 +642,7 @@ export function normalizeState(input = {}) {
             count: Math.max(0, Number(value.summaryEvidence?.count) || 0),
             includedTokens: Math.max(0, Number(value.summaryEvidence?.includedTokens) || 0),
             originalTokens: Math.max(0, Number(value.summaryEvidence?.originalTokens) || 0),
-            ...Object.fromEntries(['candidateCount', 'candidateTokens', 'inputTokens', 'inputBudget', 'recentTokens', 'historyCount', 'actorCount', 'storyMessageCount', 'timelineEpochCount', 'openThreadCount'].map(key => [key, Math.max(0, Number(value.summaryEvidence?.[key]) || 0)])),
+            ...Object.fromEntries(['candidateCount', 'candidateTokens', 'inputTokens', 'inputBudget', 'recentTokens', 'historyCount', 'actorCount', 'storyMessageCount', 'timelineEpochCount', 'openThreadCount', 'notebookLocalCount', 'notebookWiderCount'].map(key => [key, Math.max(0, Number(value.summaryEvidence?.[key]) || 0)])),
             tier: ['routine', 'review', 'rebuild'].includes(value.summaryEvidence?.tier) ? value.summaryEvidence.tier : '',
             droppedLabels: (Array.isArray(value.summaryEvidence?.droppedLabels) ? value.summaryEvidence.droppedLabels.slice(0, 24) : []).map(item => text(item).slice(0, 140)),
             // Summary sources are priority ordered, so retain the leading
@@ -811,6 +811,7 @@ export function isGuidanceUsable(state, messages = [], chatId = '') {
 
 export function isDirectionCurrent(state, messages = [], chatId = '') {
     const s = normalizeState(state);
+    if (s.plannerContract === 14 && s.preparedWorld.writer === undefined) return false;
     if (s.plannerContract === 14 ? !s.lastAnalyzedAt : !hasUsableCausalContext(s.causalContext)) return false;
     if (isStateAligned(s, messages, chatId)) return true;
     // The completed assistant turn is when the next conditional set is
@@ -905,10 +906,15 @@ export function guidanceSnapshot(state, { guidanceUsable = false, preparedUsable
     const dynamicContextIncluded = guidanceUsable && hasUsableCausalContext(selectedContext);
     return {
         dynamicContextIncluded: Boolean(dynamicContextIncluded),
-        preparedContextIncluded: Boolean(preparedUsable && formatPreparedWorld(preparedWorld || state?.preparedWorld)),
+        preparedContextIncluded: Boolean(preparedUsable && formatPreparedWorld(writerBoard(state, preparedWorld))),
         causalContext: dynamicContextIncluded ? selectedContext : defaultCausalContext(),
         sceneProfile: dynamicContextIncluded ? normalizeSceneProfile(sceneProfile || state?.sceneProfile) : defaultSceneProfile(),
     };
+}
+
+function writerBoard(state, board = null) {
+    const selected = board || state?.preparedWorld;
+    return state?.plannerContract === 14 ? { ...selected, writer: selected?.writer || [] } : selected;
 }
 
 export function buildPromptPayload(state, { enabled = true, generationType = '', guidanceUsable = false, preparedUsable = false, preparedWorld = null, causalContext = null, sceneProfile = null, directorSample = null, mode = null, plotAnchor = '', cachedPayload = '' } = {}) {
@@ -918,7 +924,7 @@ export function buildPromptPayload(state, { enabled = true, generationType = '',
     const snapshot = guidanceSnapshot(s, { guidanceUsable, causalContext, sceneProfile });
     const dynamicPrompt = snapshot.dynamicContextIncluded
         ? formatCausalContext(snapshot.causalContext, { includeRules: false }) : '';
-    const preparedPrompt = preparedUsable ? formatPreparedWorld(preparedWorld || s.preparedWorld) : '';
+    const preparedPrompt = preparedUsable ? formatPreparedWorld(writerBoard(s, preparedWorld)) : '';
     const statePrompt = [TALE_FAIRY_CONTEXT_GUIDE, formatPacingPreference(s.pacing.mode), plotAnchor, dynamicPrompt, preparedPrompt].filter(Boolean).join('\n');
     const guidancePrompt = `\n<living-world-guide>\n${statePrompt}\n</living-world-guide>`;
     return `<tale-fairy-context>${guidancePrompt}\n</tale-fairy-context>`;

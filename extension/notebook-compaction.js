@@ -1,4 +1,4 @@
-import { normalizePreparedWorld, validatePrepared } from './prepared-world.js?v=0.14.20';
+import { normalizePreparedWorld, validatePrepared } from './prepared-world.js?v=0.14.21';
 
 const boundaries = ['engine', 'entry', 'hold', 'invalidates', 'intervention', 'knowledge'];
 const recordBytes = value => new TextEncoder().encode(JSON.stringify(value)).length;
@@ -16,10 +16,18 @@ export function stageNotebookCompactions(board, requests, previous = board) {
         const records = ids.map(id => board.items.find(item => item.id === id));
         if (records.some(item => !item || item.status !== 'dormant' || item.origin !== 'invented'
             || JSON.stringify(item) !== JSON.stringify(previous.items.find(prior => prior.id === item.id)))) continue;
+        // A shorter summary must not collapse separately maintained causal
+        // families. Unknown legacy labels are not invented classifications.
+        const families = new Set(records.map(item => item.family || ''));
+        if (families.size > 1) continue;
         if (!request.replacement || typeof request.replacement !== 'object' || Array.isArray(request.replacement)
             || Object.values(request.replacement).some(value => typeof value !== 'string')) continue;
         const replacement = { ...Object.fromEntries(boundaries.map(key => [key, ''])), future: '',
             ...request.replacement, status: 'dormant', origin: 'invented' };
+        if (records[0].family) replacement.family = records[0].family;
+        else delete replacement.family;
+        const dependencies = [...new Set(records.map(item => item.dependency).filter(Boolean))];
+        if (dependencies.length) replacement.dependency = dependencies.join('\n');
         if (typeof replacement.id !== 'string' || (board.items.some(item => item.id === replacement.id) && !ids.includes(replacement.id))
             || used.has(replacement.id)) continue;
         // Preserve exact prerequisites and knowledge boundaries beside the
