@@ -31,6 +31,7 @@ function publicJob(job) {
         status: job.status,
         meta: job.meta,
         text: job.status === 'complete' ? job.text : '',
+        rejectedText: job.status === 'error' ? job.text : '',
         error: job.error || '',
         acknowledged: Boolean(job.acknowledged),
         createdAt: job.createdAt,
@@ -143,6 +144,23 @@ function jsonCompletionResponse(text) {
     }));
 }
 
+function completionIsTruncated(payload) {
+    const queue = [payload], seen = new Set();
+    for (let count = 0; queue.length && count < 16; count++) {
+        const value = queue.shift();
+        if (!isRecord(value) || seen.has(value)) continue;
+        seen.add(value);
+        const reason = String(value.finish_reason || value.finishReason || value.stop_reason || '').toLowerCase();
+        if (['length', 'max_tokens', 'max_output_tokens'].includes(reason)
+            || value.status === 'incomplete' || value.incomplete_details) return true;
+        for (const key of ['data', 'response', 'result', 'choices', 'candidates']) {
+            if (Array.isArray(value[key])) queue.push(...value[key]);
+            else if (value[key]) queue.push(value[key]);
+        }
+    }
+    return false;
+}
+
 async function readEventStream(upstream, job, touchTimeout) {
     const decoder = new TextDecoder();
     let pending = '';
@@ -172,7 +190,7 @@ async function readEventStream(upstream, job, touchTimeout) {
         sawReasoning ||= Boolean(choice?.delta?.reasoning_content || choice?.delta?.reasoning)
             || isReasoningBlock(payload)
             || (Array.isArray(payload?.response?.output) && payload.response.output.some(isReasoningBlock));
-        exhaustedOutputBudget ||= ['length', 'max_tokens', 'max_output_tokens'].includes(finishReason)
+        exhaustedOutputBudget ||= completionIsTruncated(payload) || ['length', 'max_tokens', 'max_output_tokens'].includes(finishReason)
             || /(?:max.*(?:token|output)|token.*limit)/u.test(incompleteReason);
         const fragment = streamCompletionText(payload);
         if (fragment) output += fragment;
@@ -240,9 +258,11 @@ async function run(job, res) {
                 catch { throw new Error('Planner backend returned neither an event stream nor JSON.'); }
                 if (payload?.error) throw new Error(payload.error?.message || payload.error);
                 job.text = completionText(payload);
+                if (completionIsTruncated(payload)) throw new Error('Planner returned a truncated response.');
                 responseBytes = Buffer.from(streamed.fallbackRaw);
             }
             if (!job.text && streamed.exhaustedOutputBudget) throw new Error('Planner exhausted its output budget before producing final content.');
+            if (streamed.exhaustedOutputBudget) throw new Error('Planner returned a truncated response.');
             if (!job.text && streamed.sawReasoning) throw new Error('Planner stream produced reasoning but completed without final content.');
             if (!job.text) throw new Error('Planner stream completed without final content.');
             job.status = 'complete';
@@ -266,6 +286,7 @@ async function run(job, res) {
         catch { throw new Error('Planner backend returned a non-JSON response.'); }
         if (payload?.error) throw new Error(payload.error?.message || payload.error);
         job.text = completionText(payload);
+        if (completionIsTruncated(payload)) throw new Error('Planner returned a truncated response.');
         if (!job.text) throw new Error('Planner completed without final content.');
         job.status = 'complete';
         if (!res.destroyed && !res.headersSent) {

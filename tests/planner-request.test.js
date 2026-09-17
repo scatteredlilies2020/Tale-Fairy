@@ -72,6 +72,37 @@ test('normal evaluation makes exactly one model request', async () => {
     assert.equal(h.requests[0].max_tokens, 20480);
 });
 
+for (const route of ['direct', 'profile', 'active']) {
+    test(`${route}: explicit single-shot transport sends once without output negotiation`, async () => {
+        const h = harness([{ valid: true }], { route, configured: 'low' });
+        assert.equal((await h.run({ singleShot: true })).valid, true);
+        assert.equal(h.requests.length, 1);
+        const sent = h.requests[0];
+        assert.match(JSON.stringify(sent.messages), /Response shape/);
+        assert.equal(sent.json_schema, undefined);
+        assert.equal(sent.response_format, undefined);
+        assert.equal(sent.reasoning_effort, 'low', 'single-shot does not silently replace the saved reasoning mode');
+    });
+
+    test(`${route}: single-shot never retries compatibility, validation or transport errors`, async () => {
+        const failures = [
+            new Error('Unsupported parameter: temperature is not supported with this model.'),
+            new Error('Reasoning is mandatory and cannot be disabled.'),
+            new Error('Unsupported parameter: reasoning_effort.'),
+            new Error('response_format json_schema is not supported.'),
+            new Error('Connection timed out.'),
+            new Error('Rate limit exceeded (429).'),
+            { valid: false },
+        ];
+        for (const failure of failures) {
+            // A second response would succeed, making accidental retries visible.
+            const h = harness([failure, { valid: true }], { route, configured: 'off' });
+            await assert.rejects(h.run({ singleShot: true, allowValidationRepair: true }));
+            assert.equal(h.requests.length, 1, failure.message || 'invalid result');
+        }
+    });
+}
+
 test('invalid output fails after one generation without a model correction pass', async () => {
     const h = harness([{ valid: false }, { valid: true }]);
     await assert.rejects(h.run(), AnalysisValidationError);

@@ -44,6 +44,7 @@ function harness(jobs, overrides = {}) {
         ...overrides,
     };
     vm.createContext(scope);
+    vm.runInContext(source.match(/function campaignMode\([^]*?^}/m)[0], scope);
     vm.runInContext(recovery, scope);
     return { scope, context, calls, acknowledged, saved, run: () => scope.recoverDetachedPlannerJobs() };
 }
@@ -56,6 +57,15 @@ test('invalid recovered response cannot replace another valid attempt', async ()
     assert.equal(h.calls.length, 0);
     assert.equal(h.saved.length, 1);
     assert.equal(h.acknowledged.includes('invalid'), true);
+});
+
+test('campaign mode never sends legacy detached results into its new state', async () => {
+    const h = harness([invalidJob], { loadState: () => ({ plannerContract: 15 }), campaignSession: null });
+    const result = await h.run();
+    assert.equal(result.recovered, false);
+    assert.equal(result.active, false);
+    assert.equal(h.saved.length, 0);
+    assert.equal(h.calls.length, 0);
 });
 
 test('a still-running attempt takes precedence over retained invalid output', async () => {

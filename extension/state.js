@@ -9,6 +9,7 @@ import { defaultSituationBoard, normalizeSituationBoard } from './situations.js?
 import { TALE_FAIRY_CONTEXT_GUIDE, isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.22';
 import { relevantActors } from './evidence-selection.js?v=0.13.9';
 import { defaultPreparedWorld, normalizePreparedWorld, preparedWorldForPrompt, formatPreparedWorld, formatPacingPreference } from './prepared-world.js?v=0.14.22';
+import { campaignAuthorInstructions, campaignPayload, validCampaignState } from './campaign-planner.js';
 
 export const STATE_KEY = 'livingWorldGuide';
 export const STATE_VERSION = 59;
@@ -49,6 +50,8 @@ export function defaultState() {
         situationBoard: defaultSituationBoard(),
         preparedWorld: defaultPreparedWorld(),
         legacyPreparedWorld: null,
+        campaignPreparation: null,
+        campaignInstructions: [],
         responseAudit: { applicable: false, movementFit: 'not-applicable', repetition: 'none', unjustifiedEscalation: false, playerControl: false, continuityDrift: false, patterns: [], summary: '', stateChange: '' },
         responsePatternMemory: [],
         replyRepair: { attemptedResponseKey: '', reason: '', attemptedAt: 0 },
@@ -634,7 +637,11 @@ export function normalizeState(input = {}) {
         ...value,
         version: STATE_VERSION,
         enabled: value.enabled !== false,
-        plannerContract: value.plannerContract === 14 ? 14 : 0,
+        plannerContract: [14, 15].includes(value.plannerContract) ? value.plannerContract : 0,
+        // Preserve malformed saved material for inspection/recovery, but never
+        // inject it. Validation happens at the use boundary, not by clipping.
+        campaignPreparation: value.campaignPreparation == null ? null : structuredClone(value.campaignPreparation),
+        campaignInstructions: Array.isArray(value.campaignInstructions) ? structuredClone(value.campaignInstructions) : [],
         plannerMemory: text(value.plannerMemory).slice(0, 12000),
         mode: MODES.has(value.mode) ? value.mode : base.mode,
         analysisModel: { ...base.analysisModel, ...(value.analysisModel || {}) },
@@ -805,12 +812,14 @@ export function isStateAligned(state, messages = [], chatId = '') {
 // without waiting for another planner request.
 export function isGuidanceUsable(state, messages = [], chatId = '') {
     const s = normalizeState(state);
+    if (s.plannerContract === 15) return false; // No immediate-direction layer.
     if (!s.lastInject || !hasUsableCausalContext(s.causalContext)) return false;
     return isDirectionCurrent(s, messages, chatId);
 }
 
 export function isDirectionCurrent(state, messages = [], chatId = '') {
     const s = normalizeState(state);
+    if (s.plannerContract === 15) return false;
     if (s.plannerContract === 14 && s.preparedWorld.writer === undefined) return false;
     if (s.plannerContract === 14 ? !s.lastAnalyzedAt : !hasUsableCausalContext(s.causalContext)) return false;
     if (isStateAligned(s, messages, chatId)) return true;
@@ -901,7 +910,12 @@ function normalizeLoreModel(value = {}) {
     };
 }
 
-export function guidanceSnapshot(state, { guidanceUsable = false, preparedUsable = false, preparedWorld = null, causalContext = null, sceneProfile = null } = {}) {
+export function guidanceSnapshot(state, { guidanceUsable = false, preparedUsable = false, preparedWorld = null, campaignPreparation = null, causalContext = null, sceneProfile = null } = {}) {
+    if (state?.plannerContract === 15) return {
+        dynamicContextIncluded: false,
+        preparedContextIncluded: Boolean(preparedUsable && validCampaignState(campaignPreparation || state.campaignPreparation)),
+        causalContext: defaultCausalContext(), sceneProfile: defaultSceneProfile(),
+    };
     const selectedContext = normalizeCausalContext(causalContext || state?.causalContext);
     const dynamicContextIncluded = guidanceUsable && hasUsableCausalContext(selectedContext);
     return {
@@ -917,8 +931,12 @@ function writerBoard(state, board = null) {
     return state?.plannerContract === 14 ? { ...selected, writer: selected?.writer || [] } : selected;
 }
 
-export function buildPromptPayload(state, { enabled = true, generationType = '', guidanceUsable = false, preparedUsable = false, preparedWorld = null, causalContext = null, sceneProfile = null, directorSample = null, mode = null, plotAnchor = '', cachedPayload = '' } = {}) {
+export function buildPromptPayload(state, { enabled = true, generationType = '', guidanceUsable = false, preparedUsable = false, preparedWorld = null, campaignPreparation = null, causalContext = null, sceneProfile = null, directorSample = null, mode = null, plotAnchor = '', cachedPayload = '' } = {}) {
     if (!enabled || !isStoryGeneration(generationType)) return '';
+    if (state?.plannerContract === 15) {
+        const preparation = campaignPreparation || state.campaignPreparation;
+        return campaignPayload(preparedUsable && validCampaignState(preparation) ? preparation : null, campaignAuthorInstructions(state));
+    }
     if (cachedPayload) return refreshGameMasterContract(cachedPayload);
     const s = normalizeState(state);
     const snapshot = guidanceSnapshot(s, { guidanceUsable, causalContext, sceneProfile });

@@ -5,7 +5,7 @@ import { buildReasoningRequest, plannerOutputTokenBudget } from '../extension/re
 import { completionText } from '../extension/completion-response.js';
 
 export function isolatedProvider(root, { mode = 'off', temperature } = {}) {
-    if (!['off', 'low'].includes(mode)) throw Error('Isolated evaluation supports off or low reasoning only.');
+    if (!['off', 'low', 'high'].includes(mode)) throw Error('Isolated evaluation supports off, low or high reasoning only.');
     if (!root) throw Error('TF_ST_ROOT is required for live evaluation.');
     const settings = JSON.parse(fs.readFileSync(path.join(root, 'data/default-user/settings.json')));
     const tf = settings.extension_settings?.['living-world-guide'];
@@ -21,7 +21,7 @@ export function isolatedProvider(root, { mode = 'off', temperature } = {}) {
     const reasoning = buildReasoningRequest({ mode, source: tf.analysisProvider, model: tf.analysisModel, url: tf.analysisUrl });
     const extra = JSON.parse(reasoning.payload.custom_include_body || '{}');
     return {
-        configuration: { model: tf.analysisModel, temperature, reasoning: mode },
+        configuration: { model: tf.analysisModel, temperature, reasoning: mode, reasoningRequest: extra },
         async generate(messages, maxTokens = 6144) {
             const response = await fetch(endpoint, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(240000),
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
@@ -30,7 +30,8 @@ export function isolatedProvider(root, { mode = 'off', temperature } = {}) {
             if (!response.ok) { const error = new Error(`HTTP ${response.status}; detail withheld.`); error.status = response.status; throw error; }
             const result = await response.json();
             if (result.error) throw Error('Provider error; detail withheld.');
-            return { text: completionText(result), usage: result.usage, finishReason: result.choices?.[0]?.finish_reason };
+            return { text: completionText(result), usage: result.usage, finishReason: result.choices?.[0]?.finish_reason,
+                reportedModel: typeof result.model === 'string' ? result.model : null };
         },
     };
 }

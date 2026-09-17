@@ -94,6 +94,33 @@ test('successful live response is unchanged and can be acknowledged after metada
     assert.equal(acknowledged.payload.job.acknowledged, true);
 });
 
+test('complete-looking JSON cannot lose its truncation signal through detached streaming or recovery', async () => {
+    const text = '{"campaign":"Looks complete","developments":[]}';
+    const forms = [
+        { stream: true, body: `data: ${JSON.stringify({ choices: [{ delta: { content: text } }] })}\n\ndata: {"choices":[{"delta":{},"finish_reason":"length"}]}\n\ndata: [DONE]\n\n` },
+        { stream: true, body: JSON.stringify({ choices: [{ message: { content: text }, finish_reason: 'length' }] }) },
+        { stream: false, body: JSON.stringify({ response: { status: 'incomplete', output_text: text } }) },
+    ];
+    for (let i = 0; i < forms.length; i++) {
+        const form = forms[i], router = routerMock();
+        let calls = 0;
+        await init(router, { fetchImpl: async () => { calls++; return new Response(form.body, { status: 200 }); } });
+        const body = plannerBody(`truncated-nonempty-${i}`);
+        if (!form.stream) body.backendPath = '/api/backends/text-completions/generate';
+        const downstream = responseMock();
+        await router.routes.get('POST /planner-jobs/generate')(request(body), downstream);
+        assert.equal(calls, 1);
+        assert.equal(downstream.statusCode, 500);
+        const listed = responseMock();
+        router.routes.get('GET /planner-jobs')(request({}, { query: { chatId: 'chat-1' } }), listed);
+        const job = listed.payload.jobs.find(job => job.runKey === body.meta.runKey);
+        assert.equal(job.status, 'error');
+        assert.equal(job.text, '', 'never expose rejected output through the recoverable result field');
+        assert.equal(job.rejectedText, text, 'retain rejected final text separately for inspection');
+        assert.match(job.error, /truncated/);
+    }
+});
+
 test('modern structured results and review tiers survive detached recovery', async () => {
     for (const contractVersion of [12, 13, 14]) {
         const payload = { contract_version: contractVersion, audit: 'Mock structured planner result.' };

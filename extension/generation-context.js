@@ -1,6 +1,7 @@
 import { evidenceRelevance } from './evidence-selection.js?v=0.13.9';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.13.9';
 import { sceneStatus } from './transcript-status.js?v=0.14.5';
+import { campaignAuthorInstructions, campaignPayload, validCampaignState } from './campaign-planner.js';
 
 // Kept outside planner state: an asynchronous planner save must never replace
 // the immutable pre-response packet or the replacement lifecycle marker.
@@ -11,6 +12,9 @@ export const PLOT_ANCHOR_VERSION = 4;
 
 // Compare completed planning runs, not UI saves or reply-verification updates.
 export function hasNewerPlannerState(state, packet) {
+    if (state?.plannerContract === 15) return validCampaignState(state.campaignPreparation)
+        && state.campaignPreparation.source.messageCount >= (packet?.plannerState?.campaignPreparation?.source?.messageCount || 0)
+        && state.campaignPreparation.revision > (packet?.plannerState?.campaignPreparation?.revision || 0);
     const revision = value => Number(value?.preparedWorld?.source?.startedAt || value?.lastAnalyzedAt || 0);
     return Number(state?.sourceMessageCount || 0) >= Number(packet?.plannerState?.sourceMessageCount || 0)
         && revision(state) > revision(packet?.plannerState);
@@ -113,7 +117,10 @@ export function cachedGenerationContext(cache, inputKey, chatId) {
 export function generationContextEntries(cache) {
     const entries = Array.isArray(cache?.entries) ? cache.entries : [cache];
     return entries.filter(item => item?.version === 1 && item.selection && typeof item.payload === 'string'
-        && item.payload.includes('<plot-anchor>') && item.payload.length <= 24000).slice(-GENERATION_CACHE_LIMIT);
+        && (item.plannerState?.plannerContract === 15
+            ? item.payload === campaignPayload(item.selection.preparedUsable && validCampaignState(item.plannerState.campaignPreparation)
+                ? item.plannerState.campaignPreparation : null, campaignAuthorInstructions(item.plannerState))
+            : item.payload.includes('<plot-anchor>') && item.payload.length <= 24000)).slice(-GENERATION_CACHE_LIMIT);
 }
 
 export function rememberGenerationContext(history, packet) {
