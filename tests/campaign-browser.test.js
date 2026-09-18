@@ -104,8 +104,27 @@ test('a planning-scope upgrade reconsiders earlier player choices and replaces t
     assert.equal(payload.previous_preparation.scope_reset, true);
     await h.scope.analyzeCampaignNow({ manual: true });
     assert.equal(h.requests.length, 2, 'one call for the initial plan and one for the scope upgrade');
-    assert.equal(h.state().campaignPreparation.planningScope, 'independent-developments-v1');
+    assert.equal(h.state().campaignPreparation.planningScope, 'independent-developments-v2');
     assert.equal(h.state().campaignPreparation.archive.filter(entry => entry.development).length, 1);
+});
+
+test('normal host review upgrades a v1 independent plan without a separate control or lost author notes', async () => {
+    const h = browser();
+    await h.scope.analyzeCampaignNow();
+    const previous = structuredClone(h.state().campaignPreparation);
+    previous.planningScope = 'independent-developments-v1';
+    h.context.chatMetadata = saveState(h.context.chatMetadata, { ...h.state(), campaignPreparation: previous,
+        campaignInstructions: [{ text: 'Keep the next journey open.' }] });
+    await h.scope.analyzeNow({ force: true });
+    assert.equal(h.requests.length, 2);
+    assert.equal(h.requests[1].spec.singleShot, true);
+    assert.equal(JSON.parse(h.requests[1].prompt).previous_preparation.scope_reset, true);
+    const state = h.state();
+    assert.equal(state.campaignPreparation.planningScope, 'independent-developments-v2');
+    assert.deepEqual(state.campaignPreparation.archive.find(entry => entry.scopeReframe).development, previous.developments[0]);
+    assert.deepEqual(state.campaignInstructions, [{ text: 'Keep the next journey open.' }]);
+    const packet = JSON.parse(h.prepare().payload.replace(/<\/?tale-fairy-context>/g, '').trim());
+    assert.deepEqual(Object.keys(packet), ['proposed_events', 'author_instructions']);
 });
 
 test('actual owned host review converts retained legacy subjects and archives their complete prior form', async () => {

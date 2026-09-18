@@ -26,7 +26,10 @@ export function presetSnapshot(settings) {
     if (!order) throw Error('Expected verified global ST prompt order 100001');
     const prompts = order.filter(p => p.enabled).map(p => oai.prompts.find(v => v.identifier === p.identifier)).filter(Boolean)
         .map(({ identifier, name, role, content, injection_position, injection_depth, injection_order }) => ({ identifier, name, role, content, injection_position, injection_depth, injection_order }));
-    return { prompts, model: oai.deepseek_model, source: oai.chat_completion_source, reasoning: oai.reasoning_effort,
+    // Saved settings retain inactive providers' models. Never label a frozen
+    // OpenAI preset with an old DeepSeek selection in substitution reports.
+    const modelKey = { openai: 'openai_model', deepseek: 'deepseek_model', custom: 'custom_model' }[oai.chat_completion_source];
+    return { prompts, model: modelKey ? oai[modelKey] ?? null : null, source: oai.chat_completion_source, reasoning: oai.reasoning_effort,
         temperature: oai.temp_openai, context: oai.openai_max_context, maxOutput: oai.openai_max_tokens };
 }
 

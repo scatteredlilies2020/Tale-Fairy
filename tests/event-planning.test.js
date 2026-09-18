@@ -103,8 +103,50 @@ test('previous broad-but-reactive plans also receive the independent-development
     assert.deepEqual(payload.previous_preparation.retained_subject_ids, []);
     const next = await ownedPass({ state: old, input: built, source, generate });
     assert.equal(next.accepted, true);
-    assert.equal(next.state.planningScope, 'independent-developments-v1');
+    assert.equal(next.state.planningScope, EVENT_PLANNING_SCOPE);
     assert.deepEqual(next.state.archive.find(entry => entry.development).development, old.developments[0]);
+});
+
+test('v1 independent plans reframe safely without treating their fixed future as accepted history', async () => {
+    const previous = await ownedPass({ state: emptyCampaign(), input, source, generate });
+    const old = { ...previous.state, planningScope: 'independent-developments-v1' };
+    const before = structuredClone(old);
+    const messages = [{ index: 0, role: 'user', content: 'I decline the performance and continue our travels.' }];
+    const built = ownedInput({ state: old, reference: { premise: 'A touring season.' }, messages });
+    const payload = JSON.parse(built.prompt);
+    assert.equal(payload.previous_preparation.scope_reset, true);
+    assert.deepEqual(payload.previous_preparation.developments, []);
+    assert.deepEqual(payload.accepted_messages, messages);
+    let calls = 0;
+    const failed = await ownedPass({ state: old, input: built, source, generate: async () => {
+        calls++; throw Error('offline');
+    } });
+    assert.equal(calls, 1);
+    assert.equal(failed.state, old);
+    assert.deepEqual(old, before);
+    const next = await ownedPass({ state: old, input: built, source, generate });
+    assert.equal(next.accepted, true);
+    assert.equal(next.state.planningScope, EVENT_PLANNING_SCOPE);
+    assert.deepEqual(next.state.archive.find(entry => entry.scopeReframe).development, old.developments[0]);
+    assert.equal(JSON.parse(ownedInput({ state: next.state, reference: {}, messages }).prompt).previous_preparation.reframe_required, false);
+});
+
+test('scope and prerequisite rules reach the planner while conditional events alone reach the writer', async () => {
+    assert.match(OWNED_SYSTEM, /Consider the whole available world/);
+    assert.match(OWNED_SYSTEM, /distinct sources of change/);
+    assert.match(OWNED_SYSTEM, /not a queue of requests for the player's approval/);
+    assert.match(OWNED_SYSTEM, /State developments, not choreography/);
+    assert.match(OWNED_SYSTEM, /Each event must stand alone/);
+    assert.match(OWNED_SYSTEM, /Do not assume a previous proposed event happened/);
+    assert.match(OWNED_SCHEMA.value.properties.campaign.description, /Not a catalogue of local tasks/);
+    const points = [{ event: 'A river ensemble offers an exchange of new songs at its open rehearsals.', opens: 'Private planning only.' },
+        { event: 'If the ensembles exchange songs, river hosts offer a shared programme built from both repertoires.', opens: 'Private later speculation.' }];
+    const result = await ownedPass({ state: emptyCampaign(), input, source,
+        generate: async () => ({ text: JSON.stringify({ ...raw, developments: [{ ...item, plot_points: points }] }) }) });
+    assert.equal(result.accepted, true);
+    const packet = JSON.parse(campaignPayload(result.state).replace(/<\/?tale-fairy-context>/g, '').trim());
+    assert.deepEqual(packet, { proposed_events: points.map(point => point.event) });
+    assert.doesNotMatch(campaignPayload(result.state), /Private|Each event|distinct sources/);
 });
 
 test('event opportunities are preserved structurally through canonical storage and injection', async () => {

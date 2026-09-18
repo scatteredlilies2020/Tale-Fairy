@@ -2,7 +2,26 @@
 
 Tale Fairy is a standalone SillyTavern extension that acts as a **background creative Game Master**, preparing a playable middle and future while the roleplay model writes the story. It combines a persistent private notebook with selective factual world awareness—not a full world simulation, a prose generator, or a fixed event script.
 
-## What changes in 0.14.24
+## What changes in 0.14.25
+
+Preparation now looks beyond the current scene's dominant mechanism, using the
+larger setting, relationships and earlier player wishes. Local decisions are not
+automatically a permanent player mission. Independent activity must offer
+different experiences, not just new officials, locations or permission requests.
+
+Each injected event stands alone. Dependencies on an unaccepted offer, pending
+choice or successful effort must be explicit in that event. Later dates do not
+stand in for conditions. Prefer changed opportunities over fixed outcomes and
+incidental headcounts; omit scene choreography. Writer context still contains
+only story material, with one AI request per planning pass and no new button.
+
+Reload to load the revision. The next normal planning pass rebuilds older plans
+from accepted RP source, archiving the originals only after success. Failure
+preserves them. No live conversation or settings are rewritten by this update.
+See the [scope and flexibility evaluation](docs/scope-flexibility-0.14.25.md)
+for actual tests, iterations and remaining limits.
+
+## What changes in 0.14.24 (historical)
 
 Planning now starts with independent undertakings: what would still be worth
 doing if the current problem disappeared? Concrete offers, outside initiatives

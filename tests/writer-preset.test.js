@@ -19,6 +19,17 @@ test('preset snapshot uses order enablement, keeps only safe fields and reproduc
     assert.equal(JSON.stringify(preset), before);
 });
 
+test('preset snapshot labels the selected writer instead of an inactive provider model', () => {
+    const oai_settings = { prompts: [], prompt_order: [{ character_id: 100001, order: [] }],
+        openai_model: 'active-openai', deepseek_model: 'saved-deepseek', custom_model: 'saved-custom' };
+    for (const [source, expected] of [['openai', 'active-openai'], ['deepseek', 'saved-deepseek'], ['custom', 'saved-custom'], ['unknown', null]]) {
+        const settings = { oai_settings: { ...oai_settings, chat_completion_source: source } };
+        const before = structuredClone(settings);
+        assert.equal(presetSnapshot(settings).model, expected);
+        assert.deepEqual(settings, before);
+    }
+});
+
 test('isolated Psyche ablation changes exactly one template line without mutating source or other fields', () => {
     const preset = { model: 'unchanged', prompts: [{ identifier: 'chatHistory' },
         { content: 'Keep all other rules.\nPsyche = drives and restraints\nCharacters = people\n', role: 'system' }] };
