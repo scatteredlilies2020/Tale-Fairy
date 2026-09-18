@@ -1,5 +1,6 @@
 // Candidate single-call campaign preparation; host integration is opt-in.
 // Owns proposals only: accepted history always comes from the conversation.
+import { playableSituations, validateStoredRealization } from './undertaking-lifecycle.js';
 import { estimateTokenCount } from './token-budget.js';
 
 // Matches the existing host's planner-request marker so request interception
@@ -70,7 +71,7 @@ const EVENT_STATE_SCHEMA = structuredClone(CAMPAIGN_STATE_SCHEMA);
 EVENT_STATE_SCHEMA.properties.developments.items.properties.premise = EVENT_POINTS_SCHEMA;
 EVENT_STATE_SCHEMA.properties.developments.items.properties.initiative = EVENT_INITIATIVE_SCHEMA;
 
-function check(value, schema, at = '$') {
+export function check(value, schema, at = '$') {
     if (schema.enum && !schema.enum.includes(value)) throw Error(`${at}: invalid enum value`);
     if (schema.type === 'object') {
         if (!value || typeof value !== 'object' || Array.isArray(value)) throw Error(`${at}: expected object`);
@@ -97,6 +98,7 @@ export function emptyCampaign() {
 export function validCampaignState(state) {
     try {
         if (!Number.isSafeInteger(state?.revision) || state.revision < 1 || !Array.isArray(state.archive)) return false;
+        if (state.realization !== undefined) validateStoredRealization(state.realization, check);
         const source = state.source;
         if (!source || !Number.isSafeInteger(source.messageCount) || source.messageCount < 0
             || !['chatId', 'referenceHash', 'fingerprint'].every(key => typeof source[key] === 'string' && source[key])) return false;
@@ -135,7 +137,7 @@ export function mergeCampaign(previous, raw, { basisRevision, source, evidenceIn
     const items = new Map(next.developments.map(d => [d.id, d]));
     for (const retirement of value.retire) {
         if (!items.has(retirement.id) || !retirement.evidence.every(i => evidenceIndices.includes(i))) throw Error('Retirement needs an existing subject and supplied evidence');
-        next.archive.push({ development: items.get(retirement.id), revision: previous.revision, retirement });
+        next.archive.push({ development: items.get(retirement.id), revision: previous.revision, retirement, source: structuredClone(source) });
         items.delete(retirement.id);
     }
     for (const d of value.developments) {
@@ -177,10 +179,12 @@ export function campaignPayload(state, instructions = []) {
     if (state.preparationFormat === EVENT_POINTS_FORMAT) {
         // TF supplies story material, not a second writing preset. Ownership,
         // review commentary and closure metadata remain private to planning.
-        const proposed_events = state.developments.flatMap(item => eventPointWire(item).plot_points.map(point => point.event));
-        if (!proposed_events.length && !authored.length) return '';
+        const proposed_events = state.developments.filter(item => !state.realization?.[item.id]).flatMap(item => eventPointWire(item).plot_points.map(point => point.event));
+        const playable_situations = playableSituations(state);
+        if (!proposed_events.length && !playable_situations.length && !authored.length) return '';
         return `<tale-fairy-context>\n${contextJson({
             ...(proposed_events.length ? { proposed_events } : {}),
+            ...(playable_situations.length ? { playable_situations } : {}),
             ...(authored.length ? { author_instructions: authored } : {}),
         })}\n</tale-fairy-context>`;
     }

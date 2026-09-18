@@ -1,9 +1,10 @@
 import { sha256 } from '/lib.js';
 import { campaignAuthorInstructions, campaignUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js';
-import { ownedInput, ownedPass, needsEventReframe, OWNED_SCHEMA, OWNED_SYSTEM } from './event-planning.js?v=0.14.27';
+import { ownedInput, ownedPass, needsEventReframe, OWNED_SCHEMA, OWNED_SYSTEM } from './event-planning.js?v=0.14.28';
 import { readCampaignContinuity } from './campaign-continuity.js';
+import { readEvidenceProviders, evidenceRevisionKey } from './evidence-providers.js';
 import { campaignEvidenceMessages, campaignReviewWindow } from './campaign-evidence.js';
-import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.27';
+import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.28';
 import { finalizeNotebookCompactions, writeNotebookArchive } from './notebook-compaction.js?v=0.14.22';
 import { eventSource, event_types, extension_prompt_roles, extension_prompt_types, generateRaw, Generate, setExtensionPrompt, getRequestHeaders, getCharacterCardFields, saveSettingsDebounced } from '/script.js';
 import { getContext } from '/scripts/st-context.js';
@@ -46,7 +47,7 @@ import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generat
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.14.27';
+const RUNTIME_VERSION = '0.14.28';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -763,8 +764,10 @@ function readCampaignSnapshot() {
     const replacement = replacementPlanningDeferred(context);
     const messages = messagesFromChat(context.chat || []);
     const accepted = replacement ? messages.slice(0, context.chatMetadata[REPLACEMENT_PENDING_KEY].messageCount) : messages;
-    const continuity = readCampaignContinuity(context, globalThis.continuityMemoryBridge,
-        { enabled: s.continuityIntegration !== false, replacement });
+    const evidence = readEvidenceProviders(context, { continuityBridge: globalThis.continuityMemoryBridge,
+        continuityEnabled: s.continuityIntegration !== false, replacement,
+        enabled: context.chatMetadata?.taleFairyEvidence !== 'off' });
+    const continuity = evidence.find(e => e.provider === 'continuity-memory') || { status: replacement ? 'replacement' : 'off' };
     const worlds = plotWorldNames(context, world_info, selected_world_info);
     let attempt = context.chatMetadata?.[CAMPAIGN_ATTEMPT_KEY];
     try {
@@ -782,8 +785,8 @@ function readCampaignSnapshot() {
         reference: { ...bootstrapContext(context, { broad: true }), authorInstructions: campaignAuthorInstructions(state),
             worldBooks: worlds.map(name => ({ name, data: worldInfoCache.get(name) })) },
         missingWorlds: worlds.filter(name => !worldInfoCache.has(name)),
-        continuity,
-        evidenceKey: continuity.status === 'current' ? campaignFingerprint({ summary: continuity.summary, records: continuity.records }) : '',
+        continuity, evidence,
+        evidenceKey: evidenceRevisionKey(evidence),
         continuityTokens: s.summaryContextTokens ?? 4000,
         inputBudget: Number(s.maxPromptTokens) || 14000,
     };
@@ -796,13 +799,17 @@ function buildCampaignHostInput(snapshot) {
     const messages = snapshot.messages.map((m, index) => ({ index, role: m.is_user ? 'user' : 'assistant', name: m.name || '', content: m.mes || '' }));
     const reviewedCount = !needsEventReframe(snapshot.state) && campaignUsable(snapshot.state, { ...snapshot, fingerprint: campaignFingerprint })
         ? snapshot.state.source.messageCount : 0;
+    const verifiedRetiredIds = snapshot.state.archive.filter(a => a.retirement
+        && campaignUsable({ source: a.source || snapshot.state.source }, { ...snapshot, fingerprint: campaignFingerprint })).map(a => a.development?.id);
+    const verifiedProgress = Object.fromEntries(Object.entries(snapshot.state.realization || {}).filter(([, entry]) =>
+        Object.values(entry.episodes).every(episode => campaignUsable({ source: episode.source }, { ...snapshot, fingerprint: campaignFingerprint }))));
     let failure;
     for (const count of [32, 24, 20, 16, 12, 8, 4, 2]) {
         const selected = campaignReviewWindow(messages, count, reviewedCount);
         try {
             return ownedInput({ reference: snapshot.reference, state: snapshot.state, playerNames: snapshot.playerNames, reviewedMessageCount: reviewedCount,
-                messages: campaignEvidenceMessages(selected, { narrative: true }), historical,
-                continuity: snapshot.continuity, continuityTokens: snapshot.continuityTokens }, snapshot.inputBudget);
+                messages: campaignEvidenceMessages(selected, { narrative: true }), historical, verifiedProgress, verifiedRetiredIds,
+                continuity: snapshot.continuity, evidence: snapshot.evidence, continuityTokens: snapshot.continuityTokens }, snapshot.inputBudget);
         } catch (error) { if (!error.message.includes('exceeds')) throw error; failure = error; }
     }
     throw failure;
@@ -900,7 +907,9 @@ async function runCampaignAnalysis(work) {
         return result;
     });
     if (stopSequence === analysisStopSequence && chatId === String(currentContext().getCurrentChatId?.() || '')) {
-        if (result.accepted) renderAnalysisActivity('Campaign preparation ready', false);
+        if (result.accepted) renderAnalysisActivity(result.warnings?.length
+            ? `Campaign preparation ready · ignored ${result.warnings.length} unsupported extra citation(s)`
+            : 'Campaign preparation ready', false);
         else if (result.error) renderAnalysisActivity(`Previous preparation retained · ${result.error}`, false);
         else renderAnalysisActivity('No new planning pass needed', false);
     }
@@ -2843,8 +2852,11 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
             preparation.campaign,
             `EPISODE · ${preparation.episode.status}: ${preparation.episode.subject}\n${preparation.episode.boundary}`,
             ...preparation.developments.map(item => [
-                `[${item.id}] ${preparation.preparationFormat === EVENT_POINTS_FORMAT
+                `[${item.id}] ${preparation.realization?.[item.id] ? '' : preparation.preparationFormat === EVENT_POINTS_FORMAT
                     ? eventPointWire(item).plot_points.map(point => `Event opportunity: ${point.event}\nOpens: ${point.opens}`).join('\n\n') : item.premise}`,
+                preparation.realization?.[item.id] && `Accepted progress (cited interpretation): ${Object.entries(preparation.realization[item.id].episodes).map(([id, e]) => `${id}: ${e.status}`).join('; ') || 'No witnessed enactment yet'}`,
+                preparation.realization?.[item.id]?.needsPlayableReview && 'Writer review pending: prior situation advanced; stale material withheld.',
+                preparation.realization?.[item.id] && `Writer situations: ${preparation.realization[item.id].playable.map(p => `${p.when} — ${p.situation}`).join('\n') || 'None; subject retained privately'}`,
                 item.initiative && `Proposed ${item.initiative.control} aim · ${item.initiative.owner}: ${item.initiative.aim}`,
                 `Development: ${item.progression}`, `${['plot-points-v1', 'event-opportunities-v1'].includes(state.campaignPreparation.preparationFormat) ? 'Stakes' : 'Outcomes'}: ${item.outcomes}`, `Participation: ${item.access}`,
             ].filter(Boolean).join('\n')),
@@ -2873,16 +2885,15 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         ? 'Full rebuild pending'
         : analyzed ? `Tale Fairy v${RUNTIME_VERSION} · ${state.mode} mode · world context updated ${analyzedAt || 'recently'}` : '';
     scratchpadText(board, 'scratchpad-meta', meta, 'No world analysis yet. Run Guide now or Full rebuild.');
-    const campaignRecall = campaign ? readCampaignContinuity(currentContext(), globalThis.continuityMemoryBridge,
-        { enabled: getSettings().continuityIntegration !== false, replacement: replacementPlanningDeferred(currentContext()) }) : null;
-    const continuityStatus = campaign ? campaignRecall.freshness || campaignRecall.status
+    const campaignRecall = campaign ? readCampaignSnapshot().evidence : null;
+    const continuityStatus = campaign ? campaignRecall.map(e => `${e.provider}: ${e.confidence || e.status}`).join('; ') || 'off'
         : analyzed ? continuityContextState(currentContext()).status : 'unavailable';
     const summaryAudit = state.summaryEvidence?.scannedAt ? state.summaryEvidence : lastSummaryAudit;
     const summaryStatus = !campaign && (summaryAudit.scannedAt || summaryAudit.count)
         ? ` · final summaries: ${summaryAudit.count} sources / ${summaryAudit.includedTokens.toLocaleString()} text tokens${summaryAudit.inputBudget ? ` · ${summaryAudit.tier}: ~${summaryAudit.inputTokens.toLocaleString()}/${summaryAudit.inputBudget.toLocaleString()} input tokens · raw excerpts: ${summaryAudit.recentTokens} tokens · historical witnesses: ${summaryAudit.historyCount}${summaryAudit.timelineEpochCount ? ` · story map: ${summaryAudit.timelineEpochCount} periods / ${summaryAudit.storyMessageCount} messages · older thread candidates: ${summaryAudit.openThreadCount}` : ''} · actors: ${summaryAudit.actorCount} · candidate pool: ${summaryAudit.candidateCount} sources / ${summaryAudit.candidateTokens} text tokens${summaryAudit.droppedLabels?.length ? ` · omitted sources: ${summaryAudit.droppedLabels.join(', ')}` : ''}` : ' (legacy evidence count)'}`
         : '';
     scratchpadText(board, 'scratchpad-continuity', campaign
-        ? `Continuity availability for next planning pass: ${continuityStatus} (subject to input budget)`
+        ? `Evidence availability for next planning pass: ${continuityStatus} (subject to input budget)`
         : `Direct Continuity connector: ${continuityStatus}${summaryStatus}`, 'Direct Continuity connector: unavailable');
 
     const profile = state.sceneProfile || {};

@@ -7,6 +7,7 @@ import { defaultState, defaultPlannerState, loadPlannerState, saveState, STATE_K
 import { buildStoryEvidence } from '../extension/analysis.js';
 import { campaignEvidenceMessages, campaignReviewWindow } from '../extension/campaign-evidence.js';
 import { completionText } from '../extension/completion-response.js';
+import { readEvidenceProviders, evidenceRevisionKey, registerEvidenceProvider } from '../extension/evidence-providers.js';
 import { readCampaignContinuity } from '../extension/campaign-continuity.js';
 import { extractTaleFairyContext } from '../extension/request-injection.js';
 
@@ -17,7 +18,7 @@ const memorySnapshot = () => ({ chatId: 'story', status: 'current', revision: 1,
     prompt: 'Private Chronicle: the prior engagement ended.', planningEvidence: [{ id: 'memory-music',
         text: 'Jo is still composing; no new engagement was accepted.', category: 'states', canonicalStatus: 'current',
         sourceRange: { chatKey: 'character:0:chat:story', from: 0, to: 0 } }] });
-const design = { campaign: 'A changing body of original work.', episode: { subject: 'Public bill', status: 'finished', boundary: 'The public bill is over.' },
+const design = { realization: [{ id: 'music', changes: [], playable: [{ episodeId: 'arrangement', when: 'If the musicians share an off-hour.', situation: 'An original tune changes when another musician offers a contrasting arrangement.' }] }], campaign: 'A changing body of original work.', episode: { subject: 'Public bill', status: 'finished', boundary: 'The public bill is over.' },
     developments: [{ id: 'music', initiative: { control: 'npc', owner: 'Jo', aim: 'Compose a piece worth keeping.' },
         plot_points: [{ event: 'An original tune changes when another musician offers a contrasting arrangement.', opens: 'They could perform competing versions or work out a shared arrangement.' }], development: 'Versions can be heard, tried and revised.',
         stakes: 'Each musician values their own contribution.', participation: 'Shared off-hours.' }] };
@@ -27,7 +28,7 @@ function browser(send = async () => ({ choices: [{ message: { content: JSON.stri
         initialState);
     const requests = [], shared = new Map();
     Object.assign(h.settings, { maxPromptTokens: 14000, fullReviewInterval: 3, analysisSource: 'direct', analysisModel: 'test', analysisReasoningMode: 'low' });
-    Object.assign(h.scope, { buildStoryEvidence, campaignEvidenceMessages, campaignReviewWindow, completionText, readCampaignContinuity,
+    Object.assign(h.scope, { buildStoryEvidence, campaignEvidenceMessages, campaignReviewWindow, completionText, readCampaignContinuity, readEvidenceProviders, evidenceRevisionKey,
         loadState: loadPlannerState, defaultState: defaultPlannerState,
         plannerStorage: () => ({ getItem: key => shared.get(key), setItem: (key, value) => shared.set(key, value) }),
         withPlannerTabLock: (_id, task) => task(),
@@ -228,8 +229,8 @@ test('actual single-pass planner reads CM privately, once per scheduled pass, wi
     h.scope.continuityMemoryBridge = { version: 2, getContextSnapshot: () => snapshot };
     await h.scope.analyzeCampaignNow();
     const input = JSON.parse(h.requests[0].prompt);
-    assert.equal(input.continuity_memory.summary, snapshot.prompt);
-    assert.equal(input.continuity_memory.records[0].id, 'memory-music');
+    assert.equal(input.external_evidence[0].summary, snapshot.prompt);
+    assert.equal(input.external_evidence[0].records[0].id, 'memory-music');
     assert.doesNotMatch(h.prepare().payload, /Private Chronicle|memory-music|continuity_memory/);
     assert.deepEqual(snapshot, before);
     snapshot.revision++;
@@ -256,7 +257,7 @@ test('campaign snapshot honors the CM toggle, stale identity and replacement iso
     h.context.chatMetadata[h.scope.REPLACEMENT_PENDING_KEY] = { messageCount: 1 };
     const replacement = h.scope.readCampaignSnapshot();
     assert.equal(replacement.continuity.status, 'replacement');
-    assert.ok(!JSON.parse(h.scope.buildCampaignHostInput(replacement).prompt).continuity_memory);
+    assert.ok(!JSON.parse(h.scope.buildCampaignHostInput(replacement).prompt).external_evidence);
 });
 
 test('same-source memory corrections during a paid pass cannot commit outdated recall', async () => {
@@ -327,9 +328,9 @@ test('CM publication captures accepted source synchronously and uses campaign ca
     h.context.chat.push({ is_user: false, mes: 'Another accepted reply.' });
     snapshot.status = 'stale';
     const input = JSON.parse(h.scope.buildCampaignHostInput(h.scope.readCampaignSnapshot()).prompt);
-    assert.equal(input.continuity_memory.freshness, 'verified-accepted-prefix');
+    assert.equal(input.external_evidence[0].freshness, 'verified-accepted-prefix');
     h.context.chat[0].mes = 'A changed earlier branch.';
-    assert.ok(!JSON.parse(h.scope.buildCampaignHostInput(h.scope.readCampaignSnapshot()).prompt).continuity_memory);
+    assert.ok(!JSON.parse(h.scope.buildCampaignHostInput(h.scope.readCampaignSnapshot()).prompt).external_evidence);
 });
 
 test('actual campaign entry builds evidence, uses single-shot transport and commits usable preparation', async () => {
@@ -338,7 +339,7 @@ test('actual campaign entry builds evidence, uses single-shot transport and comm
     assert.equal(h.requests.length, 1);
     const request = h.requests[0];
     assert.equal(request.spec.singleShot, true);
-    assert.equal(request.spec.schema.name, 'tale_fairy_event_opportunities_v1');
+    assert.equal(request.spec.schema.name, 'tale_fairy_playable_undertakings_v1');
     assert.equal(request.spec.reasoningMode, undefined, 'honor saved reasoning instead of legacy forced Off');
     assert.equal(request.meta, null, 'no legacy detached recovery contract');
     const input = JSON.parse(request.prompt);
@@ -349,7 +350,7 @@ test('actual campaign entry builds evidence, uses single-shot transport and comm
     assert.equal(h.state().campaignPreparation.developments[0].initiative.owner, 'Jo');
     assert.match(h.prepare().payload, /An original tune changes/);
     assert.deepEqual(JSON.parse(h.prepare().payload.replace(/<\/?tale-fairy-context>/g, '').trim()),
-        { proposed_events: design.developments[0].plot_points.map(point => point.event) }, 'actual host injects events, not a writing preset');
+        { playable_situations: design.realization[0].playable.map(({ when, situation }) => ({ when, situation })) }, 'actual host injects events, not a writing preset');
     assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
 });
 
@@ -409,7 +410,7 @@ test('normal host review upgrades a v1 independent plan without a separate contr
     assert.deepEqual(state.campaignPreparation.archive.find(entry => entry.scopeReframe).development, previous.developments[0]);
     assert.deepEqual(state.campaignInstructions, [{ text: 'Keep the next journey open.' }]);
     const packet = JSON.parse(h.prepare().payload.replace(/<\/?tale-fairy-context>/g, '').trim());
-    assert.deepEqual(Object.keys(packet), ['proposed_events', 'author_instructions']);
+    assert.deepEqual(Object.keys(packet), ['playable_situations', 'author_instructions']);
 });
 
 test('actual owned host review converts retained legacy subjects and archives their complete prior form', async () => {
@@ -447,7 +448,7 @@ test('host reframes old plot essays from retained objectives in one call and arc
     const state = h.state().campaignPreparation;
     assert.equal(state.preparationFormat, 'event-opportunities-v1');
     assert.equal(state.archive.find(entry => entry.development?.premise === 'OLD ESSAY TEMPLATE').development.premise, 'OLD ESSAY TEMPLATE');
-    assert.match(h.prepare().payload, /"proposed_events":\["/);
+    assert.match(h.prepare().payload, /"playable_situations":\[\{/);
 });
 
 test('actual owned host rejects planned player ownership in one call without repair or commit', async () => {
@@ -674,7 +675,7 @@ test('author instruction is retained verbatim and reaches writer and the single 
     const selected = h.prepare();
     assert.ok(selected.payload.includes(note));
     assert.deepEqual(JSON.parse(selected.payload.replace(/<\/?tale-fairy-context>/g, '').trim()),
-        { proposed_events: design.developments[0].plot_points.map(point => point.event), author_instructions: [note] });
+        { playable_situations: design.realization[0].playable.map(({ when, situation }) => ({ when, situation })), author_instructions: [note] });
     h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata));
     h.scope.generationGuideSelection = null;
     assert.equal(h.prepare().payload, selected.payload, 'retry cache includes the exact author instructions');
@@ -707,4 +708,57 @@ test('literal author markup stays intact as text without escaping the context en
     assert.deepEqual(decoded.author_instructions, [note]);
     assert.equal(h.state().campaignInstructions[0].text, note);
     assert.equal(h.requests.length, 1);
+});
+
+test('host discards progress interpretations whose accepted prefix changed, while preserving the saved ledger for review', async () => {
+    const h = browser();
+    await h.scope.analyzeCampaignNow();
+    const saved = h.state();
+    saved.campaignPreparation.realization.music.episodes.arrangement = {
+        status: 'introduced', witnesses: [{ index: 0, role: 'assistant', quote: 'The show ended.' }],
+        source: structuredClone(saved.campaignPreparation.source),
+    };
+    h.context.chatMetadata = saveState(h.context.chatMetadata, saved);
+    h.context.chat[0].mes = 'The show did not happen.';
+    const input = JSON.parse(h.scope.buildCampaignHostInput(h.scope.readCampaignSnapshot()).prompt);
+    assert.deepEqual(input.accepted_progress, {});
+    assert.equal(h.state().campaignPreparation.realization.music.episodes.arrangement.status, 'introduced');
+    assert.equal(h.prepare().payload, '');
+});
+
+
+test('generic evidence reaches the actual host and same-source correction rejects the single in-flight call', async () => {
+    let finish;
+    const h = browser(() => new Promise(resolve => { finish = resolve; }));
+    const raw = { chatId: 'story', owner: 'character:unknown', status: 'context', revision: 1,
+        summary: 'The old booking was declined.', provenance: 'Explicit fixture adapter' };
+    const unregister = registerEvidenceProvider({ id: 'host-fixture', version: 1, read: () => raw });
+    try {
+        const work = h.scope.analyzeCampaignNow({ manual: true });
+        await settle();
+        const input = JSON.parse(h.requests[0].prompt);
+        assert.equal(input.external_evidence[0].provider, 'host-fixture');
+        assert.equal(input.external_evidence[0].confidence, 'lower-confidence-context');
+        raw.summary = 'Corrected: only one proposed date was declined.'; raw.revision++;
+        finish({ choices: [{ message: { content: JSON.stringify(design) }, finish_reason: 'stop' }] });
+        await work;
+        assert.equal(h.requests.length, 1);
+        assert.equal(h.state().campaignPreparation?.revision || 0, 0);
+        assert.doesNotMatch(h.prepare().payload, /booking|host-fixture/);
+    } finally { unregister(); }
+});
+
+test('retirement guards are branch-specific and cannot impose an edited-away closure on the new source', async () => {
+    const h = browser();
+    await h.scope.analyzeCampaignNow();
+    const state = h.state();
+    state.campaignPreparation.archive.push({ retirement: { id: 'old-subject', evidence: [0], reason: 'Finished' },
+        development: { id: 'old-subject' }, source: structuredClone(state.campaignPreparation.source) });
+    h.context.chatMetadata = saveState(h.context.chatMetadata, state);
+    let input = JSON.parse(h.scope.buildCampaignHostInput(h.scope.readCampaignSnapshot()).prompt);
+    assert.deepEqual(input.closed_subject_ids, ['old-subject']);
+    h.context.chat[0].mes = 'An edited branch where that undertaking is still open.';
+    input = JSON.parse(h.scope.buildCampaignHostInput(h.scope.readCampaignSnapshot()).prompt);
+    assert.deepEqual(input.closed_subject_ids, []);
+    assert.equal(h.state().campaignPreparation.archive.at(-1).development.id, 'old-subject');
 });

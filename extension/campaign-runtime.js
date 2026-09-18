@@ -46,7 +46,7 @@ export class CampaignRuntime {
                 const result = await this.runPass({ state: snapshot.state, input, source, generate: this.generate });
                 const latest = this.read();
                 if (!result.accepted) return { ...result, state: latest.state };
-                const evidenceKey = input.continuity?.status === 'included' ? snapshot.evidenceKey : '';
+                const evidenceKey = (input.evidence?.status === 'included' || input.continuity?.status === 'included') ? snapshot.evidenceKey : '';
                 // A correction to the same chat snapshot invalidates a result
                 // using the old recall. Ordinary appended play still does not
                 // cancel paid-for work or create a memory-publication loop.

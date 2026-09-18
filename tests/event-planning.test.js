@@ -14,7 +14,7 @@ const generate = async () => ({ text: JSON.stringify(raw), finishReason: 'stop' 
 
 test('one response plans the wider development before deriving writer events', async () => {
     const fields = OWNED_SCHEMA.value.properties.developments.items;
-    assert.ok(fields.required.indexOf('development') < fields.required.indexOf('plot_points'));
+    assert.ok(!fields.required.includes('plot_points'), 'writer situations need not be authored twice');
     assert.ok(Object.keys(fields.properties).indexOf('development') < Object.keys(fields.properties).indexOf('plot_points'));
     assert.match(fields.properties.development.description, /beyond this episode/);
     assert.match(OWNED_SYSTEM, /bird's-eye view/);
@@ -101,7 +101,7 @@ test('previous broad-but-reactive plans also receive the independent-development
     const payload = JSON.parse(built.prompt);
     assert.equal(payload.previous_preparation.scope_reset, true);
     assert.deepEqual(payload.previous_preparation.retained_subject_ids, []);
-    const next = await ownedPass({ state: old, input: built, source, generate });
+    const next = await ownedPass({ state: old, input: built, source, generate: async () => ({ text: JSON.stringify({ ...raw, realization: [{ id: 'music', changes: [], playable: [] }] }) }) });
     assert.equal(next.accepted, true);
     assert.equal(next.state.planningScope, EVENT_PLANNING_SCOPE);
     assert.deepEqual(next.state.archive.find(entry => entry.development).development, old.developments[0]);
@@ -124,7 +124,7 @@ test('v1 independent plans reframe safely without treating their fixed future as
     assert.equal(calls, 1);
     assert.equal(failed.state, old);
     assert.deepEqual(old, before);
-    const next = await ownedPass({ state: old, input: built, source, generate });
+    const next = await ownedPass({ state: old, input: built, source, generate: async () => ({ text: JSON.stringify({ ...raw, realization: [{ id: 'music', changes: [], playable: [] }] }) }) });
     assert.equal(next.accepted, true);
     assert.equal(next.state.planningScope, EVENT_PLANNING_SCOPE);
     assert.deepEqual(next.state.archive.find(entry => entry.scopeReframe).development, old.developments[0]);
@@ -222,7 +222,7 @@ test('empty undeclared annotations carry no material; required fields and nonemp
     for (const id_note of ['Change this objective', false, 0, [], {}]) {
         assert.throws(() => decodeOwnedResult({ ...raw, developments: [{ ...item, id_note }] }));
     }
-    for (const field of ['initiative', 'plot_points', 'development', 'stakes', 'participation']) {
+    for (const field of ['initiative', 'development', 'stakes', 'participation']) {
         const missing = { ...item }; delete missing[field];
         assert.throws(() => decodeOwnedResult({ ...raw, developments: [missing] }));
         assert.throws(() => decodeOwnedResult({ ...raw, developments: [{ ...item, [field]: null }] }));

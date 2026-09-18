@@ -2,6 +2,30 @@
 
 Tale Fairy is a standalone SillyTavern extension that acts as a **background creative Game Master**, preparing a playable middle and future while the roleplay model writes the story. It combines a persistent private notebook with selective factual world awareness—not a full world simulation, a prose generator, or a fixed event script.
 
+## What changes in 0.14.28
+
+The existing single-pass planner now separates accepted episode progress,
+durable undertakings, and concrete writer situations. Progress needs witnesses
+from accepted play. Completed or declined episodes stop being offered without
+automatically retiring their broader subject; later experiences can build on
+their results. Durable-only and progress-only updates preserve unrelated options.
+Generated future material is never treated as evidence that it happened.
+
+Optional evidence uses a bounded, read-only provider interface. Continuity Memory
+is its verified adapter; generic provider fixtures demonstrate the contract.
+TF remains independently installable and works without a memory extension.
+Only playable situations and saved author instructions reach the writer.
+
+All 747 engineering tests passed. Supervised native phone samples enacted
+mapping, glass examinations, tile forming and later clay screening, with and
+without CM. Pacing delays and provider failures remain documented; manual
+recoveries and an explicit workshop time jump do not prove sustained automatic
+progression. See [implementation and activation](docs/phone-lifecycle-2026-09-18.md)
+and [native results and failures](docs/phone-native-evaluation-2026-09-18.md).
+
+Reload after updating. Saved preparation and author instructions are preserved;
+no reset, model change or new installation is required.
+
 ## What changes in 0.14.27
 
 The current single-pass planner now reads **Continuity Memory's public snapshot**.
