@@ -2,6 +2,24 @@
 
 Tale Fairy is a standalone SillyTavern extension that acts as a **background creative Game Master**, preparing a playable middle and future while the roleplay model writes the story. It combines a persistent private notebook with selective factual world awareness—not a full world simulation, a prose generator, or a fixed event script.
 
+## What changes in 0.14.26
+
+Fixes a page-local planner race that could report **“already active in another
+SillyTavern page”** when the lock belonged to this same page. One shared run now
+covers context preparation, asynchronous lock acquisition, the planning request
+and lock release. Rebuild and author-note changes wait for that whole handoff;
+Stop or a chat switch prevents cancelled work from starting or replacing status.
+
+A genuinely busy other page is reported as busy, not **“Campaign save failed.”**
+It does not trigger a duplicate request or change existing preparation. Story
+context verification remains separate: a confirmed returned reply means the
+existing injection was used, not that a new planning pass succeeded.
+
+Regression tests reproduce both lock races and the misleading error with the
+production host and lock wrapper, using delayed test grants/releases. All three
+failed before the fix. Reload once to load the updated browser entry; no chat,
+plan reset, prompt change or additional model call is needed to install the fix.
+
 ## What changes in 0.14.25
 
 Preparation now looks beyond the current scene's dominant mechanism, using the

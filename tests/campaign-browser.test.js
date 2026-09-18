@@ -30,11 +30,180 @@ function browser(send = async () => ({ choices: [{ message: { content: JSON.stri
             return spec.parseResponse(await send({ prompt, signal, meta, spec }));
         },
     });
-    for (const name of ['readCampaignSnapshot', 'buildCampaignHostInput', 'saveCampaignAttempt', 'campaignCompletion', 'analyzeCampaignNow', 'startCampaignPlanning', 'applyCampaignInstruction', 'rebuildGuideState', 'analyzeNow']) {
+    for (const name of ['readCampaignSnapshot', 'buildCampaignHostInput', 'saveCampaignAttempt', 'campaignCompletion', 'runCampaignAnalysis', 'analyzeCampaignNow', 'startCampaignPlanning', 'applyCampaignInstruction', 'rebuildGuideState', 'analyzeNow']) {
         vm.runInContext(source.match(new RegExp(`(?:export )?(?:async )?function ${name}\\([^]*?^}`, 'm'))[0].replace(/^export /u, ''), h.scope);
     }
     return { ...h, requests, shared };
 }
+
+// Exercise the real host lock wrapper. Grants and releases are asynchronous in
+// browsers; an immediate stub conceals the page-local acquisition/handoff race.
+function browserLocks(h, { grant = Promise.resolve(), release = Promise.resolve(), heldElsewhere = false } = {}) {
+    let held = heldElsewhere, requests = 0;
+    h.scope.EXTENSION_ID = 'living-world-guide';
+    h.scope.navigator = { locks: { request: async (name, options, callback) => {
+        requests++;
+        assert.equal(options.ifAvailable, true);
+        await grant;
+        if (held) return callback(null);
+        held = true;
+        try { const result = await callback({ name }); await release; return result; }
+        finally { held = false; }
+    } } };
+    vm.runInContext(source.match(/class PlannerBusyInAnotherTabError[^]*?^}/m)[0], h.scope);
+    vm.runInContext(source.match(/async function withPlannerTabLock\([^]*?^}/m)[0], h.scope);
+    return { get requests() { return requests; }, get held() { return held; } };
+}
+
+test('same-page triggers before the asynchronous lock grant spend only one request and show no other-page error', async () => {
+    const h = browser();
+    let grant;
+    const locks = browserLocks(h, { grant: new Promise(resolve => { grant = resolve; }) });
+    const first = h.scope.analyzeCampaignNow({ manual: true });
+    const second = h.scope.analyzeCampaignNow({ manual: true });
+    await settle();
+    grant();
+    await Promise.all([first, second]);
+    assert.equal(locks.requests, 1);
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.state().campaignPreparation.revision, 1);
+    assert.ok(!h.statuses.some(status => /another.*page|save failed/.test(status)), h.statuses.join('\n'));
+});
+
+test('same-page trigger during lock release joins the complete host lifecycle', async () => {
+    const h = browser();
+    let release;
+    const locks = browserLocks(h, { release: new Promise(resolve => { release = resolve; }) });
+    const first = h.scope.analyzeCampaignNow({ manual: true });
+    await settle(); await settle();
+    assert.equal(h.scope.campaignSession.pending, null);
+    assert.equal(locks.held, true);
+    const second = h.scope.analyzeCampaignNow();
+    await settle();
+    release();
+    await Promise.all([first, second]);
+    assert.equal(locks.requests, 1);
+    assert.equal(h.requests.length, 1);
+    assert.ok(!h.statuses.some(status => /another.*page|save failed/.test(status)), h.statuses.join('\n'));
+});
+
+test('a genuinely busy other page is not a save failure and sends no request', async () => {
+    const h = browser();
+    await h.scope.analyzeCampaignNow({ manual: true });
+    const before = structuredClone(h.state());
+    const payload = h.prepare().payload;
+    browserLocks(h, { heldElsewhere: true });
+    await h.scope.analyzeCampaignNow({ manual: true });
+    assert.equal(h.requests.length, 1, 'no additional request while another page holds the lock');
+    assert.deepEqual(h.state(), before);
+    assert.match(h.statuses.at(-1), /another.*page/i);
+    assert.doesNotMatch(h.statuses.at(-1), /save failed/i);
+    assert.equal(h.prepare().payload, payload);
+});
+
+test('Stop before lock grant prevents generation and cannot be overwritten by a late busy error', async () => {
+    for (const heldElsewhere of [false, true]) {
+        const h = browser();
+        let grant;
+        browserLocks(h, { grant: new Promise(resolve => { grant = resolve; }), heldElsewhere });
+        const running = h.scope.analyzeCampaignNow({ manual: true });
+        await settle();
+        h.scope.interruptAnalysis('User stopped', 'Stopped');
+        grant();
+        await running;
+        assert.equal(h.requests.length, 0);
+        assert.equal(h.statuses.at(-1), 'Stopped');
+        assert.equal(h.scope.campaignHostWork, null);
+    }
+});
+
+test('manual intent during preflight promotes an otherwise not-due pass without a second lock request', async () => {
+    const h = browser();
+    await h.scope.analyzeCampaignNow({ manual: true });
+    let grant;
+    const locks = browserLocks(h, { grant: new Promise(resolve => { grant = resolve; }) });
+    const automatic = h.scope.analyzeCampaignNow();
+    await settle();
+    const manual = h.scope.analyzeCampaignNow({ manual: true });
+    assert.equal(automatic, manual);
+    grant();
+    await manual;
+    assert.equal(locks.requests, 1);
+    assert.equal(h.requests.length, 2, 'initial plan plus one explicitly requested review');
+});
+
+test('rebuild and author-note replacement wait for lock release before starting their own pass', async () => {
+    for (const action of ['rebuild', 'note']) {
+        const h = browser();
+        let release;
+        const locks = browserLocks(h, { release: new Promise(resolve => { release = resolve; }) });
+        const running = h.scope.analyzeCampaignNow({ manual: true });
+        await settle(); await settle();
+        assert.equal(h.scope.campaignSession.pending, null);
+        assert.equal(locks.held, true);
+        const replacement = action === 'rebuild' ? h.scope.startCampaignPlanning({ rebuild: true })
+            : h.scope.applyCampaignInstruction('Keep the journey open.');
+        await settle();
+        assert.equal(h.requests.length, 1);
+        assert.equal(locks.requests, 1);
+        release();
+        await Promise.all([running, replacement]);
+        assert.equal(h.requests.length, 2);
+        assert.equal(locks.requests, 2);
+        assert.ok(!h.statuses.some(status => /another.*page|save failed/.test(status)), h.statuses.join('\n'));
+        if (action === 'note') assert.equal(h.state().campaignInstructions[0].text, 'Keep the journey open.');
+        else assert.ok(h.state().campaignPreparation.archive.some(entry => entry.rebuild));
+    }
+});
+
+test('an interrupted preflight is not reused by a later manual request', async () => {
+    const h = browser();
+    let grant;
+    const locks = browserLocks(h, { grant: new Promise(resolve => { grant = resolve; }) });
+    const first = h.scope.analyzeCampaignNow({ manual: true });
+    await settle();
+    h.scope.interruptAnalysis('User stopped', 'Stopped');
+    const next = h.scope.analyzeCampaignNow({ manual: true });
+    assert.notEqual(first, next);
+    grant();
+    await Promise.all([first, next]);
+    assert.equal(locks.requests, 2);
+    assert.equal(h.requests.length, 1, 'stopped preflight sends nothing; replacement sends once');
+    assert.equal(h.statuses.at(-1), 'Campaign preparation ready');
+    assert.equal(h.scope.campaignHostWork, null);
+});
+
+test('chat changes and disabling during lock acquisition send no request and preserve the new status', async () => {
+    for (const action of ['switch', 'disable']) {
+        const h = browser();
+        let grant;
+        browserLocks(h, { grant: new Promise(resolve => { grant = resolve; }) });
+        const pending = h.scope.analyzeCampaignNow();
+        await settle();
+        h.scope.interruptAnalysis('Context changed', 'Stopped');
+        if (action === 'switch') h.context.getCurrentChatId = () => 'next-chat';
+        else h.settings.enabled = false;
+        grant();
+        await pending;
+        assert.equal(h.requests.length, 0);
+        assert.equal(h.statuses.at(-1), 'Stopped');
+        assert.equal(h.scope.campaignHostWork, null);
+    }
+});
+
+test('preflight errors release page-local work and leave a later manual pass usable', async () => {
+    const h = browser();
+    h.scope.warmPlotWorldInputs = async () => { throw Error('World inputs unavailable'); };
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 0);
+    assert.equal(h.scope.campaignHostWork, null);
+    assert.match(h.statuses.at(-1), /Campaign preparation failed.*World inputs unavailable/);
+    assert.doesNotMatch(h.statuses.at(-1), /save failed/);
+    h.scope.warmPlotWorldInputs = async () => {};
+    await h.scope.analyzeCampaignNow({ manual: true });
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.statuses.at(-1), 'Campaign preparation ready');
+});
 
 test('planner prompt changes invalidate attempt identity without changing accepted-source identity', () => {
     const h = browser();

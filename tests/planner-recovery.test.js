@@ -16,7 +16,7 @@ function harness(jobs, overrides = {}) {
     const context = { chat, chatMetadata: {}, getCurrentChatId: () => 'chat' };
     const scope = {
         canRetainSuccessfulPlan,
-        detachedPlannerRecovering: false, analysisPromise: null, analysisStopSequence: 0,
+        detachedPlannerRecovering: false, analysisPromise: null, analysisStopSequence: 0, campaignHostWork: null,
         replacementPlanningDeferred: () => false,
         retryPlannerSourceMatches: (_context, meta) => meta.allowOneAssistantAppend === true,
         getSettings: () => ({ enabled: true }), currentContext: () => context,
@@ -66,6 +66,9 @@ test('campaign mode never sends legacy detached results into its new state', asy
     assert.equal(result.active, false);
     assert.equal(h.saved.length, 0);
     assert.equal(h.calls.length, 0);
+    h.scope.campaignHostWork = { promise: Promise.resolve() };
+    assert.equal((await h.run()).active, true, 'preflight and lock handoff also count as active work');
+    assert.equal(h.saved.length, 0);
 });
 
 test('a still-running attempt takes precedence over retained invalid output', async () => {

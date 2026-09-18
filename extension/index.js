@@ -45,7 +45,7 @@ import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generat
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.14.25';
+const RUNTIME_VERSION = '0.14.26';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -61,6 +61,9 @@ const DEFAULT_SETTINGS = { enabled: true, mode: 'balanced', analysisProfileId: '
 let settings = null;
 let analysisPromise = null;
 let campaignSession = null;
+// Includes preflight, the asynchronous Web Lock grant, and lock release—not
+// just the provider/session promise, which settles before the lock is released.
+let campaignHostWork = null;
 let analysisAbortController = null;
 let analysisRequestFingerprint = '';
 let analysisRequestInputKey = '';
@@ -825,11 +828,43 @@ function campaignCompletion(response) {
     return { text: completionText(response), finishReason: 'stop' };
 }
 
-async function analyzeCampaignNow({ manual = false } = {}) {
-    let initial = currentContext();
-    const chatId = String(initial.getCurrentChatId?.() || '');
-    if (!chatId || !getSettings().enabled) return loadState(initial.chatMetadata);
+function analyzeCampaignNow({ manual = false } = {}) {
+    const context = currentContext();
+    const chatId = String(context.getCurrentChatId?.() || '');
+    if (!chatId || !getSettings().enabled) return Promise.resolve(loadState(context.chatMetadata));
     const stopSequence = analysisStopSequence;
+    const previous = campaignHostWork;
+    if (previous?.chatId === chatId && previous.stopSequence === stopSequence) {
+        // A manual click during preflight can promote a not-yet-started
+        // automatic pass, but never duplicates a request already in progress.
+        previous.manual ||= manual;
+        return previous.promise;
+    }
+    const work = { chatId, stopSequence, manual, promise: null };
+    work.promise = Promise.resolve(previous?.promise).catch(() => {}).then(() => {
+        if (stopSequence !== analysisStopSequence || chatId !== String(currentContext().getCurrentChatId?.() || '')
+            || !getSettings().enabled) return loadState(currentContext().chatMetadata);
+        return runCampaignAnalysis(work);
+    }).catch(error => {
+        if (stopSequence === analysisStopSequence && chatId === String(currentContext().getCurrentChatId?.() || '')) {
+            const busy = error?.name === 'PlannerBusyInAnotherTabError';
+            renderAnalysisActivity(busy
+                ? 'Planner running in another page · existing preparation unchanged'
+                : `Campaign preparation failed · ${error.message}`, false);
+        }
+        return loadState(currentContext().chatMetadata);
+    }).finally(() => {
+        if (campaignHostWork === work) campaignHostWork = null;
+    });
+    // Publish before any async preflight or lock acquisition can re-enter.
+    campaignHostWork = work;
+    renderAnalysisActivity(previous ? 'Waiting for previous planner to finish' : 'Preparing planner context', true);
+    return work.promise;
+}
+
+async function runCampaignAnalysis(work) {
+    const { chatId, stopSequence } = work;
+    let initial = currentContext();
     if (initial.chatMetadata?.[STATE_KEY]?.plannerContract !== 15) {
         // Persist migration before generation, including on a failed first pass.
         // Old notebook/notes remain saved but cannot enter the event injection.
@@ -850,21 +885,17 @@ async function analyzeCampaignNow({ manual = false } = {}) {
             label: 'campaign preparation', cacheNamespace: `campaign-v15:${OWNED_SCHEMA.name}`,
         }),
     });
-    const wasPending = Boolean(campaignSession.pending);
-    try {
-        const task = wasPending ? campaignSession.pending : withPlannerTabLock(chatId, () => {
-            if (stopSequence !== analysisStopSequence || chatId !== String(currentContext().getCurrentChatId?.() || '')) return { accepted: false, skipped: 'cancelled-before-lock' };
-            const result = campaignSession.request({ manual });
-            if (campaignSession.pending) renderAnalysisActivity('Preparing later developments · one request', true);
-            return result;
-        });
-        const result = await task;
-        if (stopSequence === analysisStopSequence && chatId === String(currentContext().getCurrentChatId?.() || '') && !wasPending) {
-            if (result.accepted) renderAnalysisActivity('Campaign preparation ready', false);
-            else if (result.error) renderAnalysisActivity(`Previous preparation retained · ${result.error}`, false);
-        }
-    } catch (error) {
-        if (chatId === String(currentContext().getCurrentChatId?.() || '')) renderAnalysisActivity(`Campaign save failed · ${error.message}`, false);
+    const result = await withPlannerTabLock(chatId, () => {
+        if (stopSequence !== analysisStopSequence || chatId !== String(currentContext().getCurrentChatId?.() || '')
+            || !getSettings().enabled) return { accepted: false, skipped: 'cancelled-before-lock' };
+        const result = campaignSession.request({ manual: work.manual });
+        if (campaignSession.pending) renderAnalysisActivity('Preparing later developments · one request', true);
+        return result;
+    });
+    if (stopSequence === analysisStopSequence && chatId === String(currentContext().getCurrentChatId?.() || '')) {
+        if (result.accepted) renderAnalysisActivity('Campaign preparation ready', false);
+        else if (result.error) renderAnalysisActivity(`Previous preparation retained · ${result.error}`, false);
+        else renderAnalysisActivity('No new planning pass needed', false);
     }
     return loadState(currentContext().chatMetadata);
 }
@@ -872,7 +903,7 @@ async function analyzeCampaignNow({ manual = false } = {}) {
 async function startCampaignPlanning({ rebuild = false } = {}) {
     const chatId = String(currentContext().getCurrentChatId?.() || '');
     if (!chatId || !getSettings().enabled) return loadState(currentContext().chatMetadata);
-    const previousWork = campaignSession?.pending || analysisPromise;
+    const previousWork = campaignHostWork?.promise || campaignSession?.pending || analysisPromise;
     interruptAnalysis('Rebuilding plot preparation.', 'Preparing plot events');
     const switchSequence = analysisStopSequence;
     await cancelDetachedPlannerJobs(chatId);
@@ -900,7 +931,7 @@ async function applyCampaignInstruction(note) {
     if (!text.trim() || !getSettings().enabled) return loadState(currentContext().chatMetadata);
     const chatId = String(currentContext().getCurrentChatId?.() || '');
     if (!chatId) return loadState(currentContext().chatMetadata);
-    const pending = campaignSession?.pending;
+    const pending = campaignHostWork?.promise || campaignSession?.pending;
     interruptAnalysis('An author instruction changed the planning source.', 'Saving author instruction');
     const sequence = analysisStopSequence;
     if (pending) await pending.catch(() => {});
@@ -1938,7 +1969,7 @@ async function cancelDetachedPlannerJobs(chatId) {
 }
 
 async function recoverDetachedPlannerJobs() {
-    if (campaignMode()) return { active: Boolean(campaignSession?.pending), recovered: false };
+    if (campaignMode()) return { active: Boolean(campaignHostWork || campaignSession?.pending), recovered: false };
     if (detachedPlannerRecovering || analysisPromise || !getSettings().enabled) return { active: false, recovered: false };
     const context = currentContext();
     const chatId = String(context.getCurrentChatId?.() || '');
@@ -2917,7 +2948,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const previewText = previewPayload
         ? `${previewKind} — ${generationPreviewDescription({ reused: preparedSelection?.reused, dynamic: previewDynamic, future: guidanceSnapshot(state, previewOptions).preparedContextIncluded,
             prepared: Boolean(preparedSelection), nextReady: Boolean(nextPacket?.selection.preparedUsable || nextPacket?.selection.usable && hasPlannerConditions(nextPacket.selection.causalContext)),
-            deferred: !preparedSelection && replacementPlanningDeferred(previewContext), planning: Boolean(analysisPromise || campaignSession?.pending) })}.\nPlacement: ${previewPlacement}\n\n${previewPayload}`
+            deferred: !preparedSelection && replacementPlanningDeferred(previewContext), planning: Boolean(analysisPromise || campaignHostWork || campaignSession?.pending) })}.\nPlacement: ${previewPlacement}\n\n${previewPayload}`
         : !getSettings().enabled || !isStoryGeneration(activeGenerationType)
             ? 'Injection inactive for this request.'
         : isDirectionCurrent(state, messagesFromChat(previewContext.chat || []), chatId) && !state.lastInject
@@ -3274,7 +3305,7 @@ async function mountUI() {
     root.querySelector('[data-action="board"]').addEventListener('click', () => { s.showDirectorNotes = !s.showDirectorNotes; root.classList.toggle('is-expanded', s.showDirectorNotes); saveSettingsDebounced(); });
     root.classList.toggle('is-expanded', Boolean(s.showDirectorNotes));
     refreshControls(root);
-    const planning = Boolean(analysisPromise || campaignSession?.pending);
+    const planning = Boolean(analysisPromise || campaignHostWork || campaignSession?.pending);
     renderAnalysisActivity(planning ? 'Planning…' : 'Ready', planning);
     renderInjectionActivity();
     renderBoard();

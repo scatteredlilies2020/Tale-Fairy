@@ -43,7 +43,7 @@ export function generationHarness(messages, state = stateApi.defaultState(), met
         getWorldInfoSettings: () => ({ world_info: {}, world_info_depth: 2 }), bootstrapContext: () => context.card || {},
         generationGuideSelection: null, activeGenerationType: '', pendingRequestVerification: null,
         analysisPromise: null, activeAnalysisIntent: null, activeAnalysisMessageCount: 0,
-        campaignSession: null, analyzeCampaignNow: async options => { calls.push({ campaign: true, ...options }); },
+        campaignSession: null, campaignHostWork: null, analyzeCampaignNow: async options => { calls.push({ campaign: true, ...options }); },
         queuedAnalysisIntent: null, analysisAbortController: null, analysisRunId: 0,
         analysisRequestFingerprint: '', analysisRequestInputKey: '', analysisRetryTimer: null, analysisRetryAttempt: 0,
         generationRevision: 0, analysisStopSequence: 0, transcriptRefreshTimer: null,
