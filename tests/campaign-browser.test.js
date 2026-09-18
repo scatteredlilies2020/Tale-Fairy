@@ -9,6 +9,7 @@ import { campaignEvidenceMessages, campaignReviewWindow } from '../extension/cam
 import { completionText } from '../extension/completion-response.js';
 import { readEvidenceProviders, evidenceRevisionKey, registerEvidenceProvider } from '../extension/evidence-providers.js';
 import { readCampaignContinuity } from '../extension/campaign-continuity.js';
+import { playableSituation } from '../extension/undertaking-lifecycle.js';
 import { extractTaleFairyContext } from '../extension/request-injection.js';
 
 const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
@@ -18,7 +19,7 @@ const memorySnapshot = () => ({ chatId: 'story', status: 'current', revision: 1,
     prompt: 'Private Chronicle: the prior engagement ended.', planningEvidence: [{ id: 'memory-music',
         text: 'Jo is still composing; no new engagement was accepted.', category: 'states', canonicalStatus: 'current',
         sourceRange: { chatKey: 'character:0:chat:story', from: 0, to: 0 } }] });
-const design = { realization: [{ id: 'music', changes: [], playable: [{ episodeId: 'arrangement', when: 'If the musicians share an off-hour.', situation: 'An original tune changes when another musician offers a contrasting arrangement.' }] }], campaign: 'A changing body of original work.', episode: { subject: 'Public bill', status: 'finished', boundary: 'The public bill is over.' },
+const design = { realization: [{ id: 'music', changes: [], playable: [{ episodeId: 'arrangement', when: 'If the musicians share an off-hour.', situation: 'An original tune changes when another musician offers a contrasting arrangement.', resolution: { owner: 'npc', actors: ['Jo'], endpoint: 'Jo plays both endings, settles on a workable version, and keeps the changed chart for the next shared session.' } }] }], campaign: 'A changing body of original work.', episode: { subject: 'Public bill', status: 'finished', boundary: 'The public bill is over.' },
     developments: [{ id: 'music', initiative: { control: 'npc', owner: 'Jo', aim: 'Compose a piece worth keeping.' },
         plot_points: [{ event: 'An original tune changes when another musician offers a contrasting arrangement.', opens: 'They could perform competing versions or work out a shared arrangement.' }], development: 'Versions can be heard, tried and revised.',
         stakes: 'Each musician values their own contribution.', participation: 'Shared off-hours.' }] };
@@ -350,7 +351,7 @@ test('actual campaign entry builds evidence, uses single-shot transport and comm
     assert.equal(h.state().campaignPreparation.developments[0].initiative.owner, 'Jo');
     assert.match(h.prepare().payload, /An original tune changes/);
     assert.deepEqual(JSON.parse(h.prepare().payload.replace(/<\/?tale-fairy-context>/g, '').trim()),
-        { playable_situations: design.realization[0].playable.map(({ when, situation }) => ({ when, situation })) }, 'actual host injects events, not a writing preset');
+        { playable_situations: design.realization[0].playable.map(playableSituation) }, 'actual host injects events, not a writing preset');
     assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
 });
 
@@ -675,7 +676,7 @@ test('author instruction is retained verbatim and reaches writer and the single 
     const selected = h.prepare();
     assert.ok(selected.payload.includes(note));
     assert.deepEqual(JSON.parse(selected.payload.replace(/<\/?tale-fairy-context>/g, '').trim()),
-        { playable_situations: design.realization[0].playable.map(({ when, situation }) => ({ when, situation })), author_instructions: [note] });
+        { playable_situations: design.realization[0].playable.map(playableSituation), author_instructions: [note] });
     h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata));
     h.scope.generationGuideSelection = null;
     assert.equal(h.prepare().payload, selected.payload, 'retry cache includes the exact author instructions');

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { emptyCampaign, campaignPayload, validCampaignState } from '../extension/campaign-planner.js';
 import { ownedInput, ownedPass } from '../extension/event-planning.js';
-import { mergeRealization } from '../extension/undertaking-lifecycle.js';
+import { mergeRealization, playableSituation, needsPlayableReview } from '../extension/undertaking-lifecycle.js';
 import { loadPlannerState, saveState, defaultPlannerState } from '../extension/state.js';
 const source = { chatId: 'test', referenceHash: 'card', messageCount: 1, fingerprint: 'accepted' };
 const messages = [{ index: 0, role: 'assistant', name: 'Jo', content: 'Jo played the duet through its final chord. The altered bass line held.' }];
@@ -11,8 +11,8 @@ const subject = { id: 'music', development: 'A shared repertoire can develop acr
     plot_points: [{ event: 'OLD INVITATION', opens: 'PRIVATE FUTURE' }], stakes: 'Different musical voices find shared forms.', participation: 'Optional sessions.' };
 const body = realization => ({ campaign: 'A repertoire grows.', episode: { subject: 'Booking', status: 'finished', boundary: 'The booking ended.' }, developments: [subject], realization });
 const entry = (status = 'completed', episodeId = 'duet') => ({ id: 'music', changes: [{ episodeId, status, evidence: [{ index: 0, quote: messages[0].content }] }],
-    playable: [{ episodeId, when: 'During a shared practice.', situation: 'REPEATED INTRODUCTION' },
-        { episodeId: 'new-arrangement', when: 'If another shared session occurs.', situation: 'Jo plays a counterline against the altered bass, letting the two rhythms resolve together; a workable new ending can emerge.' }] });
+    playable: [{ episodeId, when: 'During a shared practice.', situation: 'REPEATED INTRODUCTION', resolution: { owner: 'npc', actors: ['Jo'], endpoint: 'Jo finishes playing and records the arrangement.' } },
+        { episodeId: 'new-arrangement', when: 'If another shared session occurs.', situation: 'Jo plays a counterline against the altered bass, letting the two rhythms resolve together; a workable new ending can emerge.', resolution: { owner: 'npc', actors: ['Jo'], endpoint: 'Jo finishes the new ending, records the usable counterline, and leaves both charts available for another shared session.' } }] });
 const plan = async (state, data, evidence = messages) => ownedPass({ state,
     input: ownedInput({ state, reference: {}, messages: evidence }), source,
     generate: async () => ({ text: JSON.stringify(data) }) });
@@ -255,4 +255,111 @@ test('citation typography handling never changes words, negation or the cited me
         assert.equal(result.accepted, false);
         assert.match(result.error, /witness/);
     }
+});
+
+test('a newly authored introduction without a resolution fails once and preserves the preparation', async () => {
+    const previous = await plan(emptyCampaign(), body([{ id: 'music', playable: entry().playable }]));
+    const incomplete = structuredClone(entry().playable);
+    delete incomplete[0].resolution;
+    let calls = 0;
+    const result = await ownedPass({ state: previous.state, input: ownedInput({ state: previous.state, reference: {}, messages }), source,
+        generate: async () => { calls++; return { text: JSON.stringify({ ...body([{ id: 'music', playable: incomplete }]), developments: [] }) }; } });
+    assert.equal(result.accepted, false);
+    assert.match(result.error, /resolution/);
+    assert.equal(result.state, previous.state);
+    assert.equal(calls, 1);
+});
+
+test('NPC-owned resolution reaches the writer and survives reload without becoming witnessed progress', async () => {
+    const first = await plan(emptyCampaign(), body([{ id: 'music', playable: entry().playable }]));
+    assert.equal(first.accepted, true, first.error);
+    const saved = saveState({}, { ...defaultPlannerState(), campaignPreparation: first.state });
+    const reloaded = loadPlannerState(JSON.parse(JSON.stringify(saved))).campaignPreparation;
+    const packet = JSON.parse(campaignPayload(reloaded).replace(/<\/?tale-fairy-context>/g, '').trim());
+    assert.deepEqual(packet.playable_situations, entry().playable.map(playableSituation));
+    assert.deepEqual(packet.playable_situations[0].npc_resolution, { actors: ['Jo'], result: 'Jo finishes playing and records the arrangement.' });
+    assert.deepEqual(reloaded.realization.music.episodes, {});
+    const input = JSON.parse(ownedInput({ state: reloaded, reference: {}, messages }).prompt);
+    assert.deepEqual(input.accepted_progress, {});
+    assert.match(JSON.stringify(input.previous_preparation.playable), /finishes playing/);
+    assert.doesNotMatch(campaignPayload(reloaded), /episodeId|witnesses|reply_limit|writing_style|maximum replies|paragraph/);
+});
+
+test('NPC resolution cannot own the player, omit its actor, or disguise actors as a world result', async () => {
+    const state = emptyCampaign();
+    for (const resolution of [
+        { owner: 'npc', actors: ['  USER  '], endpoint: 'User accepts the commitment.' },
+        { owner: 'npc', endpoint: 'Someone decides.' },
+        { owner: 'npc', actors: ['Jo', ' jo '], endpoint: 'Jo finishes.' },
+        { owner: 'world', actors: ['User'], endpoint: 'User accepts the commitment.' },
+    ]) {
+        const playable = [{ ...entry().playable[0], resolution }];
+        const result = await ownedPass({ state, input: ownedInput({ state, reference: {}, messages, playerNames: ['User'] }), source,
+            generate: async () => ({ text: JSON.stringify(body([{ id: 'music', playable }])) }) });
+        assert.equal(result.accepted, false, JSON.stringify(resolution));
+        assert.equal(result.state, state);
+    }
+});
+
+test('a real player decision remains a decision rather than an autonomous NPC outcome', async () => {
+    const playable = [{ ...entry().playable[0], resolution: { owner: 'player', endpoint: 'Whether User accepts the offered place in the duet remains undecided.' } }];
+    const result = await plan(emptyCampaign(), body([{ id: 'music', playable }]));
+    assert.equal(result.accepted, true, result.error);
+    const packet = JSON.parse(campaignPayload(result.state).replace(/<\/?tale-fairy-context>/g, '').trim());
+    assert.equal(packet.playable_situations[0].player_decision, playable[0].resolution.endpoint);
+    assert.equal('npc_resolution' in packet.playable_situations[0], false);
+    assert.deepEqual(result.state.realization.music.episodes, {});
+});
+
+test('world events have a bounded result without pretending an NPC owns them', async () => {
+    const playable = [{ episodeId: 'rain', when: 'If the river rises during accepted rainfall.', situation: 'Water reaches the lower landing.',
+        resolution: { owner: 'world', endpoint: 'The lowest steps are submerged; the upper landing remains usable.' } }];
+    const result = await plan(emptyCampaign(), body([{ id: 'music', playable }]));
+    assert.equal(result.accepted, true, result.error);
+    const packet = campaignPayload(result.state);
+    assert.match(packet, /world_result/);
+    assert.doesNotMatch(packet, /npc_resolution|actors|player_decision/);
+});
+
+test('old saved situations remain readable and request a resolution review without deleting their subjects', async () => {
+    const first = await plan(emptyCampaign(), body([{ id: 'music', playable: entry().playable }]));
+    const legacy = structuredClone(first.state);
+    for (const p of legacy.realization.music.playable) delete p.resolution;
+    assert.equal(validCampaignState(legacy), true);
+    assert.equal(needsPlayableReview(legacy.realization.music), true);
+    const payload = JSON.parse(ownedInput({ state: legacy, reference: {}, messages }).prompt);
+    assert.deepEqual(payload.previous_preparation.playable_review_required_ids, ['music']);
+    assert.equal(payload.previous_preparation.reframe_required, false);
+    assert.match(campaignPayload(legacy), /REPEATED INTRODUCTION/);
+    const unchanged = await plan(legacy, { ...body([]), developments: [] });
+    assert.equal(unchanged.accepted, true, unchanged.error);
+    assert.deepEqual(unchanged.state.realization, legacy.realization);
+    const completed = entry(); delete completed.playable;
+    const progressOnly = await plan(legacy, { ...body([completed]), developments: [] });
+    assert.equal(progressOnly.accepted, true, progressOnly.error);
+    assert.doesNotMatch(campaignPayload(progressOnly.state), /REPEATED INTRODUCTION/);
+    assert.equal(progressOnly.state.developments[0].id, 'music');
+});
+
+test('resolution schema rejects extra writing-style and turn-quota controls', async () => {
+    for (const extra of [{ writing_style: 'cinematic' }, { max_replies: 2 }]) {
+        const playable = [{ ...entry().playable[0], resolution: { ...entry().playable[0].resolution, ...extra } }];
+        const result = await plan(emptyCampaign(), body([{ id: 'music', playable }]));
+        assert.equal(result.accepted, false);
+        assert.match(result.error, /unexpected|unknown|Unsupported|undeclared/i);
+    }
+});
+
+test('a messenger cannot substitute their own completed delivery for the undertaking owners result', async () => {
+    for (const actors of [['Mara'], ['Jo', 'Mara']]) {
+        const playable = [{ ...entry().playable[0], resolution: { owner: 'npc', actors, endpoint: 'Mara leaves the invitation and returns home.' } }];
+        const result = await plan(emptyCampaign(), body([{ id: 'music', playable }]));
+        assert.equal(result.accepted, false);
+        assert.match(result.error, /undertaking owner/);
+    }
+    const playable = [{ ...entry().playable[0], resolution: { owner: 'npc', actors: ['Jo', 'Mara'], endpoint: 'Jo reads the invitation, declines the unsuitable booking and returns to the shared rehearsal with a revised arrangement.' } }];
+    const result = await plan(emptyCampaign(), body([{ id: 'music', playable }]));
+    assert.equal(result.accepted, true, result.error);
+    assert.match(campaignPayload(result.state), /Jo reads/);
+    assert.deepEqual(result.state.realization.music.episodes, {});
 });

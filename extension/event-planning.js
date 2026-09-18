@@ -5,7 +5,7 @@ import { CAMPAIGN_MARKER, CAMPAIGN_SCHEMA, EVENT_INITIATIVE_SCHEMA, EVENT_POINTS
 import { compactCampaignSpeakers } from './campaign-evidence.js';
 import { fitCampaignContinuity } from './campaign-continuity.js';
 import { fitEvidenceProviders } from './evidence-providers.js';
-import { REALIZATION_SCHEMA, REALIZATION_INSTRUCTIONS, mergeRealization } from './undertaking-lifecycle.js';
+import { REALIZATION_SCHEMA, REALIZATION_INSTRUCTIONS, mergeRealization, needsPlayableReview } from './undertaking-lifecycle.js';
 import { check } from './campaign-planner.js';
 import { estimateTokenCount } from './token-budget.js';
 
@@ -73,7 +73,7 @@ export function ownedInput({ reference, state, messages, historical = {}, player
                 .map(([id, entry]) => [id, structuredClone(entry.playable)])) } : {}),
             ...(scopeReframe ? { scope_reset: true, reframe_reason: 'Rebuild at the full RP scope with branch-safe developments, not a catalogue of local tasks. Old proposals are excluded to avoid anchoring; accepted play and the RP premise supply continuity.' } : {}),
             retained_subject_ids: scopeReframe ? [] : state.developments.map(item => item.id),
-            playable_review_required_ids: scopeReframe ? [] : state.developments.filter(item => !state.realization?.[item.id] || state.realization[item.id].needsPlayableReview).map(item => item.id),
+            playable_review_required_ids: scopeReframe ? [] : state.developments.filter(item => needsPlayableReview(state.realization?.[item.id])).map(item => item.id),
             available_new_subject_slots: scopeReframe ? 4 : Math.max(0, 4 - state.developments.length),
             ...(!reframe ? { campaign: state.campaign, episode: state.episode, review_scope: {
                 accepted_before: reviewedMessageCount,
@@ -158,7 +158,8 @@ export async function ownedPass({ state, input, source, generate }) {
         const next = mergeCampaign(base, campaign, { basisRevision: state.revision, source, evidenceIndices: input.indices, eventFormat: true });
         const warnings = [];
         if (realization) next.realization = mergeRealization(input.verifiedProgress ?? base.realization, realization, {
-            subjects: next.developments.map(d => d.id), messages: input.evidenceMessages, source,
+            subjects: next.developments.map(d => d.id), playerNames: input.playerNames,
+            initiatives: Object.fromEntries(next.developments.map(d => [d.id, d.initiative])), messages: input.evidenceMessages, source,
             onDiscardedWitness: warning => warnings.push(warning),
             // Revising durable preparation does not require reauthoring an
             // unaffected situation. New and pre-upgrade subjects still need an
