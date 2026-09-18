@@ -1,10 +1,10 @@
 import { sha256 } from '/lib.js';
 import { campaignAuthorInstructions, campaignUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js';
-import { ownedInput, ownedPass, needsEventReframe, OWNED_SCHEMA, OWNED_SYSTEM } from './event-planning.js?v=0.14.29';
+import { ownedInput, ownedPass, needsEventReframe, OWNED_SCHEMA, OWNED_SYSTEM } from './event-planning.js?v=0.14.30';
 import { readCampaignContinuity } from './campaign-continuity.js';
 import { readEvidenceProviders, evidenceRevisionKey } from './evidence-providers.js';
 import { campaignEvidenceMessages, campaignReviewWindow } from './campaign-evidence.js';
-import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.29';
+import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.30';
 import { finalizeNotebookCompactions, writeNotebookArchive } from './notebook-compaction.js?v=0.14.22';
 import { eventSource, event_types, extension_prompt_roles, extension_prompt_types, generateRaw, Generate, setExtensionPrompt, getRequestHeaders, getCharacterCardFields, saveSettingsDebounced } from '/script.js';
 import { getContext } from '/scripts/st-context.js';
@@ -47,7 +47,7 @@ import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generat
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.14.29';
+const RUNTIME_VERSION = '0.14.30';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',

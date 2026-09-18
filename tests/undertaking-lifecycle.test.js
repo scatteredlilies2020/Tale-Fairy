@@ -350,16 +350,27 @@ test('resolution schema rejects extra writing-style and turn-quota controls', as
     }
 });
 
-test('a messenger cannot substitute their own completed delivery for the undertaking owners result', async () => {
-    for (const actors of [['Mara'], ['Jo', 'Mara']]) {
-        const playable = [{ ...entry().playable[0], resolution: { owner: 'npc', actors, endpoint: 'Mara leaves the invitation and returns home.' } }];
-        const result = await plan(emptyCampaign(), body([{ id: 'music', playable }]));
-        assert.equal(result.accepted, false);
-        assert.match(result.error, /undertaking owner/);
-    }
-    const playable = [{ ...entry().playable[0], resolution: { owner: 'npc', actors: ['Jo', 'Mara'], endpoint: 'Jo reads the invitation, declines the unsuitable booking and returns to the shared rehearsal with a revised arrangement.' } }];
+test('descriptive NPC roles and shorter result names do not invalidate a complete plan', async () => {
+    const raw = body([{ id: 'music', playable: [{ ...entry().playable[0],
+        resolution: { owner: 'npc', actors: ['village choirmaster', 'accompanist'],
+            endpoint: 'The choirmaster and accompanist finish the rehearsal and record the revised harmony.' } }] }]);
+    raw.developments[0] = { ...subject, initiative: { ...subject.initiative,
+        owner: 'the village choirmaster and the visiting accompanist leading the rehearsal' } };
+    let calls = 0;
+    const result = await ownedPass({ state: emptyCampaign(), input: ownedInput({ state: emptyCampaign(), reference: {}, messages }), source,
+        generate: async () => { calls++; return { text: JSON.stringify(raw) }; } });
+    assert.equal(result.accepted, true, result.error);
+    assert.equal(calls, 1);
+    assert.match(campaignPayload(result.state), /finish the rehearsal/);
+    assert.deepEqual(result.state.realization.music.episodes, {});
+});
+
+test('another NPC can finish substantive work within an undertaking without owning the whole subject', async () => {
+    const playable = [{ ...entry().playable[0], situation: 'Mara tests the revised harmony on the piano and writes out the corrected part.',
+        resolution: { owner: 'npc', actors: ['Mara'], endpoint: 'Mara completes the piano arrangement and leaves the usable score for Jo.' } }];
     const result = await plan(emptyCampaign(), body([{ id: 'music', playable }]));
     assert.equal(result.accepted, true, result.error);
-    assert.match(campaignPayload(result.state), /Jo reads/);
+    assert.equal(result.state.developments[0].initiative.owner, 'Jo');
+    assert.match(campaignPayload(result.state), /Mara completes/);
     assert.deepEqual(result.state.realization.music.episodes, {});
 });

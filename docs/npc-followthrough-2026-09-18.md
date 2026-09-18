@@ -1,5 +1,9 @@
 # NPC-owned follow-through, 2026-09-18
 
+**Follow-up:** the owner-name binding described below caused false planner failures
+and is removed by the [validation fix](planner-owner-validation-fix-2026-09-18.md).
+The release observations below are retained as historical evaluation evidence.
+
 Release `0.14.29` follows `fbb36c6` / v0.14.28. The user authorized publication
 after the local candidate was implemented and tested. It uses the existing installed extension, not a second
 extension or separate runtime mode.

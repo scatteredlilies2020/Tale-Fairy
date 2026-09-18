@@ -159,7 +159,7 @@ export async function ownedPass({ state, input, source, generate }) {
         const warnings = [];
         if (realization) next.realization = mergeRealization(input.verifiedProgress ?? base.realization, realization, {
             subjects: next.developments.map(d => d.id), playerNames: input.playerNames,
-            initiatives: Object.fromEntries(next.developments.map(d => [d.id, d.initiative])), messages: input.evidenceMessages, source,
+            messages: input.evidenceMessages, source,
             onDiscardedWitness: warning => warnings.push(warning),
             // Revising durable preparation does not require reauthoring an
             // unaffected situation. New and pre-upgrade subjects still need an

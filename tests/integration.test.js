@@ -25,12 +25,12 @@ test('settings explanations stay concise', () => {
 });
 
 test('manifest, browser runtime, and detached plugin share the release version', () => {
-    assert.equal(manifest.version, '0.14.29');
-    assert.equal(manifest.js, 'extension/index.js?v=0.14.29');
-    assert.equal(manifest.css, 'extension/style.css?v=0.14.29');
+    assert.equal(manifest.version, '0.14.30');
+    assert.equal(manifest.js, 'extension/index.js?v=0.14.30');
+    assert.equal(manifest.css, 'extension/style.css?v=0.14.30');
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.14\.29'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.14\.29'/);
+    assert.match(pluginSource, /const VERSION = '0\.14\.30'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.14\.30'/);
 });
 
 test('planner input proof travels through normal saves and detached recovery', () => {

@@ -28,12 +28,7 @@ export const needsPlayableReview = entry => !entry || Boolean(entry.needsPlayabl
     || entry.playable.some(p => !p.resolution);
 
 const actorKey = name => String(name).trim().toLocaleLowerCase();
-function namesActor(value, actor) {
-    const escaped = actor.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return new RegExp(`(?:^|[^\\p{L}\\p{N}_])${escaped}(?=$|[^\\p{L}\\p{N}_])`, 'iu').test(value);
-}
-
-export function validateResolution(resolution, playerNames = [], initiative = null) {
+export function validateResolution(resolution, playerNames = []) {
     if (!resolution) return; // Compatibility is only for stored, older preparation.
     const actors = (resolution.actors || []).map(actorKey);
     if (resolution.owner === 'npc') {
@@ -42,10 +37,6 @@ export function validateResolution(resolution, playerNames = [], initiative = nu
         }
         const players = new Set(playerNames.map(actorKey));
         if (actors.some(name => players.has(name))) throw Error('NPC resolution cannot own a player action');
-        if (initiative?.control === 'npc' && !actors.some(actor => namesActor(initiative.owner, actor)
-            && namesActor(resolution.endpoint, actor))) {
-            throw Error('NPC resolution must include the undertaking owner and their result, not only a messenger');
-        }
     } else if (actors.length) throw Error('Only NPC resolutions list autonomous actors');
 }
 
@@ -77,7 +68,7 @@ function matchedWitness(content, quote) {
 }
 
 
-export function mergeRealization(previous, updates, { subjects, messages, source, playerNames = [], initiatives = {}, requireAll = [], onDiscardedWitness = () => {} }) {
+export function mergeRealization(previous, updates, { subjects, messages, source, playerNames = [], requireAll = [], onDiscardedWitness = () => {} }) {
     const result = structuredClone(previous || {});
     const supplied = new Map((messages || []).map(m => [m.index, m]));
     const seen = new Set();
@@ -119,7 +110,7 @@ export function mergeRealization(previous, updates, { subjects, messages, source
             }
         }
         const explicitPlayable = Object.hasOwn(update, 'playable');
-        for (const p of update.playable || []) validateResolution(p.resolution, playerNames, initiatives[update.id]);
+        for (const p of update.playable || []) validateResolution(p.resolution, playerNames);
         if (explicitPlayable) reviewed.add(update.id);
         const offered = explicitPlayable ? update.playable : old.playable;
         if (new Set(offered.map(p => p.episodeId)).size !== offered.length) throw Error('Duplicate playable episode');
@@ -155,8 +146,6 @@ Keep three responsibilities separate within this response. developments holds du
 For every new subject and each playable_review_required_id provide a realization entry under the same id; other subjects and their playable material survive omission. Revising durable development alone does not mean its current playable situation changed. Omit changes when no accepted progress is claimed. A progress-only entry may omit playable; an old situation with partial or closed progress will no longer be offered. Supply revised playable material when its remaining substance matters now; an explicit empty array is valid quiet. Pending writer reviews do not require another AI call now. Use stable episodeId values for finite experiences within each undertaking. Distinguish introduced, participating, partial, completed, declined and transformed; these are evidence descriptions, not mandatory stages. Quote the actual participation, performed substance or result: an invitation is only introduced, agreement is participation, practice can be partial, a performed piece can complete that episode. Declining a booking closes that episode, not music. Retire a whole subject only on whole-subject evidence, with scope whole-subject and exact witnesses; declining one method or finishing one episode is insufficient. Previously completed/declined episodes cannot restart. A changed arrangement or collaboration is a NEW episode building on the witnessed result under the SAME subject. Keep unused possibilities without recruiting the player into them.
 
 Each newly authored playable situation needs resolution: owner npc, world, or player, and endpoint. For npc also list the distinct named NPC actors; never list a player-controlled character. This is ownership of the remaining activity, not the current camera viewpoint. A player watching an NPC or being elsewhere does not own that NPC's decisions. For world, omit actors and give the bounded physical change. For player, omit actors and describe the genuine unresolved player decision, never its answer or an assumed action.
-
-For an NPC-owned undertaking, resolution must name at least one of its declared initiative.owner actors and state that actor's result explicitly in endpoint. A messenger delivering an opening does not complete the recipients' undertaking. Use the same source-grounded names or declared NPC group, so the result can stand alone.
 
 For NPC-owned activity, endpoint contains the finite result those NPCs can reach, including their decisions, substantive work and immediate consequence or already-established return/contact. Prepare the whole encounter, not only a signal, invitation, delivered object or permission to begin. A secret note encounter includes the NPC's handling of its information and resulting action, with uncertainty and knowledge boundaries preserved. Do not expand a finite errand into a ladder of new prerequisites. Other characters can play out their own scene without the absent player supplying reaction beats. Only a genuine player choice is a player-owned endpoint. Results are conditional proposed story content, never a ledger update or offscreen fact. Do not add prose instructions, reply quotas, paragraph limits, camera commands, tone rules or a generic instruction to advance time.
 
