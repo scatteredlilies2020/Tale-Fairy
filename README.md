@@ -2,6 +2,24 @@
 
 Tale Fairy is a standalone SillyTavern extension that acts as a **background creative Game Master**, preparing a playable middle and future while the roleplay model writes the story. It combines a persistent private notebook with selective factual world awareness—not a full world simulation, a prose generator, or a fixed event script.
 
+## What changes in 0.14.31
+
+**World Info budget changes no longer blank compatible preparation.** The
+percentage budget and token cap are allocation settings, not story facts. They
+no longer invalidate a plan, its normal/swipe/regeneration packet, or a planning
+pass already in flight. Relevant book contents/selection, scan settings, cards,
+author instructions and accepted-source edits retain their existing safeguards.
+
+Reload after updating. Compatible pre-update campaign plans and current retry
+packets migrate locally when their complete old reference still matches; no AI
+call or reset is required. An already-mismatched old hash cannot prove what
+changed and is not bypassed: use **Guide now / Re-evaluate** once for that case.
+Saved prose, author notes and unrelated chat metadata are preserved.
+
+Regression coverage reproduces the 20% to 25% failure, budget-cap changes,
+reloads/retries, in-flight commits, upgrade migration and cross-page scheduling.
+This fixes packet validity, not the separate creative-specificity concern.
+
 ## What changes in 0.14.28
 
 The existing single-pass planner now separates accepted episode progress,

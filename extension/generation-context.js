@@ -101,6 +101,16 @@ function stable(value) {
 }
 
 export function plotInputKey(chatId, messages, inputs = {}) {
+    // Allocation controls affect how much lore ST sends, not the facts TF
+    // planned from. Book selection/content and scan semantics remain protected.
+    if (inputs.worldSettings) {
+        const { world_info_budget, world_info_budget_cap, ...worldSettings } = inputs.worldSettings;
+        inputs = { ...inputs, worldSettings };
+    }
+    return legacyPlotInputKey(chatId, messages, inputs);
+}
+
+export function legacyPlotInputKey(chatId, messages, inputs = {}) {
     const text = JSON.stringify(stable({ chatId, messages: messages.map(({ is_user, name, mes }) => ({ is_user: Boolean(is_user), name: name || '', mes: normalizePlotText(mes || '') })), inputs }));
     let a = 2166136261, b = 5381;
     for (let i = 0; i < text.length; i++) {
@@ -108,6 +118,53 @@ export function plotInputKey(chatId, messages, inputs = {}) {
         b = Math.imul(b, 33) ^ text.charCodeAt(i);
     }
     return `v2:${text.length}:${a >>> 0}:${b >>> 0}`;
+}
+
+// Old hashes cannot be reversed. Upgrade only when the complete old input
+// still matches, never by ignoring a mismatch or guessing historical budgets.
+// Copy-on-write preserves unrelated metadata and the caller's frozen packets.
+export function migrateCampaignBudgetKeys(metadata, { chatId, messages, inputs }) {
+    if (!chatId || metadata?.livingWorldGuide?.plannerContract !== 15) return metadata;
+    const oldReference = legacyPlotInputKey(chatId, [], inputs);
+    const reference = plotInputKey(chatId, [], inputs);
+    if (oldReference === reference) return metadata;
+    const migrateSources = value => {
+        if (!value || typeof value !== 'object') return value;
+        let next = value;
+        for (const [key, child] of Object.entries(value)) {
+            const migrated = key === 'referenceHash' && value.chatId === chatId && child === oldReference
+                ? reference : migrateSources(child);
+            if (migrated !== child) {
+                if (next === value) next = Array.isArray(value) ? [...value] : { ...value };
+                next[key] = migrated;
+            }
+        }
+        return next;
+    };
+    let next = metadata;
+    const set = (key, value) => {
+        if (value === metadata[key]) return;
+        if (next === metadata) next = { ...metadata };
+        next[key] = value;
+    };
+    set('livingWorldGuide', migrateSources(metadata.livingWorldGuide));
+    set('taleFairyCampaignAttempt', migrateSources(metadata.taleFairyCampaignAttempt));
+    const cache = metadata[GENERATION_CONTEXT_KEY];
+    if (Array.isArray(cache?.entries)) {
+        // Only the current pre-reply/full source needs cache migration. Older
+        // archived packets remain intact and can migrate when revisited.
+        const sources = [messages, ...(!messages.at(-1)?.is_user ? [messages.slice(0, -1)] : [])];
+        const keys = sources.map(source => [legacyPlotInputKey(chatId, source, inputs), plotInputKey(chatId, source, inputs)]);
+        const entries = cache.entries.map(packet => {
+            if (packet.chatId !== chatId) return packet;
+            const pair = keys.find(([old]) => old === packet.inputKey);
+            if (!pair) return packet;
+            const migrated = migrateSources(packet);
+            return { ...migrated, inputKey: pair[1], selection: { ...migrated.selection, inputKey: pair[1] } };
+        });
+        if (entries.some((entry, i) => entry !== cache.entries[i])) set(GENERATION_CONTEXT_KEY, { ...cache, entries });
+    }
+    return next;
 }
 
 export function cachedGenerationContext(cache, inputKey, chatId) {

@@ -11,6 +11,7 @@ import { readEvidenceProviders, evidenceRevisionKey, registerEvidenceProvider } 
 import { readCampaignContinuity } from '../extension/campaign-continuity.js';
 import { playableSituation } from '../extension/undertaking-lifecycle.js';
 import { extractTaleFairyContext } from '../extension/request-injection.js';
+import { legacyPlotInputKey } from '../extension/generation-context.js';
 
 const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
 const settle = () => new Promise(resolve => setImmediate(resolve));
@@ -222,6 +223,45 @@ test('planner prompt changes invalidate attempt identity without changing accept
     assert.equal(after.referenceHash, before.referenceHash);
     assert.deepEqual(after.messages, before.messages);
     assert.equal(h.requests.length, 0);
+});
+
+test('budget changes during a paid planning pass preserve its commit and normal review cadence', async () => {
+    let release;
+    const h = browser(async () => {
+        await new Promise(resolve => { release = resolve; });
+        return { choices: [{ message: { content: JSON.stringify(design) }, finish_reason: 'stop' }] };
+    });
+    let budget = 20;
+    h.scope.getWorldInfoSettings = () => ({ world_info_depth: 2, world_info_budget: budget, world_info_budget_cap: 0 });
+    const running = h.scope.analyzeCampaignNow();
+    await settle(); await settle();
+    budget = 25;
+    release();
+    await running;
+    assert.equal(h.state().campaignPreparation.revision, 1);
+    assert.ok(h.prepare().payload);
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 1, 'budget changes must not spend another planner call');
+});
+
+test('upgrade respects an existing legacy shared-storage planner reservation', async () => {
+    const h = browser();
+    h.scope.getWorldInfoSettings = () => ({ world_info_depth: 2, world_info_budget: 20, world_info_budget_cap: 0 });
+    await h.scope.analyzeCampaignNow();
+    const current = h.scope.readCampaignSnapshot();
+    const legacy = { ...current.attempt, key: 'legacy-runtime-key',
+        referenceHash: legacyPlotInputKey('story', [], h.scope.generationInputs(h.context, h.state())) };
+    const state = h.state();
+    state.campaignPreparation.source.referenceHash = legacy.referenceHash;
+    h.context.chatMetadata = saveState({ ...h.context.chatMetadata, taleFairyCampaignAttempt: legacy }, state);
+    const storage = h.scope.plannerStorage();
+    storage.setItem('taleFairyCampaignAttempt:story', JSON.stringify(legacy));
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.scope.readCampaignSnapshot().attempt.referenceHash, current.referenceHash);
+    h.scope.getWorldInfoSettings = () => ({ world_info_depth: 2, world_info_budget: 25, world_info_budget_cap: 4096 });
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 1, 'the old shared copy cannot undo a proven metadata migration');
 });
 
 test('actual single-pass planner reads CM privately, once per scheduled pass, without feeding it back', async () => {

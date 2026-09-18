@@ -6,7 +6,7 @@ import { emptyCampaign, mergeCampaign, campaignPayload, validCampaignState, CAMP
 import { CampaignRuntime } from '../extension/campaign-runtime.js';
 import * as injection from '../extension/request-injection.js';
 import { defaultState, saveState, loadState, buildPromptPayload, guidanceSnapshot, isDirectionCurrent } from '../extension/state.js';
-import { generationContextEntries, GENERATION_CONTEXT_KEY, plotInputKey } from '../extension/generation-context.js';
+import { generationContextEntries, GENERATION_CONTEXT_KEY, legacyPlotInputKey, plotInputKey } from '../extension/generation-context.js';
 import { generationHarness } from './helpers/generation-harness.js';
 
 const messages = () => [{ is_user: false, name: 'Mara', mes: 'The public bill is finished.' },
@@ -96,6 +96,110 @@ test('swipes never repair a campaign and cannot retain discarded-response prepar
     assert.equal(other.prepare('swipe').payload, '');
     await other.scope.repairDeferredReplacementPlan();
     assert.equal(other.calls.length, 0);
+});
+
+for (const type of ['normal', 'swipe', 'regenerate']) test(`${type} keeps preparation across World Info budget changes and reloads`, async () => {
+    const h = generationHarness(messages());
+    let budget = 20, cap = 0;
+    const settings = () => ({ world_info_depth: 2, world_info_budget: budget, world_info_budget_cap: cap });
+    h.scope.getWorldInfoSettings = settings;
+    attach(h);
+    const original = h.prepare().payload;
+    assert.ok(original);
+    budget = 25;
+    cap = 4096;
+    await h.emit('WORLDINFO_SETTINGS_UPDATED');
+    assert.equal(h.prepare().payload, original);
+    if (type !== 'normal') h.context.chat.push({ is_user: false, mes: 'Discarded wording.' });
+    const reopened = generationHarness(structuredClone(h.context.chat), h.state(), structuredClone(h.context.chatMetadata));
+    reopened.scope.getWorldInfoSettings = settings;
+    await reopened.emit('GENERATION_STARTED', type);
+    assert.equal(reopened.prepare(type).payload, original);
+    assert.equal(reopened.prepare(type).preparedUsable, true);
+    const request = [{ role: 'user', content: 'I listen.' }];
+    injection.ensureGuidanceInChat(request, reopened.prepare(type).payload, { role: 'user', depth: 1 });
+    assert.equal(injection.extractTaleFairyContext({ messages: request }), original);
+    assert.equal(h.calls.length + reopened.calls.length, 0);
+});
+
+test('budget tolerance does not admit changed lore, instructions, cards, or accepted source', () => {
+    for (const change of [
+        h => { h.scope.worldInfoCache.set('Story', { entries: { 1: { content: 'Changed fact.' } } }); },
+        h => { h.scope.selected_world_info = ['Other']; },
+        h => { h.context.chatMetadata.note_prompt = 'New author instruction.'; },
+        h => { h.context.card = { description: 'Changed character.' }; },
+        h => { h.context.chat[0].mes = 'Changed accepted history.'; },
+        h => { h.scope.getWorldInfoSettings = () => ({ world_info_depth: 8, world_info_budget: 25 }); },
+    ]) {
+        const h = generationHarness(messages());
+        h.scope.selected_world_info = ['Story'];
+        h.scope.worldInfoCache.set('Story', { entries: { 1: { content: 'Original fact.' } } });
+        h.scope.getWorldInfoSettings = () => ({ world_info_depth: 2, world_info_budget: 20 });
+        attach(h);
+        assert.ok(h.prepare().payload);
+        h.scope.getWorldInfoSettings = () => ({ world_info_depth: 2, world_info_budget: 25 });
+        change(h);
+        h.scope.generationGuideSelection = null;
+        assert.equal(h.prepare().payload, '');
+    }
+});
+
+function legacyBudgetPlan(h, budget = 20) {
+    h.scope.getWorldInfoSettings = () => ({ world_info_depth: 2, world_info_budget: budget, world_info_budget_cap: 0 });
+    attach(h);
+    const payload = h.prepare().payload;
+    const metadata = structuredClone(h.context.chatMetadata);
+    const inputs = h.scope.generationInputs(h.context, h.state());
+    const referenceHash = legacyPlotInputKey('story', [], inputs);
+    const source = metadata.livingWorldGuide.campaignPreparation.source;
+    source.referenceHash = referenceHash;
+    metadata.taleFairyCampaignAttempt = { ...source, assistantCount: 1, status: 'complete', key: 'old-runtime-key' };
+    const packet = metadata[GENERATION_CONTEXT_KEY].entries[0];
+    packet.inputKey = legacyPlotInputKey('story', h.context.chat, inputs);
+    packet.selection.inputKey = packet.inputKey;
+    packet.selection.campaignPreparation.source.referenceHash = referenceHash;
+    packet.plannerState.campaignPreparation.source.referenceHash = referenceHash;
+    return { metadata, payload };
+}
+
+test('upgrade preserves a proven legacy campaign and retry packet before later budget changes', async () => {
+    const h = generationHarness(messages());
+    const { metadata, payload } = legacyBudgetPlan(h);
+    const original = JSON.stringify(metadata);
+    const reopened = generationHarness([...messages(), { is_user: false, mes: 'Discarded reply.' }], metadata.livingWorldGuide, metadata);
+    reopened.scope.getWorldInfoSettings = h.scope.getWorldInfoSettings;
+    await reopened.emit('GENERATION_STARTED', 'swipe');
+    const packet = reopened.prepare('swipe');
+    assert.equal(packet.payload, payload);
+    assert.equal(packet.reused, true);
+    assert.notEqual(reopened.state().campaignPreparation.source.referenceHash, metadata.livingWorldGuide.campaignPreparation.source.referenceHash);
+    assert.equal(reopened.context.chatMetadata.taleFairyCampaignAttempt.referenceHash, reopened.state().campaignPreparation.source.referenceHash);
+    assert.equal(JSON.stringify(metadata), original, 'never mutate the old snapshot or its story material');
+    const migrated = JSON.stringify(reopened.context.chatMetadata);
+    assert.equal(reopened.scope.migrateCampaignReferences(), false, 'migration is idempotent');
+    assert.equal(JSON.stringify(reopened.context.chatMetadata), migrated);
+    reopened.scope.getWorldInfoSettings = () => ({ world_info_depth: 2, world_info_budget: 25, world_info_budget_cap: 8192 });
+    await reopened.emit('WORLDINFO_SETTINGS_UPDATED');
+    assert.equal(reopened.prepare('swipe').payload, payload);
+    assert.equal(reopened.calls.length, 0);
+});
+
+test('upgrade never guesses an unmatched old budget or bypasses changed source/reference checks', async () => {
+    for (const change of [
+        h => { h.scope.getWorldInfoSettings = () => ({ world_info_depth: 2, world_info_budget: 25, world_info_budget_cap: 0 }); },
+        h => { h.context.card = { description: 'A different character.' }; },
+        h => { h.context.chatMetadata.note_prompt = 'Different author instructions.'; },
+        h => { h.context.chat[0].mes = 'Different accepted history.'; },
+    ]) {
+        const h = generationHarness(messages());
+        const { metadata } = legacyBudgetPlan(h);
+        const reopened = generationHarness([...messages(), { is_user: false, mes: 'Discarded reply.' }], metadata.livingWorldGuide, metadata);
+        reopened.scope.getWorldInfoSettings = h.scope.getWorldInfoSettings;
+        change(reopened);
+        await reopened.emit('GENERATION_STARTED', 'swipe');
+        assert.equal(reopened.prepare('swipe').payload, '');
+        assert.equal(reopened.calls.length, 0);
+    }
 });
 
 test('malformed saved campaign is preserved for inspection but never injected', () => {

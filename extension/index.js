@@ -43,11 +43,11 @@ import { defaultPreparedWorld, preparedWorldUsable, unchangedSourcePrefix, stamp
 import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.9';
 import { canRetainSuccessfulPlan, createSafetyFallbackState } from './fallback-direction.js?v=0.14.22';
 import { classifyAssistantReply } from './response-usability.js?v=0.13.9';
-import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.22';
+import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, legacyPlotInputKey, migrateCampaignBudgetKeys, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.31';
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.14.30';
+const RUNTIME_VERSION = '0.14.31';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -715,7 +715,20 @@ function replacementPlanningDeferred(context = currentContext()) {
         messagesFromChat(context.chat || []), String(context.getCurrentChatId?.() || ''), fingerprintMessages);
 }
 
+function migrateCampaignReferences(context = currentContext()) {
+    const state = loadState(context.chatMetadata);
+    const next = migrateCampaignBudgetKeys(context.chatMetadata, {
+        chatId: String(context.getCurrentChatId?.() || ''), messages: messagesFromChat(context.chat || []),
+        inputs: generationInputs(context, state),
+    });
+    if (next === context.chatMetadata) return false;
+    context.updateChatMetadata(next);
+    scheduleVerificationPersistence(currentContext());
+    return true;
+}
+
 async function warmPlotWorldInputs(context = currentContext()) {
+    const chatId = String(context.getCurrentChatId?.() || '');
     // Page reload clears ST's in-memory lore cache. Read the selected books
     // before deciding a saved packet is incompatible; this is not an AI call.
     await Promise.all(plotWorldNames(context, world_info, selected_world_info).map(async name => {
@@ -723,6 +736,7 @@ async function warmPlotWorldInputs(context = currentContext()) {
         try { await loadWorldInfo(name); }
         catch (error) { console.warn(`[${EXTENSION_ID}] Could not load plot input book ${name}`, error); }
     }));
+    if (chatId === String(currentContext().getCurrentChatId?.() || '')) migrateCampaignReferences(currentContext());
 }
 
 function retryPlannerSourceMatches(context, { fingerprint, messageCount, allowOneAssistantAppend } = {}) {
@@ -769,16 +783,30 @@ function readCampaignSnapshot() {
         enabled: context.chatMetadata?.taleFairyEvidence !== 'off' });
     const continuity = evidence.find(e => e.provider === 'continuity-memory') || { status: replacement ? 'replacement' : 'off' };
     const worlds = plotWorldNames(context, world_info, selected_world_info);
+    const inputs = generationInputs(context, state);
+    const referenceHash = plotInputKey(chatId, [], inputs);
     let attempt = context.chatMetadata?.[CAMPAIGN_ATTEMPT_KEY];
     try {
-        const shared = JSON.parse(plannerStorage()?.getItem(`${CAMPAIGN_ATTEMPT_KEY}:${chatId}`) || 'null');
+        let shared = JSON.parse(plannerStorage()?.getItem(`${CAMPAIGN_ATTEMPT_KEY}:${chatId}`) || 'null');
+        // Metadata may already have upgraded this exact reservation before a
+        // later budget change. Do not let its old shared copy undo that proof.
+        if (attempt?.referenceHash === referenceHash && attempt?.runKey
+            && shared?.chatId === chatId && shared.runKey === attempt.runKey && shared.key === attempt.key
+            && shared.fingerprint === attempt.fingerprint && shared.messageCount === attempt.messageCount) {
+            shared = { ...shared, referenceHash };
+        }
         if (shared?.chatId === chatId && (!attempt || shared.at >= attempt.at)) attempt = shared;
     } catch { /* Metadata remains the reload fallback when shared storage is unavailable. */ }
+    // A pre-upgrade cross-page reservation may outrank migrated chat metadata.
+    // Preserve deduplication only with the same complete legacy-reference proof.
+    if (attempt?.chatId === chatId && attempt.referenceHash === legacyPlotInputKey(chatId, [], inputs)) {
+        attempt = { ...attempt, referenceHash };
+    }
     return { state: state.campaignPreparation || emptyCampaign(), messages: accepted, chatId, replacement,
         enabled: s.enabled, attempt,
         playerNames: [...new Set([context.name1, ...accepted.filter(m => m.is_user).map(m => m.name)]
             .filter(name => typeof name === 'string' && name.trim()))],
-        referenceHash: plotInputKey(chatId, [], generationInputs(context, state)),
+        referenceHash,
         requestSignature: campaignFingerprint({ contract: OWNED_SCHEMA, prompt: OWNED_SYSTEM, settings: Object.fromEntries(['analysisSource', 'analysisProvider', 'analysisProfileId',
             'analysisModel', 'analysisUrl', 'analysisSecretId', 'analysisReasoningMode', 'analysisTemperature', 'maxPromptTokens', 'continuityIntegration', 'summaryContextTokens']
             .map(key => [key, s[key]])) }),
@@ -1074,6 +1102,7 @@ function archiveReadyPlannerContexts(metadata, states, context = currentContext(
 
 function deferReplacementPlanning(context = currentContext(), sourceMessages = null, { preserveSelection = false } = {}) {
     if (!getSettings().enabled) return;
+    if (migrateCampaignReferences(context)) context = currentContext();
     const messages = sourceMessages || generationRetrySource(messagesFromChat(context.chat || []), true);
     const chatId = String(context.getCurrentChatId?.() || '');
     const current = loadState(context.chatMetadata);
@@ -1158,7 +1187,11 @@ async function repairDeferredReplacementPlan() {
 }
 
 function prepareGenerationGuide(state, type) {
-    const context = currentContext();
+    let context = currentContext();
+    if (migrateCampaignReferences(context)) {
+        context = currentContext();
+        state = loadState(context.chatMetadata);
+    }
     const chatId = String(context.getCurrentChatId?.() || '');
     const messages = messagesFromChat(context.chat || []);
     const replacement = type === 'swipe' || type === 'regenerate';
