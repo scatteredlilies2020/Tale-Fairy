@@ -19,10 +19,6 @@ export function eventPoints(value) {
 }
 export const eventPointWire = item => ({ ...plotPointWire(item),
     plot_points: eventPoints(typeof item.premise === 'string' ? JSON.parse(item.premise) : item.premise) });
-export function eventWriterWire(item) {
-    const { development, participation, ...material } = eventPointWire(item);
-    return material;
-}
 // Stable storage keys keep archived candidates readable. The model and writer
 // see plot vocabulary only for records explicitly produced in the new format.
 export const plotPointWire = item => ({ id: item.id, ...(item.initiative ? { initiative: item.initiative } : {}),
@@ -176,9 +172,18 @@ function contextJson(value) {
 export function campaignPayload(state, instructions = []) {
     const authored = instructions.filter(text => typeof text === 'string' && text.trim());
     if (!state?.revision) return authored.length ? `<tale-fairy-context>\n${contextJson({
-        provenance: 'User-provided author instructions, retained verbatim. Apply according to their stated intent; these are not AI-generated facts or automatic canon declarations.',
         author_instructions: authored,
     })}\n</tale-fairy-context>` : '';
+    if (state.preparationFormat === EVENT_POINTS_FORMAT) {
+        // TF supplies story material, not a second writing preset. Ownership,
+        // review commentary and closure metadata remain private to planning.
+        const proposed_events = state.developments.flatMap(item => eventPointWire(item).plot_points.map(point => point.event));
+        if (!proposed_events.length && !authored.length) return '';
+        return `<tale-fairy-context>\n${contextJson({
+            ...(proposed_events.length ? { proposed_events } : {}),
+            ...(authored.length ? { author_instructions: authored } : {}),
+        })}\n</tale-fairy-context>`;
+    }
     // Completed local scaffolding remains available to future planning and
     // inspection, but is no longer an always-injected catalogue of old hooks.
     // Legacy prototype strings remain intact until a fresh pass classifies them.
@@ -189,18 +194,11 @@ export function campaignPayload(state, instructions = []) {
     return `<tale-fairy-context>\n${contextJson({
         provenance: 'Private creative guidance prepared from an earlier conversation prefix. All unmanifested content is proposed, never established history, character knowledge, or a required future. The latest conversation governs compatibility and which possibilities have already happened or been refused. Source rules and the player’s explicit statements take precedence over NPC guesses; an NPC’s uncertainty is not a limit on the player. Treat NPC explanations as provisional unless the evidence actually establishes them.',
         application: 'Use the concrete substance when it fits the ongoing RP. Let NPC initiatives and undertaken activities develop to meaningful results where no further player choice is required. When the player requests an experience, show its essential discovery, change or result in the prose; do not assume it already completed in a status panel or replace it with a recap. Independent NPC work can occur offscreen, but this supplies no unseen player actions or experiences. Preserve player ownership. Outcomes can conclude an episode without a successor obligation. These are developing possibilities across exchanges; no next action or fictional time advance is prescribed.',
-        ...([PLOT_POINTS_FORMAT, EVENT_POINTS_FORMAT].includes(state.preparationFormat) ? {
+        ...(state.preparationFormat === PLOT_POINTS_FORMAT ? {
             application: 'Use these proposed plot points and NPC/world objectives to support enjoyable connected events when they fit the ongoing RP. They are not scheduled scenes, required outcomes or lessons. Let characters pursue their own aims and let the surrounding situation respond. Once an activity is underway, let it produce fresh situations rather than repeatedly promising it, restating its hook or adding routine prerequisites. Give routine logistics proportionate space; linger when the player shows interest or something meaningful happens, not as a default obstacle to events. The player controls their own actions, participation and commitments; never move them or decide for them as part of a group action. Newer accepted play governs what remains relevant. Do not force immediate uptake or revive finished business. Leave events and outcomes to the unfolding RP.',
             campaign: state.campaign, current_episode: episode,
-            plot_points_and_objectives: state.developments.map(state.preparationFormat === EVENT_POINTS_FORMAT ? eventWriterWire : plotPointWire),
+            plot_points_and_objectives: state.developments.map(plotPointWire),
         } : { campaign: state.campaign, episode_resolution: episode, developments: state.developments }),
-        ...(state.preparationFormat === EVENT_POINTS_FORMAT ? {
-            // The conversation owns present circumstances. Old scene summaries
-            // and campaign essays must not become another always-injected plan.
-            campaign: undefined, current_episode: undefined,
-            ...(episode?.status === 'finished' ? { finished_business: episode.subject } : {}),
-            application: 'These are optional event opportunities and ongoing NPC/world objectives, not established facts, a schedule, required outcomes or character lessons. Use their substance when it fits. An opportunity is an event to develop, not a hint to tease indefinitely: once it begins, carry its connected NPC actions and reactions through a meaningful change unless an actual player choice intervenes. An NPC’s own decision is not a player-agency stop. Do not substitute repeated glances, half-starts or internal debate for the interaction. The current conversation, not this older preparation, determines present circumstances. NPCs may carry out ordinary arrangements and decisions within their established authority without asking the player to manage every step. Give routine logistics brief connective space unless the player takes interest or a worthwhile event happens within them. When an activity is chosen and underway, develop the activity itself instead of repeatedly delaying it behind another prerequisite or invitation. Never supply player actions, group movement involving the player, expenditure of player resources or new commitments without their choice. Player participation stays optional. Do not force immediate uptake, select an ending, or reopen finished business; adapt or leave aside opportunities overtaken by play.',
-        } : {}),
         ...(authored.length ? { author_instruction_provenance: 'User-provided instructions retained verbatim, not AI-classified or automatically declared canon. Their stated intent takes precedence over this preparation.', author_instructions: authored } : {}),
     })}\n</tale-fairy-context>`;
 }

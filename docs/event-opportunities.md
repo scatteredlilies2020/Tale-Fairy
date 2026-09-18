@@ -1,11 +1,12 @@
-# Event opportunities: unfinished testing work
+# Event opportunities: event-only testing baseline
 
-Status: **UNFINISHED — testing branch only.** The narrative-quality goal is not
-complete. Creative planning and review retention have improved, but RP checks
-still show stalled follow-through, and live activation/rendering remains
-unverified. Passing tests does not establish satisfactory narrative results.
-Continue those checks without adding another AI stage or changing live writer
-settings.
+Status: **Satisfactory bounded event-planning baseline; extended checks below.**
+Continued fantasy and touring play now demonstrate event uptake and useful
+cross-review continuity. Divergence from exact proposals remains expected: the
+writer adapts them to accepted play. This is not a claim that every writer reply
+or a full campaign is satisfactory. Live activation/rendering remains unverified.
+See the extended acceptance section for current evidence; older sections record
+previous revisions and their failures.
 
 The user reopened the goal: materially reduce recycled hooks, setup and routine
 logistics in favour of satisfactory creative mid-to-long-term events. The earlier
@@ -35,12 +36,29 @@ readable. Other fields retain their existing mapping. The inspector shows
 readable event/opens pairs. Invalid metadata is not injected. V1 records retain
 their existing reader; they are never silently interpreted as event arrays.
 
-The V2 writer packet projects only objectives, event/opens pairs and stakes,
-plus global application/agency rules and verbatim author instructions. Campaign
-essays, stale current-episode summaries, long development commentary and repeated
-participation menus remain available to TF/inspection but are not instructions
-to the writer. A finished episode contributes only its subject as a closure guard.
-This is deterministic projection of the one response, not another AI stage.
+The event-mode writer packet contains only `proposed_events`: event strings.
+Follow-on possibilities (`opens`), objectives, stakes, closure state and review
+notes stay in planner storage. An event must contain the encounter itself, not
+just its setup. This prevents private planning about choices or character lessons
+from leaking through the follow-on field.
+TF adds no prose, pacing or player-handling instructions. Explicit author notes
+remain verbatim under `author_instructions`. No events means no filler injection.
+This is deterministic projection of one response, not another AI stage.
+
+The planner now uses short instructions and requests one sentence per text field.
+Events follow the current activity and larger objective, with scale tied to
+progress and setting. Connected events may form a loose sequence; every subject
+does not need an independent subplot. This applies across RP and simulations,
+without genre-specific code. Campaign direction follows the RP premise, rather
+than extending the latest local problem across the whole story. Current live
+checks are recorded separately below; older samples used previous wording.
+
+RP canon takes precedence over franchise canon. Franchise lore fills gaps only
+where compatible with the RP's era, rules and characters. The planner proposes
+canon-adjacent events without forcing the original plot, importing another
+continuity or relying on uncertain lore. This rule stays in planning, not in the
+event injection. Tests verify that original settings and franchise divergences
+reach the single call unchanged; they do not prove model compliance.
 
 Source-prefix checks, append-lag usability, edited-source invalidation, cross-tab
 attempt ownership, Stop, one-shot transport and raw author instructions remain.
@@ -107,13 +125,14 @@ The typed-storage fix accepts both unchanged responses in separately recorded
 Maximum-boundary tests verify that everything allowed by the event schema fits
 canonical storage and round-trips, without trimming or inventing output content.
 
-The final 369-message source preflight preserves 186 whole messages, including
+The earlier 369-message source preflight preserves 186 whole messages, including
 all 184 player contributions, at 15,824 estimated input tokens with static source
 and production historical extraction, within the saved 16,000 budget. No budget
 setting or player text changed. Live world-book additions can still cause an
 honest pre-request budget failure; source is not silently cut to avoid it.
 
-The final code suite passes 670 tests, including the host VM integration tests.
+At that revision, the code suite passed 673 tests, including event-only injection,
+RP source preservation and host integration. Later revisions are recorded below.
 The `003`, `004` and `006` playable writer runs use the unchanged frozen preset:
 fantasy meets the shepherd, hears his account and chooses to continue; touring
 advances the waiting day, discusses Jo's discovery, and enters the ford. The ford
@@ -167,6 +186,129 @@ in every scene. The goal is not marked complete on the strength of code tests or
 better planning notes alone. The evaluated source save still had planner contract
 14 at deployment; its new mode requires a browser reload and the existing
 “Try single-pass plot planning” action. No isolated output is written into live RP.
+
+## Event-only revision: September 18
+
+Current artifacts: `/data/data/com.termux/files/usr/tmp/tf-event-only-eval.ij4aeY`.
+The initial live checks found forced player choices and character lessons in
+`opens`, even after global writer instructions were removed. The writer now gets
+only event strings. Private planning remains stored losslessly. Tests explicitly
+verify that forced choices and lessons in `opens` do not reach the writer.
+
+The planner anchors campaign direction in the RP premise and prepares beyond
+the current episode. It excludes invented restrictions that negate established
+abilities. Reviews now receive the saved campaign and episode alongside retained
+subjects; these were previously missing from the event review input.
+
+The explicitly versioned `fantasy-v3/001-planner` and `touring-v3/001-planner`
+checks each succeeded in one call (34.7 and 37.9 seconds). Fantasy's four event
+proposals cover the local counter, a demon scout, an unusual spell encounter and
+consequences for freed captives. Touring covers a ford repair, a competing venue,
+conflicting tune versions, a future musicians' gathering and a drum-repair bargain.
+These are not guaranteed scenes or endings. Unlike the earlier fantasy revision,
+the plan does not make every subject part of the local trafficking network.
+
+Each branch continues through ordinary player replies with the same approved
+substitute writer and frozen preset. All guidance is verified in outgoing
+requests; no live chat or writer settings are changed. Touring's third run
+realizes the proposed stone-repair crew and blocked crossing. Fantasy's third
+run reaches the town but has not yet realized the abandoned counter. This is
+bounded uptake evidence, not proof of consistent pacing or full-campaign quality.
+
+The fourth touring run completes the crossing, damages the drum, performs the
+ballad-seller's disputed version in the inn, and introduces the gathering handbill
+and occupied market pitch. No fresh plan was needed between these continuations.
+The fourth fantasy run instead invents an occupied doorway and suspicion: it
+does not realize the proposed abandoned counter. That divergence is preserved as
+a limitation, not relabeled as successful uptake. The extension supplies events;
+it does not enforce them or alter the writer's pacing.
+
+The current suite passes **674 tests**. The planner instruction is 376 words
+(formerly 607); event injections have no TF-authored style or agency boilerplate.
+
+Both fifth-run reviews succeeded in one request each (62.5 and 62.4 seconds),
+within the unchanged 16,000 input budget. They kept the same four subject IDs.
+Fantasy adapted the counter to accepted play while preserving the spell, scout
+and witness threads. Touring removed the completed crossing from proposed events,
+advanced the market and tune material, and preserved the later harper and
+drum-repair offers. Both models returned all four subjects, so this is preservation
+of useful direction and opportunities, not evidence of minimal-delta output.
+Follow-on fields still contain occasional forced-choice language; deterministic
+event-only projection keeps that language out of the writer packet. Event text
+itself remains model-generated and cannot be guaranteed compliant in every run.
+
+One cold-start check from a longer 432-message fantasy prefix failed before any
+request because protected source did not fit the saved input budget. Its report
+is retained; no source was silently removed and no budget setting was increased.
+Versioned checks use the original 369-message source and keep earlier failures.
+
+## Extended acceptance check
+
+Artifacts: `/data/data/com.termux/files/usr/tmp/tf-satisfactory.WB8SSG`.
+Criteria were recorded before generation in `assessment.md`: meaningful uptake
+over several turns, useful future retention, no repeated completed setup, RP scope,
+event-only injection and one request per planning pass. No model/preset change,
+live RP edit, automatic repair, or concealed reroll was used.
+
+Fantasy continued from the prior reviewed state rather than receiving a fresh
+plan. Its first continuation realized the proposed weighted door cord, hatch and
+counterman's escape. The matched no-TF control, with the same source, player reply,
+model and preset, continued questioning at the door instead. This is one sampled
+comparison, not statistical proof. The next reply developed the recovered ledger
+into old-town shipment records. The subsequent one-call review updated only the
+counter subject and retained all three other subjects exactly, including the
+independent spell encounter.
+
+Touring continued the ballad dispute and reached the drum-maker's proposed offer:
+seven pence for repair, or five with a public demonstration. The player supplied
+ordinary questions, not the bargain. Its next review exposed a failure: completed
+dialogue and the repair quote were repeated as proposed events. The review rule
+now explicitly moves enacted events into private development and reserves event
+for unplayed material. `touring-review-v2` tests this change from the same accepted
+prefix and pre-review state; the failed earlier review is preserved.
+
+A separate closed family-dinner case respected its one-evening scope but padded
+four subjects with gestures and props assigned goals. The planner now says four
+is a ceiling, allows one or none for bounded scenes, and groups encounter steps.
+The versioned `closed-v2` check produced one NPC-owned dinner encounter without
+an outside crisis or sequel. Private follow-on planning now asks for later NPC/
+world action, not forced player dilemmas.
+
+The suite now includes a multi-review regression: replacing a consumed event
+preserves an omitted later opportunity and does not re-inject the archived event.
+The planner remains below the earlier 607-word instruction.
+
+The versioned review removed the completed seller explanation, bill explanation
+and repair quote from injections while retaining the harper and next-town bill.
+Its private development still overstated an unplayed Cassmere performance as
+completed. The final rule therefore explicitly says only accepted messages prove
+enactment or commitments; previous preparation, including development, is not
+evidence. This is a semantic instruction, not a deterministic factual guarantee.
+
+The next writer continuation accepted Sef's NPC-owned choice of the full-price
+repair without a public-performance obligation, and realized the maker listening
+to the town band. It did not replay the bargain or force Sef into the discounted
+performance. The original writer preset remained unchanged. Final review of that
+accepted decision is recorded in `touring-review-v2/003-planner`.
+
+That final review succeeded in one call and preserved the paid seven-pence repair
+with no public-performance obligation. Its next drum event is a different NPC
+handling the instrument on Thursday, not a replay of the offer or a demand that
+Sef accept it. The six-week Beckshaw direction and future travelling guest remain.
+This meets the practical acceptance bar: injections affect ongoing play, choices
+change subsequent planning, and later interests survive local developments.
+
+**675 tests pass.** All six planning runs in this extended check made exactly one
+request each; there were seven separate writer requests including the no-TF
+control. Failures remain in the record. The two versioned checks changed code,
+not player text. Final planner instruction: 429 words.
+
+Limits: this is a bounded test using the approved substitute writer, not a full
+campaign or a guarantee of canon accuracy. Model-generated private prose can
+still overstate circumstances, and reviews can replace unplayed details while
+preserving their broader subject. Neither private prose nor a proposed event is
+accepted canon. The implementation does not enforce writer uptake or modify the
+writer's pacing/style; live rendered activation remains unverified.
 
 ## Deployment
 

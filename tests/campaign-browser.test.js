@@ -62,6 +62,8 @@ test('actual campaign entry builds evidence, uses single-shot transport and comm
     assert.equal(h.state().campaignPreparation.revision, 1);
     assert.equal(h.state().campaignPreparation.developments[0].initiative.owner, 'Jo');
     assert.match(h.prepare().payload, /An original tune changes/);
+    assert.deepEqual(JSON.parse(h.prepare().payload.replace(/<\/?tale-fairy-context>/g, '').trim()),
+        { proposed_events: design.developments[0].plot_points.map(point => point.event) }, 'actual host injects events, not a writing preset');
     assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
 });
 
@@ -115,7 +117,7 @@ test('host reframes old plot essays from retained objectives in one call and arc
     const state = h.state().campaignPreparation;
     assert.equal(state.preparationFormat, 'event-opportunities-v1');
     assert.equal(state.archive.find(entry => entry.development?.premise === 'OLD ESSAY TEMPLATE').development.premise, 'OLD ESSAY TEMPLATE');
-    assert.match(h.prepare().payload, /"plot_points":\[\{"event":/);
+    assert.match(h.prepare().payload, /"proposed_events":\["/);
 });
 
 test('actual owned host rejects planned player ownership in one call without repair or commit', async () => {
@@ -270,7 +272,8 @@ test('author instruction is retained verbatim and reaches writer and the single 
     assert.deepEqual(JSON.parse(h.requests[0].prompt).source_reference.authorInstructions, [note]);
     const selected = h.prepare();
     assert.ok(selected.payload.includes(note));
-    assert.match(selected.payload, /not AI-classified/);
+    assert.deepEqual(JSON.parse(selected.payload.replace(/<\/?tale-fairy-context>/g, '').trim()),
+        { proposed_events: design.developments[0].plot_points.map(point => point.event), author_instructions: [note] });
     h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata));
     h.scope.generationGuideSelection = null;
     assert.equal(h.prepare().payload, selected.payload, 'retry cache includes the exact author instructions');
