@@ -83,6 +83,31 @@ test('host review boundary follows the accepted preparation prefix and resets af
     assert.deepEqual(rebuilt.previous_preparation.review_scope.newly_reviewed_indices, [0, 1, 2, 3]);
 });
 
+test('a planning-scope upgrade reconsiders earlier player choices and replaces the local plan in one call', async () => {
+    const h = browser();
+    await h.scope.analyzeCampaignNow();
+    const state = h.state();
+    for (let i = 0; i < 40; i++) h.context.chat.push(
+        { is_user: false, name: 'Mara', mes: `Stop ${i}.` },
+        { is_user: true, name: 'Neri', mes: `We choose region ${i}.` });
+    state.campaignPreparation.source.messageCount = h.context.chat.length;
+    state.campaignPreparation.source.fingerprint = h.scope.campaignFingerprint(h.context.chat);
+    delete state.campaignPreparation.planningScope;
+    h.context.chatMetadata = saveState(h.context.chatMetadata, state);
+    h.context.chat.push({ is_user: false, name: 'Mara', mes: 'More local business.' });
+    const built = h.scope.buildCampaignHostInput(h.scope.readCampaignSnapshot());
+    const payload = JSON.parse(built.prompt);
+    assert.equal(payload.previous_preparation.reframe_required, true);
+    assert.deepEqual(payload.accepted_messages.filter(m => m.role === 'user').map(m => m.index),
+        h.context.chat.flatMap((m, index) => m.is_user ? [index] : []), 'protect all earlier player choices during the one-time reframe');
+    assert.deepEqual(payload.previous_preparation.developments, []);
+    assert.equal(payload.previous_preparation.scope_reset, true);
+    await h.scope.analyzeCampaignNow({ manual: true });
+    assert.equal(h.requests.length, 2, 'one call for the initial plan and one for the scope upgrade');
+    assert.equal(h.state().campaignPreparation.planningScope, 'independent-developments-v1');
+    assert.equal(h.state().campaignPreparation.archive.filter(entry => entry.development).length, 1);
+});
+
 test('actual owned host review converts retained legacy subjects and archives their complete prior form', async () => {
     const h = browser();
     await h.scope.analyzeCampaignNow();

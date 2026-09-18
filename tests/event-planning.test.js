@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { ownedInput, ownedPass, decodeOwnedResult, OWNED_SCHEMA, OWNED_SYSTEM } from '../extension/event-planning.js';
+import { ownedInput, ownedPass, decodeOwnedResult, OWNED_SCHEMA, OWNED_SYSTEM, EVENT_PLANNING_SCOPE } from '../extension/event-planning.js';
 import { emptyCampaign, mergeCampaign, validCampaignState, campaignPayload, eventPointWire, EVENT_POINTS_FORMAT } from '../extension/campaign-planner.js';
 
 const point = { event: 'A competing musician offers a joint performance of two incompatible arrangements.', opens: 'Rehearsal could create a shared version or a public musical rivalry.' };
@@ -11,6 +11,29 @@ const raw = { campaign: 'A touring company develops its repertoire.', episode: {
 const source = { chatId: 'story', referenceHash: 'reference', messageCount: 1, fingerprint: 'source' };
 const input = { prompt: '{}', indices: [0], playerNames: ['Neri'] };
 const generate = async () => ({ text: JSON.stringify(raw), finishReason: 'stop' });
+
+test('one response plans the wider development before deriving writer events', async () => {
+    const fields = OWNED_SCHEMA.value.properties.developments.items;
+    assert.ok(fields.required.indexOf('development') < fields.required.indexOf('plot_points'));
+    assert.ok(Object.keys(fields.properties).indexOf('development') < Object.keys(fields.properties).indexOf('plot_points'));
+    assert.match(fields.properties.development.description, /beyond this episode/);
+    assert.match(OWNED_SYSTEM, /bird's-eye view/);
+    assert.match(OWNED_SYSTEM, /Never expand beyond the RP's scope/);
+    const planned = { ...item, development: 'Across later towns, the company gains recurring hosts and competing versions of its music.',
+        plot_points: [point, { event: 'At a later fair, a former host offers the company a shared bill with a rival ensemble.', opens: 'The host introduces both companies to the next venue.' }] };
+    let calls = 0;
+    const result = await ownedPass({ state: emptyCampaign(), input, source, generate: async () => {
+        calls++; return { text: JSON.stringify({ ...raw, developments: [planned] }) };
+    } });
+    assert.equal(result.accepted, true);
+    assert.equal(calls, 1);
+    assert.equal(result.state.developments[0].progression, planned.development);
+    const packet = JSON.parse(campaignPayload(result.state).replace(/<\/?tale-fairy-context>/g, '').trim());
+    assert.deepEqual(packet, { proposed_events: planned.plot_points.map(point => point.event) });
+    const review = JSON.parse(ownedInput({ state: result.state, reference: {}, messages: [] }).prompt);
+    assert.match(review.previous_preparation.review_scope.instruction, /Widen or consolidate episode-only subjects/);
+    assert.deepEqual(review.previous_preparation.developments[0].plot_points, planned.plot_points);
+});
 
 test('RP canon and franchise context reach the single planning call intact, without a fixed genre template', async () => {
     assert.match(OWNED_SYSTEM, /RP canon overrides franchise canon/);
@@ -43,6 +66,45 @@ test('RP canon and franchise context reach the single planning call intact, with
         assert.equal(calls, 1);
         assert.deepEqual(fixture, before);
     }
+});
+
+test('independent developments keep substantive opportunities and future conditions in the writer packet', async () => {
+    assert.match(OWNED_SYSTEM, /if that business vanished/);
+    assert.match(OWNED_SYSTEM, /Difficulty is optional/);
+    assert.match(OWNED_SYSTEM, /Make future conditions explicit inside event/);
+    assert.match(OWNED_SYSTEM, /never relocate established characters/);
+    assert.match(OWNED_SYSTEM, /explicitly closed one-scene RP, return developments=\[\]/);
+    assert.match(OWNED_SYSTEM, /nearing their culmination narrows detours/);
+    assert.match(OWNED_SYSTEM, /first encounter STARTS an undertaking/);
+    assert.match(OWNED_SYSTEM, /Moving it into episode is not completion or supersession/);
+    const opportunity = { event: 'At the next river town, a boatbuilding family offers the company passage in exchange for joining its launch celebration, with a floating stage ready for their own work.',
+        opens: 'The family can introduce the company to settlements along the river.' };
+    const value = { ...raw, developments: [{ ...item, id: 'river-celebrations',
+        development: 'River celebrations offer unfamiliar audiences and a growing circuit of hosts beyond the current drum repair.',
+        plot_points: [opportunity] }] };
+    let calls = 0;
+    const result = await ownedPass({ state: emptyCampaign(), input, source, generate: async () => {
+        calls++; return { text: JSON.stringify(value) };
+    } });
+    assert.equal(calls, 1);
+    assert.equal(result.accepted, true);
+    const payload = JSON.parse(campaignPayload(result.state).replace(/<\/?tale-fairy-context>/g, '').trim());
+    assert.deepEqual(payload, { proposed_events: [opportunity.event] });
+    assert.equal(payload.proposed_events[0].startsWith('At the next river town'), true);
+    assert.equal(JSON.stringify(payload).includes(opportunity.opens), false);
+});
+
+test('previous broad-but-reactive plans also receive the independent-development reframe', async () => {
+    const previous = await ownedPass({ state: emptyCampaign(), input, source, generate });
+    const old = { ...previous.state, planningScope: 'campaign-wide-v1' };
+    const built = ownedInput({ state: old, reference: {}, messages: [] });
+    const payload = JSON.parse(built.prompt);
+    assert.equal(payload.previous_preparation.scope_reset, true);
+    assert.deepEqual(payload.previous_preparation.retained_subject_ids, []);
+    const next = await ownedPass({ state: old, input: built, source, generate });
+    assert.equal(next.accepted, true);
+    assert.equal(next.state.planningScope, 'independent-developments-v1');
+    assert.deepEqual(next.state.archive.find(entry => entry.development).development, old.developments[0]);
 });
 
 test('event opportunities are preserved structurally through canonical storage and injection', async () => {
@@ -157,6 +219,42 @@ test('one-time reframe supplies objectives instead of old essay templates, archi
     const nextInput = JSON.parse(ownedInput({ state: converted.state, reference: {}, messages: [] }).prompt);
     assert.equal(nextInput.previous_preparation.reframe_required, false);
     assert.deepEqual(nextInput.previous_preparation.developments[0].plot_points, [point]);
+});
+
+test('scene-level event plans reframe once from source without recycling old proposals or losing their archive', async () => {
+    const first = await ownedPass({ state: emptyCampaign(), input, source, generate });
+    const old = structuredClone(first.state);
+    delete old.planningScope;
+    const before = structuredClone(old);
+    const built = ownedInput({ state: old, reference: { premise: 'An open-ended touring season.' },
+        messages: [{ index: 0, role: 'user', content: 'We travel through several regions.' }] });
+    const payload = JSON.parse(built.prompt);
+    assert.equal(payload.previous_preparation.reframe_required, true);
+    assert.deepEqual(payload.previous_preparation.developments, []);
+    assert.deepEqual(payload.previous_preparation.retained_subject_ids, []);
+    assert.equal(payload.previous_preparation.available_new_subject_slots, 4);
+    assert.equal(payload.previous_preparation.scope_reset, true);
+    assert.equal(built.prompt.includes(point.event), false, 'old scene events must not anchor the new scope');
+    const incomplete = await ownedPass({ state: old, input, source,
+        generate: async () => ({ text: '{' }) });
+    assert.equal(incomplete.accepted, false);
+    assert.deepEqual(old, before);
+    const result = await ownedPass({ state: old, input, source,
+        generate: async () => ({ text: JSON.stringify({ ...raw, developments: [{ ...item, id: 'touring-network' }] }) }) });
+    assert.equal(result.accepted, true);
+    assert.equal(result.state.planningScope, EVENT_PLANNING_SCOPE);
+    assert.deepEqual(result.state.developments.map(item => item.id), ['touring-network']);
+    assert.deepEqual(result.state.archive.find(entry => entry.development)?.development, old.developments[0]);
+    assert.equal(result.state.archive.find(entry => entry.development)?.scopeReframe, true);
+    const empty = await ownedPass({ state: old, input, source,
+        generate: async () => ({ text: JSON.stringify({ ...raw, developments: [] }) }) });
+    assert.equal(empty.accepted, true, 'a bounded RP may need no wider subjects');
+    assert.deepEqual(empty.state.developments, []);
+    assert.deepEqual(old, before, 'scope reset never mutates the original');
+    const next = JSON.parse(ownedInput({ state: result.state, reference: {}, messages: [] }).prompt);
+    assert.equal(next.previous_preparation.reframe_required, false);
+    assert.deepEqual(next.previous_preparation.developments[0].plot_points, [point]);
+    assert.deepEqual(Object.keys(JSON.parse(campaignPayload(result.state).replace(/<\/?tale-fairy-context>/g, '').trim())), ['proposed_events']);
 });
 
 test('later reviews retain unplayed opportunities and failed responses never retry or mutate state', async () => {

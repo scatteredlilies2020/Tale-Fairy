@@ -1,6 +1,10 @@
 # Event opportunities: event-only testing baseline
 
-Status: **Satisfactory bounded event-planning baseline; extended checks below.**
+Status: **Independent-development baseline tested in 0.14.24.**
+See the [independent-development evaluation](independent-development-0.14.24.md)
+for the current goal, uptake checks and limits. The earlier
+[campaign-scope attempt](campaign-scope-0.14.24.md) was insufficient; neither that
+attempt nor the historical acceptance checks below establish full-campaign quality.
 Continued fantasy and touring play now demonstrate event uptake and useful
 cross-review continuity. Divergence from exact proposals remains expected: the
 writer adapts them to accepted play. This is not a claim that every writer reply

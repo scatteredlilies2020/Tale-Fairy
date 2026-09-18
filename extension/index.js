@@ -1,6 +1,6 @@
 import { sha256 } from '/lib.js';
 import { campaignAuthorInstructions, campaignUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js';
-import { ownedInput, ownedPass, OWNED_SCHEMA, OWNED_SYSTEM } from './event-planning.js';
+import { ownedInput, ownedPass, needsEventReframe, OWNED_SCHEMA, OWNED_SYSTEM } from './event-planning.js?v=0.14.24';
 import { campaignEvidenceMessages, campaignReviewWindow } from './campaign-evidence.js';
 import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js';
 import { finalizeNotebookCompactions, writeNotebookArchive } from './notebook-compaction.js?v=0.14.22';
@@ -45,7 +45,7 @@ import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generat
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.14.23';
+const RUNTIME_VERSION = '0.14.24';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -785,7 +785,7 @@ function buildCampaignHostInput(snapshot) {
     if (snapshot.state.revision && !validCampaignState(snapshot.state)) throw Error('Saved campaign is invalid; inspect or rebuild it before planning.');
     const historical = { ...buildStoryEvidence(snapshot.messages), opening: undefined };
     const messages = snapshot.messages.map((m, index) => ({ index, role: m.is_user ? 'user' : 'assistant', name: m.name || '', content: m.mes || '' }));
-    const reviewedCount = campaignUsable(snapshot.state, { ...snapshot, fingerprint: campaignFingerprint })
+    const reviewedCount = !needsEventReframe(snapshot.state) && campaignUsable(snapshot.state, { ...snapshot, fingerprint: campaignFingerprint })
         ? snapshot.state.source.messageCount : 0;
     let failure;
     for (const count of [32, 24, 20, 16, 12, 8, 4, 2]) {

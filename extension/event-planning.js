@@ -5,53 +5,65 @@ import { CAMPAIGN_MARKER, CAMPAIGN_SCHEMA, EVENT_INITIATIVE_SCHEMA, EVENT_POINTS
 import { compactCampaignSpeakers } from './campaign-evidence.js';
 import { estimateTokenCount } from './token-budget.js';
 
+export const EVENT_PLANNING_SCOPE = 'independent-developments-v1';
+export const needsEventReframe = state => state.preparationFormat !== EVENT_POINTS_FORMAT
+    || state.planningScope !== EVENT_PLANNING_SCOPE;
+
 export const OWNED_SYSTEM = `${CAMPAIGN_MARKER}
-Plan mid-to-long-term events for this RP in one JSON response.
+Develop independent story possibilities from a bird's-eye view, in one JSON response. The writer already handles the current scene. Your contribution is worthwhile activity it would otherwise miss.
 
-Fit this RP's genre, scale and current activity. Anchor campaign in its premise, not the latest problem. Keep local business in episode; prepare events beyond it. Follow its larger objective when present. Scale events to progress, not reply count. Link events when useful; keep unrelated threads independent. Do not invent a final objective for an open-ended simulation. Quiet events count; escalation is not required.
+Start with the RP premise, not the latest obstacle. campaign names its unrealized possibilities; episode bounds business already being handled. For NEW subjects, use this counterfactual: if that business vanished, what worthwhile undertaking would still exist? Choose subjects with their own reason, not more people reacting to the same dispute. Independent means connected to the RP, not random. Keep established long-term aims in view; nearing their culmination narrows detours. Open-ended play needs no invented ending. Never expand beyond the RP's scope. For an explicitly closed one-scene RP, return developments=[]; do not pad it with invented errands, props or offscreen projects.
 
-Name an external action or encounter that changes the situation. Exclude intentions and recaps. Tie relevance to circumstances, not the next reply. Events may form a loose sequence, not a fixed itinerary. Combine steps of one encounter; do not fill slots with gestures or props given goals. Skip exact dialogue.
+First write development: an undertaking with a worthwhile middle and room to change across later play. Then initiative names who drives it and why. NPCs can create, help, explore and achieve things without waiting for a player assignment. Difficulty is optional. Supply the activity itself, not a shopping list of supplies and permissions before anything can happen. Do not turn every success into scrutiny, rivalry or another requirement. Do not repeat the current problem in a new location.
 
-Each subject: initiative names an NPC/world owner and goal. plot_points contains one event/opens pair; add a second only for a later phase. Only event reaches the writer: include the encounter itself, not just its setup. opens names a possible later NPC/world action, not a player dilemma. Do not direct prose, pacing or player handling. development covers the longer direction; stakes says why it matters; participation gives possible access. campaign is the overall direction; episode bounds current business.
+Only event reaches the writer. Use it for a concrete developing situation: an offer with something to do, an outside undertaking producing results, or a world change enabling a new experience. Include the interesting substance there, not just a messenger, notice or promise whose value exists only in private fields. One event/opens pair is enough; a second must advance the undertaking, not duplicate it. Make future conditions explicit inside event so it survives planning lag without becoming another immediate interruption. New offscreen actors may have work underway; never relocate established characters, invent their intervening actions, or resolve pending scenes to make a proposal fit. Frame their possible involvement as a future encounter. opens names possible later NPC/world activity; stakes gives its value; participation gives access. No prescribed dialogue, prose, pacing or player handling.
 
 accepted_messages and source_reference define RP canon. RP canon overrides franchise canon. For franchise RP, fill gaps with compatible lore; match its era, rules and characters. Invent canon-adjacent events, not a forced canon replay. Do not import another continuity or rely on uncertain lore. Proposals are not canon. Do not assign player actions or limits. Never invent shortages or restrictions that negate established abilities. Pending outcomes require conditional branches. Do not prescribe endings or character lessons. Source style rules and statboxes are not your task.
 
-Review changes under the SAME subject id. Only accepted_messages establish enactment or commitments; previous preparation is not evidence, including development. Move enacted events into development; replace them with unplayed consequences, not recaps. Preserve useful unplayed events. Omit unaffected subjects; they remain stored. Four subjects is a ceiling, including retained ones, not a target. A bounded scene may need one or none. Do not absorb every thread into the latest problem. Retire only for completion, whole-subject rejection, contradiction or supersession, citing supplied message indices. Keep closed business closed.
+Review under the SAME subject id. Only accepted_messages establish enactment or commitments; previous preparation is not evidence. An accepted invitation or first encounter STARTS an undertaking; retain it and advance its later NPC/world activity, not its introduction. Moving it into episode is not completion or supersession. Preserve useful unplayed threads by omitting unaffected subjects. Add subjects only for a distinct source-supported gap, not to refill capacity. Four subjects is a ceiling, including retained ones, not a target. Retire only for completion, whole-subject rejection, contradiction or supersession, citing supplied message indices. Keep closed business closed.
 
-When reframe_required, rewrite or retire every old subject. Preserve useful goals; consolidate overlap under an existing id. Prior text is archived.
+When reframe_required, rebuild from the RP premise. Rewrite or retire any supplied old subjects. When scope_reset is true, choose fresh wider subjects; old proposals are archived automatically, not declared resolved in the story.
 
-Use short names and one sentence per text field. Choose precise words. No repeated caveats or lists of synonyms. Return only the required JSON.`;
+Use short names, short sentences and precise words. No essays or repeated caveats. Return only the required JSON.`;
 
 const text = maxLength => ({ type: 'string', minLength: 1, maxLength });
 export const OWNED_SCHEMA = structuredClone(CAMPAIGN_SCHEMA);
 OWNED_SCHEMA.name = 'tale_fairy_event_opportunities_v1';
-OWNED_SCHEMA.description = 'Each subject requires id, initiative, plot_points, development, stakes, participation. Zero to four subjects total, including retained ones; do not fill unused slots.';
+OWNED_SCHEMA.description = 'Independent undertakings, then concrete playable developments. Zero to four subjects total, including retained ones; do not fill unused slots.';
+OWNED_SCHEMA.value.properties.campaign.description = 'One sentence naming unrealized RP possibilities beyond the current business; not a plot summary or a required ending.';
+OWNED_SCHEMA.value.properties.episode.properties.boundary.description = 'Bound the local business the writer already handles; do not turn its routine follow-up into more subjects.';
 OWNED_SCHEMA.value.properties.developments.items = { type: 'object', additionalProperties: false,
-    required: ['id', 'initiative', 'plot_points', 'development', 'stakes', 'participation'],
-    properties: { id: text(80), initiative: structuredClone(EVENT_INITIATIVE_SCHEMA),
-        plot_points: structuredClone(EVENT_POINTS_SCHEMA), development: text(2400), stakes: text(1600), participation: text(900) },
+    required: ['id', 'development', 'initiative', 'plot_points', 'stakes', 'participation'],
+    properties: { id: text(80), development: { ...text(2400), description: 'One sentence: a worthwhile undertaking beyond this episode that still exists if the current problem disappears; identify what can actually be experienced along the way.' },
+        initiative: structuredClone(EVENT_INITIATIVE_SCHEMA), plot_points: structuredClone(EVENT_POINTS_SCHEMA), stakes: text(1600), participation: text(900) },
 };
-OWNED_SCHEMA.value.properties.developments.items.properties.plot_points.items.properties.event.description = 'An unplayed, externally observable action or encounter that changes the situation; never a recap of accepted play.';
+OWNED_SCHEMA.value.properties.developments.items.properties.plot_points.items.properties.event.description = 'The writer receives only this text: an unplayed, externally observable developing situation with substantive activity or opportunity, including any future condition; not a bare setup or another step of the current dispute. Prefer 1–2 short sentences.';
 OWNED_SCHEMA.value.properties.developments.items.properties.plot_points.items.properties.opens.description = 'A possible later NPC/world action, not a required player choice or lesson; private planning only.';
 
 export function ownedInput({ reference, state, messages, historical = {}, playerNames = [], reviewedMessageCount = 0 }, maxTokens = 14000) {
     const names = [...new Set(playerNames.filter(name => typeof name === 'string' && name.trim()))];
     const speakers = compactCampaignSpeakers(messages);
-    const reframe = state.preparationFormat !== EVENT_POINTS_FORMAT;
+    const reframe = needsEventReframe(state);
+    const scopeReframe = reframe && state.preparationFormat === EVENT_POINTS_FORMAT;
     const payload = { historical_evidence: historical,
         previous_preparation: {
             format: state.preparationFormat || 'legacy', reframe_required: reframe,
-            retained_subject_ids: state.developments.map(item => item.id),
-            available_new_subject_slots: Math.max(0, 4 - state.developments.length),
+            ...(scopeReframe ? { scope_reset: true, reframe_reason: 'Rebuild as independent undertakings, not local actor agendas. Old proposals are excluded to avoid anchoring; accepted play and the RP premise supply continuity.' } : {}),
+            retained_subject_ids: scopeReframe ? [] : state.developments.map(item => item.id),
+            available_new_subject_slots: scopeReframe ? 4 : Math.max(0, 4 - state.developments.length),
             ...(!reframe ? { campaign: state.campaign, episode: state.episode, review_scope: {
                 accepted_before: reviewedMessageCount,
                 newly_reviewed_indices: messages.filter(message => message.index >= reviewedMessageCount).map(message => message.index),
-                instruction: 'Review new messages. Move enacted events to development; event contains only unplayed material. Preserve unaffected subjects and unplayed events. A passing mention does not justify a rewrite. At boundary zero, reconcile against all supplied source.',
+                instruction: 'Review new messages at campaign scope. Widen or consolidate episode-only subjects; preserve useful wide threads and unplayed events. event contains only unplayed material. A passing mention does not justify a rewrite. At boundary zero, reconcile against all supplied source.',
             } } : {}),
             // Old essay-length drafts are deliberately not the writing template
             // for the one-time reframe. Preserve ownership/objectives (or the
             // full legacy record when no initiative was ever established).
-            developments: reframe ? state.developments.map(item => item.initiative
+            // A scope upgrade deliberately excludes the old local drafts as an
+            // anchor. Their complete records remain stored until an atomic pass
+            // replaces and archives them. Even topical ids can anchor the model.
+            developments: scopeReframe ? []
+                : reframe ? state.developments.map(item => item.initiative
                 ? { id: item.id, previous_objective: structuredClone(item.initiative) } : structuredClone(item))
                 : state.developments.map(eventPointWire),
         },
@@ -85,8 +97,11 @@ export async function ownedPass({ state, input, source, generate }) {
         if (['length', 'max_tokens', 'max_output_tokens'].includes(String(result.finishReason).toLowerCase())) throw Error('Truncated event opportunity response');
         const value = decodeOwnedResult(JSON.parse(result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')), input.playerNames);
         const changed = new Set([...value.developments, ...value.retire].map(item => item.id));
-        if (state.preparationFormat !== EVENT_POINTS_FORMAT && state.developments.some(item => !changed.has(item.id))) throw Error('First event review must reframe every retained subject');
-        const next = mergeCampaign(state, value, { basisRevision: state.revision, source, evidenceIndices: input.indices, eventFormat: true });
-        return { state: { ...next, preparationFormat: EVENT_POINTS_FORMAT }, accepted: true, result };
+        const scopeReset = needsEventReframe(state) && state.preparationFormat === EVENT_POINTS_FORMAT;
+        if (!scopeReset && needsEventReframe(state) && state.developments.some(item => !changed.has(item.id))) throw Error('First event review must reframe every retained subject');
+        const base = scopeReset ? { ...state, developments: [], archive: [...state.archive,
+            ...state.developments.map(development => ({ development: structuredClone(development), revision: state.revision, scopeReframe: true }))] } : state;
+        const next = mergeCampaign(base, value, { basisRevision: state.revision, source, evidenceIndices: input.indices, eventFormat: true });
+        return { state: { ...next, preparationFormat: EVENT_POINTS_FORMAT, planningScope: EVENT_PLANNING_SCOPE }, accepted: true, result };
     } catch (error) { return { state, accepted: false, error: error.message }; }
 }

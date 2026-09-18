@@ -22,7 +22,8 @@ test('writer diagnostics distinguish context, model, arguments and unclassified 
         ['Model "kimi/kimi-k3" is not enabled for any configured DashScope key.', 'model-unavailable'],
         ['Model not found', 'model-unavailable'], ['Unsupported parameter: top_p', 'unsupported-parameter'],
         ['Messages must alternate user and assistant', 'message-format'], ['Upstream failed', 'upstream-failure'],
-        ['Invalid API key', 'authentication'], ['Too many requests', 'rate-limit'], ['Bad request', 'unclassified']]) {
+        ['Invalid API key', 'authentication'], ['Too many requests', 'rate-limit'], ['Bad request', 'unclassified'],
+        ['InternalError.Algo.DataInspectionFailed: Input text data may contain inappropriate content.', 'content-rejection']]) {
         assert.equal(writerFailureDetails(JSON.stringify({ error: { message } })).category, category);
     }
 });

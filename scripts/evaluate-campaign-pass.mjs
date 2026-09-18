@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { touringCase, closedCase } from './single-pass-planner-cases.mjs';
+import { touringCase, closedCase, workshopCase } from './single-pass-planner-cases.mjs';
 import { isolatedProvider } from './isolated-planner-provider.mjs';
 import { isolatedWriterProvider, isolatedWriterPreparation } from './isolated-writer-provider.mjs';
 import { presetSnapshot, presetWriterInput, presetWithoutPsycheField, resolvedPlannerReference, acceptedStoryEvidence } from './writer-preset-prototype.mjs';
@@ -17,9 +17,11 @@ import { ensureGuidanceInChat } from '../extension/request-injection.js';
 import { campaignInput, campaignPayload, campaignUsable, emptyCampaign } from '../extension/campaign-planner.js';
 import { campaignEvidenceMessages, campaignReviewWindow } from '../extension/campaign-evidence.js';
 import { CampaignRuntime } from '../extension/campaign-runtime.js';
-import { OWNED_SCHEMA, ownedInput, ownedPass } from '../extension/event-planning.js';
+import { OWNED_SCHEMA, ownedInput, ownedPass, needsEventReframe } from '../extension/event-planning.js';
 
 const args = process.argv.slice(2), root = process.env.TF_ST_ROOT, output = path.resolve(process.env.TF_EVAL_OUTPUT || '');
+if (args.includes('--saved-plan') && (!args.includes('--freeze') || process.env.TF_CASE !== 'real'
+    || process.env.TF_BRANCH || process.env.TF_FROZEN)) throw Error('--saved-plan requires a fresh real-chat freeze');
 if (args.includes('--raw-source-names') && args.includes('--resolved-source-names')) throw Error('Choose raw or resolved source names, not both');
 if (args.includes('--revalidate-plan') && args.some(arg => ['--plan', '--write', '--say', '--live', '--freeze'].includes(arg))) throw Error('Offline validation cannot generate, freeze or append play');
 const repo = fileURLToPath(new URL('..', import.meta.url));
@@ -48,7 +50,7 @@ if (args.includes('--freeze')) {
     const name = process.env.TF_CASE || 'touring';
     const branch = process.env.TF_BRANCH;
     if (branch && process.env.TF_FROZEN) throw Error('Choose an initial frozen fixture or a progressed branch, not both');
-    let fixture;
+    let fixture, importedPlan;
     if (branch) {
         fixture = read(path.join(branch, 'fixture.json'));
     } else if (process.env.TF_FROZEN) {
@@ -65,8 +67,17 @@ if (args.includes('--freeze')) {
         fixture = { name, reference, characterName, userName: rows.findLast(m => m.is_user)?.name || 'Elizabeth',
             messages: rows.map((m, index) => ({ index, role: m.is_user ? 'user' : 'assistant', content: m.mes })),
             historical: buildStoryEvidence(rows), sourceFile, sourceHash: hash(bytes), legacyNotebook: metadata.livingWorldGuide?.preparedWorld };
+        if (args.includes('--saved-plan')) {
+            const preparation = metadata.livingWorldGuide?.campaignPreparation;
+            const hostMessages = rows.map(m => ({ mes: m.mes || '', is_user: Boolean(m.is_user), name: m.name || '' }));
+            if (!campaignUsable(preparation, { chatId: path.basename(sourceFile, '.jsonl'),
+                referenceHash: preparation?.source?.referenceHash, messages: hostMessages, fingerprint: hash })) {
+                throw Error('Saved plan does not match the live accepted source prefix');
+            }
+            importedPlan = structuredClone(preparation);
+        }
     } else {
-        const f = name === 'touring' ? touringCase() : name === 'closed' ? closedCase() : null;
+        const f = name === 'touring' ? touringCase() : name === 'closed' ? closedCase() : name === 'workshop' ? workshopCase() : null;
         if (!f) throw Error('Unknown case');
         fixture = { name, reference: f.bootstrap, characterName: 'Storyteller', userName: 'Neri',
             messages: f.messages.map((m, index) => ({ index, role: m.is_user ? 'user' : 'assistant', content: m.mes })),
@@ -79,13 +90,18 @@ if (args.includes('--freeze')) {
         if (count < fixture.messages.length) throw Error('Fork prefix predates the frozen historical evidence; create a new source fixture');
         startingMessages = startingMessages.slice(0, count);
     }
-    const startingState = branch ? read(process.env.TF_BASE_STATE || path.join(branch, 'state.json')) : emptyCampaign();
+    const startingState = branch ? read(process.env.TF_BASE_STATE || path.join(branch, 'state.json'))
+        : importedPlan ? { ...importedPlan, source: { chatId: fixture.name, referenceHash: hash(fixture.reference),
+            messageCount: importedPlan.source.messageCount,
+            fingerprint: hash(startingMessages.slice(0, importedPlan.source.messageCount)) } } : emptyCampaign();
     if (startingState.revision && !campaignUsable(startingState, { chatId: fixture.name, referenceHash: hash(fixture.reference), messages: startingMessages, fingerprint: hash })) throw Error('Fork preparation does not match the accepted source prefix');
     fs.mkdirSync(output, { recursive: true });
     const presetSource = branch || process.env.TF_FROZEN;
     write('fixture.json', fixture); write('preset.json', presetSource ? read(path.join(presetSource, 'preset.json')) : presetSnapshot(settings));
     write('conversation.json', startingMessages); write('state.json', startingState);
     write('report.json', { started: new Date().toISOString(), sourceSettingsHash: hash(settingsBytes),
+        ...(importedPlan ? { importedPlan: { originalSource: importedPlan.source, revision: importedPlan.revision,
+            note: 'Verified saved text prefix, then rebound hashes to the isolated fixture. Static reference only; live World Info and Continuity are not reproduced. Live plan is not edited.' } } : {}),
         ...(branch ? { fork: { branch, baseState: process.env.TF_BASE_STATE || path.join(branch, 'state.json'), revision: startingState.revision, messages: startingMessages.length, fingerprint: hash(startingMessages) } } : {}),
         protocol: 'One AI request per TF pass; no retries, repairs, critics or staging. Planning and writing are explicit separate steps. Manually supplied IC replies see only accepted prose. Source is frozen; all output is an isolated branch. The initial legacy notebook is archived in the fixture and not a source of established facts. The current configured writer preset is retained. No runtime World Info or Continuity injection is reproduced; historical evidence comes from production transcript extraction. Evidence windows contain complete messages and complete retained preparation, with omitted ranges disclosed. No live ST mutation.', runs: [] });
     console.log(JSON.stringify({ frozen: fixture.name, messages: startingMessages.length, revision: startingState.revision, output }));
@@ -185,7 +201,7 @@ if (args.includes('--plan')) {
     run.referenceProjection = resolveNames ? 'Resolve only frozen user/char name macros in static source fields; other source text unchanged.' : 'Frozen raw reference';
     run.evidenceProjection = narrative ? 'remove style/class attributes and older recognized generated status panels (disclosed per message); retain latest panel and all narrative/table text; omit duplicate historical opening supplied whole'
         : args.includes('--text-evidence') ? 'remove-known-html-presentation-attributes; preserve all text and status' : 'verbatim';
-    const reviewedCount = campaignUsable(state, { ...source(), messages, fingerprint: hash }) ? state.source.messageCount : 0;
+    const reviewedCount = (!owned || !needsEventReframe(state)) && campaignUsable(state, { ...source(), messages, fingerprint: hash }) ? state.source.messageCount : 0;
     run.protectedUserIndices = messages.filter(m => m.role === 'user' && m.index >= reviewedCount).map(m => m.index);
     let input;
     for (const count of (narrative ? [32, 24, 20, 16, 12, 8, 4, 2] : [16, 12, 8, 4, 2])) {

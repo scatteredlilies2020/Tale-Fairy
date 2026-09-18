@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { buildReasoningRequest, plannerOutputTokenBudget } from '../extension/reasoning-policy.js';
 import { completionText } from '../extension/completion-response.js';
+import { writerFailureDetails } from './isolated-writer-provider.mjs';
 
 export function isolatedProvider(root, { mode = 'off', temperature } = {}) {
     if (!['off', 'low', 'high'].includes(mode)) throw Error('Isolated evaluation supports off, low or high reasoning only.');
@@ -27,7 +28,9 @@ export function isolatedProvider(root, { mode = 'off', temperature } = {}) {
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
                 body: JSON.stringify({ model: tf.analysisModel, temperature, messages, max_tokens: plannerOutputTokenBudget(maxTokens, mode), stream: false, ...extra }),
             });
-            if (!response.ok) { const error = new Error(`HTTP ${response.status}; detail withheld.`); error.status = response.status; throw error; }
+            if (!response.ok) throw Object.assign(new Error(`HTTP ${response.status}; detail withheld.`), {
+                status: response.status, diagnostic: writerFailureDetails(await response.text(), [key]),
+            });
             const result = await response.json();
             if (result.error) throw Error('Provider error; detail withheld.');
             return { text: completionText(result), usage: result.usage, finishReason: result.choices?.[0]?.finish_reason,

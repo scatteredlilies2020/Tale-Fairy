@@ -44,3 +44,19 @@ export function closedCase() {
         stages: [{ name: 'review', broad: true, append: [] }],
     };
 }
+
+export function workshopCase() {
+    return {
+        name: 'workshop', notebook: defaultPreparedWorld(), note: '',
+        bootstrap: {
+            description: 'An open-ended original coastal-town simulation across seasons. Neri runs a well-funded community workshop. Building useful things, local friendships, the sea, trade with neighboring towns and communal celebrations are all part of the RP. No fixed ending or mystery plot is required.',
+            persona: 'The user controls Neri. Only the user decides their actions, commitments and feelings. The workshop already owns good tools and materials; it does not need permission to accept projects.',
+            scenario: 'Early summer in Merehaven. Boatwright Mira works with Neri and enjoys practical experiments. Ivo runs the nearby kitchen and welcomes visitors. Clerk Pella handles orders independently. They are competent colleagues, not opponents by default.',
+        },
+        messages: [
+            ...pair('The workshop has opened for the summer season. The harbor serves fishing boats and small ferries; people from nearby islands come to Merehaven for trade and visits. Mira is finishing ordinary repairs at her bench, while Ivo opens the kitchen doors to the quay.', 'I want the workshop to be useful, but I also want time to get to know the town and explore beyond it.'),
+            ...pair('Pella finds that a supplier wrote twelve hinges on the invoice although ten were ordered and delivered. She has the original order beside her and can correct the invoice herself. Mira continues her repair; no customer is waiting on this discrepancy.', 'Let Pella settle the invoice. I walk down to the waterfront.'),
+        ],
+        stages: [{ name: 'initial-review', broad: true, append: [] }],
+    };
+}

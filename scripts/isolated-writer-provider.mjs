@@ -21,6 +21,7 @@ export function writerFailureDetails(body, secrets = []) {
     const safeBody = value ? JSON.stringify(value, (key, entry) => /authorization|cookie|api.?key|password|secret|token/i.test(key)
         ? '[redacted]' : typeof entry === 'string' ? redact(entry) : entry) : redact(body);
     const categories = [
+        ['content-rejection', /data.?inspection.?failed|inappropriate content|content.{0,30}(?:policy|filter|moderation)/i],
         ['context-limit', /context.{0,40}(?:length|limit|exceed)|too many tokens|maximum.{0,20}tokens/i],
         ['reasoning-format', /reasoning_content|thinking.{0,50}(?:required|invalid|budget)|reasoning.{0,50}(?:required|invalid|missing)/i],
         ['message-format', /messages?.{0,50}(?:invalid|required|must|unsupported)|role.{0,40}(?:invalid|must)|alternat.{0,30}(?:user|assistant)/i],
