@@ -738,6 +738,20 @@ export function normalizeState(input = {}) {
 
 export function loadState(metadata) { return normalizeState(metadata?.[STATE_KEY]); }
 
+// The live extension has one planner. Keep the legacy reader for archived data
+// and compatibility tools, but never require a UI mode switch to use events.
+// This projection is pure; the host persists it before starting the first pass.
+export function loadPlannerState(metadata) {
+    const state = loadState(metadata);
+    if (state.plannerContract === 15) return state;
+    return { ...state, plannerContract: 15, canonBootstrapPending: false,
+        legacyPreparedWorld: state.legacyPreparedWorld
+            || (metadata?.[STATE_KEY] ? structuredClone(state.preparedWorld) : null),
+        lastRequestVerification: null };
+}
+
+export function defaultPlannerState() { return loadPlannerState({}); }
+
 export function saveState(metadata, state) {
     const next = normalizeState(state);
     return { ...(metadata || {}), [STATE_KEY]: next };

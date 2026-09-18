@@ -14,7 +14,7 @@ logistics in favour of satisfactory creative mid-to-long-term events. The earlie
 
 ## Contract and integration
 
-Campaign mode now selects `event-planning.js`. It makes one model
+The normal planner now uses `event-planning.js`. It makes one model
 request per planning pass. Each subject has an NPC/world initiative, one or two
 `{event, opens}` opportunities, continuing development, stakes and open player
 participation. An event is a possible situation; `opens` is what it could make
@@ -184,8 +184,9 @@ without resolving it, and fantasy added another warning/tally before advancing
 through the day's journey. These are not evidence of satisfactory follow-through
 in every scene. The goal is not marked complete on the strength of code tests or
 better planning notes alone. The evaluated source save still had planner contract
-14 at deployment; its new mode requires a browser reload and the existing
-“Try single-pass plot planning” action. No isolated output is written into live RP.
+14 at that deployment; that revision required a browser reload and the
+“Try single-pass plot planning” action. This opt-in requirement was subsequently
+removed in 0.14.23. No isolated output is written into live RP.
 
 ## Event-only revision: September 18
 
@@ -315,8 +316,18 @@ writer's pacing/style; live rendered activation remains unverified.
 The updated files are installed in the local Tale Fairy extension. Existing
 writer settings and live chat contents were not edited. The previous extension
 is recoverable from `/data/data/com.termux/files/usr/tmp/tf-before-event-opportunities.DLIQz0/Tale-Fairy`.
-This change does not require an additional server-plugin restart; the browser
-must reload its extension modules. Existing contract-15 chats use the new
-planning pass on their next review; older-mode chats use the explicit switch
-above, which retains the old notebook. Browser rendering and live activation
-remain unverified until that user-interface step is performed.
+Version 0.14.23 removes the separate activation button. The live host loads the
+single-pass planner for both new and existing chats, including startup, generation
+events, normal Guide now / Re-evaluate, author instructions and Full rebuild.
+The compatibility state reader remains for archives and diagnostic tools, not as
+a selectable live planner. Automatic migration preserves the old notebook and
+notes, and is persisted before the first planning request. Failed first passes
+leave the backup intact and do not restore legacy writer guidance.
+
+Reload the browser to load the new versioned entry, state module and settings
+template. No separate mode selection or additional server-plugin restart is
+required. Disabled or chatless startup does not write migration metadata or send
+a request. Host tests cover default startup, normal controls, failed migration,
+reload suppression and notebook preservation; visual browser rendering has not
+been checked in this environment. The 0.14.23 suite passes **683 tests**, including
+Stop/chat-switch races during migration and fresh/reset-chat defaults.

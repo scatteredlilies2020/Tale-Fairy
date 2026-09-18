@@ -78,7 +78,7 @@ export function generationHarness(messages, state = stateApi.defaultState(), met
     vm.runInContext(source.slice(source.indexOf('eventSource.on(event_types.GENERATION_STARTED,'), source.indexOf('eventSource.on(event_types.CHAT_CHANGED,')), scope);
     return {
         scope, context, settings, calls, statuses,
-        state: () => stateApi.loadState(context.chatMetadata),
+        state: () => scope.loadState(context.chatMetadata),
         prepare(type = 'normal') { scope.prepareGenerationGuide(this.state(), type); return scope.generationGuideSelection; },
         async emit(name, ...args) { await handlers.get(name)?.(...args); },
         async flush() { while (timers.length) await timers.shift()(); },

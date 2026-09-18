@@ -11,7 +11,7 @@ import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
 import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, buildStoryEvidence, storyEvidenceQuery, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.22';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.22';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultPlannerState as defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadPlannerState as loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.23';
 import { isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.22';
 import { selectSituationalOpenings } from './situations.js?v=0.13.9';
 import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.14.22';
@@ -45,7 +45,7 @@ import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generat
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.14.22';
+const RUNTIME_VERSION = '0.14.23';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -826,8 +826,19 @@ function campaignCompletion(response) {
 }
 
 async function analyzeCampaignNow({ manual = false } = {}) {
-    const initial = currentContext(), chatId = String(initial.getCurrentChatId?.() || '');
+    let initial = currentContext();
+    const chatId = String(initial.getCurrentChatId?.() || '');
+    if (!chatId || !getSettings().enabled) return loadState(initial.chatMetadata);
     const stopSequence = analysisStopSequence;
+    if (initial.chatMetadata?.[STATE_KEY]?.plannerContract !== 15) {
+        // Persist migration before generation, including on a failed first pass.
+        // Old notebook/notes remain saved but cannot enter the event injection.
+        initial.updateChatMetadata(saveState(initial.chatMetadata, loadState(initial.chatMetadata)));
+        scheduleVerificationPersistence(currentContext());
+        await cancelDetachedPlannerJobs(chatId);
+        initial = currentContext();
+        if (stopSequence !== analysisStopSequence || chatId !== String(initial.getCurrentChatId?.() || '')) return loadState(initial.chatMetadata);
+    }
     await warmPlotWorldInputs(initial);
     if (stopSequence !== analysisStopSequence || chatId !== String(currentContext().getCurrentChatId?.() || '')) return loadState(currentContext().chatMetadata);
     campaignSession ||= new CampaignSession({ read: readCampaignSnapshot, prepare: buildCampaignHostInput,
@@ -862,7 +873,7 @@ async function startCampaignPlanning({ rebuild = false } = {}) {
     const chatId = String(currentContext().getCurrentChatId?.() || '');
     if (!chatId || !getSettings().enabled) return loadState(currentContext().chatMetadata);
     const previousWork = campaignSession?.pending || analysisPromise;
-    interruptAnalysis('Switching campaign preparation.', 'Preparing campaign mode');
+    interruptAnalysis('Rebuilding plot preparation.', 'Preparing plot events');
     const switchSequence = analysisStopSequence;
     await cancelDetachedPlannerJobs(chatId);
     if (previousWork) await previousWork.catch(() => {});
@@ -1623,7 +1634,6 @@ function renderAnalysisActivity(message, running = false) {
     root.querySelector('[data-action="stop"]')?.toggleAttribute('disabled', !running);
     root.querySelector('[data-action="guide"]')?.toggleAttribute('disabled', running);
     root.querySelector('[data-action="rebuild"]')?.toggleAttribute('disabled', running);
-    root.querySelector('[data-action="campaign"]')?.toggleAttribute('disabled', running);
 }
 
 function showAnalysisPhase(label, runId, startedAt) {
@@ -2761,7 +2771,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     }
     const reasoningHelp = settingsRoot?.querySelector('[data-role="reasoning-help"]');
     if (reasoningHelp) reasoningHelp.textContent = campaign
-        ? 'Campaign mode uses the selected reasoning setting. Unsupported controls fail the pass; no compatibility retry is sent.'
+        ? 'Planning uses the selected reasoning setting. Unsupported controls fail the pass; no compatibility retry is sent.'
         : 'Planner reasoning is off, with a Low retry for providers that require it. Your roleplay model keeps its own settings.';
     const instructionHelp = settingsRoot?.querySelector('[data-role="instruction-help"]');
     if (instructionHelp) instructionHelp.textContent = campaign
@@ -3237,10 +3247,6 @@ async function mountUI() {
     refreshConnectionProfiles(root);
     root.querySelector('[data-action="guide"]').addEventListener('click', async () => {
         await reevaluateGuideState();
-        renderBoard();
-    });
-    root.querySelector('[data-action="campaign"]')?.addEventListener('click', async () => {
-        await startCampaignPlanning();
         renderBoard();
     });
     root.querySelector('[data-action="rebuild"]').addEventListener('click', async () => {

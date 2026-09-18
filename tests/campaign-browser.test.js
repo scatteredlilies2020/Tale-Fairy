@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { generationHarness } from './helpers/generation-harness.js';
-import { defaultState, saveState } from '../extension/state.js';
+import { defaultState, defaultPlannerState, loadPlannerState, saveState, STATE_KEY } from '../extension/state.js';
 import { buildStoryEvidence } from '../extension/analysis.js';
 import { campaignEvidenceMessages, campaignReviewWindow } from '../extension/campaign-evidence.js';
 import { completionText } from '../extension/completion-response.js';
@@ -16,12 +16,13 @@ const design = { campaign: 'A changing body of original work.', episode: { subje
         plot_points: [{ event: 'An original tune changes when another musician offers a contrasting arrangement.', opens: 'They could perform competing versions or work out a shared arrangement.' }], development: 'Versions can be heard, tried and revised.',
         stakes: 'Each musician values their own contribution.', participation: 'Shared off-hours.' }] };
 
-function browser(send = async () => ({ choices: [{ message: { content: JSON.stringify(design) }, finish_reason: 'stop' }] })) {
+function browser(send = async () => ({ choices: [{ message: { content: JSON.stringify(design) }, finish_reason: 'stop' }] }), initialState = defaultState()) {
     const h = generationHarness([{ is_user: false, name: 'Mara', mes: 'The show ended.' }, { is_user: true, name: 'Neri', mes: 'I help pack.' }],
-        { ...defaultState(), plannerContract: 15 });
+        initialState);
     const requests = [], shared = new Map();
     Object.assign(h.settings, { maxPromptTokens: 14000, fullReviewInterval: 3, analysisSource: 'direct', analysisModel: 'test', analysisReasoningMode: 'low' });
     Object.assign(h.scope, { buildStoryEvidence, campaignEvidenceMessages, campaignReviewWindow, completionText,
+        loadState: loadPlannerState, defaultState: defaultPlannerState,
         plannerStorage: () => ({ getItem: key => shared.get(key), setItem: (key, value) => shared.set(key, value) }),
         withPlannerTabLock: (_id, task) => task(),
         requestAnalysisOnce: async (prompt, signal, meta, spec) => {
@@ -225,14 +226,14 @@ test('input preparation keeps source and retained designs whole or fails before 
     assert.match(h.statuses.join('\n'), /exceeds/);
 });
 
-test('explicit migration preserves legacy data and Rebuild stays in campaign mode', async () => {
+test('normal startup migrates legacy data automatically and Rebuild stays single-pass', async () => {
     const h = browser();
     const legacy = { ...defaultState(), contextLedger: 'Old factual ledger retained for inspection.',
         userNotes: [{ kind: 'forbid', text: 'No forced public solo.', at: 1 }] };
     h.context.chatMetadata = saveState({ unrelated: 'keep' }, legacy);
     const legacyPayload = h.prepare().payload;
-    assert.ok(legacyPayload.includes('<plot-anchor>'));
-    await h.scope.startCampaignPlanning();
+    assert.doesNotMatch(legacyPayload, /<plot-anchor>/, 'old guidance cannot leak before the first new pass');
+    await h.scope.refreshCurrentPlanIfNeeded();
     assert.equal(h.requests.length, 1);
     assert.equal(h.state().plannerContract, 15);
     assert.equal(h.state().contextLedger, legacy.contextLedger);
@@ -246,6 +247,77 @@ test('explicit migration preserves legacy data and Rebuild stays in campaign mod
     assert.deepEqual(h.state().campaignPreparation.archive[0].preparation, before);
     assert.equal(JSON.parse(h.requests[1].prompt).previous_preparation.developments.length, 0);
     assert.equal(h.state().userNotes[0].text, 'No forced public solo.');
+});
+
+test('the live entry defaults to event planning and has no separate mode control', () => {
+    assert.match(source, /loadPlannerState as loadState/);
+    assert.match(source, /defaultPlannerState as defaultState/);
+    assert.doesNotMatch(source, /data-action="campaign"/);
+    const html = readFileSync(new URL('../extension/settings.html', import.meta.url), 'utf8');
+    assert.doesNotMatch(html, /data-action="campaign"|Try single-pass|Campaign mode/);
+    assert.match(html, /data-action="guide"/);
+    assert.match(html, /data-action="rebuild"/);
+});
+
+test('fresh chat startup and ordinary Guide now use one request each without a mode selection', async () => {
+    const h = browser();
+    h.context.chatMetadata = { unrelated: 'keep' };
+    assert.equal(h.state().plannerContract, 15);
+    await h.scope.refreshCurrentPlanIfNeeded();
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.context.chatMetadata[STATE_KEY].plannerContract, 15);
+    assert.equal(h.context.chatMetadata.unrelated, 'keep');
+    await h.scope.reevaluateGuideState();
+    assert.equal(h.requests.length, 2);
+    assert.ok(h.requests.every(request => request.spec.singleShot));
+});
+
+test('failed automatic migration keeps the notebook and notes, suppresses legacy injection, and does not retry on reload', async () => {
+    const legacy = { ...defaultState(), plannerContract: 14,
+        userNotes: [{ text: 'Keep the voyage open-ended.', kind: 'suggest', at: 1 }] };
+    legacy.preparedWorld.approach = 'OLD NOTEBOOK';
+    const h = browser(async () => { throw Error('Provider unavailable'); }, legacy);
+    const preserved = structuredClone(h.state().legacyPreparedWorld);
+    await h.scope.refreshCurrentPlanIfNeeded();
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.context.chatMetadata[STATE_KEY].plannerContract, 15);
+    assert.deepEqual(h.state().legacyPreparedWorld, preserved);
+    assert.deepEqual(h.state().preparedWorld, preserved);
+    assert.equal(h.state().userNotes[0].text, 'Keep the voyage open-ended.');
+    assert.doesNotMatch(h.prepare().payload, /OLD NOTEBOOK|plot-anchor|prepared-world/);
+    h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata));
+    h.scope.campaignSession = null;
+    await h.scope.refreshCurrentPlanIfNeeded();
+    assert.equal(h.requests.length, 1);
+});
+
+test('disabled or chatless startup does not migrate stored metadata or spend a request', async () => {
+    const h = browser();
+    const before = structuredClone(h.context.chatMetadata);
+    h.settings.enabled = false;
+    await h.scope.refreshCurrentPlanIfNeeded();
+    assert.deepEqual(h.context.chatMetadata, before);
+    h.settings.enabled = true;
+    h.context.getCurrentChatId = () => '';
+    await h.scope.refreshCurrentPlanIfNeeded();
+    assert.deepEqual(h.context.chatMetadata, before);
+    assert.equal(h.requests.length, 0);
+});
+
+test('Stop or switching chats during automatic migration prevents a late planning call', async () => {
+    for (const action of ['stop', 'switch']) {
+        const h = browser();
+        let release;
+        h.scope.cancelDetachedPlannerJobs = () => new Promise(resolve => { release = resolve; });
+        const pending = h.scope.refreshCurrentPlanIfNeeded();
+        await settle();
+        assert.equal(h.context.chatMetadata[STATE_KEY].plannerContract, 15);
+        if (action === 'stop') h.scope.interruptAnalysis('Stop migration', 'Stopped');
+        else h.context.getCurrentChatId = () => 'different-chat';
+        release();
+        await pending;
+        assert.equal(h.requests.length, 0);
+    }
 });
 
 test('Stop during migration persistence prevents the later model call', async () => {
