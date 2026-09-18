@@ -2993,7 +2993,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     for (const role of ['scratchpad-scene', 'scratchpad-frame', 'scratchpad-lore', 'scratchpad-hidden-motives',
         'scratchpad-response-audit', 'scratchpad-continuity-processes', 'scratchpad-entities', 'scratchpad-ledger']) {
         const section = board.querySelector(`[data-role="${role}"]`)?.closest('section');
-        if (section) section.hidden = state.plannerContract === 14 || !board.querySelector(`[data-role="${role}"]`)?.textContent.trim();
+        if (section) section.hidden = campaign || state.plannerContract === 14 || !board.querySelector(`[data-role="${role}"]`)?.textContent.trim();
     }
 }
 async function resetState({ rebuilding = false } = {}) {
