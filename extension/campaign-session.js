@@ -1,4 +1,4 @@
-import { CampaignRuntime } from './campaign-runtime.js';
+import { CampaignRuntime } from './campaign-runtime.js?v=0.14.27';
 
 export const CAMPAIGN_ATTEMPT_KEY = 'taleFairyCampaignAttempt';
 const turns = messages => messages.filter(message => !message.is_user).length;

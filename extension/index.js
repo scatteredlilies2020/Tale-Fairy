@@ -1,8 +1,9 @@
 import { sha256 } from '/lib.js';
 import { campaignAuthorInstructions, campaignUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js';
-import { ownedInput, ownedPass, needsEventReframe, OWNED_SCHEMA, OWNED_SYSTEM } from './event-planning.js?v=0.14.25';
+import { ownedInput, ownedPass, needsEventReframe, OWNED_SCHEMA, OWNED_SYSTEM } from './event-planning.js?v=0.14.27';
+import { readCampaignContinuity } from './campaign-continuity.js';
 import { campaignEvidenceMessages, campaignReviewWindow } from './campaign-evidence.js';
-import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js';
+import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.27';
 import { finalizeNotebookCompactions, writeNotebookArchive } from './notebook-compaction.js?v=0.14.22';
 import { eventSource, event_types, extension_prompt_roles, extension_prompt_types, generateRaw, Generate, setExtensionPrompt, getRequestHeaders, getCharacterCardFields, saveSettingsDebounced } from '/script.js';
 import { getContext } from '/scripts/st-context.js';
@@ -45,7 +46,7 @@ import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generat
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.14.26';
+const RUNTIME_VERSION = '0.14.27';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -762,6 +763,8 @@ function readCampaignSnapshot() {
     const replacement = replacementPlanningDeferred(context);
     const messages = messagesFromChat(context.chat || []);
     const accepted = replacement ? messages.slice(0, context.chatMetadata[REPLACEMENT_PENDING_KEY].messageCount) : messages;
+    const continuity = readCampaignContinuity(context, globalThis.continuityMemoryBridge,
+        { enabled: s.continuityIntegration !== false, replacement });
     const worlds = plotWorldNames(context, world_info, selected_world_info);
     let attempt = context.chatMetadata?.[CAMPAIGN_ATTEMPT_KEY];
     try {
@@ -774,11 +777,14 @@ function readCampaignSnapshot() {
             .filter(name => typeof name === 'string' && name.trim()))],
         referenceHash: plotInputKey(chatId, [], generationInputs(context, state)),
         requestSignature: campaignFingerprint({ contract: OWNED_SCHEMA, prompt: OWNED_SYSTEM, settings: Object.fromEntries(['analysisSource', 'analysisProvider', 'analysisProfileId',
-            'analysisModel', 'analysisUrl', 'analysisSecretId', 'analysisReasoningMode', 'analysisTemperature', 'maxPromptTokens']
+            'analysisModel', 'analysisUrl', 'analysisSecretId', 'analysisReasoningMode', 'analysisTemperature', 'maxPromptTokens', 'continuityIntegration', 'summaryContextTokens']
             .map(key => [key, s[key]])) }),
         reference: { ...bootstrapContext(context, { broad: true }), authorInstructions: campaignAuthorInstructions(state),
             worldBooks: worlds.map(name => ({ name, data: worldInfoCache.get(name) })) },
         missingWorlds: worlds.filter(name => !worldInfoCache.has(name)),
+        continuity,
+        evidenceKey: continuity.status === 'current' ? campaignFingerprint({ summary: continuity.summary, records: continuity.records }) : '',
+        continuityTokens: s.summaryContextTokens ?? 4000,
         inputBudget: Number(s.maxPromptTokens) || 14000,
     };
 }
@@ -795,7 +801,8 @@ function buildCampaignHostInput(snapshot) {
         const selected = campaignReviewWindow(messages, count, reviewedCount);
         try {
             return ownedInput({ reference: snapshot.reference, state: snapshot.state, playerNames: snapshot.playerNames, reviewedMessageCount: reviewedCount,
-                messages: campaignEvidenceMessages(selected, { narrative: true }), historical }, snapshot.inputBudget);
+                messages: campaignEvidenceMessages(selected, { narrative: true }), historical,
+                continuity: snapshot.continuity, continuityTokens: snapshot.continuityTokens }, snapshot.inputBudget);
         } catch (error) { if (!error.message.includes('exceeds')) throw error; failure = error; }
     }
     throw failure;
@@ -1530,7 +1537,7 @@ function confirmReturnedReplyUsedGuidance() {
     return true;
 }
 
-function commitCampaignPreparation(preparation, { stateFingerprint } = {}) {
+function commitCampaignPreparation(preparation, { stateFingerprint, evidenceKey } = {}) {
     const context = currentContext();
     const previous = loadState(context.chatMetadata);
     const messages = messagesFromChat(context.chat || []);
@@ -1540,6 +1547,8 @@ function commitCampaignPreparation(preparation, { stateFingerprint } = {}) {
         || campaignFingerprint(previous.campaignPreparation || emptyCampaign()) !== stateFingerprint
         || !campaignUsable(preparation, { chatId, messages, fingerprint: campaignFingerprint,
             referenceHash: plotInputKey(chatId, [], generationInputs(context, previous)) })) return false;
+    if (evidenceKey && messages.length === preparation.source.messageCount
+        && readCampaignSnapshot().evidenceKey !== evidenceKey) return false;
     // Install only preparation. Accepted appends, user notes, pacing and request
     // verification belong to the current host, never the planner's old snapshot.
     const next = { ...previous, plannerContract: 15, campaignPreparation: preparation,
@@ -2864,12 +2873,17 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         ? 'Full rebuild pending'
         : analyzed ? `Tale Fairy v${RUNTIME_VERSION} · ${state.mode} mode · world context updated ${analyzedAt || 'recently'}` : '';
     scratchpadText(board, 'scratchpad-meta', meta, 'No world analysis yet. Run Guide now or Full rebuild.');
-    const continuityStatus = analyzed ? continuityContextState(currentContext()).status : 'unavailable';
+    const campaignRecall = campaign ? readCampaignContinuity(currentContext(), globalThis.continuityMemoryBridge,
+        { enabled: getSettings().continuityIntegration !== false, replacement: replacementPlanningDeferred(currentContext()) }) : null;
+    const continuityStatus = campaign ? campaignRecall.freshness || campaignRecall.status
+        : analyzed ? continuityContextState(currentContext()).status : 'unavailable';
     const summaryAudit = state.summaryEvidence?.scannedAt ? state.summaryEvidence : lastSummaryAudit;
-    const summaryStatus = summaryAudit.scannedAt || summaryAudit.count
+    const summaryStatus = !campaign && (summaryAudit.scannedAt || summaryAudit.count)
         ? ` · final summaries: ${summaryAudit.count} sources / ${summaryAudit.includedTokens.toLocaleString()} text tokens${summaryAudit.inputBudget ? ` · ${summaryAudit.tier}: ~${summaryAudit.inputTokens.toLocaleString()}/${summaryAudit.inputBudget.toLocaleString()} input tokens · raw excerpts: ${summaryAudit.recentTokens} tokens · historical witnesses: ${summaryAudit.historyCount}${summaryAudit.timelineEpochCount ? ` · story map: ${summaryAudit.timelineEpochCount} periods / ${summaryAudit.storyMessageCount} messages · older thread candidates: ${summaryAudit.openThreadCount}` : ''} · actors: ${summaryAudit.actorCount} · candidate pool: ${summaryAudit.candidateCount} sources / ${summaryAudit.candidateTokens} text tokens${summaryAudit.droppedLabels?.length ? ` · omitted sources: ${summaryAudit.droppedLabels.join(', ')}` : ''}` : ' (legacy evidence count)'}`
         : '';
-    scratchpadText(board, 'scratchpad-continuity', `Direct Continuity connector: ${continuityStatus}${summaryStatus}`, 'Direct Continuity connector: unavailable');
+    scratchpadText(board, 'scratchpad-continuity', campaign
+        ? `Continuity availability for next planning pass: ${continuityStatus} (subject to input budget)`
+        : `Direct Continuity connector: ${continuityStatus}${summaryStatus}`, 'Direct Continuity connector: unavailable');
 
     const profile = state.sceneProfile || {};
     const scene = [
@@ -3404,12 +3418,21 @@ function bindContinuityBridge() {
     if (!getSettings().continuityIntegration || typeof bridge?.subscribe !== 'function') return;
     continuityUnsubscribe = bridge.subscribe(snapshot => {
         const context = currentContext();
+        if (!getSettings().continuityIntegration) return;
         if (replacementPlanningDeferred(context)) return;
         const chatId = String(context.getCurrentChatId?.() || '');
         if (!chatId || String(snapshot?.chatId || '') !== chatId || snapshot?.status !== 'current') return;
         const revision = Number(snapshot.revision || 0);
         if (!revision || revision <= continuityReplacementRevision) return;
         continuityReplacementRevision = revision;
+        if (campaignMode(context)) {
+            readCampaignContinuity(context, bridge);
+            // CM publications may arrive after the reply. Let the existing
+            // interval/attempt policy decide; never reconcile legacy notebooks
+            // or start an extra pass for every memory publication.
+            void analyzeCampaignNow();
+            return;
+        }
         let state = loadState(context.chatMetadata);
         const reconciled = reconcileStateWithContinuity(state, {
             planningEvidence: Array.isArray(snapshot.planningEvidence) ? snapshot.planningEvidence : [],

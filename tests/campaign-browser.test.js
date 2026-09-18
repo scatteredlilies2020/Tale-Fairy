@@ -7,10 +7,16 @@ import { defaultState, defaultPlannerState, loadPlannerState, saveState, STATE_K
 import { buildStoryEvidence } from '../extension/analysis.js';
 import { campaignEvidenceMessages, campaignReviewWindow } from '../extension/campaign-evidence.js';
 import { completionText } from '../extension/completion-response.js';
+import { readCampaignContinuity } from '../extension/campaign-continuity.js';
 import { extractTaleFairyContext } from '../extension/request-injection.js';
 
 const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
 const settle = () => new Promise(resolve => setImmediate(resolve));
+const memorySnapshot = () => ({ chatId: 'story', status: 'current', revision: 1,
+    coverage: { throughMessageIndex: 0, signature: 'current-chat-signature' },
+    prompt: 'Private Chronicle: the prior engagement ended.', planningEvidence: [{ id: 'memory-music',
+        text: 'Jo is still composing; no new engagement was accepted.', category: 'states', canonicalStatus: 'current',
+        sourceRange: { chatKey: 'character:0:chat:story', from: 0, to: 0 } }] });
 const design = { campaign: 'A changing body of original work.', episode: { subject: 'Public bill', status: 'finished', boundary: 'The public bill is over.' },
     developments: [{ id: 'music', initiative: { control: 'npc', owner: 'Jo', aim: 'Compose a piece worth keeping.' },
         plot_points: [{ event: 'An original tune changes when another musician offers a contrasting arrangement.', opens: 'They could perform competing versions or work out a shared arrangement.' }], development: 'Versions can be heard, tried and revised.',
@@ -21,7 +27,7 @@ function browser(send = async () => ({ choices: [{ message: { content: JSON.stri
         initialState);
     const requests = [], shared = new Map();
     Object.assign(h.settings, { maxPromptTokens: 14000, fullReviewInterval: 3, analysisSource: 'direct', analysisModel: 'test', analysisReasoningMode: 'low' });
-    Object.assign(h.scope, { buildStoryEvidence, campaignEvidenceMessages, campaignReviewWindow, completionText,
+    Object.assign(h.scope, { buildStoryEvidence, campaignEvidenceMessages, campaignReviewWindow, completionText, readCampaignContinuity,
         loadState: loadPlannerState, defaultState: defaultPlannerState,
         plannerStorage: () => ({ getItem: key => shared.get(key), setItem: (key, value) => shared.set(key, value) }),
         withPlannerTabLock: (_id, task) => task(),
@@ -214,6 +220,116 @@ test('planner prompt changes invalidate attempt identity without changing accept
     assert.equal(after.referenceHash, before.referenceHash);
     assert.deepEqual(after.messages, before.messages);
     assert.equal(h.requests.length, 0);
+});
+
+test('actual single-pass planner reads CM privately, once per scheduled pass, without feeding it back', async () => {
+    const h = browser();
+    const snapshot = memorySnapshot(), before = structuredClone(snapshot);
+    h.scope.continuityMemoryBridge = { version: 2, getContextSnapshot: () => snapshot };
+    await h.scope.analyzeCampaignNow();
+    const input = JSON.parse(h.requests[0].prompt);
+    assert.equal(input.continuity_memory.summary, snapshot.prompt);
+    assert.equal(input.continuity_memory.records[0].id, 'memory-music');
+    assert.doesNotMatch(h.prepare().payload, /Private Chronicle|memory-music|continuity_memory/);
+    assert.deepEqual(snapshot, before);
+    snapshot.revision++;
+    snapshot.prompt += ' A late memory publication.';
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 1, 'CM publication must not buy a second pass for the same source');
+});
+
+test('campaign snapshot honors the CM toggle, stale identity and replacement isolation', () => {
+    const h = browser();
+    const snapshot = memorySnapshot();
+    h.scope.continuityMemoryBridge = { version: 2, getContextSnapshot: () => snapshot };
+    const initial = h.scope.readCampaignSnapshot();
+    h.settings.continuityIntegration = false;
+    const disabled = h.scope.readCampaignSnapshot();
+    assert.notEqual(disabled.requestSignature, initial.requestSignature);
+    assert.equal(disabled.referenceHash, initial.referenceHash);
+    assert.equal(disabled.continuity.status, 'off');
+    h.settings.continuityIntegration = true;
+    snapshot.status = 'stale';
+    assert.equal(h.scope.readCampaignSnapshot().continuity.status, 'stale');
+    snapshot.status = 'current';
+    h.scope.replacementPlanningDeferred = () => true;
+    h.context.chatMetadata[h.scope.REPLACEMENT_PENDING_KEY] = { messageCount: 1 };
+    const replacement = h.scope.readCampaignSnapshot();
+    assert.equal(replacement.continuity.status, 'replacement');
+    assert.ok(!JSON.parse(h.scope.buildCampaignHostInput(replacement).prompt).continuity_memory);
+});
+
+test('same-source memory corrections during a paid pass cannot commit outdated recall', async () => {
+    let finish;
+    const h = browser(() => new Promise(resolve => { finish = resolve; }));
+    const snapshot = memorySnapshot();
+    h.scope.continuityMemoryBridge = { version: 2, getContextSnapshot: () => snapshot };
+    const work = h.scope.analyzeCampaignNow();
+    await settle();
+    assert.equal(h.requests.length, 1);
+    snapshot.prompt = 'Correction: the engagement was never accepted.';
+    snapshot.revision++;
+    finish({ choices: [{ message: { content: JSON.stringify(design) }, finish_reason: 'stop' }] });
+    await work;
+    assert.equal(h.state().campaignPreparation?.revision || 0, 0);
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 1, 'no hidden corrective retry');
+});
+
+test('memory changes during input preparation spend no request', async () => {
+    const h = browser();
+    const snapshot = memorySnapshot();
+    h.scope.continuityMemoryBridge = { version: 2, getContextSnapshot: () => snapshot };
+    const prepare = h.scope.buildCampaignHostInput;
+    h.scope.buildCampaignHostInput = source => {
+        const input = prepare(source);
+        snapshot.prompt = 'Corrected before sending.';
+        return input;
+    };
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 0);
+    assert.equal(h.state().campaignPreparation?.revision || 0, 0);
+});
+
+test('accepted appends making CM stale do not discard already-paid-for planning', async () => {
+    let finish;
+    const h = browser(() => new Promise(resolve => { finish = resolve; }));
+    const snapshot = memorySnapshot();
+    h.scope.continuityMemoryBridge = { version: 2, getContextSnapshot: () => snapshot };
+    const work = h.scope.analyzeCampaignNow();
+    await settle();
+    h.context.chat.push({ is_user: false, name: 'Mara', mes: 'The others finish packing.' });
+    snapshot.status = 'stale';
+    finish({ choices: [{ message: { content: JSON.stringify(design) }, finish_reason: 'stop' }] });
+    await work;
+    assert.equal(h.state().campaignPreparation.revision, 1);
+    assert.equal(h.requests.length, 1);
+});
+
+test('CM publication captures accepted source synchronously and uses campaign cadence, not legacy reconciliation', async () => {
+    const h = browser(undefined, defaultPlannerState());
+    let subscriber;
+    const snapshot = memorySnapshot();
+    Object.assign(h.scope, { continuityUnsubscribe: null, continuityReplacementRevision: 0,
+        reconcileStateWithContinuity: () => { throw Error('campaign must not mutate the legacy notebook'); },
+        continuityMemoryBridge: { version: 2, getContextSnapshot: () => snapshot,
+            subscribe: callback => { subscriber = callback; return () => {}; } } });
+    h.settings.continuityIntegration = true;
+    vm.runInContext(source.match(/function bindContinuityBridge\([^]*?^}/m)[0], h.scope);
+    h.scope.bindContinuityBridge();
+    subscriber(snapshot);
+    await settle();
+    assert.equal(h.requests.length, 1);
+    snapshot.revision++;
+    subscriber(snapshot);
+    await settle();
+    assert.equal(h.requests.length, 1, 'publication cannot bypass the saved attempt');
+    h.context.chat.push({ is_user: false, mes: 'Another accepted reply.' });
+    snapshot.status = 'stale';
+    const input = JSON.parse(h.scope.buildCampaignHostInput(h.scope.readCampaignSnapshot()).prompt);
+    assert.equal(input.continuity_memory.freshness, 'verified-accepted-prefix');
+    h.context.chat[0].mes = 'A changed earlier branch.';
+    assert.ok(!JSON.parse(h.scope.buildCampaignHostInput(h.scope.readCampaignSnapshot()).prompt).continuity_memory);
 });
 
 test('actual campaign entry builds evidence, uses single-shot transport and commits usable preparation', async () => {

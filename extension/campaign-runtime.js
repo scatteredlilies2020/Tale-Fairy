@@ -13,7 +13,8 @@ export class CampaignRuntime {
 
     key(snapshot) {
         return this.fingerprint({ chatId: snapshot.chatId, referenceHash: snapshot.referenceHash,
-            messages: this.fingerprint(snapshot.messages), requestSignature: snapshot.requestSignature || '' });
+            messages: this.fingerprint(snapshot.messages), requestSignature: snapshot.requestSignature || '',
+            evidenceKey: snapshot.evidenceKey || '' });
     }
 
     payload() {
@@ -45,13 +46,20 @@ export class CampaignRuntime {
                 const result = await this.runPass({ state: snapshot.state, input, source, generate: this.generate });
                 const latest = this.read();
                 if (!result.accepted) return { ...result, state: latest.state };
+                const evidenceKey = input.continuity?.status === 'included' ? snapshot.evidenceKey : '';
+                // A correction to the same chat snapshot invalidates a result
+                // using the old recall. Ordinary appended play still does not
+                // cancel paid-for work or create a memory-publication loop.
+                if (evidenceKey && latest.messages.length === snapshot.messages.length && latest.evidenceKey !== evidenceKey) {
+                    return { accepted: false, state: latest.state, skipped: 'memory-changed' };
+                }
                 if (this.fingerprint(latest.state) !== stateFingerprint
                     || !campaignUsable(result.state, { ...latest, fingerprint: this.fingerprint })) {
                     return { accepted: false, state: latest.state, skipped: 'source-or-preparation-changed' };
                 }
                 // The host rechecks these guards when synchronously installing
                 // metadata, before starting any asynchronous persistence work.
-                const installed = this.commit(result.state, { stateFingerprint, source });
+                const installed = this.commit(result.state, { stateFingerprint, source, evidenceKey });
                 if (installed !== true) return { accepted: false, state: this.read().state, skipped: 'commit-conflict' };
                 return result;
             } catch (error) {

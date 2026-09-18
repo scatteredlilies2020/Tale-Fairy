@@ -25,12 +25,12 @@ test('settings explanations stay concise', () => {
 });
 
 test('manifest, browser runtime, and detached plugin share the release version', () => {
-    assert.equal(manifest.version, '0.14.26');
-    assert.equal(manifest.js, 'extension/index.js?v=0.14.26');
-    assert.equal(manifest.css, 'extension/style.css?v=0.14.26');
+    assert.equal(manifest.version, '0.14.27');
+    assert.equal(manifest.js, 'extension/index.js?v=0.14.27');
+    assert.equal(manifest.css, 'extension/style.css?v=0.14.27');
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.14\.26'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.14\.26'/);
+    assert.match(pluginSource, /const VERSION = '0\.14\.27'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.14\.27'/);
 });
 
 test('planner input proof travels through normal saves and detached recovery', () => {
@@ -183,9 +183,11 @@ test('settings describe private simulation and causal injection without branch c
 });
 
 test('Continuity remains optional one-way evidence rather than an authority dependency', () => {
-    assert.match(template, /Reads Continuity's existing snapshot alongside other summary sources/i);
+    assert.match(template, /Reads Continuity's current same-chat snapshot privately for planning/i);
     const binding = source.slice(source.indexOf('function bindContinuityBridge'), source.indexOf('// The generation interceptor runs'));
     assert.match(binding, /bridge\.subscribe\(snapshot/);
     assert.match(binding, /reconcileStateWithContinuity/);
     assert.doesNotMatch(binding, /bridge\.(?:publish|mutate|retrieve|write|update)\s*\(/);
+    assert.match(source, /Continuity availability for next planning pass/);
+    assert.match(source, /const continuityStatus = campaign \? campaignRecall\.freshness \|\| campaignRecall\.status/);
 });

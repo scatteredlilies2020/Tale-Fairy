@@ -2,6 +2,24 @@
 
 Tale Fairy is a standalone SillyTavern extension that acts as a **background creative Game Master**, preparing a playable middle and future while the roleplay model writes the story. It combines a persistent private notebook with selective factual world awareness—not a full world simulation, a prose generator, or a fixed event script.
 
+## What changes in 0.14.27
+
+The current single-pass planner now reads **Continuity Memory's public snapshot**.
+The previous bridge integration only reached the legacy planner. Recall stays
+private planning evidence; TF does not extract memory, write to CM, or duplicate
+CM's block in its writer packet.
+
+Current same-chat snapshots are accepted. An earlier snapshot observed current
+in this browser session can also survive appended play when its complete source
+prefix is unchanged. Unknown stale snapshots, edited branches and pending
+replacements are excluded. Whole recall blocks or records fit inside the existing
+input and summary budgets without clipping conditions or displacing protected
+source. CM publications respect the normal review cadence, not an extra AI call.
+
+Reload to activate. Keep **Use Continuity context when available** enabled.
+This fixes the data path, not the separate problem of sustained narrative
+progression. See [integration behavior and limits](docs/continuity-integration-0.14.27.md).
+
 ## What changes in 0.14.26
 
 Fixes a page-local planner race that could report **“already active in another
