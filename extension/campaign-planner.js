@@ -1,6 +1,6 @@
 // Candidate single-call campaign preparation; host integration is opt-in.
 // Owns proposals only: accepted history always comes from the conversation.
-import { playableSituations, validateStoredRealization } from './undertaking-lifecycle.js?v=0.14.32';
+import { playableSituations, storyMaterial, validateStoredRealization } from './undertaking-lifecycle.js?v=0.14.33';
 import { estimateTokenCount } from './token-budget.js';
 
 // Matches the existing host's planner-request marker so request interception
@@ -172,6 +172,30 @@ function contextJson(value) {
 }
 
 export function campaignPayload(state, instructions = []) {
+    const authored = instructions.filter(text => typeof text === 'string' && text.trim());
+    const possible_developments = (state?.revision ? state.developments : []).flatMap(subject => {
+        const entry = state.realization?.[subject.id];
+        const open = entry?.playable.filter(p => !['completed', 'declined', 'transformed'].includes(entry.episodes[p.episodeId]?.status));
+        if (open && !open.length) return []; // Quiet, dormant and closed subjects stay private.
+        const origin = subject.initiative ? { source: subject.initiative.owner } : {};
+        const selected = open?.filter(p => p.direction) || [];
+        if (selected.length) return selected.map(p => ({ ...origin, ...storyMaterial(p) }));
+        // Transitional substance, not old scene scripts or instruction wrappers.
+        // Semantic rewriting belongs to the next normal planner review, not a
+        // lossy sentence filter in the formatter. Saved text stays untouched.
+        return [{ ...origin, developing_conditions: subject.progression,
+            possible_consequences: subject.outcomes, access: subject.access }];
+    });
+    if (!possible_developments.length && !authored.length) return '';
+    return `<tale-fairy-context>\n${contextJson({
+        ...(possible_developments.length ? { possible_developments } : {}),
+        ...(authored.length ? { author_instructions: authored } : {}),
+    })}\n</tale-fairy-context>`;
+}
+
+// Exact 0.14.32 serialization authenticates saved packets only. Never send it
+// directly to the writer; rebuild authenticated snapshots with campaignPayload.
+export function objectiveGuidancePayload(state, instructions = []) {
     if (state?.preparationFormat !== EVENT_POINTS_FORMAT) return legacyCampaignPayload(state, instructions);
     const authored = instructions.filter(text => typeof text === 'string' && text.trim());
     const development_guidance = state.developments.flatMap(subject => {

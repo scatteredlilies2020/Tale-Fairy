@@ -32,7 +32,9 @@ test('duplicate triggers share one in-flight pass; multiple appended turns remai
     assert.equal(f.runtime.request(), a);
     gate.resolve({ text: JSON.stringify(output), finishReason: 'stop' });
     assert.equal((await a).accepted, true); assert.equal(f.calls(), 1);
-    assert.equal(f.read().state.source.messageCount, 1); assert.ok(f.runtime.payload());
+    assert.equal(f.read().state.source.messageCount, 1);
+    assert.equal(campaignUsable(f.read().state, { ...f.read(), fingerprint }), true);
+    assert.equal(f.runtime.payload(), '', 'a valid empty selection adds no instruction-only packet');
 });
 
 test('edits, reference changes and chat switches cannot install or inject stale preparation', async () => {

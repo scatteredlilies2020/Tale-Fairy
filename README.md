@@ -2,6 +2,33 @@
 
 Tale Fairy is a standalone SillyTavern extension that acts as a **background creative Game Master**, preparing a playable middle and future while the roleplay model writes the story. It combines a persistent private notebook with selective factual world awareness—not a full world simulation, a prose generator, or a fixed event script.
 
+## What changes in 0.14.33
+
+**Story substance, not writing instructions.** TF selects relevant premises,
+developing conditions and conditional consequences. Broad encounters are valid
+without invented names or scripted responses. This applies to everyday,
+interpersonal and non-human simulations as well as adventure RP; none requires
+a conflict, interruption or travel quota.
+
+Every review considers the wider horizon, not just the latest scene. Spent
+premises and routine follow-ups should not keep feeding the same scene; other
+developments remain available without forcing departure or interruptions.
+Mid- and long-term preparation stays private until relevant. Pacing comes from
+the material selected, not directions about prose, tone, tempo or dramatic
+emphasis. Empty selection is valid. Player decisions and scene execution stay
+open; progress still requires accepted-message evidence.
+
+Selection maintenance is automatic in the normal planning cycle: keep, revise
+or withdraw. If a successful current-format review omits an active selection,
+TF stops injecting it rather than silently retaining it. Its longer-term subject
+and evidence remain private for future reviews. No manual cleanup, additional
+model call or forced replacement is needed.
+
+Updating and reloading changes the packet format. The next normal planning
+review replaces older advice with substance without resetting subjects or
+progress. Explicit author instructions remain untouched. No extra model pass
+is added. See [contract and verification](docs/story-material-0.14.33.md).
+
 ## What changes in 0.14.32
 
 **Objective-like guidance, not prewritten scenes.** TF now supplies a flexible

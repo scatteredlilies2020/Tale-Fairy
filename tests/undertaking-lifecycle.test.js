@@ -172,7 +172,7 @@ test('discarded new citations cannot advance an old witnessed milestone', () => 
 
 test('durable preparation can change without reauthoring an unaffected playable situation', async () => {
     const first = await plan(emptyCampaign(), body([entry()]));
-    const update = body([]);
+    const update = body([{ id: 'music', selection: 'keep' }]);
     update.developments = [{ ...subject, development: 'The repertoire can support private sessions as well as later collaborations.' }];
     const result = await plan(first.state, update);
     assert.equal(result.accepted, true, result.error);
@@ -182,7 +182,7 @@ test('durable preparation can change without reauthoring an unaffected playable 
 });
 
 
-test('progress-only updates close or withhold consumed situations without discarding unrelated options', async () => {
+test('progress-only updates preserve evidence but withhold unreviewed remaining options automatically', async () => {
     for (const status of ['partial', 'completed']) {
         const first = await plan(emptyCampaign(), body([{ id: 'music', changes: [], playable: entry().playable }]));
         const change = entry(status); delete change.playable;
@@ -190,11 +190,12 @@ test('progress-only updates close or withhold consumed situations without discar
         assert.equal(result.accepted, true, result.error);
         assert.equal(result.state.realization.music.episodes.duet.status, status);
         assert.doesNotMatch(campaignPayload(result.state), /REPEATED/);
-        assert.match(campaignPayload(result.state), /counterline/);
-        assert.equal(result.state.realization.music.needsPlayableReview, status === 'partial' ? true : undefined);
+        assert.equal(campaignPayload(result.state), '');
+        assert.equal(result.state.realization.music.needsPlayableReview, true);
+        assert.deepEqual(result.state.archive.findLast(a => a.realization).realization, first.state.realization);
         assert.equal(validCampaignState(result.state), true);
         const input = JSON.parse(ownedInput({ state: result.state, reference: {}, messages }).prompt);
-        assert.equal(input.previous_preparation.playable_review_required_ids.includes('music'), status === 'partial');
+        assert.equal(input.previous_preparation.playable_review_required_ids.includes('music'), true);
         const next = await plan(result.state, { ...body([{ id: 'music', changes: [], playable: [] }]), developments: [] });
         assert.equal(next.accepted, true, next.error);
         assert.equal(next.state.realization.music.needsPlayableReview, undefined);
@@ -213,7 +214,7 @@ test('new subjects cannot silently omit their initial writer review', async () =
 test('echoing unchanged partial evidence does not consume a freshly reviewed remainder', async () => {
     const explicit = entry('partial'); explicit.playable[0].direction = 'CURRENT REMAINDER';
     const first = await plan(emptyCampaign(), body([explicit]));
-    const echo = entry('partial'); delete echo.playable;
+    const echo = entry('partial'); delete echo.playable; echo.selection = 'keep';
     const next = await plan(first.state, { ...body([echo]), developments: [] });
     assert.equal(next.accepted, true, next.error);
     assert.match(campaignPayload(next.state), /CURRENT REMAINDER/);
@@ -278,9 +279,10 @@ test('mid- and long-term guidance reaches the writer and survives reload without
     const saved = saveState({}, { ...defaultPlannerState(), campaignPreparation: first.state });
     const reloaded = loadPlannerState(JSON.parse(JSON.stringify(saved))).campaignPreparation;
     const packet = JSON.parse(campaignPayload(reloaded).replace(/<\/?tale-fairy-context>/g, '').trim());
-    assert.equal(packet.long_term_direction, 'A repertoire grows.');
-    assert.deepEqual(packet.development_guidance, entry().playable.map(p => ({
-        objective: { owner: subject.initiative.owner, aim: subject.initiative.aim }, ...playableSituation(p),
+    assert.equal(packet.long_term_direction, undefined, 'the whole campaign remains private');
+    assert.deepEqual(packet.possible_developments, entry().playable.map(p => ({
+        source: subject.initiative.owner, when: p.when, premise: p.direction,
+        developing_conditions: p.middle, possible_consequences: p.future,
     })));
     assert.deepEqual(reloaded.realization.music.episodes, {});
     const input = JSON.parse(ownedInput({ state: reloaded, reference: {}, messages }).prompt);
@@ -331,8 +333,10 @@ test('legacy scene scripts are private immediately and upgraded without losing w
     assert.doesNotMatch(campaignPayload(legacy), /SCRIPTED|PREDETERMINED|At noon/);
     assert.match(campaignPayload(legacy), /shared repertoire/);
     const unchanged = await plan(legacy, { ...body([]), developments: [] });
-    assert.equal(unchanged.accepted, false, 'a successful review cannot silently preserve legacy scripts');
-    assert.equal(unchanged.state, legacy);
+    assert.equal(unchanged.accepted, true, unchanged.error);
+    assert.equal(campaignPayload(unchanged.state), '', 'unreviewed legacy scripts are withheld automatically');
+    assert.deepEqual(unchanged.state.developments, legacy.developments);
+    assert.deepEqual(unchanged.state.archive.findLast(a => a.realization).realization, legacy.realization);
     const upgraded = await plan(legacy, { ...body([{ id: 'music', playable: [entry().playable[1]] }]), developments: [] });
     assert.equal(upgraded.accepted, true, upgraded.error);
     assert.deepEqual(upgraded.state.realization.music.episodes, legacy.realization.music.episodes);

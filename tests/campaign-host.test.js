@@ -293,14 +293,16 @@ test('ready revisions replace older retry packets without changing a frozen in-f
     const h = generationHarness(messages());
     const state = attach(h), old = state.campaignPreparation;
     const frozen = h.prepare().payload;
-    const incoming = mergeCampaign(old, { ...design, campaign: 'A revised long-term design.' },
+    const incoming = mergeCampaign(old, { ...design, campaign: 'A revised long-term design.',
+        developments: design.developments.map(d => ({ ...d, progression: 'New contrasting musical possibilities.' })) },
         { basisRevision: 1, source: old.source, evidenceIndices: [0, 1] });
     assert.equal(h.scope.commitCampaignPreparation(old, { stateFingerprint: h.scope.campaignFingerprint(old) }), false,
         'same-revision replay is not a newly completed pass');
     assert.equal(h.scope.commitCampaignPreparation(incoming, { stateFingerprint: h.scope.campaignFingerprint(old) }), true);
     assert.equal(h.scope.generationGuideSelection.payload, frozen);
     h.scope.generationGuideSelection = null;
-    assert.match(h.prepare().payload, /A revised long-term design/);
+    assert.match(h.prepare().payload, /New contrasting musical possibilities/);
+    assert.doesNotMatch(h.prepare().payload, /A revised long-term design/);
     assert.equal(h.calls.length, 0);
 });
 
@@ -311,7 +313,7 @@ test('campaign cache admits whole schema-bounded designs, not truncated or unrel
         premise: '"'.repeat(1600), progression: '"'.repeat(2400), outcomes: '"'.repeat(1600), access: '"'.repeat(900) }));
     h.context.chatMetadata = saveState(h.context.chatMetadata, state);
     const payload = h.prepare().payload;
-    assert.ok(payload.length > 40000, 'escaped text remains valid without an arbitrary cache cutoff');
+    assert.ok(payload.length > 24000, 'escaped text remains valid without an arbitrary cache cutoff');
     const entries = generationContextEntries(h.context.chatMetadata[GENERATION_CONTEXT_KEY]);
     assert.equal(entries.length, 1);
     assert.equal(entries[0].payload, payload);

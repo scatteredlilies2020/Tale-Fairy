@@ -25,18 +25,25 @@ const LEGACY_REALIZATION_SCHEMA = { type: 'array', maxItems: 4, items: {
 const SAVED_REALIZATION_SCHEMA = structuredClone(LEGACY_REALIZATION_SCHEMA);
 SAVED_REALIZATION_SCHEMA.items.properties.playable.items.required = ['episodeId', 'when', 'situation'];
 export const REALIZATION_SCHEMA = structuredClone(LEGACY_REALIZATION_SCHEMA);
+REALIZATION_SCHEMA.items.properties.selection = { type: 'string', enum: ['keep'],
+    description: 'Explicitly keep existing selected material after checking its applicability against accepted play. Omit when supplying playable to revise it or playable=[] to withdraw it. Not valid for new, legacy or pending-review material.' };
 REALIZATION_SCHEMA.items.properties.playable.items = {
     type: 'object', additionalProperties: false, required: ['episodeId', 'when', 'direction', 'middle', 'future'],
     properties: {
         episodeId: text(80),
-        when: { ...text(500), description: 'Applicability or an unresolved prerequisite, not a scheduled entrance or action.' },
-        direction: { ...text(600), description: 'A flexible objective or source of development, not a scene to enact.' },
-        middle: { ...text(900), description: 'What can develop across several scenes: changing aims, relationships, capabilities or meaningful milestones. No ordered tasks or scripted actions.' },
-        future: { ...text(700), description: 'Conditional longer-term possibilities opened by progress or changed choices. No guaranteed result, forced ending or automatic sequel.' },
+        when: { ...text(500), description: 'Relevant circumstances or an unresolved prerequisite. No reply count, scheduled entrance, fictional time advance or pacing instruction.' },
+        direction: { ...text(600), description: 'Available story premise: an encounter, opportunity, interest or world/process condition. Not an instruction to develop a theme or achieve an objective. Leave unnecessary names and details open.' },
+        middle: { ...text(900), description: 'Substantive developing conditions, interests or capabilities that give this premise mid-term reach. State the material, not how to write it; no ordered beats or assigned character responses.' },
+        future: { ...text(700), description: 'Conditional consequences relevant to this premise now, not a list of future encounters to introduce. Dormant longer-term branches stay in durable preparation. No guaranteed result or writing/pacing instruction.' },
     },
 };
 export const needsPlayableReview = entry => !entry || Boolean(entry.needsPlayableReview)
     || entry.playable.some(p => !p.direction);
+
+// Only selected story substance crosses into the writer request. Keep the
+// historical storage vocabulary for lossless saves and cache authentication.
+export const storyMaterial = p => ({ when: p.when, premise: p.direction,
+    developing_conditions: p.middle, possible_consequences: p.future });
 
 const actorKey = name => String(name).trim().toLocaleLowerCase();
 export function validateResolution(resolution, playerNames = []) {
@@ -80,16 +87,24 @@ function matchedWitness(content, quote) {
 }
 
 
-export function mergeRealization(previous, updates, { subjects, messages, source, playerNames = [], requireAll = [], onDiscardedWitness = () => {} }) {
+export function mergeRealization(previous, updates, { subjects, messages, source, playerNames = [], requireAll = [], requireReview = [], onDiscardedWitness = () => {} }) {
     const result = structuredClone(previous || {});
     const supplied = new Map((messages || []).map(m => [m.index, m]));
     const seen = new Set();
     const reviewed = new Set();
+    const kept = new Set();
     for (const update of updates || []) {
         if (['__proto__', 'constructor', 'prototype'].includes(update.id)) throw Error('Unsafe subject id');
         if (seen.has(update.id) || !subjects.includes(update.id)) throw Error('Realization needs a unique retained subject');
         seen.add(update.id);
         const old = result[update.id] || { episodes: {}, playable: [] };
+        if (Object.hasOwn(update, 'selection')) {
+            if (update.selection !== 'keep' || Object.hasOwn(update, 'playable')
+                || !old.playable.length || needsPlayableReview(old)) {
+                throw Error('Keep requires existing current material and cannot also supply playable');
+            }
+            kept.add(update.id);
+        }
         const episodes = structuredClone(old.episodes);
         const episodeIds = new Set();
         for (const change of update.changes || []) {
@@ -135,10 +150,21 @@ export function mergeRealization(previous, updates, { subjects, messages, source
         const withheld = !explicitPlayable && offered.some(p => advanced.has(p.episodeId));
         const playable = offered.filter(p => !closed(episodes[p.episodeId]?.status)
             && (explicitPlayable || !advanced.has(p.episodeId)));
-        const needsPlayableReview = !explicitPlayable && (old.needsPlayableReview || withheld);
-        result[update.id] = { episodes, playable: structuredClone(playable), ...(needsPlayableReview ? { needsPlayableReview: true } : {}) };
+        if (kept.has(update.id) && playable.length !== offered.length) {
+            throw Error('Advanced or closed material cannot be kept; revise or withdraw playable');
+        }
+        const reviewPending = !explicitPlayable && (old.needsPlayableReview || withheld);
+        result[update.id] = { episodes, playable: structuredClone(playable), ...(reviewPending ? { needsPlayableReview: true } : {}) };
     }
     if (requireAll.some(id => !reviewed.has(id))) throw Error('Each changed subject needs an explicit playable review');
+    for (const id of requireReview) {
+        // Do not reject an otherwise valid review and thereby keep injecting
+        // the old selection. Withhold only unreviewed material; its subject,
+        // witnessed progress and archived prior preparation remain intact.
+        if (!reviewed.has(id) && !kept.has(id) && result[id]?.playable.length) {
+            result[id] = { ...result[id], playable: [], needsPlayableReview: true };
+        }
+    }
     // Retired subjects retain their evidence privately, but never contribute packets.
     return result;
 }
@@ -153,15 +179,15 @@ export function playableSituations(state) {
 }
 
 export const REALIZATION_INSTRUCTIONS = `
-Keep three responsibilities separate within this response. developments holds durable mid- and long-term preparation. realization.changes records ONLY changes supported by exact quotes from supplied accepted_messages. realization.playable supplies flexible guidance, not scripted scenes. Generated preparation, memory summaries and an intention to act cannot establish that an activity happened.
+Keep three responsibilities separate within this response. developments holds durable mid- and long-term preparation, including dormant possibilities. realization.changes records ONLY changes supported by exact quotes from supplied accepted_messages. realization.playable supplies selected story material, not instructions to the writer or scripted scenes. Generated preparation, memory summaries and an intention to act cannot establish that an activity happened.
 
-For every new subject and each playable_review_required_id provide a realization entry under the same id; other subjects and their playable material survive omission. Revising durable development alone does not mean its current playable situation changed. Omit changes when no accepted progress is claimed. A progress-only entry may omit playable; an old situation with partial or closed progress will no longer be offered. Supply revised playable material when its remaining substance matters now; an explicit empty array is valid quiet. Pending writer reviews do not require another AI call now. Use stable episodeId values for finite experiences within each undertaking. Distinguish introduced, participating, partial, completed, declined and transformed; these are evidence descriptions, not mandatory stages. Quote the actual participation, performed substance or result: an invitation is only introduced, agreement is participation, practice can be partial, a performed piece can complete that episode. Declining a booking closes that episode, not music. Retire a whole subject only on whole-subject evidence, with scope whole-subject and exact witnesses; declining one method or finishing one episode is insufficient. Previously completed/declined episodes cannot restart. A changed arrangement or collaboration is a NEW episode building on the witnessed result under the SAME subject. Keep unused possibilities without recruiting the player into them.
+For every new subject and each playable_review_required_id provide an explicit playable array under the same id. On every normal review, also decide every selection_review_required_id: selection="keep" retains still-applicable material unchanged without copying it; playable=[...] revises it; playable=[] withdraws it while preserving the subject. Do not combine selection with playable. A changed scene, spent premise or advanced/closed episode needs revision or withdrawal, not keep. Omission is not a decision for injected material. Dormant subjects and their private mid-/long-term preparation survive omission; no automatic replacement or novelty quota. Make these decisions inside this single response, never ask the user to choose or run another review. Revising durable preparation alone does not decide its injection. Omit changes when no accepted progress is claimed. Progress-only updates can withhold consumed material, but do not satisfy a required selection decision. Use stable episodeId values for finite experiences within each undertaking. Distinguish introduced, participating, partial, completed, declined and transformed; these are evidence descriptions, not mandatory stages. Quote the actual participation, performed substance or result: an invitation is only introduced, agreement is participation, practice can be partial, a performed piece can complete that episode. Declining a booking closes that episode, not music. Retire a whole subject only on whole-subject evidence, with scope whole-subject and exact witnesses; declining one method or finishing one episode is insufficient. Previously completed/declined episodes cannot restart. A changed arrangement or collaboration is a NEW episode building on the witnessed result under the SAME subject. Keep unused possibilities without recruiting the player into them.
 
-Each guidance entry contains when, direction, middle and future. direction names what could develop and why it matters to the involved people. middle supplies substantive possibilities across several scenes: evolving aims, relationships, capabilities, pressures or meaningful milestones, rather than a queue of prerequisites. future describes conditional longer-term reach, including how different choices or results could change the direction. These are possibilities, not assigned player objectives, mandatory stages or guaranteed endings. when states applicability and any unresolved prerequisite; it must not prescribe an arrival or fictional time advance.
+Each selected entry contains when, direction, middle and future; these storage names do not authorize directions to the writer. direction states an available premise: an encounter, opportunity, competing interest or world/process condition. middle supplies its developing substance: changing interests, relationships, capabilities, pressures or arrangements, rather than a queue of prerequisites. future supplies conditional consequences relevant to that premise, not dormant future encounters. Keep the larger horizon in developments until relevant; selecting it is not an instruction to enact it immediately. These are possibilities, not assigned player objectives, mandatory stages or guaranteed endings. when states applicability and any unresolved prerequisite; it must not prescribe an arrival or fictional time advance.
 
-Be specific about motives and sources of change, not execution. Avoid vague advice such as build trust or advance the plot: explain what creates trust or tension and what it could make possible later. Do not supply an encounter script, exact gestures, prop movements, dialogue, incidental quantities, a fixed sequence, or predetermined NPC decisions and outcomes. The writer and player determine how events unfold. NPCs may pursue their own aims without repeated player permission; this does not authorize invented completed work or player actions. A meaningful milestone describes a possible change, not a required checklist step. Finite work may end without another obligation.
+Be specific about useful circumstances and sources of change, not execution. Avoid vague advice such as build trust or advance the plot: supply the underlying interests, opportunities or conditions instead. A broadly specified encounter is valid; new names, biographies and incidental details are not required. Retain established identities when relevant. Do not supply an encounter script, exact gestures, prop movements, dialogue, incidental quantities, a fixed sequence, or predetermined NPC decisions and outcomes. The writer and player determine how events unfold. NPCs may pursue their own aims without repeated player permission; this does not authorize invented completed work or player actions. Processes need no invented NPC owner, conflict or human motive. Finite work may end without another obligation.
 
-Give zero to two concise guidance entries per subject, normally one. The writer receives this guidance, the subject's NPC/world objective and the broader campaign direction, not evidence quotes or ledger statuses. No prose instructions, reply quotas, camera commands or style rules. Preserve knowledge boundaries and player ownership. Quiet or empty guidance is valid; no compulsory crisis, interruption, travel or subplot quota. Review interval and message count are NOT fictional elapsed time. On review, remove completed portions and revise the remaining direction from accepted play without restarting the introduction. Replace legacy situation/resolution scripts with guidance under the same subject and episode IDs where appropriate; preserve witnessed progress. Do not copy old choreography into the new fields.
+Give zero to two concise selected entries per subject, normally one. The writer receives only their premise, developing conditions, conditional consequences and applicability, not the whole campaign plan, objective commands, evidence quotes or ledger statuses. No prose instructions, reply quotas, camera commands, style rules, tone guidance or pacing directives anywhere in selected material. Selection supplies the substance; never add instructions about how to present it. Preserve knowledge boundaries and player ownership. Empty selection is valid; no compulsory crisis, interruption, travel or subplot quota. Review interval and message count are NOT fictional elapsed time. On review, remove completed portions and revise remaining material from accepted play without restarting the introduction. When material_review_required, review all supplied playable_review_required_ids: replace advice with story substance or keep the subject private with playable=[]. Replace legacy situation/resolution scripts under the same subject and episode IDs where appropriate; preserve witnessed progress. Do not copy old choreography or writing advice into the new fields.
 `;
 
 export function validateStoredRealization(value, check) {

@@ -1,6 +1,6 @@
 import { sha256 } from '/lib.js';
-import { campaignAuthorInstructions, campaignUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.32';
-import { ownedInput, ownedPass, needsEventReframe, OWNED_SCHEMA, OWNED_SYSTEM } from './event-planning.js?v=0.14.32';
+import { campaignAuthorInstructions, campaignUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.33';
+import { ownedInput, ownedPass, needsEventReframe, OWNED_SCHEMA, OWNED_SYSTEM } from './event-planning.js?v=0.14.33';
 import { readCampaignContinuity } from './campaign-continuity.js';
 import { readEvidenceProviders, evidenceRevisionKey } from './evidence-providers.js';
 import { campaignEvidenceMessages, campaignReviewWindow } from './campaign-evidence.js';
@@ -43,11 +43,11 @@ import { defaultPreparedWorld, preparedWorldUsable, unchangedSourcePrefix, stamp
 import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.9';
 import { canRetainSuccessfulPlan, createSafetyFallbackState } from './fallback-direction.js?v=0.14.22';
 import { classifyAssistantReply } from './response-usability.js?v=0.13.9';
-import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, legacyPlotInputKey, migrateCampaignBudgetKeys, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.32';
+import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, legacyPlotInputKey, migrateCampaignBudgetKeys, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.33';
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.14.32';
+const RUNTIME_VERSION = '0.14.33';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -2888,10 +2888,10 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
                 `[${item.id}] ${preparation.realization?.[item.id] ? '' : preparation.preparationFormat === EVENT_POINTS_FORMAT
                     ? eventPointWire(item).plot_points.map(point => `Event opportunity: ${point.event}\nOpens: ${point.opens}`).join('\n\n') : item.premise}`,
                 preparation.realization?.[item.id] && `Accepted progress (cited interpretation): ${Object.entries(preparation.realization[item.id].episodes).map(([id, e]) => `${id}: ${e.status}`).join('; ') || 'No witnessed enactment yet'}`,
-                preparation.realization?.[item.id]?.needsPlayableReview && 'Writer review pending: prior situation advanced; stale material withheld.',
-                preparation.realization?.[item.id] && `Writer guidance: ${preparation.realization[item.id].playable.map(p => p.direction
-                    ? `${p.when} — ${p.direction}\nMiddle: ${p.middle}\nFuture: ${p.future}`
-                    : 'Legacy scene retained privately; objectives supplied until guidance review.').join('\n') || 'None; subject retained privately'}`,
+                preparation.realization?.[item.id]?.needsPlayableReview && 'Selection review pending: stale or unreviewed material withheld.',
+                preparation.realization?.[item.id] && `Selected story material: ${preparation.realization[item.id].playable.map(p => p.direction
+                    ? `${p.when} — ${p.direction}\nDeveloping conditions: ${p.middle}\nPossible consequences: ${p.future}`
+                    : 'Legacy scene retained privately; durable material supplied until review.').join('\n') || 'None; subject retained privately'}`,
                 item.initiative && `Proposed ${item.initiative.control} aim · ${item.initiative.owner}: ${item.initiative.aim}`,
                 `Development: ${item.progression}`, `${['plot-points-v1', 'event-opportunities-v1'].includes(state.campaignPreparation.preparationFormat) ? 'Stakes' : 'Outcomes'}: ${item.outcomes}`, `Participation: ${item.access}`,
             ].filter(Boolean).join('\n')),

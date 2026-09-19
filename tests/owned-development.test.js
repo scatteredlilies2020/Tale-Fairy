@@ -29,9 +29,8 @@ test('plot guidance targets substantive variety without forced novelty or immedi
     assert.equal(OWNED_SCHEMA.value.properties.developments.items.properties.plot_points.maxLength, 1600);
     const result = await ownedPass({ state: emptyCampaign(), input, source, generate: async () => reply(raw()) });
     const payload = campaignPayload(result.state);
-    assert.match(payload, /let it produce fresh situations/);
-    assert.match(payload, /linger when the player shows interest/);
-    assert.match(payload, /Do not force immediate uptake/);
+    assert.doesNotMatch(payload, /let it produce fresh situations|linger when the player shows interest|Do not force immediate uptake/);
+    assert.match(payload, /Trying the two voices together/);
 });
 
 test('owned wire requires named ownership and losslessly maps complete content to compatible storage', () => {
@@ -93,7 +92,7 @@ test('first owned review converts all legacy subjects once and preserves their p
     assert.equal(validCampaignState(result.state), true);
     assert.deepEqual(result.state.archive.map(entry => entry.development), state.developments);
     assert.ok(result.state.developments.every(record => record.initiative));
-    assert.match(campaignPayload(result.state), /Finish and share her original work/);
+    assert.match(campaignPayload(result.state), /Trying the two voices together/);
 });
 
 test('failed conversion, malformed JSON, truncation and transport failure never retry or partially change state', async () => {
@@ -147,10 +146,10 @@ test('plot format keeps stakes separate from mandated outcomes through storage a
     assert.equal(prompt.previous_preparation.format, PLOT_POINTS_FORMAT);
     assert.equal(prompt.previous_preparation.developments[0].stakes, item('music').stakes);
     const payload = JSON.parse(campaignPayload(result.state).replace(/<\/?tale-fairy-context>/g, '').trim());
-    assert.equal(payload.plot_points_and_objectives[0].stakes, item('music').stakes);
-    assert.equal(payload.plot_points_and_objectives[0].resolution, undefined);
-    assert.equal(payload.plot_points_and_objectives[0].outcomes, undefined);
-    assert.match(payload.application, /not scheduled scenes, required outcomes or lessons/);
+    assert.equal(payload.possible_developments[0].possible_consequences, item('music').stakes);
+    assert.equal(payload.possible_developments[0].resolution, undefined);
+    assert.equal(payload.possible_developments[0].outcomes, undefined);
+    assert.equal(payload.application, undefined);
     const legacyOwned = { ...result.state }; delete legacyOwned.preparationFormat;
     const unchangedLegacy = await ownedPass({ state: legacyOwned, input, source, generate: async () => reply(raw([])) });
     assert.equal(unchangedLegacy.accepted, false, 'old owned records must also be reframed, not relabeled');
@@ -167,7 +166,7 @@ test('owned pass uses existing runtime guards and retains validity across accept
     await new Promise(resolve => setImmediate(resolve));
     current.messages.push({ mes: 'Later accepted play.' }); release(reply(raw()));
     assert.equal((await pending).accepted, true); assert.equal(calls, 1);
-    assert.equal(current.state.source.messageCount, 1); assert.match(runtime.payload(), /Finish and share/);
+    assert.equal(current.state.source.messageCount, 1); assert.match(runtime.payload(), /Trying the two voices together/);
 });
 
 test('owned records round-trip through actual host metadata and complete outgoing payload', () => {
@@ -183,5 +182,5 @@ test('owned records round-trip through actual host metadata and complete outgoin
     const state = mergeCampaign(emptyCampaign(), decodeOwnedResult(raw()), { basisRevision: 0, source: proof, evidenceIndices: [0] });
     assert.equal(h.scope.commitCampaignPreparation(state, { stateFingerprint: h.scope.campaignFingerprint(emptyCampaign()) }), true);
     assert.deepEqual(h.state().campaignPreparation.developments[0].initiative, item('music').initiative);
-    assert.match(h.prepare().payload, /Finish and share her original work/);
+    assert.match(h.prepare().payload, /Trying the two voices together/);
 });

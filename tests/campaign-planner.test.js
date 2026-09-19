@@ -101,7 +101,7 @@ test('completed episode details stay archived but do not remain active hooks in 
     const raw = response(); raw.episode = { subject: 'Delivery', status: 'finished', boundary: 'OLD-LEAD-CATALOGUE' };
     const state = mergeCampaign(emptyCampaign(), raw, context);
     const payload = campaignPayload(state);
-    assert.ok(payload.includes('finished')); assert.ok(!payload.includes('OLD-LEAD-CATALOGUE'));
+    assert.ok(!payload.includes('finished')); assert.ok(!payload.includes('OLD-LEAD-CATALOGUE'));
     assert.ok(payload.includes(state.developments[0].progression));
     assert.equal(state.episode.boundary, 'OLD-LEAD-CATALOGUE');
     assert.ok(campaignInput({ reference: {}, state, messages: [] }).prompt.includes('OLD-LEAD-CATALOGUE'));
@@ -109,6 +109,7 @@ test('completed episode details stay archived but do not remain active hooks in 
     assert.deepEqual(next.archive[0].episode, state.episode);
     assert.equal(next.developments[0].progression, state.developments[0].progression);
     const legacy = { ...state, episode: 'Legacy boundary remains verbatim until reviewed' };
-    assert.ok(campaignPayload(legacy).includes(legacy.episode));
+    assert.ok(!campaignPayload(legacy).includes(legacy.episode));
+    assert.ok(campaignInput({ reference: {}, state: legacy, messages: [] }).prompt.includes(legacy.episode));
     assert.throws(() => mergeCampaign(emptyCampaign(), { ...raw, episode: { ...raw.episode, status: 'maybe' } }, context), /enum/);
 });

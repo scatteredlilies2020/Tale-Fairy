@@ -9,10 +9,10 @@ import { campaignEvidenceMessages, campaignReviewWindow } from '../extension/cam
 import { completionText } from '../extension/completion-response.js';
 import { readEvidenceProviders, evidenceRevisionKey, registerEvidenceProvider } from '../extension/evidence-providers.js';
 import { readCampaignContinuity } from '../extension/campaign-continuity.js';
-import { playableSituation } from '../extension/undertaking-lifecycle.js';
+import { storyMaterial } from '../extension/undertaking-lifecycle.js';
 import { extractTaleFairyContext } from '../extension/request-injection.js';
 import { legacyPlotInputKey, GENERATION_CONTEXT_KEY, generationContextEntries } from '../extension/generation-context.js';
-import { campaignPayload, legacyCampaignPayload } from '../extension/campaign-planner.js';
+import { campaignPayload, objectiveGuidancePayload, legacyCampaignPayload } from '../extension/campaign-planner.js';
 
 const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
 const settle = () => new Promise(resolve => setImmediate(resolve));
@@ -21,7 +21,7 @@ const memorySnapshot = () => ({ chatId: 'story', status: 'current', revision: 1,
     prompt: 'Private Chronicle: the prior engagement ended.', planningEvidence: [{ id: 'memory-music',
         text: 'Jo is still composing; no new engagement was accepted.', category: 'states', canonicalStatus: 'current',
         sourceRange: { chatKey: 'character:0:chat:story', from: 0, to: 0 } }] });
-const design = { realization: [{ id: 'music', changes: [], playable: [{ episodeId: 'arrangement', when: 'If the musicians choose to collaborate.', direction: 'Develop an original tune through contrasting musical aims.', middle: 'Different arrangements could change whose contribution the group values across later sessions.', future: 'If collaboration lasts, the repertoire could support shared authorship or distinct musical identities.' }] }], campaign: 'A changing body of original work.', episode: { subject: 'Public bill', status: 'finished', boundary: 'The public bill is over.' },
+const design = { realization: [{ id: 'music', changes: [], playable: [{ episodeId: 'arrangement', when: 'If the musicians choose to collaborate.', direction: 'An original tune has potential for contrasting arrangements.', middle: 'Different arrangements could change whose contribution the group values across later sessions.', future: 'If collaboration lasts, the repertoire could support shared authorship or distinct musical identities.' }] }], campaign: 'A changing body of original work.', episode: { subject: 'Public bill', status: 'finished', boundary: 'The public bill is over.' },
     developments: [{ id: 'music', initiative: { control: 'npc', owner: 'Jo', aim: 'Compose a piece worth keeping.' },
         plot_points: [{ event: 'An original tune changes when another musician offers a contrasting arrangement.', opens: 'They could perform competing versions or work out a shared arrangement.' }], development: 'Versions can be heard, tried and revised.',
         stakes: 'Each musician values their own contribution.', participation: 'Shared off-hours.' }] };
@@ -381,7 +381,7 @@ test('actual campaign entry builds evidence, uses single-shot transport and comm
     assert.equal(h.requests.length, 1);
     const request = h.requests[0];
     assert.equal(request.spec.singleShot, true);
-    assert.equal(request.spec.schema.name, 'tale_fairy_objective_guidance_v1');
+    assert.equal(request.spec.schema.name, 'tale_fairy_story_material_v1');
     assert.equal(request.spec.reasoningMode, undefined, 'honor saved reasoning instead of legacy forced Off');
     assert.equal(request.meta, null, 'no legacy detached recovery contract');
     const input = JSON.parse(request.prompt);
@@ -390,13 +390,13 @@ test('actual campaign entry builds evidence, uses single-shot transport and comm
     assert.deepEqual(input.player_control.names, ['Neri']);
     assert.equal(h.state().campaignPreparation.revision, 1);
     assert.equal(h.state().campaignPreparation.developments[0].initiative.owner, 'Jo');
-    assert.match(h.prepare().payload, /Develop an original tune/);
+    assert.match(h.prepare().payload, /An original tune has potential/);
     assert.deepEqual(JSON.parse(h.prepare().payload.replace(/<\/?tale-fairy-context>/g, '').trim()),
-        { long_term_direction: design.campaign, development_guidance: design.realization[0].playable.map(p => ({ objective: { owner: 'Jo', aim: 'Compose a piece worth keeping.' }, ...playableSituation(p) })) }, 'actual host injects objective guidance, not a scene script');
+        { possible_developments: design.realization[0].playable.map(p => ({ source: 'Jo', ...storyMaterial(p) })) }, 'actual host injects selected material, not objectives or a whole future plan');
     assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
 });
 
-test('reload and retry authenticate old scene packets but inject only objective guidance without a planning call', async () => {
+test('reload and retry authenticate old scene packets but inject only story material without a planning call', async () => {
     const h = browser();
     await h.scope.analyzeNow({ force: true });
     const legacy = structuredClone(h.state());
@@ -417,13 +417,43 @@ test('reload and retry authenticate old scene packets but inject only objective 
         const selected = reopened.prepare(type);
         assert.equal(selected.reused, true, type);
         assert.equal(selected.payload, campaignPayload(legacy.campaignPreparation));
-        assert.match(selected.payload, /long_term_direction|development_guidance/);
+        assert.match(selected.payload, /possible_developments/);
         assert.doesNotMatch(selected.payload, /OLD SCRIPTED|FIXED ENDING|At noon/);
         assert.deepEqual(reopened.context.chatMetadata, before, 'formatting never rewrites saved progress or packet archives');
         assert.equal(reopened.requests.length, 0);
         reopened.context.chat[0].mes = 'A different accepted opening.';
         assert.doesNotMatch(reopened.prepare(type).payload, /Compose a piece worth keeping|OLD SCRIPTED|FIXED ENDING/,
             'edited source cannot reuse incompatible archived objectives either');
+    }
+});
+
+test('0.14.32 packets authenticate exactly but reload and every retry rebuild only selected material', async () => {
+    const h = browser();
+    await h.scope.analyzeNow({ force: true });
+    const old = structuredClone(h.state());
+    delete old.campaignPreparation.storyMaterialVersion;
+    const packet = h.scope.buildGenerationPacket(old, h.context.chat, h.context);
+    packet.payload = objectiveGuidancePayload(old.campaignPreparation);
+    assert.match(packet.payload, /long_term_direction|development_guidance/);
+    assert.match(packet.payload, /Compose a piece worth keeping/);
+    const cache = { version: 1, entries: [packet] };
+    assert.equal(generationContextEntries(cache).length, 1);
+    assert.equal(generationContextEntries({ ...cache, entries: [{ ...packet, payload: packet.payload + 'tampered' }] }).length, 0);
+    const metadata = saveState({ ...h.context.chatMetadata, [GENERATION_CONTEXT_KEY]: cache }, old);
+    const before = structuredClone(metadata);
+    for (const type of ['normal', 'regenerate', 'swipe']) {
+        const reopened = browser(undefined, old);
+        reopened.context.chatMetadata = structuredClone(metadata);
+        if (type !== 'normal') reopened.context.chat.push({ is_user: false, name: 'Mara', mes: 'Discarded response.' });
+        const selected = reopened.prepare(type);
+        assert.equal(selected.reused, true, type);
+        assert.equal(selected.payload, campaignPayload(old.campaignPreparation));
+        assert.match(selected.payload, /An original tune has potential/);
+        assert.doesNotMatch(selected.payload, /long_term_direction|development_guidance|objective|Compose a piece worth keeping/);
+        assert.deepEqual(reopened.context.chatMetadata, before);
+        assert.equal(reopened.requests.length, 0);
+        reopened.context.chat[0].mes = 'A different opening.';
+        assert.doesNotMatch(reopened.prepare(type).payload, /An original tune has potential/);
     }
 });
 
@@ -483,7 +513,7 @@ test('normal host review upgrades a v1 independent plan without a separate contr
     assert.deepEqual(state.campaignPreparation.archive.find(entry => entry.scopeReframe).development, previous.developments[0]);
     assert.deepEqual(state.campaignInstructions, [{ text: 'Keep the next journey open.' }]);
     const packet = JSON.parse(h.prepare().payload.replace(/<\/?tale-fairy-context>/g, '').trim());
-    assert.deepEqual(Object.keys(packet), ['long_term_direction', 'development_guidance', 'author_instructions']);
+    assert.deepEqual(Object.keys(packet), ['possible_developments', 'author_instructions']);
 });
 
 test('actual owned host review converts retained legacy subjects and archives their complete prior form', async () => {
@@ -521,7 +551,7 @@ test('host reframes old plot essays from retained objectives in one call and arc
     const state = h.state().campaignPreparation;
     assert.equal(state.preparationFormat, 'event-opportunities-v1');
     assert.equal(state.archive.find(entry => entry.development?.premise === 'OLD ESSAY TEMPLATE').development.premise, 'OLD ESSAY TEMPLATE');
-    assert.match(h.prepare().payload, /"development_guidance":\[\{/);
+    assert.match(h.prepare().payload, /"possible_developments":\[\{/);
 });
 
 test('actual owned host rejects planned player ownership in one call without repair or commit', async () => {
@@ -564,6 +594,38 @@ test('real received/end events share persisted cadence and never invoke reply re
     if (h.scope.campaignSession.pending) await h.scope.campaignSession.pending;
     assert.equal(h.requests.length, 2);
     assert.equal(h.calls.length, 0, 'legacy analyzeNow mock and repair flow remain unused');
+});
+
+test('ordinary received events automatically withhold omitted material and later restore reviewed material without repair calls', async () => {
+    const revised = structuredClone(design);
+    revised.realization[0].playable[0].direction = 'A different musical collaboration is available.';
+    const responses = [design, { ...design, developments: [], realization: [] }, revised];
+    const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(responses.shift()) }, finish_reason: 'stop' }] }));
+    await h.scope.analyzeCampaignNow();
+    const first = structuredClone(h.state().campaignPreparation);
+    assert.match(h.prepare().payload, /An original tune has potential/);
+    async function acceptedReplies(label) {
+        for (let i = 0; i < 3; i++) {
+            h.context.chat.push({ is_user: false, mes: `${label} ${i}.` });
+            await h.emit('MESSAGE_RECEIVED'); await h.emit('GENERATION_ENDED'); await h.flush(); await settle();
+            if (h.scope.campaignSession.pending) await h.scope.campaignSession.pending;
+        }
+    }
+    await acceptedReplies('The musicians have finished and left');
+    assert.equal(h.requests.length, 2, 'one scheduled review, no correction or manual trigger');
+    const quiet = structuredClone(h.state().campaignPreparation);
+    assert.equal(quiet.realization.music.needsPlayableReview, true);
+    assert.deepEqual(quiet.realization.music.playable, []);
+    assert.deepEqual(quiet.developments, first.developments);
+    assert.equal(h.prepare().payload, '', 'old pre-review packet must not survive a committed review');
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 2, 'withholding does not start an immediate retry loop');
+    await acceptedReplies('Later shared interests develop');
+    assert.equal(h.requests.length, 3);
+    assert.match(h.prepare().payload, /different musical collaboration/);
+    assert.doesNotMatch(h.prepare().payload, /An original tune has potential/);
+    assert.equal(h.state().campaignPreparation.realization.music.needsPlayableReview, undefined);
+    assert.equal(h.calls.length, 0, 'no legacy repair path');
 });
 
 test('host budget shrinking keeps new choices and reconsiders all users after a source edit', async () => {
@@ -748,7 +810,7 @@ test('author instruction is retained verbatim and reaches writer and the single 
     const selected = h.prepare();
     assert.ok(selected.payload.includes(note));
     assert.deepEqual(JSON.parse(selected.payload.replace(/<\/?tale-fairy-context>/g, '').trim()),
-        { long_term_direction: design.campaign, development_guidance: design.realization[0].playable.map(p => ({ objective: { owner: 'Jo', aim: 'Compose a piece worth keeping.' }, ...playableSituation(p) })), author_instructions: [note] });
+        { possible_developments: design.realization[0].playable.map(p => ({ source: 'Jo', ...storyMaterial(p) })), author_instructions: [note] });
     h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata));
     h.scope.generationGuideSelection = null;
     assert.equal(h.prepare().payload, selected.payload, 'retry cache includes the exact author instructions');
