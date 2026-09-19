@@ -5,7 +5,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
-import { touringCase, closedCase, workshopCase } from './single-pass-planner-cases.mjs';
+import { touringCase, closedCase, workshopCase, relationshipCase, ecosystemCase, backgroundCase } from './single-pass-planner-cases.mjs';
+import { appendFixtureStage } from './fixture-progression.mjs';
 import { isolatedProvider } from './isolated-planner-provider.mjs';
 import { isolatedWriterProvider, isolatedWriterPreparation } from './isolated-writer-provider.mjs';
 import { presetSnapshot, presetWriterInput, presetWithoutPsycheField, resolvedPlannerReference, acceptedStoryEvidence } from './writer-preset-prototype.mjs';
@@ -17,9 +18,10 @@ import { ensureGuidanceInChat } from '../extension/request-injection.js';
 import { campaignInput, campaignPayload, campaignUsable, emptyCampaign } from '../extension/campaign-planner.js';
 import { campaignEvidenceMessages, campaignReviewWindow } from '../extension/campaign-evidence.js';
 import { CampaignRuntime } from '../extension/campaign-runtime.js';
-import { OWNED_SCHEMA, ownedInput, ownedPass, needsEventReframe } from '../extension/event-planning.js';
+import { STORY_SCHEMA as OWNED_SCHEMA, storyInput as ownedInput, storyPass as ownedPass, needsEventReframe } from '../extension/story-selection.js';
 
 const args = process.argv.slice(2), root = process.env.TF_ST_ROOT, output = path.resolve(process.env.TF_EVAL_OUTPUT || '');
+if (args.includes('--fixture-stage') && args.some(arg => ['--freeze', '--say', '--write', '--revalidate-plan'].includes(arg))) throw Error('Fixture progression cannot mix with freezing, writer play or revalidation');
 if (args.includes('--saved-plan') && (!args.includes('--freeze') || process.env.TF_CASE !== 'real'
     || process.env.TF_BRANCH || process.env.TF_FROZEN)) throw Error('--saved-plan requires a fresh real-chat freeze');
 if (args.includes('--raw-source-names') && args.includes('--resolved-source-names')) throw Error('Choose raw or resolved source names, not both');
@@ -77,10 +79,13 @@ if (args.includes('--freeze')) {
             importedPlan = structuredClone(preparation);
         }
     } else {
-        const f = name === 'touring' ? touringCase() : name === 'closed' ? closedCase() : name === 'workshop' ? workshopCase() : null;
+        const f = { touring: touringCase, closed: closedCase, workshop: workshopCase,
+            relationship: relationshipCase, ecosystem: ecosystemCase, background: backgroundCase }[name]?.();
         if (!f) throw Error('Unknown case');
-        fixture = { name, reference: f.bootstrap, characterName: 'Storyteller', userName: 'Neri',
+        fixture = { name, reference: f.bootstrap, characterName: 'Storyteller', userName: ['relationship', 'background'].includes(name) ? 'Alex' : 'Neri',
             messages: f.messages.map((m, index) => ({ index, role: m.is_user ? 'user' : 'assistant', content: m.mes })),
+            stages: f.stages.map(stage => ({ name: stage.name,
+                append: stage.append.map(m => ({ role: m.is_user ? 'user' : 'assistant', content: m.mes })) })),
             historical: {}, legacyNotebook: f.notebook };
     }
     let startingMessages = branch ? read(path.join(branch, 'conversation.json')) : fixture.messages;
@@ -112,6 +117,13 @@ const fixture = read(path.join(output, 'fixture.json')), preset = read(path.join
 let messages = read(path.join(output, 'conversation.json')), state = read(path.join(output, 'state.json'));
 const report = read(path.join(output, 'report.json'));
 const save = () => { write('state.json', state); write('conversation.json', messages); write('report.json', report); };
+if (args.includes('--fixture-stage')) {
+    const stage = args[args.indexOf('--fixture-stage') + 1];
+    messages = appendFixtureStage(fixture, messages, stage);
+    report.syntheticProgression = [...(report.syntheticProgression || []), { stage, messageCount: messages.length,
+        fingerprint: hash(messages), note: 'Fixed synthetic accepted play, not a writer completion or live RP event.' }];
+    save();
+}
 if (args.includes('--say')) {
     const speech = args[args.indexOf('--say') + 1];
     if (!speech || speech.startsWith('--') || messages.at(-1)?.role !== 'assistant') throw Error('Expected IC user reply after an assistant');
@@ -127,7 +139,7 @@ const window = count => {
 };
 const nextId = kind => `${String(report.runs.length + 1).padStart(3, '0')}-${kind}`;
 function newRun(kind) {
-    const protocol = Object.fromEntries(['../extension/campaign-planner.js', '../extension/owned-development.js', '../extension/event-planning.js', '../extension/campaign-evidence.js', '../extension/campaign-runtime.js', 'evaluate-campaign-pass.mjs', 'writer-preset-prototype.mjs', 'isolated-planner-provider.mjs', 'isolated-writer-provider.mjs']
+    const protocol = Object.fromEntries(['../extension/campaign-planner.js', '../extension/owned-development.js', '../extension/event-planning.js', '../extension/story-selection.js', '../extension/accepted-witnesses.js', '../extension/selected-material.js', '../extension/background-progress.js', '../extension/undertaking-lifecycle.js', '../extension/campaign-evidence.js', '../extension/campaign-runtime.js', 'evaluate-campaign-pass.mjs', 'fixture-progression.mjs', 'single-pass-planner-cases.mjs', 'writer-preset-prototype.mjs', 'isolated-planner-provider.mjs', 'isolated-writer-provider.mjs']
         .map(p => [p, fs.readFileSync(new URL(p, import.meta.url), 'utf8')]));
     const id = nextId(kind), run = { id, kind, started: new Date().toISOString(), calls: 0,
         ...(process.env.TF_EVAL_NOTE ? { evaluationNote: process.env.TF_EVAL_NOTE } : {}),
@@ -220,6 +232,12 @@ if (args.includes('--plan')) {
         read: () => ({ state, messages, chatId: fixture.name, referenceHash: hash(fixture.reference), requestSignature: `${run.protocolHash}:${run.planningContract}:${run.referenceProjection}:${historicalProjection}` }),
         prepare: () => input,
         generate: async (prompt, system, schema) => {
+            if (process.env.TF_EVAL_SYSTEM_FILE) {
+                if (!owned || args.includes('--writer-as-planner')) throw Error('System diagnostic requires the owned saved-planner route');
+                system = fs.readFileSync(process.env.TF_EVAL_SYSTEM_FILE, 'utf8');
+                if (!system.trim()) throw Error('Empty planner system diagnostic');
+                run.systemDiagnostic = { hash: hash(system), note: 'Isolated system-prompt replacement; runtime code and live settings unchanged. Input fitting still uses the production system estimate.' };
+            }
             const conversation = plannerMessages(system, prompt, schema, PLANNER_OUTPUT_MODE.PROMPT_ONLY);
             const raw = await oneRequest(run, conversation, c => provider.generate(c, args.includes('--writer-as-planner') ? 22384 : 6000));
             if (!raw) throw Error('Dry run'); return raw;

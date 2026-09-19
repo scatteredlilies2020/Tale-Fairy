@@ -72,7 +72,7 @@ test('RP canon and franchise context reach the single planning call intact, with
 test('independent developments keep substantive opportunities and future conditions in the writer packet', async () => {
     assert.match(OWNED_SYSTEM, /if that business vanished/);
     assert.match(OWNED_SYSTEM, /Difficulty is optional/);
-    assert.match(OWNED_SYSTEM, /Make future conditions explicit inside each guidance entry/);
+    assert.match(OWNED_SYSTEM, /Name an unresolved prerequisite where one is necessary/);
     assert.match(OWNED_SYSTEM, /Never relocate established characters/);
     assert.match(OWNED_SYSTEM, /explicitly closed one-scene RP, return developments=\[\]/);
     assert.match(OWNED_SYSTEM, /nearing their culmination narrows detours/);
@@ -137,7 +137,7 @@ test('scope and prerequisite rules reach the planner while conditional events al
     assert.match(OWNED_SYSTEM, /distinct sources of change/);
     assert.match(OWNED_SYSTEM, /not a queue of requests for the player's approval/);
     assert.match(OWNED_SYSTEM, /State developments, not choreography/);
-    assert.match(OWNED_SYSTEM, /each guidance entry/);
+    assert.match(OWNED_SYSTEM, /a future possibility does not need a success-versus-failure branch/);
     assert.match(OWNED_SYSTEM, /Do not assume any proposed event happened/);
     assert.match(OWNED_SCHEMA.value.properties.campaign.description, /Not a catalogue of local tasks/);
     const points = [{ event: 'A river ensemble offers an exchange of new songs at its open rehearsals.', opens: 'Private planning only.' },

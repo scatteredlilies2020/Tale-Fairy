@@ -9,21 +9,44 @@ import { campaignEvidenceMessages, campaignReviewWindow } from '../extension/cam
 import { completionText } from '../extension/completion-response.js';
 import { readEvidenceProviders, evidenceRevisionKey, registerEvidenceProvider } from '../extension/evidence-providers.js';
 import { readCampaignContinuity } from '../extension/campaign-continuity.js';
-import { storyMaterial } from '../extension/undertaking-lifecycle.js';
+import { materialHorizons } from '../extension/selected-material.js';
 import { extractTaleFairyContext } from '../extension/request-injection.js';
 import { legacyPlotInputKey, GENERATION_CONTEXT_KEY, generationContextEntries } from '../extension/generation-context.js';
 import { campaignPayload, objectiveGuidancePayload, legacyCampaignPayload } from '../extension/campaign-planner.js';
 
 const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
+test('notebook presents integrated horizons once and distinguishes quiet from legacy selection', () => {
+    const scope = vm.createContext({});
+    vm.runInContext(source.match(/function campaignSelectionSummary\([^]*?^}/m)[0], scope);
+    const entry = { subjectIds: ['music', 'travel'], available: 'Shared resources.', developing: 'Recurring exchange.', lasting: 'Wider relationships.' };
+    const summary = scope.campaignSelectionSummary({ selectedMaterial: [entry] });
+    assert.equal(summary, 'SELECTED STORY HORIZONS\nAvailable circumstances: Shared resources.\nMid-term possibilities: Recurring exchange.\nLong-term possibilities: Wider relationships.');
+    assert.doesNotMatch(summary, /subjectIds|music|travel|injected/);
+    assert.match(scope.campaignSelectionSummary({ selectedMaterial: [] }), /No additional development selected/);
+    assert.equal(scope.campaignSelectionSummary({}), '');
+    assert.match(source, /campaignSelectionSummary\(preparation\),/);
+});
+
+test('notebook labels background as private and provisional, separate from selected horizons', () => {
+    const scope = vm.createContext({});
+    vm.runInContext(source.match(/function campaignBackgroundSummary\([^]*?^}/m)[0], scope);
+    assert.equal(scope.campaignBackgroundSummary(), '');
+    assert.equal(scope.campaignBackgroundSummary({ unfolding: 'Repairs could continue.', basis: 'Two days passed.',
+        access: { route: 'none', basis: 'No local contact.' } }),
+    'Private background (provisional): Repairs could continue.\nGrounding / time: Two days passed.\nAccess · none: No local contact.');
+});
+
 const settle = () => new Promise(resolve => setImmediate(resolve));
 const memorySnapshot = () => ({ chatId: 'story', status: 'current', revision: 1,
     coverage: { throughMessageIndex: 0, signature: 'current-chat-signature' },
     prompt: 'Private Chronicle: the prior engagement ended.', planningEvidence: [{ id: 'memory-music',
         text: 'Jo is still composing; no new engagement was accepted.', category: 'states', canonicalStatus: 'current',
         sourceRange: { chatKey: 'character:0:chat:story', from: 0, to: 0 } }] });
-const design = { realization: [{ id: 'music', changes: [], playable: [{ episodeId: 'arrangement', when: 'If the musicians choose to collaborate.', direction: 'An original tune has potential for contrasting arrangements.', middle: 'Different arrangements could change whose contribution the group values across later sessions.', future: 'If collaboration lasts, the repertoire could support shared authorship or distinct musical identities.' }] }], campaign: 'A changing body of original work.', episode: { subject: 'Public bill', status: 'finished', boundary: 'The public bill is over.' },
+const design = { realization: [], selected_material: [{ subjectIds: ['music'], available: 'An original tune has potential for contrasting arrangements.', developing: 'Different arrangements could change whose contribution the group values across later sessions.', lasting: 'The repertoire could support shared authorship and distinct musical identities.' }], campaign: 'A changing body of original work.', episode: { subject: 'Public bill', status: 'finished', boundary: 'The public bill is over.' },
     developments: [{ id: 'music', initiative: { control: 'npc', owner: 'Jo', aim: 'Compose a piece worth keeping.' },
-        plot_points: [{ event: 'An original tune changes when another musician offers a contrasting arrangement.', opens: 'They could perform competing versions or work out a shared arrangement.' }], development: 'Versions can be heard, tried and revised.',
+        background: { unfolding: 'PRIVATE Jo can work on arrangements independently.', basis: 'PRIVATE established composition; no new time skip.',
+            access: { route: 'contact', basis: 'PRIVATE the ensemble is together after the show.' } },
+        development: 'Versions can be heard, tried and revised.',
         stakes: 'Each musician values their own contribution.', participation: 'Shared off-hours.' }] };
 
 function browser(send = async () => ({ choices: [{ message: { content: JSON.stringify(design) }, finish_reason: 'stop' }] }), initialState = defaultState()) {
@@ -45,6 +68,84 @@ function browser(send = async () => ({ choices: [{ message: { content: JSON.stri
     }
     return { ...h, requests, shared };
 }
+
+test('host replaces scene guidance even when an old private subject is omitted, then retires it with final evidence', async () => {
+    const wider = structuredClone(design);
+    wider.developments[0].id = 'travel';
+    wider.selected_material[0] = { subjectIds: ['travel'], available: 'Open regional routes.',
+        developing: 'Recurring visits can support exchanges between communities.', lasting: 'Different places could become familiar homes.' };
+    const closing = structuredClone(wider);
+    closing.retire = [{ id: 'music', scope: 'whole-subject', reason: 'The undertaking is permanently closed.',
+        evidence: [3], witnesses: [{ index: 3, span: 0 }] }];
+    closing.realization = [{ id: 'music', changes: [{ episodeId: 'last-performance', status: 'completed',
+        evidence: [{ index: 3, span: 0 }] }] }];
+    const replies = [design, wider, closing];
+    const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(replies.shift()) }, finish_reason: 'stop' }] }));
+    await h.scope.analyzeCampaignNow({ manual: true });
+    h.context.chat.push({ is_user: true, name: 'Neri', mes: 'We arrive in the next town.' });
+    await h.scope.analyzeCampaignNow({ manual: true });
+    assert.equal(h.state().campaignPreparation.revision, 2);
+    assert.equal(h.state().campaignPreparation.developments.length, 2);
+    assert.match(h.prepare().payload, /Open regional routes/);
+    assert.doesNotMatch(h.prepare().payload, /original tune/);
+    h.context.chat.push({ is_user: true, name: 'Neri', mes: 'The final performance is finished. We permanently abandon the musical undertaking.' });
+    await h.scope.analyzeCampaignNow({ manual: true });
+    assert.equal(h.requests.length, 3, 'exactly one request per review, no repair pass');
+    const saved = h.state().campaignPreparation;
+    assert.equal(saved.revision, 3);
+    assert.deepEqual(saved.developments.map(entry => entry.id), ['travel']);
+    assert.equal(saved.realization.music.episodes['last-performance'].status, 'completed');
+    const payload = h.prepare().payload;
+    assert.match(payload, /Open regional routes/);
+    h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata));
+    h.scope.generationGuideSelection = null;
+    assert.equal(h.prepare().payload, payload, 'metadata reload keeps the current exact injection');
+});
+
+test('shared selection survives actual metadata, cache authentication and retries without duplicating private subjects', async () => {
+    const grouped = structuredClone(design);
+    grouped.developments.push({ ...structuredClone(grouped.developments[0]), id: 'exchange',
+        initiative: { control: 'npc', owner: 'Sef', aim: 'Exchange private arrangements with fellow musicians.' } });
+    grouped.selected_material[0].subjectIds.push('exchange');
+    const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(grouped) }, finish_reason: 'stop' }] }));
+    await h.scope.analyzeCampaignNow();
+    const selected = h.prepare();
+    const decoded = JSON.parse(selected.payload.replace(/<\/?tale-fairy-context>/g, '').trim());
+    assert.equal(decoded.possible_developments.length, 1);
+    assert.equal(decoded.possible_developments[0].source, undefined);
+    assert.doesNotMatch(selected.payload, /PRIVATE|Jo|Sef|unfolding|basis|route/);
+    assert.equal(h.state().campaignPreparation.developments.length, 2);
+    assert.equal(h.requests.length, 1);
+    const metadata = JSON.parse(JSON.stringify(h.context.chatMetadata));
+    assert.equal(generationContextEntries(metadata[GENERATION_CONTEXT_KEY]).length, 1);
+    for (const type of ['normal', 'regenerate', 'swipe']) {
+        const reopened = browser(undefined, h.state());
+        reopened.context.chatMetadata = structuredClone(metadata);
+        if (type !== 'normal') reopened.context.chat.push({ is_user: false, mes: 'Discarded musical ending.' });
+        assert.equal(reopened.prepare(type).payload, selected.payload);
+        assert.equal(reopened.requests.length, 0);
+    }
+    const tampered = structuredClone(metadata[GENERATION_CONTEXT_KEY]);
+    tampered.entries[0].plannerState.campaignPreparation.selectedMaterial[0].available = 'Altered proposal.';
+    assert.equal(generationContextEntries(tampered).length, 0, 'changed selected content cannot authenticate the original packet');
+});
+
+test('a malformed whole-story snapshot never partially replaces host preparation or starts a repair request', async () => {
+    const invalid = structuredClone(design); delete invalid.selected_material;
+    invalid.developments[0].development = 'A private update that must not commit.';
+    const replies = [design, invalid];
+    const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(replies.shift()) }, finish_reason: 'stop' }] }));
+    await h.scope.analyzeCampaignNow({ manual: true });
+    const before = structuredClone(h.state().campaignPreparation);
+    const payload = h.prepare().payload;
+    h.context.chat.push({ is_user: true, mes: 'I ask about the wider season.' });
+    await h.scope.analyzeCampaignNow({ manual: true });
+    assert.equal(h.requests.length, 2);
+    assert.deepEqual(h.state().campaignPreparation, before);
+    assert.equal(h.prepare().payload, payload);
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'failed');
+    assert.equal(h.calls.length, 0);
+});
 
 // Exercise the real host lock wrapper. Grants and releases are asynchronous in
 // browsers; an immediate stub conceals the page-local acquisition/handoff race.
@@ -381,18 +482,18 @@ test('actual campaign entry builds evidence, uses single-shot transport and comm
     assert.equal(h.requests.length, 1);
     const request = h.requests[0];
     assert.equal(request.spec.singleShot, true);
-    assert.equal(request.spec.schema.name, 'tale_fairy_story_material_v1');
+    assert.equal(request.spec.schema.name, 'tale_fairy_story_horizons_v4');
     assert.equal(request.spec.reasoningMode, undefined, 'honor saved reasoning instead of legacy forced Off');
     assert.equal(request.meta, null, 'no legacy detached recovery contract');
     const input = JSON.parse(request.prompt);
-    assert.equal(input.accepted_messages.at(-1).content, 'I help pack.');
+    assert.deepEqual(input.accepted_messages.at(-1).spans, [{ span: 0, text: 'I help pack.' }]);
     assert.ok(input.source_reference);
     assert.deepEqual(input.player_control.names, ['Neri']);
     assert.equal(h.state().campaignPreparation.revision, 1);
     assert.equal(h.state().campaignPreparation.developments[0].initiative.owner, 'Jo');
     assert.match(h.prepare().payload, /An original tune has potential/);
     assert.deepEqual(JSON.parse(h.prepare().payload.replace(/<\/?tale-fairy-context>/g, '').trim()),
-        { possible_developments: design.realization[0].playable.map(p => ({ source: 'Jo', ...storyMaterial(p) })) }, 'actual host injects selected material, not objectives or a whole future plan');
+        { possible_developments: design.selected_material.map(materialHorizons) }, 'actual host injects discoverable material, not private ownership or a whole future plan');
     assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
 });
 
@@ -400,6 +501,8 @@ test('reload and retry authenticate old scene packets but inject only story mate
     const h = browser();
     await h.scope.analyzeNow({ force: true });
     const legacy = structuredClone(h.state());
+    delete legacy.campaignPreparation.selectedMaterial;
+    delete legacy.campaignPreparation.background;
     legacy.campaignPreparation.realization.music.playable = [{ episodeId: 'arrangement', when: 'At noon.',
         situation: 'OLD SCRIPTED ENTRANCE', resolution: { owner: 'npc', actors: ['Jo'], endpoint: 'FIXED ENDING' } }];
     const packet = h.scope.buildGenerationPacket(legacy, h.context.chat, h.context);
@@ -432,6 +535,9 @@ test('0.14.32 packets authenticate exactly but reload and every retry rebuild on
     await h.scope.analyzeNow({ force: true });
     const old = structuredClone(h.state());
     delete old.campaignPreparation.storyMaterialVersion;
+    delete old.campaignPreparation.selectedMaterial;
+    delete old.campaignPreparation.background;
+    old.campaignPreparation.realization.music.playable = [{ episodeId: 'arrangement', when: 'If the musicians choose to collaborate.', direction: design.selected_material[0].available, middle: design.selected_material[0].developing, future: design.selected_material[0].lasting }];
     const packet = h.scope.buildGenerationPacket(old, h.context.chat, h.context);
     packet.payload = objectiveGuidancePayload(old.campaignPreparation);
     assert.match(packet.payload, /long_term_direction|development_guidance/);
@@ -576,7 +682,7 @@ test('actual host factors repeated speaker labels while preserving every initial
     assert.equal(payload.default_speaker_name_by_role.user, 'Neri');
     const users = payload.accepted_messages.filter(m => m.role === 'user');
     assert.equal(users.length, 41);
-    assert.ok(users.every(m => !Object.hasOwn(m, 'name') && m.content === h.context.chat[m.index].mes));
+    assert.ok(users.every(m => !Object.hasOwn(m, 'name') && m.spans.map(s => s.text).join('') === h.context.chat[m.index].mes));
     assert.deepEqual(payload.player_control.names, ['Neri']);
     assert.equal(h.requests.length, 0);
 });
@@ -596,10 +702,10 @@ test('real received/end events share persisted cadence and never invoke reply re
     assert.equal(h.calls.length, 0, 'legacy analyzeNow mock and repair flow remain unused');
 });
 
-test('ordinary received events automatically withhold omitted material and later restore reviewed material without repair calls', async () => {
+test('ordinary received events automatically commit a quiet snapshot and later restore reviewed material without repair calls', async () => {
     const revised = structuredClone(design);
-    revised.realization[0].playable[0].direction = 'A different musical collaboration is available.';
-    const responses = [design, { ...design, developments: [], realization: [] }, revised];
+    revised.selected_material[0].available = 'A different musical collaboration is available.';
+    const responses = [design, { ...design, selected_material: [], realization: [] }, revised];
     const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(responses.shift()) }, finish_reason: 'stop' }] }));
     await h.scope.analyzeCampaignNow();
     const first = structuredClone(h.state().campaignPreparation);
@@ -614,7 +720,7 @@ test('ordinary received events automatically withhold omitted material and later
     await acceptedReplies('The musicians have finished and left');
     assert.equal(h.requests.length, 2, 'one scheduled review, no correction or manual trigger');
     const quiet = structuredClone(h.state().campaignPreparation);
-    assert.equal(quiet.realization.music.needsPlayableReview, true);
+    assert.deepEqual(quiet.selectedMaterial, []);
     assert.deepEqual(quiet.realization.music.playable, []);
     assert.deepEqual(quiet.developments, first.developments);
     assert.equal(h.prepare().payload, '', 'old pre-review packet must not survive a committed review');
@@ -636,12 +742,12 @@ test('host budget shrinking keeps new choices and reconsiders all users after a 
     for (let i = 0; i < 40; i++) h.context.chat.push({ is_user: false, mes: `Road ${i}. ` + 'Ordinary road scenery. '.repeat(900) });
     h.context.chat.push({ is_user: true, mes: 'We stay on the north road.' }, { is_user: false, mes: 'We arrive.' });
     const input = JSON.parse(h.scope.buildCampaignHostInput(h.scope.readCampaignSnapshot()).prompt);
-    assert.ok(input.accepted_messages.some(m => m.index === 4 && m.content === h.context.chat[4].mes));
+    assert.ok(input.accepted_messages.some(m => m.index === 4 && m.spans[0].text === h.context.chat[4].mes));
     assert.ok(!input.accepted_messages.some(m => m.index === 5), 'older assistant prose omitted under pressure');
     assert.ok(!input.accepted_messages.some(m => m.index === 3), 'source-compatible reviewed contribution can be omitted');
     h.context.chat[3].mes = 'Edited earlier choice: no investigation.';
     const edited = JSON.parse(h.scope.buildCampaignHostInput(h.scope.readCampaignSnapshot()).prompt);
-    assert.ok(edited.accepted_messages.some(m => m.index === 3 && m.content === h.context.chat[3].mes));
+    assert.ok(edited.accepted_messages.some(m => m.index === 3 && m.spans[0].text === h.context.chat[3].mes));
 });
 
 test('oversized protected player contribution fails before spending a request and preserves preparation', async () => {
@@ -810,7 +916,7 @@ test('author instruction is retained verbatim and reaches writer and the single 
     const selected = h.prepare();
     assert.ok(selected.payload.includes(note));
     assert.deepEqual(JSON.parse(selected.payload.replace(/<\/?tale-fairy-context>/g, '').trim()),
-        { possible_developments: design.realization[0].playable.map(p => ({ source: 'Jo', ...storyMaterial(p) })), author_instructions: [note] });
+        { possible_developments: design.selected_material.map(materialHorizons), author_instructions: [note] });
     h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata));
     h.scope.generationGuideSelection = null;
     assert.equal(h.prepare().payload, selected.payload, 'retry cache includes the exact author instructions');

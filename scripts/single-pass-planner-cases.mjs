@@ -36,6 +36,31 @@ export function touringCase() {
     return { name: 'touring', bootstrap, notebook, messages, stages, note: '' };
 }
 
+export function relationshipCase() {
+    return { name: 'relationship', notebook: defaultPreparedWorld(), note: '',
+        bootstrap: {
+            description: 'An open-ended everyday RP following two adult housemates across seasons. Friendship, independent interests and shared domestic life matter; no fixed romance, conflict or ending.',
+            persona: 'The user controls Alex. Jamie is an adult housemate.',
+            scenario: 'Alex enjoys gardening. Jamie is learning photography. Both have independent friends and work. The shared flat has enough money and space.',
+        },
+        messages: pair('Jamie has washed the breakfast dishes and mentions a free afternoon. The community garden is open for the season. No outing or commitment has been agreed.',
+            'I finish my tea and look out at the garden.'),
+        stages: [{ name: 'available-not-accepted', broad: true, append: [] }],
+    };
+}
+
+export function ecosystemCase() {
+    return { name: 'ecosystem', notebook: defaultPreparedWorld(), note: '',
+        bootstrap: {
+            description: 'An open-ended simulation of a wetland over multiple seasons. There are no humans, anthropomorphic animals or goal-directed narrator interventions. Hydrology, dispersal, succession and resource availability follow ordinary ecological causality.',
+            scenario: 'Seasonal floodwater has connected shallow pools. Existing reeds, aquatic invertebrates and amphibians occupy different depths. No disaster is established.',
+        },
+        messages: pair('Water connects the low pools while higher margins remain exposed. Early reed growth has begun.',
+            'Observe the connected pools, without introducing an artificial disturbance.'),
+        stages: [{ name: 'ordinary-processes', broad: true, append: [] }],
+    };
+}
+
 export function closedCase() {
     return {
         name: 'closed', notebook: defaultPreparedWorld(), note: '',
@@ -58,5 +83,26 @@ export function workshopCase() {
             ...pair('Pella finds that a supplier wrote twelve hinges on the invoice although ten were ordered and delivered. She has the original order beside her and can correct the invoice herself. Mira continues her repair; no customer is waiting on this discrepancy.', 'Let Pella settle the invoice. I walk down to the waterfront.'),
         ],
         stages: [{ name: 'initial-review', broad: true, append: [] }],
+    };
+}
+
+export function backgroundCase() {
+    return { name: 'background', notebook: defaultPreparedWorld(), note: '',
+        bootstrap: {
+            description: 'An open-ended coastal-town RP across seasons. Shared gardening, independent livelihoods and future connections between settlements matter. No required travel, conflict or ending. The user controls adult Alex; never choose their actions or commitments.',
+            scenario: 'Alex and adult neighbor Liv share a garden in a coastal town. Liv has established an interest in growing dye plants. Private world reference: an independent upriver ferry cooperative has begun repairing its landing and hopes to connect settlements later in the season. Its tools and crew are adequate. This process needs no approval or work from Alex. Neither Alex nor Liv knows about these repairs. They have no upriver contact or view of the site. The weekly harbor notice board is the only established news channel; no relevant notice has arrived yet. There is no shared cause between the garden and the landing.',
+        },
+        messages: pair('Alex and Liv are sharing tea beside the garden. Liv points to the dye seedlings and wonders what colors they will give as the season changes. It is Monday morning. The harbor notice board has no new notices.',
+            'I stay here with Liv and ask about the plants. There is no hurry to go anywhere.'),
+        stages: [{ name: 'initial-review', broad: true, append: [] },
+            { name: 'same-morning', broad: false, append: pair('Still during the same cup of tea, Liv compares two leaves. Only a few minutes have passed. Nothing has arrived from outside the garden.',
+                'What makes these leaves different? I keep talking with Liv.') },
+            { name: 'time-passed', broad: false, append: pair('Two days later Alex and Liv are again in the garden. Their earlier question about the leaves is settled. Liv tends the established seedlings. No harbor notice or upriver visitor has arrived, and neither knows what is happening there.',
+                'I help with the garden today and ask Liv what she enjoys about growing these plants.') },
+            { name: 'news-access', broad: false, append: pair('At the next weekly harbor notice update, Alex reads an ordinary posted notice from the ferry cooperative: it is considering trial stops later this season, subject to the upriver landing repairs. The notice gives no completion date and does not say the repairs are finished. No journey or meeting is booked.',
+                'That might be interesting later. For now I go back to the garden; I have not agreed to travel or help with the repairs.') },
+            { name: 'stay-local', broad: true, append: pair('A week later, Alex and Liv remain in town. Some dye leaves are ready for Liv to test on spare cloth. The last ferry notice is unchanged; the landing completion remains unconfirmed. Alex has made no travel or repair commitment.',
+                'I would like to see what Liv tries with the leaves. I still do not want to book any journey.') },
+        ],
     };
 }

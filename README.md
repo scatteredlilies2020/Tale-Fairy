@@ -2,6 +2,41 @@
 
 Tale Fairy is a standalone SillyTavern extension that acts as a **background creative Game Master**, preparing a playable middle and future while the roleplay model writes the story. It combines a persistent private notebook with selective factual world awareness—not a full world simulation, a prose generator, or a fixed event script.
 
+## What changes in 0.14.34
+
+The release gate passed **817 deterministic tests and 17/17 accepted live planner
+reviews**, including scene transitions and a review of existing saved preparation.
+See [results, earlier failures and limitations](docs/background-discovery-2026-09-19.md#release-gate-result).
+
+**One shared set of story possibilities, not a miniature plot per objective.**
+The writer receives available circumstances, mid-term possibilities and longer-term
+possibilities together. Several activities can coexist without assigned scenes,
+player decisions, outcome trees or writing-style/pacing instructions. Connected
+private aims contribute to the same packet instead of duplicating a local task.
+
+Every normal review replaces the complete selection automatically. Useful material
+can remain; spent premises can disappear without deleting enduring aims or witnessed
+progress. An empty selection is valid, including deliberately closed one-scene play.
+The notebook displays the shared horizons separately from private preparation.
+
+Private background developments now sit between enduring aims and selected
+material. Each records its causal/time basis and a plausible current access route.
+Inaccessible developments stay private without being retired; only discoverable
+circumstances and their open mid-/long-term possibilities reach the writer.
+Private owners are not automatically exported. More replies do not advance a
+world clock, and proposed offscreen activity is not accepted history.
+
+The existing single planner call and strict evidence checks remain. No critic,
+repair call, new timer or manual selection step is added. Reload after updating;
+the next automatic review adopts the new selection format without resetting the RP.
+Source-span citations avoid brittle quote copying; continuing participation no
+longer rejects a review by appearing to undo an earlier partial accomplishment.
+
+Deterministic tests and isolated live-planner evaluations cover this change; they
+do not establish actual use by a returned RP reply. Model quality still varies.
+See [contract and verification](docs/story-horizons-0.14.34.md) and the
+[evaluation record, including failures](docs/open-material-evaluation-2026-09-19.md).
+
 ## What changes in 0.14.33
 
 **Story substance, not writing instructions.** TF selects relevant premises,

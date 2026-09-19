@@ -78,6 +78,42 @@ test('progress advancement requires new accepted evidence; storing preparation d
     assert.deepEqual(mergeRealization(partial, [], { subjects: ['music'], messages, source }), partial);
 });
 
+test('ongoing participation adds exact witnesses without undoing achieved partial progress', () => {
+    const previous = mergeRealization({}, [entry('partial')], { subjects: ['music'], messages, source });
+    const newer = { index: 1, role: 'assistant', name: 'Jo', content: 'Jo and Sef continue trying the revised rhythm in private.' };
+    const update = { id: 'music', changes: [{ episodeId: 'duet', status: 'participating',
+        evidence: [{ index: 1, quote: newer.content }] }], playable: [] };
+    const options = { subjects: ['music'], messages: [...messages, newer], source: { ...source, messageCount: 2 } };
+    const next = mergeRealization(previous, [update], options);
+    assert.equal(next.music.episodes.duet.status, 'partial');
+    assert.deepEqual(next.music.episodes.duet.witnesses.map(w => w.quote), [messages[0].content, newer.content]);
+    assert.equal(previous.music.episodes.duet.witnesses.length, 1, 'the prior state is not mutated');
+    assert.deepEqual(mergeRealization(next, [update], options), next, 'an echoed continuation is idempotent');
+
+    const restart = structuredClone(update); restart.changes[0].status = 'introduced';
+    assert.throws(() => mergeRealization(next, [restart], options), /restart or regress/);
+    const invented = structuredClone(update); invented.changes[0].evidence[0].quote = 'They performed in public.';
+    assert.throws(() => mergeRealization(next, [invented], options), /exact supplied/);
+});
+
+test('continuations keep the achieved witness and bounded latest evidence; closed episodes stay closed', () => {
+    let state = mergeRealization({}, [entry('partial')], { subjects: ['music'], messages, source });
+    const all = [...messages];
+    for (let index = 1; index <= 8; index++) {
+        const content = `Private reading number ${index} is in progress.`;
+        all.push({ index, role: 'assistant', content });
+        const update = { id: 'music', changes: [{ episodeId: 'duet', status: 'participating', evidence: [{ index, quote: content }] }], playable: [] };
+        state = mergeRealization(state, [update], { subjects: ['music'], messages: all, source: { ...source, messageCount: all.length } });
+        assert.equal(state.music.episodes.duet.status, 'partial');
+        assert.equal(state.music.episodes.duet.witnesses[0].quote, messages[0].content);
+        assert.equal(state.music.episodes.duet.witnesses.at(-1).quote, content);
+        assert.ok(state.music.episodes.duet.witnesses.length <= 4);
+    }
+    const completed = mergeRealization({}, [entry()], { subjects: ['music'], messages, source });
+    const update = { id: 'music', changes: [{ episodeId: 'duet', status: 'participating', evidence: [{ index: 8, quote: all.at(-1).content }] }] };
+    assert.throws(() => mergeRealization(completed, [update], { subjects: ['music'], messages: all, source: { ...source, messageCount: all.length } }), /restart or regress/);
+});
+
 test('real host input requires realization for new subjects, even if the model returns valid old JSON', async () => {
     const missing = body([]); delete missing.realization;
     const result = await plan(emptyCampaign(), missing);

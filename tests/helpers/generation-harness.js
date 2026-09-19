@@ -9,7 +9,8 @@ import * as coalescerApi from '../../extension/planner-coalescer.js';
 import * as compactionApi from '../../extension/notebook-compaction.js';
 import * as preparedApi from '../../extension/prepared-world.js';
 import * as campaignApi from '../../extension/campaign-planner.js';
-import * as ownedApi from '../../extension/event-planning.js';
+import { storyInput as ownedInput, storyPass as ownedPass, needsEventReframe,
+    STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM } from '../../extension/story-selection.js';
 import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from '../../extension/campaign-session.js';
 import { isStoryGeneration, refreshGameMasterContract } from '../../extension/game-master.js';
 import { sampleDirectorSignals } from '../../extension/director-sampling.js';
@@ -30,7 +31,8 @@ export function generationHarness(messages, state = stateApi.defaultState(), met
     };
     const names = ['GENERATION_STARTED', 'GENERATION_ENDED', 'GENERATION_STOPPED', 'MESSAGE_RECEIVED', 'MESSAGE_SENT', 'MESSAGE_EDITED', 'MESSAGE_UPDATED', 'MESSAGE_DELETED', 'MESSAGE_SWIPED', 'WORLDINFO_UPDATED', 'WORLDINFO_SETTINGS_UPDATED', 'CHARACTER_EDITED', 'PERSONA_CHANGED', 'PERSONA_UPDATED'];
     const scope = {
-        ...stateApi, ...cacheApi, ...scheduleApi, ...coalescerApi, ...preparedApi, ...campaignApi, ...ownedApi, ...compactionApi, CampaignSession, CAMPAIGN_ATTEMPT_KEY,
+        ...stateApi, ...cacheApi, ...scheduleApi, ...coalescerApi, ...preparedApi, ...campaignApi, ...compactionApi,
+        ownedInput, ownedPass, needsEventReframe, OWNED_SCHEMA, OWNED_SYSTEM, CampaignSession, CAMPAIGN_ATTEMPT_KEY,
         getRequestHeaders: () => ({}), sha256: bytes => createHash('sha256').update(bytes).digest('hex'),
         isStoryGeneration, refreshGameMasterContract, sampleDirectorSignals, selectSituationalOpenings, createSafetyFallbackState, canRetainSuccessfulPlan,
         // ST returns a new context with a snapshot reference to its metadata.

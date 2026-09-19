@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { campaignPayload, emptyCampaign } from '../extension/campaign-planner.js';
-import { OWNED_SYSTEM, OWNED_SCHEMA, ownedInput, ownedPass } from '../extension/event-planning.js';
+import { OWNED_SYSTEM, OWNED_SCHEMA, STORY_MATERIAL_VERSION, ownedInput, ownedPass } from '../extension/event-planning.js';
 import { storyMaterial } from '../extension/undertaking-lifecycle.js';
 
 const source = { chatId: 'story', referenceHash: 'premise', messageCount: 1, fingerprint: 'accepted' };
@@ -126,6 +126,42 @@ test('planner contract selects substance rather than presentation and has no gen
     assert.equal(OWNED_SCHEMA.name, 'tale_fairy_story_material_v1');
 });
 
+test('selection contract checks the whole packet for repetition and open-ended longer-term substance', () => {
+    assert.match(OWNED_SYSTEM, /compare the selected packet as a whole, including selections marked keep/);
+    assert.match(OWNED_SYSTEM, /redundant material stays unselected/);
+    assert.match(OWNED_SYSTEM, /not merely another local task after this one/);
+    assert.match(OWNED_SYSTEM, /not what someone must decide, learn or do next/);
+    assert.match(OWNED_SYSTEM, /not another pass or output field/);
+    assert.match(OWNED_SYSTEM, /Separate applicability from enactment/);
+    assert.match(OWNED_SYSTEM, /Do not withhold every wider possibility until the player initiates it/);
+    assert.match(OWNED_SYSTEM, /do not manufacture a hook to avoid silence/);
+    assert.doesNotMatch(OWNED_SYSTEM, /Pending outcomes require conditional branches/);
+    const fields = OWNED_SCHEMA.value.properties.realization.items.properties.playable.items.properties;
+    assert.match(fields.middle.description, /Not a prescribed decision, binary dilemma/);
+    assert.match(fields.future.description, /not an exhaustive success\/failure fork/);
+});
+
+test('redundant selections can go dormant without merging subjects, inventing replacements or erasing long-term aims', async () => {
+    const old = material('A report is pending.', 'Accuracy conflicts with institutional incentives.',
+        'Accurate records could support durable accountability.');
+    const first = await plan(emptyCampaign(), body([subject('health'), subject('supplies')],
+        ['health', 'supplies'].map(id => ({ id, playable: [old] }))));
+    assert.equal(first.accepted, true, first.error);
+    const selected = material('Existing records and direct observations offer different views of available resources.',
+        'Access to reliable information affects coordination between the participating groups.',
+        'If useful records remain accessible, coordination could persist beyond the present shortage.');
+    const next = await plan(first.state, body([], [
+        { id: 'health', playable: [selected] }, { id: 'supplies', playable: [] },
+    ]));
+    assert.equal(next.accepted, true, next.error);
+    assert.deepEqual(next.state.developments, first.state.developments);
+    assert.deepEqual(next.state.realization.supplies.episodes, {});
+    assert.equal(parse(next.state).possible_developments.length, 1);
+    assert.equal(next.state.archive.filter(a => a.retirement).length, 0);
+    assert.deepEqual(parse(next.state).possible_developments[0], { source: 'Surrounding conditions', ...storyMaterial(selected) });
+    assert.doesNotMatch(campaignPayload(next.state), /must decide|PRIVATE|report is pending/);
+});
+
 for (const [domain, owner, selected] of [
     ['travel', 'Route traffic', material('A traveling peddler has supplies and knowledge of nearby settlements.',
         'Trade routes connect settlements with different needs.', 'If trade or information is exchanged, further routes could become accessible.')],
@@ -142,7 +178,7 @@ for (const [domain, owner, selected] of [
         assert.deepEqual(parse(result.state), { possible_developments: [{ source: owner, ...storyMaterial(selected) }] });
         assert.doesNotMatch(campaignPayload(result.state), /PRIVATE|objective|application|provenance|episodeId/);
         assert.deepEqual(result.state.realization.subject.episodes, {}, 'a proposal does not establish progress');
-        assert.equal(result.state.storyMaterialVersion, 1);
+        assert.equal(result.state.storyMaterialVersion, STORY_MATERIAL_VERSION);
     });
 }
 
@@ -190,7 +226,7 @@ test('pre-upgrade selected advice requires an atomic review, preserving IDs, pro
         'Both parties have something to offer but different expectations.', 'If an arrangement holds, further cooperation could become possible.')]]) {
         const updated = await plan(old, body([], [{ id: 'subject', changes: [], playable }]));
         assert.equal(updated.accepted, true, updated.error);
-        assert.equal(updated.state.storyMaterialVersion, 1);
+        assert.equal(updated.state.storyMaterialVersion, STORY_MATERIAL_VERSION);
         assert.deepEqual(updated.state.developments, old.developments);
         assert.deepEqual(updated.state.realization.subject.episodes, old.realization.subject.episodes);
         assert.deepEqual(updated.state.archive.slice(0, old.archive.length), old.archive);
@@ -200,6 +236,34 @@ test('pre-upgrade selected advice requires an atomic review, preserving IDs, pro
         assert.deepEqual(next.state.realization, updated.state.realization);
     }
     assert.deepEqual(old, before);
+});
+
+test('v1 story selections must be reassessed once without resetting durable plans or progress', async () => {
+    const first = await plan(emptyCampaign(), body([subject('subject')], [{ id: 'subject',
+        playable: [material('Records are pending.', 'The clerk must choose honesty or concealment.',
+            'If concealed, the player must decide whether to investigate.')] }]));
+    const old = { ...first.state, storyMaterialVersion: 1 };
+    const review = JSON.parse(ownedInput({ state: old, reference: {}, messages }).prompt).previous_preparation;
+    assert.equal(review.material_review_required, true);
+    assert.deepEqual(review.playable_review_required_ids, ['subject']);
+    assert.deepEqual(review.material_review_episode_ids, { subject: ['opening'] });
+    assert.deepEqual(review.playable.subject, []);
+    assert.doesNotMatch(JSON.stringify(review), /clerk must choose|player must decide/);
+    assert.match(JSON.stringify(review.developments), /PRIVATE mid-term/);
+    const keep = await plan(old, body([], [{ id: 'subject', selection: 'keep' }]));
+    assert.equal(keep.accepted, false, 'old-contract material cannot bypass reassessment via keep');
+    assert.equal(keep.state, old);
+    const revised = await plan(old, body([], [{ id: 'subject', playable: [material(
+        'Uneven records leave gaps in the available information.',
+        'Separate offices hold complementary records and have different interests in sharing them.',
+        'Shared access could support a lasting information channel.')] }]));
+    assert.equal(revised.accepted, true, revised.error);
+    assert.equal(revised.state.storyMaterialVersion, STORY_MATERIAL_VERSION);
+    assert.deepEqual(revised.state.developments, old.developments);
+    assert.deepEqual(revised.state.realization.subject.episodes, old.realization.subject.episodes);
+    assert.deepEqual(revised.state.archive.findLast(a => a.realization).realization, old.realization);
+    const subsequent = await plan(revised.state, body([], [{ id: 'subject', selection: 'keep' }]));
+    assert.equal(subsequent.accepted, true, subsequent.error);
 });
 
 test('selected material cannot add separate pacing, tone or writing-style fields', async () => {

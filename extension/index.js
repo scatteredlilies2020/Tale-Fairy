@@ -1,6 +1,6 @@
 import { sha256 } from '/lib.js';
-import { campaignAuthorInstructions, campaignUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.33';
-import { ownedInput, ownedPass, needsEventReframe, OWNED_SCHEMA, OWNED_SYSTEM } from './event-planning.js?v=0.14.33';
+import { campaignAuthorInstructions, campaignUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.34';
+import { storyInput as ownedInput, storyPass as ownedPass, needsEventReframe, STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM } from './story-selection.js?v=0.14.34';
 import { readCampaignContinuity } from './campaign-continuity.js';
 import { readEvidenceProviders, evidenceRevisionKey } from './evidence-providers.js';
 import { campaignEvidenceMessages, campaignReviewWindow } from './campaign-evidence.js';
@@ -43,11 +43,11 @@ import { defaultPreparedWorld, preparedWorldUsable, unchangedSourcePrefix, stamp
 import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.9';
 import { canRetainSuccessfulPlan, createSafetyFallbackState } from './fallback-direction.js?v=0.14.22';
 import { classifyAssistantReply } from './response-usability.js?v=0.13.9';
-import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, legacyPlotInputKey, migrateCampaignBudgetKeys, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.33';
+import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, legacyPlotInputKey, migrateCampaignBudgetKeys, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.34';
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.14.33';
+const RUNTIME_VERSION = '0.14.34';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -2836,6 +2836,18 @@ function scratchpadList(items, formatter, fallback) {
     return lines.length ? lines.map(line => `• ${line}`).join('\n') : fallback;
 }
 
+function campaignSelectionSummary(preparation) {
+    if (preparation.selectedMaterial === undefined) return '';
+    return `SELECTED STORY HORIZONS\n${preparation.selectedMaterial.map(entry =>
+        `Available circumstances: ${entry.available}\nMid-term possibilities: ${entry.developing}\nLong-term possibilities: ${entry.lasting}`
+    ).join('\n\n') || 'No additional development selected; enduring aims remain private.'}`;
+}
+
+function campaignBackgroundSummary(entry) {
+    if (!entry) return '';
+    return `Private background (provisional): ${entry.unfolding}\nGrounding / time: ${entry.basis}\nAccess · ${entry.access.route}: ${entry.access.basis}`;
+}
+
 function renderBoard(state = loadState(currentContext().chatMetadata)) {
     const board = document.querySelector(`#${EXTENSION_ID}-board`);
     if (!board) return;
@@ -2884,19 +2896,24 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
             `CAMPAIGN PREPARATION · revision ${preparation.revision} · ${preparedReady(state, messagesFromChat(currentContext().chat || [])) ? 'compatible with current play' : 'source changed; not injected'}`,
             preparation.campaign,
             `EPISODE · ${preparation.episode.status}: ${preparation.episode.subject}\n${preparation.episode.boundary}`,
+            campaignSelectionSummary(preparation),
             ...preparation.developments.map(item => [
                 `[${item.id}] ${preparation.realization?.[item.id] ? '' : preparation.preparationFormat === EVENT_POINTS_FORMAT
                     ? eventPointWire(item).plot_points.map(point => `Event opportunity: ${point.event}\nOpens: ${point.opens}`).join('\n\n') : item.premise}`,
                 preparation.realization?.[item.id] && `Accepted progress (cited interpretation): ${Object.entries(preparation.realization[item.id].episodes).map(([id, e]) => `${id}: ${e.status}`).join('; ') || 'No witnessed enactment yet'}`,
                 preparation.realization?.[item.id]?.needsPlayableReview && 'Selection review pending: stale or unreviewed material withheld.',
-                preparation.realization?.[item.id] && `Selected story material: ${preparation.realization[item.id].playable.map(p => p.direction
+                preparation.selectedMaterial !== undefined
+                    ? (preparation.selectedMaterial.some(entry => entry.subjectIds.includes(item.id))
+                        ? 'Contributes to the selected story horizons above.' : 'Retained privately; not currently selected.')
+                    : preparation.realization?.[item.id] && `Selected story material: ${preparation.realization[item.id].playable.map(p => p.direction
                     ? `${p.when} — ${p.direction}\nDeveloping conditions: ${p.middle}\nPossible consequences: ${p.future}`
                     : 'Legacy scene retained privately; durable material supplied until review.').join('\n') || 'None; subject retained privately'}`,
                 item.initiative && `Proposed ${item.initiative.control} aim · ${item.initiative.owner}: ${item.initiative.aim}`,
+                campaignBackgroundSummary(preparation.background?.find(entry => entry.subjectId === item.id)),
                 `Development: ${item.progression}`, `${['plot-points-v1', 'event-opportunities-v1'].includes(state.campaignPreparation.preparationFormat) ? 'Stakes' : 'Outcomes'}: ${item.outcomes}`, `Participation: ${item.access}`,
             ].filter(Boolean).join('\n')),
             `${preparation.archive.length} prior designs/boundaries retained in chat metadata. Proposals are not established story facts.`,
-        ].join('\n\n') : 'No valid campaign preparation yet. Previous material is retained in metadata; no legacy scene plan is injected.', '');
+        ].filter(Boolean).join('\n\n') : 'No valid campaign preparation yet. Previous material is retained in metadata; no legacy scene plan is injected.', '');
     }
     const archives = board.querySelector('[data-role="scratchpad-archives"]');
     if (archives) {

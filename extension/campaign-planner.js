@@ -1,6 +1,8 @@
 // Candidate single-call campaign preparation; host integration is opt-in.
 // Owns proposals only: accepted history always comes from the conversation.
-import { playableSituations, storyMaterial, validateStoredRealization } from './undertaking-lifecycle.js?v=0.14.33';
+import { playableSituations, storyMaterial, validateStoredRealization } from './undertaking-lifecycle.js?v=0.14.34';
+import { validateSelectedMaterial, selectedMaterialPacket } from './selected-material.js?v=0.14.34';
+import { validateBackground } from './background-progress.js?v=0.14.34';
 import { estimateTokenCount } from './token-budget.js';
 
 // Matches the existing host's planner-request marker so request interception
@@ -99,6 +101,11 @@ export function validCampaignState(state) {
     try {
         if (!Number.isSafeInteger(state?.revision) || state.revision < 1 || !Array.isArray(state.archive)) return false;
         if (state.realization !== undefined) validateStoredRealization(state.realization, check);
+        if (state.background !== undefined) {
+            validateBackground(state.background, state.developments, check);
+            if (state.selectedMaterial === undefined) return false;
+        }
+        if (state.selectedMaterial !== undefined) validateSelectedMaterial(state.selectedMaterial, state.developments, check, state.background);
         const source = state.source;
         if (!source || !Number.isSafeInteger(source.messageCount) || source.messageCount < 0
             || !['chatId', 'referenceHash', 'fingerprint'].every(key => typeof source[key] === 'string' && source[key])) return false;
@@ -173,7 +180,8 @@ function contextJson(value) {
 
 export function campaignPayload(state, instructions = []) {
     const authored = instructions.filter(text => typeof text === 'string' && text.trim());
-    const possible_developments = (state?.revision ? state.developments : []).flatMap(subject => {
+    const possible_developments = state?.revision && state.selectedMaterial !== undefined ? selectedMaterialPacket(state)
+        : (state?.revision ? state.developments : []).flatMap(subject => {
         const entry = state.realization?.[subject.id];
         const open = entry?.playable.filter(p => !['completed', 'declined', 'transformed'].includes(entry.episodes[p.episodeId]?.status));
         if (open && !open.length) return []; // Quiet, dormant and closed subjects stay private.
