@@ -1,6 +1,6 @@
 // Candidate single-call campaign preparation; host integration is opt-in.
 // Owns proposals only: accepted history always comes from the conversation.
-import { playableSituations, validateStoredRealization } from './undertaking-lifecycle.js';
+import { playableSituations, validateStoredRealization } from './undertaking-lifecycle.js?v=0.14.32';
 import { estimateTokenCount } from './token-budget.js';
 
 // Matches the existing host's planner-request marker so request interception
@@ -172,6 +172,30 @@ function contextJson(value) {
 }
 
 export function campaignPayload(state, instructions = []) {
+    if (state?.preparationFormat !== EVENT_POINTS_FORMAT) return legacyCampaignPayload(state, instructions);
+    const authored = instructions.filter(text => typeof text === 'string' && text.trim());
+    const development_guidance = state.developments.flatMap(subject => {
+        const entry = state.realization?.[subject.id];
+        const open = entry?.playable.filter(p => !['completed', 'declined', 'transformed'].includes(entry.episodes[p.episodeId]?.status));
+        if (open && !open.length) return []; // Explicit quiet/closed guidance stays quiet.
+        const objective = { owner: subject.initiative.owner, aim: subject.initiative.aim };
+        const guidance = open?.filter(p => p.direction) || [];
+        if (guidance.length) return guidance.map(p => ({ objective, when: p.when,
+            direction: p.direction, middle: p.middle, future: p.future }));
+        // A legacy plan remains useful immediately, without copying its staged
+        // scenes or predetermined endpoints. No generated rewriting or AI call.
+        return [{ objective, middle: subject.progression, stakes: subject.outcomes, participation: subject.access }];
+    });
+    if (!development_guidance.length && !authored.length) return '';
+    return `<tale-fairy-context>\n${contextJson({
+        ...(development_guidance.length ? { long_term_direction: state.campaign, development_guidance } : {}),
+        ...(authored.length ? { author_instructions: authored } : {}),
+    })}\n</tale-fairy-context>`;
+}
+
+// Exact historical serialization is only for authenticating saved retry
+// packets. The host always rebuilds their outgoing text with campaignPayload.
+export function legacyCampaignPayload(state, instructions = []) {
     const authored = instructions.filter(text => typeof text === 'string' && text.trim());
     if (!state?.revision) return authored.length ? `<tale-fairy-context>\n${contextJson({
         author_instructions: authored,

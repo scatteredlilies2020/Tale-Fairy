@@ -1,7 +1,7 @@
 // Accepted witnesses, durable subjects and writer material have distinct ownership.
 // This ledger is a cited interpretation of accepted prose, never a world simulator.
 const text = maxLength => ({ type: 'string', minLength: 1, maxLength });
-export const REALIZATION_SCHEMA = { type: 'array', maxItems: 4, items: {
+const LEGACY_REALIZATION_SCHEMA = { type: 'array', maxItems: 4, items: {
     type: 'object', additionalProperties: false, required: ['id'], properties: {
         id: text(80),
         changes: { type: 'array', maxItems: 8, items: { type: 'object', additionalProperties: false,
@@ -21,11 +21,22 @@ export const REALIZATION_SCHEMA = { type: 'array', maxItems: 4, items: {
             } } },
     },
 } };
-// Saved v0.14.28 situations remain usable until a successful ordinary review.
-const SAVED_REALIZATION_SCHEMA = structuredClone(REALIZATION_SCHEMA);
+// Keep old scene scripts readable as private migration data, not new output.
+const SAVED_REALIZATION_SCHEMA = structuredClone(LEGACY_REALIZATION_SCHEMA);
 SAVED_REALIZATION_SCHEMA.items.properties.playable.items.required = ['episodeId', 'when', 'situation'];
+export const REALIZATION_SCHEMA = structuredClone(LEGACY_REALIZATION_SCHEMA);
+REALIZATION_SCHEMA.items.properties.playable.items = {
+    type: 'object', additionalProperties: false, required: ['episodeId', 'when', 'direction', 'middle', 'future'],
+    properties: {
+        episodeId: text(80),
+        when: { ...text(500), description: 'Applicability or an unresolved prerequisite, not a scheduled entrance or action.' },
+        direction: { ...text(600), description: 'A flexible objective or source of development, not a scene to enact.' },
+        middle: { ...text(900), description: 'What can develop across several scenes: changing aims, relationships, capabilities or meaningful milestones. No ordered tasks or scripted actions.' },
+        future: { ...text(700), description: 'Conditional longer-term possibilities opened by progress or changed choices. No guaranteed result, forced ending or automatic sequel.' },
+    },
+};
 export const needsPlayableReview = entry => !entry || Boolean(entry.needsPlayableReview)
-    || entry.playable.some(p => !p.resolution);
+    || entry.playable.some(p => !p.direction);
 
 const actorKey = name => String(name).trim().toLocaleLowerCase();
 export function validateResolution(resolution, playerNames = []) {
@@ -41,6 +52,7 @@ export function validateResolution(resolution, playerNames = []) {
 }
 
 export function playableSituation(p) {
+    if (p.direction) return { when: p.when, direction: p.direction, middle: p.middle, future: p.future };
     const result = { when: p.when, situation: p.situation };
     if (!p.resolution) return result;
     const { owner, actors, endpoint } = p.resolution;
@@ -141,15 +153,15 @@ export function playableSituations(state) {
 }
 
 export const REALIZATION_INSTRUCTIONS = `
-Keep three responsibilities separate within this response. developments holds durable creative preparation. realization.changes records ONLY changes supported by exact quotes from supplied accepted_messages. realization.playable authors concrete experiences for the writer. Generated preparation, memory summaries and an intention to act cannot establish that an activity happened.
+Keep three responsibilities separate within this response. developments holds durable mid- and long-term preparation. realization.changes records ONLY changes supported by exact quotes from supplied accepted_messages. realization.playable supplies flexible guidance, not scripted scenes. Generated preparation, memory summaries and an intention to act cannot establish that an activity happened.
 
 For every new subject and each playable_review_required_id provide a realization entry under the same id; other subjects and their playable material survive omission. Revising durable development alone does not mean its current playable situation changed. Omit changes when no accepted progress is claimed. A progress-only entry may omit playable; an old situation with partial or closed progress will no longer be offered. Supply revised playable material when its remaining substance matters now; an explicit empty array is valid quiet. Pending writer reviews do not require another AI call now. Use stable episodeId values for finite experiences within each undertaking. Distinguish introduced, participating, partial, completed, declined and transformed; these are evidence descriptions, not mandatory stages. Quote the actual participation, performed substance or result: an invitation is only introduced, agreement is participation, practice can be partial, a performed piece can complete that episode. Declining a booking closes that episode, not music. Retire a whole subject only on whole-subject evidence, with scope whole-subject and exact witnesses; declining one method or finishing one episode is insufficient. Previously completed/declined episodes cannot restart. A changed arrangement or collaboration is a NEW episode building on the witnessed result under the SAME subject. Keep unused possibilities without recruiting the player into them.
 
-Each newly authored playable situation needs resolution: owner npc, world, or player, and endpoint. For npc also list the distinct named NPC actors; never list a player-controlled character. This is ownership of the remaining activity, not the current camera viewpoint. A player watching an NPC or being elsewhere does not own that NPC's decisions. For world, omit actors and give the bounded physical change. For player, omit actors and describe the genuine unresolved player decision, never its answer or an assumed action.
+Each guidance entry contains when, direction, middle and future. direction names what could develop and why it matters to the involved people. middle supplies substantive possibilities across several scenes: evolving aims, relationships, capabilities, pressures or meaningful milestones, rather than a queue of prerequisites. future describes conditional longer-term reach, including how different choices or results could change the direction. These are possibilities, not assigned player objectives, mandatory stages or guaranteed endings. when states applicability and any unresolved prerequisite; it must not prescribe an arrival or fictional time advance.
 
-For NPC-owned activity, endpoint contains the finite result those NPCs can reach, including their decisions, substantive work and immediate consequence or already-established return/contact. Prepare the whole encounter, not only a signal, invitation, delivered object or permission to begin. A secret note encounter includes the NPC's handling of its information and resulting action, with uncertainty and knowledge boundaries preserved. Do not expand a finite errand into a ladder of new prerequisites. Other characters can play out their own scene without the absent player supplying reaction beats. Only a genuine player choice is a player-owned endpoint. Results are conditional proposed story content, never a ledger update or offscreen fact. Do not add prose instructions, reply quotas, paragraph limits, camera commands, tone rules or a generic instruction to advance time.
+Be specific about motives and sources of change, not execution. Avoid vague advice such as build trust or advance the plot: explain what creates trust or tension and what it could make possible later. Do not supply an encounter script, exact gestures, prop movements, dialogue, incidental quantities, a fixed sequence, or predetermined NPC decisions and outcomes. The writer and player determine how events unfold. NPCs may pursue their own aims without repeated player permission; this does not authorize invented completed work or player actions. A meaningful milestone describes a possible change, not a required checklist step. Finite work may end without another obligation.
 
-playable is the ONLY writer material for reviewed subjects. Give zero to two concrete situations, each with its own applicability condition in when, and substantive NPC/world activity in situation. This is creative authorship, not factual maintenance: author the actual experiment, exchange, exploration, work or performance, including what changes within it and a reachable result within NPC/world control. Do not merely introduce or promise its value. Do not require player permission for NPCs' plausible ordinary work or forbid finishing because a result is not yet in history. A new result becomes accepted only when played. Never supply player actions, consent, feelings, participation or knowledge. Condition future consequences on results not yet accepted. Let the current activity finish naturally; quiet or empty playable material is valid. No compulsory crisis, interruption, travel, or subplot quota. Review interval and number of messages are NOT fictional elapsed time. Fictional time comes only from accepted play. Respect source abilities, relationships, access and who knows what. Keep evidence quotes, ledger statuses, initiative, development and private opens out of situation and resolution.
+Give zero to two concise guidance entries per subject, normally one. The writer receives this guidance, the subject's NPC/world objective and the broader campaign direction, not evidence quotes or ledger statuses. No prose instructions, reply quotas, camera commands or style rules. Preserve knowledge boundaries and player ownership. Quiet or empty guidance is valid; no compulsory crisis, interruption, travel or subplot quota. Review interval and message count are NOT fictional elapsed time. On review, remove completed portions and revise the remaining direction from accepted play without restarting the introduction. Replace legacy situation/resolution scripts with guidance under the same subject and episode IDs where appropriate; preserve witnessed progress. Do not copy old choreography into the new fields.
 `;
 
 export function validateStoredRealization(value, check) {
@@ -157,7 +169,10 @@ export function validateStoredRealization(value, check) {
     for (const [id, entry] of Object.entries(value)) {
         if (!entry || !entry.episodes || typeof entry.episodes !== 'object' || Array.isArray(entry.episodes)) throw Error('Invalid progress ledger');
         if (!Array.isArray(entry.playable) || entry.needsPlayableReview !== undefined && typeof entry.needsPlayableReview !== 'boolean') throw Error('Invalid writer review state');
-        check([{ id, changes: [], playable: entry.playable }], SAVED_REALIZATION_SCHEMA);
+        check([{ id, changes: [], playable: [] }], REALIZATION_SCHEMA);
+        if (entry.playable.length > 2) throw Error('Too many guidance entries');
+        for (const p of entry.playable) check([{ id, changes: [], playable: [p] }],
+            Object.hasOwn(p, 'direction') ? REALIZATION_SCHEMA : SAVED_REALIZATION_SCHEMA);
         for (const p of entry.playable) validateResolution(p.resolution);
         for (const [episodeId, episode] of Object.entries(entry.episodes)) {
             check([{ id, playable: [], changes: [{ episodeId, status: episode.status,

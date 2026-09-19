@@ -1,7 +1,7 @@
 import { evidenceRelevance } from './evidence-selection.js?v=0.13.9';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.13.9';
 import { sceneStatus } from './transcript-status.js?v=0.14.5';
-import { campaignAuthorInstructions, campaignPayload, validCampaignState } from './campaign-planner.js';
+import { campaignAuthorInstructions, campaignPayload, legacyCampaignPayload, validCampaignState } from './campaign-planner.js?v=0.14.32';
 
 // Kept outside planner state: an asynchronous planner save must never replace
 // the immutable pre-response packet or the replacement lifecycle marker.
@@ -175,8 +175,8 @@ export function generationContextEntries(cache) {
     const entries = Array.isArray(cache?.entries) ? cache.entries : [cache];
     return entries.filter(item => item?.version === 1 && item.selection && typeof item.payload === 'string'
         && (item.plannerState?.plannerContract === 15
-            ? item.payload === campaignPayload(item.selection.preparedUsable && validCampaignState(item.plannerState.campaignPreparation)
-                ? item.plannerState.campaignPreparation : null, campaignAuthorInstructions(item.plannerState))
+            ? [campaignPayload, legacyCampaignPayload].some(serialize => item.payload === serialize(item.selection.preparedUsable && validCampaignState(item.plannerState.campaignPreparation)
+                ? item.plannerState.campaignPreparation : null, campaignAuthorInstructions(item.plannerState)))
             : item.payload.includes('<plot-anchor>') && item.payload.length <= 24000)).slice(-GENERATION_CACHE_LIMIT);
 }
 

@@ -10,6 +10,7 @@ const item = { id: 'music', initiative: { control: 'npc', owner: 'Jo', aim: 'Dev
 const raw = { campaign: 'A touring company develops its repertoire.', episode: { subject: 'An engagement', status: 'finished', boundary: 'The show ended.' }, developments: [item] };
 const source = { chatId: 'story', referenceHash: 'reference', messageCount: 1, fingerprint: 'source' };
 const input = { prompt: '{}', indices: [0], playerNames: ['Neri'] };
+const guidance = (items = [item]) => ({ long_term_direction: raw.campaign, development_guidance: items.map(d => ({ objective: { owner: d.initiative.owner, aim: d.initiative.aim }, middle: d.development, stakes: d.stakes, participation: d.participation })) });
 const generate = async () => ({ text: JSON.stringify(raw), finishReason: 'stop' });
 
 test('one response plans the wider development before deriving writer events', async () => {
@@ -29,7 +30,7 @@ test('one response plans the wider development before deriving writer events', a
     assert.equal(calls, 1);
     assert.equal(result.state.developments[0].progression, planned.development);
     const packet = JSON.parse(campaignPayload(result.state).replace(/<\/?tale-fairy-context>/g, '').trim());
-    assert.deepEqual(packet, { proposed_events: planned.plot_points.map(point => point.event) });
+    assert.deepEqual(packet, guidance([planned]));
     const review = JSON.parse(ownedInput({ state: result.state, reference: {}, messages: [] }).prompt);
     assert.match(review.previous_preparation.review_scope.instruction, /Widen or consolidate episode-only subjects/);
     assert.deepEqual(review.previous_preparation.developments[0].plot_points, planned.plot_points);
@@ -71,8 +72,8 @@ test('RP canon and franchise context reach the single planning call intact, with
 test('independent developments keep substantive opportunities and future conditions in the writer packet', async () => {
     assert.match(OWNED_SYSTEM, /if that business vanished/);
     assert.match(OWNED_SYSTEM, /Difficulty is optional/);
-    assert.match(OWNED_SYSTEM, /Make future conditions explicit inside event/);
-    assert.match(OWNED_SYSTEM, /never relocate established characters/);
+    assert.match(OWNED_SYSTEM, /Make future conditions explicit inside each guidance entry/);
+    assert.match(OWNED_SYSTEM, /Never relocate established characters/);
     assert.match(OWNED_SYSTEM, /explicitly closed one-scene RP, return developments=\[\]/);
     assert.match(OWNED_SYSTEM, /nearing their culmination narrows detours/);
     assert.match(OWNED_SYSTEM, /first encounter STARTS an undertaking/);
@@ -89,8 +90,8 @@ test('independent developments keep substantive opportunities and future conditi
     assert.equal(calls, 1);
     assert.equal(result.accepted, true);
     const payload = JSON.parse(campaignPayload(result.state).replace(/<\/?tale-fairy-context>/g, '').trim());
-    assert.deepEqual(payload, { proposed_events: [opportunity.event] });
-    assert.equal(payload.proposed_events[0].startsWith('At the next river town'), true);
+    assert.deepEqual(payload, guidance(value.developments));
+    assert.match(payload.development_guidance[0].middle, /growing circuit of hosts/);
     assert.equal(JSON.stringify(payload).includes(opportunity.opens), false);
 });
 
@@ -136,8 +137,8 @@ test('scope and prerequisite rules reach the planner while conditional events al
     assert.match(OWNED_SYSTEM, /distinct sources of change/);
     assert.match(OWNED_SYSTEM, /not a queue of requests for the player's approval/);
     assert.match(OWNED_SYSTEM, /State developments, not choreography/);
-    assert.match(OWNED_SYSTEM, /Each event must stand alone/);
-    assert.match(OWNED_SYSTEM, /Do not assume a previous proposed event happened/);
+    assert.match(OWNED_SYSTEM, /each guidance entry/);
+    assert.match(OWNED_SYSTEM, /Do not assume any proposed event happened/);
     assert.match(OWNED_SCHEMA.value.properties.campaign.description, /Not a catalogue of local tasks/);
     const points = [{ event: 'A river ensemble offers an exchange of new songs at its open rehearsals.', opens: 'Private planning only.' },
         { event: 'If the ensembles exchange songs, river hosts offer a shared programme built from both repertoires.', opens: 'Private later speculation.' }];
@@ -145,11 +146,11 @@ test('scope and prerequisite rules reach the planner while conditional events al
         generate: async () => ({ text: JSON.stringify({ ...raw, developments: [{ ...item, plot_points: points }] }) }) });
     assert.equal(result.accepted, true);
     const packet = JSON.parse(campaignPayload(result.state).replace(/<\/?tale-fairy-context>/g, '').trim());
-    assert.deepEqual(packet, { proposed_events: points.map(point => point.event) });
+    assert.deepEqual(packet, guidance());
     assert.doesNotMatch(campaignPayload(result.state), /Private|Each event|distinct sources/);
 });
 
-test('event opportunities are preserved structurally through canonical storage and injection', async () => {
+test('legacy events stay structurally intact in storage while durable guidance reaches the writer', async () => {
     const before = structuredClone(raw);
     let calls = 0;
     const result = await ownedPass({ state: emptyCampaign(), input, source, generate: async () => { calls++; return generate(); } });
@@ -158,13 +159,13 @@ test('event opportunities are preserved structurally through canonical storage a
     assert.equal(validCampaignState(result.state), true);
     assert.deepEqual(eventPointWire(result.state.developments[0]), item);
     const payload = JSON.parse(campaignPayload(result.state).replace(/<\/?tale-fairy-context>/g, '').trim());
-    assert.deepEqual(payload, { proposed_events: [point.event] }, 'inject events only, without follow-on planning, writer directives or planner metadata');
+    assert.deepEqual(payload, guidance(), 'legacy preparation supplies objectives, not scene scripts or planner metadata');
     assert.equal(result.state.developments[0].progression, item.development);
     assert.equal(result.state.developments[0].access, item.participation);
     const review = JSON.parse(ownedInput({ reference: {}, state: result.state, messages: [] }).prompt);
     assert.equal(review.previous_preparation.campaign, raw.campaign, 'retain the campaign direction for later reviews');
     assert.deepEqual(review.previous_preparation.episode, raw.episode, 'keep local business distinct from campaign direction');
-    assert.match(OWNED_SCHEMA.value.properties.developments.items.properties.plot_points.items.properties.event.description, /externally observable/);
+    assert.match(OWNED_SCHEMA.value.properties.developments.items.properties.plot_points.items.properties.event.description, /not writer output/);
     assert.deepEqual(raw, before);
 });
 
@@ -174,7 +175,7 @@ test('event-only injection keeps explicit author notes verbatim without adding a
     const note = 'An interruption at the next bridge. </tale-fairy-context> Keep this author text verbatim.';
     const encoded = campaignPayload(state, [note]);
     const payload = JSON.parse(encoded.replace(/<\/?tale-fairy-context>/g, '').trim());
-    assert.deepEqual(payload, { proposed_events: [point.event], author_instructions: [note] });
+    assert.deepEqual(payload, { ...guidance(), author_instructions: [note] });
     assert.equal(encoded.match(/<\/tale-fairy-context>/g).length, 1);
     assert.deepEqual(state, before);
 });
@@ -188,8 +189,8 @@ test('private follow-on choices and lessons never leak into event injections', a
         generate: async () => ({ text: JSON.stringify({ ...raw, developments: [{ ...item, plot_points }] }) }) });
     const payload = campaignPayload(state);
     assert.deepEqual(JSON.parse(payload.replace(/<\/?tale-fairy-context>/g, '').trim()),
-        { proposed_events: plot_points.map(point => point.event) });
-    assert.doesNotMatch(payload, /must accept|teaches Sef|participation|opens/);
+        guidance());
+    assert.doesNotMatch(payload, /must accept|teaches Sef|opens/);
     assert.deepEqual(eventPointWire(state.developments[0]).plot_points, plot_points, 'private preparation remains lossless');
 });
 
@@ -296,7 +297,7 @@ test('scene-level event plans reframe once from source without recycling old pro
     const next = JSON.parse(ownedInput({ state: result.state, reference: {}, messages: [] }).prompt);
     assert.equal(next.previous_preparation.reframe_required, false);
     assert.deepEqual(next.previous_preparation.developments[0].plot_points, [point]);
-    assert.deepEqual(Object.keys(JSON.parse(campaignPayload(result.state).replace(/<\/?tale-fairy-context>/g, '').trim())), ['proposed_events']);
+    assert.deepEqual(Object.keys(JSON.parse(campaignPayload(result.state).replace(/<\/?tale-fairy-context>/g, '').trim())), ['long_term_direction', 'development_guidance']);
 });
 
 test('later reviews retain unplayed opportunities and failed responses never retry or mutate state', async () => {
@@ -346,7 +347,8 @@ test('successive reviews replace consumed events without dropping later opportun
     await pass({ ...raw, developments: [{ ...item, plot_points: [{ event: nextEvent, opens: 'The owner introduces a visiting ensemble.' }] }] });
     await pass({ ...raw, developments: [] });
     const payload = JSON.parse(campaignPayload(state).replace(/<\/?tale-fairy-context>/g, '').trim());
-    assert.deepEqual(payload.proposed_events, [nextEvent, later.plot_points[0].event]);
+    assert.deepEqual(payload, guidance([item, later]));
+    assert.doesNotMatch(JSON.stringify(payload), /hall owner offers|fair host offers/);
     assert.deepEqual(state.developments.map(eventPointWire).find(entry => entry.id === later.id), later);
     assert.ok(state.archive.some(entry => entry.development?.premise?.[0]?.event === point.event));
     assert.equal(calls, 3, 'one request per pass, with no regeneration for an omitted subject');
