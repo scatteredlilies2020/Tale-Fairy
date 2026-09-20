@@ -8,8 +8,8 @@ export const SELECTED_MATERIAL_SCHEMA = { type: 'array', maxItems: 1,
                 items: { type: 'string', minLength: 1, maxLength: 80 },
                 description: 'Nonempty exact development ids with background.access.route other than none. EXCLUDE inaccessible subjects, even long-term contributors. Never [].' },
             available: text('Optional opportunities and relevant conditions across the RP, not a task recap or claims of completed work. Capability or delegation is not completion. Keep unestablished prerequisites conditional.'),
-            developing: text('Concrete proposed subject matter for shared activities, relationships or world processes: what people could actually work on, discover or experience. Add substance beyond generic improvement, rapport or using strengths. Not the procedure for resolving the latest tasks.'),
-            lasting: text('Open long-term possibilities beyond the present scene. Not alternative favorable/adverse outcomes, guaranteed endings or a next task.'),
+            developing: text('Creative direction: an interesting possible change in relationships, shared purpose, use of competence or world conditions, and what it opens up. Distinctive without requiring concrete scene details; not an activity list, generic improvement or a task procedure.'),
+            lasting: text('Open long-term possibilities that direction could make meaningful beyond the present scene. Not alternative favorable/adverse outcomes, guaranteed endings or a next task. Leave the route and destination open.'),
         } },
 };
 

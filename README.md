@@ -2,7 +2,20 @@
 
 Tale Fairy is a standalone SillyTavern extension that acts as a **background creative Game Master**, preparing a playable middle and future while the roleplay model writes the story. It combines a persistent private notebook with selective factual world awareness—not a full world simulation, a prose generator, or a fixed event script.
 
-## What changes in 0.14.35
+## What changes in 0.14.36
+
+**Creative direction first, not detailed scene planning.** Tale Fairy now prioritizes
+interesting possible changes in relationships, shared purpose, established competence
+and world conditions. A distinctive direction can be concise: the writer and player
+choose its details, route and outcome. More props, activity lists or obligatory twists
+are not the measure of usefulness. Quiet enjoyment and deepening an existing dynamic
+remain valid directions.
+
+The freshness and failed-review safeguards from 0.14.35 remain unchanged. Existing
+plans are preserved until a successful review; refresh ST to load the new contract.
+See [verification and limitations](docs/creative-direction-0.14.36.md).
+
+## Previous release: 0.14.35
 
 - **Bounded freshness:** scene-facing suggestions expire after at most four
   accepted assistant replies (or the configured interval when shorter). Private

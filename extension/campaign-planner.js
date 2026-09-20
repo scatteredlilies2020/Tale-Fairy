@@ -1,7 +1,7 @@
 // Candidate single-call campaign preparation; host integration is opt-in.
 // Owns proposals only: accepted history always comes from the conversation.
 import { playableSituations, storyMaterial, validateStoredRealization } from './undertaking-lifecycle.js?v=0.14.34';
-import { validateSelectedMaterial, selectedMaterialPacket } from './selected-material.js?v=0.14.35';
+import { validateSelectedMaterial, selectedMaterialPacket } from './selected-material.js?v=0.14.36';
 import { validateBackground } from './background-progress.js?v=0.14.34';
 import { estimateTokenCount } from './token-budget.js';
 

@@ -241,12 +241,36 @@ test('the actual contract and private background are budgeted without old inject
     assert.match(STORY_SYSTEM, /There is no keep operation or implicit carry-over/);
     assert.match(STORY_SYSTEM, /Several private aims can inform ONE circumstance/);
     assert.match(STORY_SYSTEM, /lasting names the open longer-term possibilities/);
-    assert.match(STORY_SYSTEM, /Give an activity actual subject matter/);
+    assert.match(STORY_SYSTEM, /Creative direction matters more than concrete detail/);
     assert.match(STORY_SYSTEM, /Player competence enables participation/);
     assert.match(STORY_SYSTEM, /Access to an NPC does not reveal their unspoken history/);
     assert.ok(STORY_SYSTEM.split(/\s+/).length < 1100, 'Keep one concise contract instead of accumulating overlapping prompts');
     assert.match(STORY_SCHEMA.value.properties.selected_material.items.properties.lasting.description, /Not alternative favorable\/adverse outcomes/);
     assert.doesNotMatch(STORY_SYSTEM, /Connect an available premise to developing conditions and conditional consequences/);
+});
+
+test('creative direction stays open without requiring a detailed scene plan', async () => {
+    assert.match(STORY_SYSTEM, /what could become interestingly different/);
+    assert.match(STORY_SYSTEM, /Quiet enjoyment and deepening a good dynamic count/);
+    assert.match(STORY_SYSTEM, /No forced reconciliation, fixed arc or novelty quota/);
+    assert.match(STORY_SYSTEM, /leave its manifestation to the writer and play/);
+    assert.doesNotMatch(STORY_SYSTEM, /Give an activity actual subject matter|Specific proposed content is welcome/);
+    const developing = STORY_SCHEMA.value.properties.selected_material.items.properties.developing.description;
+    assert.match(developing, /Creative direction/);
+    assert.match(developing, /without requiring concrete scene details/);
+    const direction = {
+        subjectIds: ['music'],
+        available: 'The ensemble is together after a shared performance, with room to pursue its common interest.',
+        developing: 'Contrasting approaches to music could become complementary strengths, making artistic disagreement a source of mutual reliance without requiring personal agreement.',
+        lasting: 'That creative reliance could give the ensemble an identity of its own while leaving closeness, ambition and continued collaboration open.',
+    };
+    const result = await plan(emptyCampaign(), body([subject('music')], [direction], [], [background('music')]));
+    assert.equal(result.accepted, true, result.error);
+    assert.deepEqual(packet(result.state).possible_developments, [{
+        available_circumstances: direction.available,
+        mid_term_possibilities: direction.developing,
+        long_term_possibilities: direction.lasting,
+    }], 'a directional possibility reaches the writer without added scenes, details or mandated outcomes');
 });
 
 test('inaccessible background survives quiet reviews and later surfaces without becoming accepted history', async () => {
