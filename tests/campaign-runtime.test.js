@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { CampaignRuntime } from '../extension/campaign-runtime.js';
-import { campaignUsable, emptyCampaign } from '../extension/campaign-planner.js';
+import { campaignUsable, campaignMaterialUsable, campaignReviewInterval, emptyCampaign } from '../extension/campaign-planner.js';
 
 const fingerprint = JSON.stringify;
 const output = { campaign: 'Open travel', episode: { subject: 'Errand', status: 'finished', boundary: 'A finished errand can stay finished' }, developments: [], retire: [] };
@@ -23,6 +23,26 @@ function deferred() {
     const promise = new Promise(done => { resolve = done; });
     return { promise, resolve };
 }
+
+test('material freshness counts accepted assistant appends, separately from durable source validity', async () => {
+    const design = { ...output, developments: [{ id: 'music', premise: 'A shared musical sketch.',
+        progression: 'Explore contrasting rhythms.', outcomes: 'An open-ended shared repertoire.', access: 'The current rehearsal.' }] };
+    const f = fixture({ generate: async () => ({ text: JSON.stringify(design), finishReason: 'stop' }) });
+    await f.runtime.request();
+    const packet = f.runtime.payload();
+    assert.match(packet, /contrasting rhythms/);
+    f.change(c => ({ ...c, messages: [...c.messages, ...Array.from({ length: 8 }, () => ({ is_user: true, mes: 'Another contribution.' }))] }));
+    assert.equal(f.runtime.payload(), packet);
+    f.change(c => ({ ...c, messages: [...c.messages, { is_user: false, mes: 'Accepted response.' }] }));
+    assert.equal(campaignMaterialUsable(f.read().state, { ...f.read(), fingerprint }, 1), false);
+    assert.equal(f.runtime.payload(), packet, 'default limit has not expired');
+    f.change(c => ({ ...c, messages: [...c.messages, ...Array.from({ length: 3 }, () => ({ is_user: false, mes: 'Later response.' }))] }));
+    assert.equal(f.runtime.payload(), '');
+    assert.equal(campaignUsable(f.read().state, { ...f.read(), fingerprint }), true);
+    assert.equal(f.read().state.developments.length, 1);
+    assert.equal(f.calls(), 1, 'expiration makes no request');
+    assert.deepEqual([undefined, 12, 3, 0, -1, NaN, Infinity].map(campaignReviewInterval), [4, 4, 3, 4, 1, 4, 4]);
+});
 
 test('duplicate triggers share one in-flight pass; multiple appended turns remain usable', async () => {
     const gate = deferred(), f = fixture({ generate: () => gate.promise });

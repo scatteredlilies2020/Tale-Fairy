@@ -1,4 +1,5 @@
-import { CampaignRuntime } from './campaign-runtime.js?v=0.14.27';
+import { CampaignRuntime } from './campaign-runtime.js?v=0.14.35';
+import { campaignReviewInterval } from './campaign-planner.js?v=0.14.35';
 
 export const CAMPAIGN_ATTEMPT_KEY = 'taleFairyCampaignAttempt';
 const turns = messages => messages.filter(message => !message.is_user).length;
@@ -48,7 +49,11 @@ export class CampaignSession {
                 && previous.requestSignature === (snapshot.requestSignature || '')
                 && previous.messageCount <= snapshot.messages.length
                 && previous.fingerprint === this.fingerprint(snapshot.messages.slice(0, previous.messageCount));
-            if (key === previous.key || unchangedBasis && turns(snapshot.messages) - previous.assistantCount < Math.max(1, Number(this.interval()) || 8)) {
+            // A failure reserves this source, not the next full review cycle.
+            // Recover only after new accepted assistant play; no same-source,
+            // user-only, timer, or reload retry. Stop retains normal cadence.
+            const dueAfter = previous.status === 'failed' ? 1 : campaignReviewInterval(this.interval());
+            if (key === previous.key || unchangedBasis && turns(snapshot.messages) - previous.assistantCount < dueAfter) {
                 return Promise.resolve({ accepted: false, state: snapshot.state, skipped: 'not-due' });
             }
         }

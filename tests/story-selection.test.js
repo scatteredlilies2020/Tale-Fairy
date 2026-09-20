@@ -241,6 +241,9 @@ test('the actual contract and private background are budgeted without old inject
     assert.match(STORY_SYSTEM, /There is no keep operation or implicit carry-over/);
     assert.match(STORY_SYSTEM, /Several private aims can inform ONE circumstance/);
     assert.match(STORY_SYSTEM, /lasting names the open longer-term possibilities/);
+    assert.match(STORY_SYSTEM, /Give an activity actual subject matter/);
+    assert.match(STORY_SYSTEM, /Player competence enables participation/);
+    assert.match(STORY_SYSTEM, /Access to an NPC does not reveal their unspoken history/);
     assert.ok(STORY_SYSTEM.split(/\s+/).length < 1100, 'Keep one concise contract instead of accumulating overlapping prompts');
     assert.match(STORY_SCHEMA.value.properties.selected_material.items.properties.lasting.description, /Not alternative favorable\/adverse outcomes/);
     assert.doesNotMatch(STORY_SYSTEM, /Connect an available premise to developing conditions and conditional consequences/);

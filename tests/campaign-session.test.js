@@ -48,6 +48,36 @@ test('failed source is not rerun after reload; explicit manual review is a disti
     assert.equal(f.commits(), 0);
 });
 
+test('failure recovers on new accepted assistant play, not user-only appends or reloads', async () => {
+    let fail = true;
+    const f = fixture(async () => { if (fail) throw Error('provider failure'); return reply; });
+    f.options.interval = () => 12;
+    f.session = new CampaignSession(f.options);
+    await f.session.request();
+    f.current.messages.push({ is_user: true, mes: 'I try another approach.' });
+    f.session = new CampaignSession(f.options);
+    assert.equal((await f.session.request()).skipped, 'not-due');
+    assert.equal(f.calls(), 1);
+    f.current.messages.push({ is_user: false, mes: 'A new accepted result.' });
+    fail = false;
+    assert.equal((await f.session.request()).accepted, true);
+    assert.equal(f.calls(), 2);
+    assert.equal((await f.session.request()).skipped, 'not-due');
+});
+
+test('successful reviews bound scene-material age even with a long saved interval', async () => {
+    const f = fixture();
+    f.options.interval = () => 12;
+    f.session = new CampaignSession(f.options);
+    await f.session.request();
+    for (let i = 1; i <= 4; i++) {
+        f.current.messages.push({ is_user: false, mes: `Accepted reply ${i}` });
+        const result = await f.session.request();
+        assert.equal(result.accepted, i === 4);
+    }
+    assert.equal(f.calls(), 2);
+});
+
 test('Stop aborts the one send, preserves preparation and suppresses unchanged reload retries', async () => {
     const f = fixture((_p, _s, _schema, { signal }) => new Promise((_resolve, reject) => {
         signal.addEventListener('abort', () => reject(signal.reason), { once: true });
@@ -61,6 +91,9 @@ test('Stop aborts the one send, preserves preparation and suppresses unchanged r
     assert.equal(f.current.attempt.status, 'stopped');
     assert.equal(f.commits(), 0);
     assert.equal((await new CampaignSession(f.options).request()).skipped, 'not-due');
+    f.current.messages.push({ is_user: false, mes: 'A new reply after Stop.' });
+    assert.equal((await new CampaignSession(f.options).request()).skipped, 'not-due');
+    assert.equal(f.calls(), 1, 'Stop is not treated as a provider failure');
 });
 
 test('attempt reservation precedes the call; changes during its disk save spend no AI request', async () => {

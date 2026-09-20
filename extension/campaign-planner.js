@@ -1,7 +1,7 @@
 // Candidate single-call campaign preparation; host integration is opt-in.
 // Owns proposals only: accepted history always comes from the conversation.
 import { playableSituations, storyMaterial, validateStoredRealization } from './undertaking-lifecycle.js?v=0.14.34';
-import { validateSelectedMaterial, selectedMaterialPacket } from './selected-material.js?v=0.14.34';
+import { validateSelectedMaterial, selectedMaterialPacket } from './selected-material.js?v=0.14.35';
 import { validateBackground } from './background-progress.js?v=0.14.34';
 import { estimateTokenCount } from './token-budget.js';
 
@@ -161,6 +161,17 @@ export function campaignUsable(state, { chatId, referenceHash, messages, fingerp
     return Boolean(s && s.chatId === chatId && s.referenceHash === referenceHash && Number.isSafeInteger(s.messageCount)
         && s.messageCount >= 0 && s.messageCount <= messages.length
         && s.fingerprint === fingerprint(messages.slice(0, s.messageCount)));
+}
+
+// Prefix validity protects durable aims/evidence, not the shelf life of a
+// scene-facing suggestion. This is response age, never elapsed fictional time.
+export function campaignReviewInterval(value = 4) {
+    return Math.min(4, Math.max(1, Math.floor(Number(value) || 4)));
+}
+
+export function campaignMaterialUsable(state, context, interval = 4) {
+    return campaignUsable(state, context)
+        && context.messages.slice(state.source.messageCount).filter(message => !message.is_user).length < campaignReviewInterval(interval);
 }
 
 export function campaignAuthorInstructions(state) {

@@ -1,5 +1,12 @@
 export const REASONING_MODES = Object.freeze(['auto', 'off', 'minimum', 'low', 'medium', 'high', 'max']);
 
+// Shared with isolated evaluation so its request matches the host's existing
+// conservative sampling policy, including proxy-prefixed reasoning model ids.
+export function plannerModelRejectsTemperature(model) {
+    const id = String(model || '').trim();
+    return /(?:^|\/)(?:gpt-5(?:[.\-]|$)|o[134](?:[.\-]|$))/i.test(id);
+}
+
 // Completion limits can include hidden reasoning as well as the final plan.
 // Reserve that space separately, after resolving the selected/inherited mode.
 export function plannerOutputTokenBudget(planTokens, mode) {

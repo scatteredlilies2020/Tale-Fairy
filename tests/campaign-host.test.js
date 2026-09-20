@@ -98,6 +98,32 @@ test('swipes never repair a campaign and cannot retain discarded-response prepar
     assert.equal(other.calls.length, 0);
 });
 
+test('expired scene material is withheld including cached requests, without deleting aims or author instructions', () => {
+    const h = generationHarness(messages());
+    const state = attach(h);
+    state.campaignInstructions = [{ text: 'Keep player choices open.' }];
+    state.campaignPreparation.source.referenceHash = plotInputKey('story', [], h.scope.generationInputs(h.context, state));
+    h.context.chatMetadata = saveState(h.context.chatMetadata, state);
+    assert.equal(h.prepare().preparedUsable, true);
+    for (let i = 0; i < 4; i++) h.context.chat.push({ is_user: false, mes: `Accepted change ${i}` });
+    // Simulate a pre-upgrade archive that called a prefix-valid plan current.
+    const packet = h.scope.buildGenerationPacket(state, h.context.chat, h.context);
+    packet.selection.preparedUsable = true;
+    h.context.chatMetadata[GENERATION_CONTEXT_KEY] = h.scope.rememberGenerationContext(undefined, packet);
+    h.scope.generationGuideSelection = null;
+    const selection = h.prepare();
+    assert.equal(selection.preparedUsable, false);
+    assert.doesNotMatch(selection.payload, /musical sketch|Changing rhythms/);
+    assert.match(selection.payload, /Keep player choices open/);
+    assert.equal(h.state().campaignPreparation.revision, 1);
+    assert.equal(h.scope.preparedReady(h.state(), h.context.chat, h.context, true), true);
+    assert.equal(h.calls.length, 0);
+    // A historical retry with a genuinely younger source remains valid.
+    h.context.chat.splice(2);
+    h.scope.generationGuideSelection = null;
+    assert.equal(h.prepare().preparedUsable, true);
+});
+
 for (const type of ['normal', 'swipe', 'regenerate']) test(`${type} keeps preparation across World Info budget changes and reloads`, async () => {
     const h = generationHarness(messages());
     let budget = 20, cap = 0;

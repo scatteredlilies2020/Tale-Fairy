@@ -1,10 +1,10 @@
 import { sha256 } from '/lib.js';
-import { campaignAuthorInstructions, campaignUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.34';
-import { storyInput as ownedInput, storyPass as ownedPass, needsEventReframe, STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM } from './story-selection.js?v=0.14.34';
+import { campaignAuthorInstructions, campaignUsable, campaignMaterialUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.35';
+import { storyInput as ownedInput, storyPass as ownedPass, needsEventReframe, STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM } from './story-selection.js?v=0.14.35';
 import { readCampaignContinuity } from './campaign-continuity.js';
 import { readEvidenceProviders, evidenceRevisionKey } from './evidence-providers.js';
 import { campaignEvidenceMessages, campaignReviewWindow } from './campaign-evidence.js';
-import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.30';
+import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.35';
 import { finalizeNotebookCompactions, writeNotebookArchive } from './notebook-compaction.js?v=0.14.22';
 import { eventSource, event_types, extension_prompt_roles, extension_prompt_types, generateRaw, Generate, setExtensionPrompt, getRequestHeaders, getCharacterCardFields, saveSettingsDebounced } from '/script.js';
 import { getContext } from '/scripts/st-context.js';
@@ -22,7 +22,7 @@ import { DEFAULT_INJECTION_ROLE, normalizeInjectionRole } from './injection-role
 import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.13.9';
 import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.14.22';
 import { normalizeModelListResponse } from './models.js?v=0.13.9';
-import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, plannerOutputTokenBudget, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.14.22';
+import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, plannerModelRejectsTemperature, plannerOutputTokenBudget, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.14.35';
 import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.14.22';
 import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.13.9';
 import { collectSummarySources } from './summary-context.js?v=0.14.22';
@@ -47,7 +47,7 @@ import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generat
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.14.34';
+const RUNTIME_VERSION = '0.14.35';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -998,8 +998,8 @@ async function applyCampaignInstruction(note) {
 function preparedReady(state, messages, context = currentContext(), forReplanning = false) {
     const chatId = String(context.getCurrentChatId?.() || '');
     if (state.plannerContract === 15) return validCampaignState(state.campaignPreparation)
-        && campaignUsable(state.campaignPreparation, { chatId, messages, fingerprint: campaignFingerprint,
-            referenceHash: plotInputKey(chatId, [], generationInputs(context, state)) });
+        && (forReplanning ? campaignUsable : campaignMaterialUsable)(state.campaignPreparation, { chatId, messages, fingerprint: campaignFingerprint,
+            referenceHash: plotInputKey(chatId, [], generationInputs(context, state)) }, getSettings().fullReviewInterval);
     return preparedWorldUsable(state.preparedWorld, { chatId, messages, fingerprint: fingerprintMessages, forReplanning,
         inputsKey: plotInputKey(chatId, [], generationInputs(context, state)) });
 }
@@ -2208,13 +2208,6 @@ async function retryWithoutUnsupportedTemperature(run, disableSampling) {
 
 function plannerTemperaturePayload(temperature, samplingEnabled) {
     return samplingEnabled ? { temperature: normalizePlannerTemperature(temperature) } : {};
-}
-
-function plannerModelRejectsTemperature(model) {
-    const id = String(model || '').trim();
-    // OpenAI reasoning/Responses models reject sampling controls. Match both
-    // native ids and proxy-prefixed ids such as openai/gpt-5.6-terra.
-    return /(?:^|\/)(?:gpt-5(?:[.\-]|$)|o[134](?:[.\-]|$))/i.test(id);
 }
 
 function isolatePlannerGenerationData(generateData, reasoningMode, temperature = plannerTemperature(), samplingEnabled = true, outputMode = PLANNER_OUTPUT_MODE.JSON_SCHEMA, responseTokens = INCREMENTAL_RESPONSE_TOKENS) {

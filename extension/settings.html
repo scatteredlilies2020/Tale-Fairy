@@ -49,7 +49,7 @@
           </label>
           <label>Broad story review interval (assistant replies)
             <input class="text_pole" type="number" data-setting="full-review-interval" min="3" max="20" step="1" value="12">
-            <small>Replies between broad reviews. Corrections and major scene shifts can trigger an earlier review. Routine updates follow accepted replies.</small>
+            <small>Story horizons use at most 4 accepted replies between reviews. Old suggestions then expire; private aims and author instructions remain. Failed reviews recover after new assistant play, not unchanged-input retries.</small>
           </label>
         </div>
         <label class="checkbox_label">

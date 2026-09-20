@@ -1,7 +1,7 @@
 // Read-only connection snapshot; no SillyTavern HTTP requests or state writes.
 import fs from 'node:fs';
 import path from 'node:path';
-import { buildReasoningRequest, plannerOutputTokenBudget } from '../extension/reasoning-policy.js';
+import { buildReasoningRequest, plannerModelRejectsTemperature, plannerOutputTokenBudget } from '../extension/reasoning-policy.js';
 import { completionText } from '../extension/completion-response.js';
 import { writerFailureDetails } from './isolated-writer-provider.mjs';
 
@@ -21,12 +21,13 @@ export function isolatedProvider(root, { mode = 'off', temperature } = {}) {
     if (!key) throw Error('Configured credential unavailable.');
     const reasoning = buildReasoningRequest({ mode, source: tf.analysisProvider, model: tf.analysisModel, url: tf.analysisUrl });
     const extra = JSON.parse(reasoning.payload.custom_include_body || '{}');
+    const sampling = plannerModelRejectsTemperature(tf.analysisModel) ? {} : { temperature };
     return {
-        configuration: { model: tf.analysisModel, temperature, reasoning: mode, reasoningRequest: extra },
+        configuration: { model: tf.analysisModel, temperature: sampling.temperature ?? null, reasoning: mode, reasoningRequest: extra },
         async generate(messages, maxTokens = 6144) {
             const response = await fetch(endpoint, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(240000),
                 headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${key}` },
-                body: JSON.stringify({ model: tf.analysisModel, temperature, messages, max_tokens: plannerOutputTokenBudget(maxTokens, mode), stream: false, ...extra }),
+                body: JSON.stringify({ model: tf.analysisModel, ...sampling, messages, max_tokens: plannerOutputTokenBudget(maxTokens, mode), stream: false, ...extra }),
             });
             if (!response.ok) throw Object.assign(new Error(`HTTP ${response.status}; detail withheld.`), {
                 status: response.status, diagnostic: writerFailureDetails(await response.text(), [key]),

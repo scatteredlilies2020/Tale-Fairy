@@ -1,4 +1,4 @@
-import { campaignPass, campaignPayload, campaignUsable } from './campaign-planner.js';
+import { campaignPass, campaignPayload, campaignUsable, campaignMaterialUsable } from './campaign-planner.js?v=0.14.35';
 
 // Host-independent background pass lifecycle. The host supplies canonical
 // source hashes, a ONE-REQUEST provider, and a synchronous compare-and-swap
@@ -19,7 +19,7 @@ export class CampaignRuntime {
 
     payload() {
         const current = this.read();
-        return campaignUsable(current.state, { ...current, fingerprint: this.fingerprint })
+        return campaignMaterialUsable(current.state, { ...current, fingerprint: this.fingerprint })
             ? campaignPayload(current.state) : '';
     }
 

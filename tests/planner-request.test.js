@@ -73,6 +73,13 @@ test('normal evaluation makes exactly one model request', async () => {
 });
 
 for (const route of ['direct', 'profile', 'active']) {
+    test(`${route}: reasoning model sampling policy is shared with isolated evaluation`, async () => {
+        const h = harness([{ valid: true }], { route, model: 'openai/gpt-5.6-terra' });
+        assert.equal(reasoning.plannerModelRejectsTemperature('openai/gpt-5.6-terra'), true);
+        await h.run({ singleShot: true });
+        assert.equal(h.requests.length, 1);
+        assert.equal(h.requests[0].temperature, undefined);
+    });
     test(`${route}: explicit single-shot transport sends once without output negotiation`, async () => {
         const h = harness([{ valid: true }], { route, configured: 'low' });
         assert.equal((await h.run({ singleShot: true })).valid, true);

@@ -2,7 +2,24 @@
 
 Tale Fairy is a standalone SillyTavern extension that acts as a **background creative Game Master**, preparing a playable middle and future while the roleplay model writes the story. It combines a persistent private notebook with selective factual world awareness—not a full world simulation, a prose generator, or a fixed event script.
 
-## What changes in 0.14.34
+## What changes in 0.14.35
+
+- **Bounded freshness:** scene-facing suggestions expire after at most four
+  accepted assistant replies (or the configured interval when shorter). Private
+  aims, witnessed progress and author instructions survive. Reviews run on the
+  same bounded cadence; this may use more planner calls than a saved 12-reply interval.
+- **Failure recovery:** a failed review reserves its exact source, not another
+  full review cycle. New accepted assistant play permits another single pass;
+  unchanged input, user-only appends and reloads do not retry the failure.
+- **Creative substance:** preparation develops specific possible activities
+  from established abilities and interests, rather than recycling antagonism or
+  vague promises of better rapport. Proposed details are not accepted events.
+- Existing settings and chats need no reset. Refresh SillyTavern after updating.
+
+The four-reply limit is an age safeguard, not semantic scene-change detection.
+See [verification and limitations](docs/usefulness-0.14.35.md).
+
+## Previous release: 0.14.34
 
 The release gate passed **817 deterministic tests and 17/17 accepted live planner
 reviews**, including scene transitions and a review of existing saved preparation.
