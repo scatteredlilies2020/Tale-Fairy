@@ -16,6 +16,14 @@ critic, scanner or retry call is added.
 - Keep the existing input ceiling. Optional recall and older assistant context
   yield to required sources; required evidence and instructions are not silently
   clipped. Impossible inputs fail locally before a provider request.
+- If the smallest protected conversation window still exceeds the ceiling,
+  shed whole optional historical excerpts before failing. Thin the fullest
+  timeline epochs first to retain wider coverage, then open-thread recall and
+  the historical opening if necessary. Label omissions explicitly; they do not
+  prove resolution or absence. Required messages, source references, durable
+  plans and accepted progress remain intact. Error diagnostics include history
+  and preparation estimates; section estimates exclude protocol/framing and
+  need not sum to the conservative total.
 - Recheck immediately before sending on direct, profile and active routes. Only
   the active route can use ST's active tokenizer; a different planner model must
   not be measured as though it were the active writer. An unavailable tokenizer

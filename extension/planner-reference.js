@@ -47,3 +47,33 @@ export function compactPlannerHistory(historical, messages) {
         ...(Array.isArray(historical.openThreads) ? { openThreads: historical.openThreads.filter(excerpt => !redundant(excerpt)) } : {}),
     };
 }
+
+// Last-resort fitting of optional extractive recall, never accepted messages or
+// durable preparation. Remove whole excerpts, thinning the fullest epochs first
+// to preserve coverage of the wider story instead of keeping only recent play.
+export function fitPlannerHistory(historical, fits) {
+    const result = structuredClone(historical);
+    if (fits(result)) return result;
+    let omitted = 0;
+    const recordOmission = () => {
+        result.budget_omission = { excerpts: ++omitted,
+            reason: 'Input ceiling: whole historical excerpts omitted, not evidence of resolution or absence.' };
+    };
+    while (result.timeline?.some(epoch => epoch.excerpts.length)) {
+        const epoch = result.timeline.reduce((best, item) => !best || item.excerpts.length > best.excerpts.length ? item : best, null);
+        epoch.excerpts.pop();
+        result.timeline = result.timeline.filter(item => item.excerpts.length);
+        recordOmission();
+        if (fits(result)) return result;
+    }
+    while (result.openThreads?.length) {
+        result.openThreads.pop();
+        recordOmission();
+        if (fits(result)) return result;
+    }
+    if (result.opening) {
+        delete result.opening;
+        recordOmission();
+    }
+    return result;
+}

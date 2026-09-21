@@ -5,6 +5,7 @@ import vm from 'node:vm';
 import { generationHarness } from './helpers/generation-harness.js';
 import { defaultState, defaultPlannerState, loadPlannerState, saveState, STATE_KEY } from '../extension/state.js';
 import { buildStoryEvidence } from '../extension/analysis.js';
+import { storyInput } from '../extension/story-selection.js';
 import { campaignEvidenceMessages, campaignReviewWindow } from '../extension/campaign-evidence.js';
 import { completionText } from '../extension/completion-response.js';
 import { readEvidenceProviders, evidenceRevisionKey, registerEvidenceProvider } from '../extension/evidence-providers.js';
@@ -934,6 +935,29 @@ test('oversized protected player contribution fails before spending a request an
     assert.equal(h.requests.length, 1, 'no second provider request');
     assert.deepEqual(h.state().campaignPreparation, before);
     assert.match(h.statuses.join('\n'), /exceeds/);
+});
+
+test('host fits a small overrun by omitting optional history before its single provider request', async () => {
+    const h = browser();
+    for (let i = 0; i < 40; i++) h.context.chat.push({ is_user: false,
+        mes: `District ${i} traditions include ` + 'neighbors maintaining boats and exchanging supplies by the harbor '.repeat(80) + '.' });
+    h.context.chat.push({ is_user: true, mes: 'I decline the offer and keep my boat.' }, { is_user: false, mes: 'The boat remains here.' });
+    const snapshot = h.scope.readCampaignSnapshot();
+    const messages = snapshot.messages.map((m, index) => ({ index, role: m.is_user ? 'user' : 'assistant', name: m.name || '', content: m.mes || '' }));
+    const args = { reference: snapshot.reference, state: snapshot.state, playerNames: snapshot.playerNames,
+        messages: campaignEvidenceMessages(campaignReviewWindow(messages, 2), { narrative: true }),
+        historical: { ...buildStoryEvidence(snapshot.messages), opening: undefined } };
+    const full = storyInput(args, 100000);
+    h.settings.maxPromptTokens = full.inputTokens - 361;
+    assert.throws(() => storyInput(args, h.settings.maxPromptTokens), /exceeds/);
+    const before = structuredClone(h.context.chat);
+    await h.scope.analyzeCampaignNow({ manual: true });
+    assert.equal(h.requests.length, 1, h.statuses.join('\n'));
+    assert.equal(h.state().campaignPreparation.revision, 1);
+    const payload = JSON.parse(h.requests[0].prompt);
+    assert.ok(payload.historical_evidence.budget_omission.excerpts > 0);
+    assert.deepEqual(payload.accepted_messages, JSON.parse(full.prompt).accepted_messages);
+    assert.deepEqual(h.context.chat, before);
 });
 
 test('Stop interrupts actual campaign entry without a late commit or automatic retry', async () => {

@@ -8,7 +8,7 @@ import { fitEvidenceProviders } from './evidence-providers.js?rp-plot=1';
 import { REALIZATION_SCHEMA, REALIZATION_INSTRUCTIONS, mergeRealization, needsPlayableReview } from './undertaking-lifecycle.js?v=0.14.34&response=2';
 import { check } from './campaign-planner.js?v=0.14.34&rp-plot=1';
 import { estimateTokenCount } from './token-budget.js';
-import { compactPlannerReference, compactPlannerHistory } from './planner-reference.js';
+import { compactPlannerReference, compactPlannerHistory, fitPlannerHistory } from './planner-reference.js?history-budget=1';
 
 export const EVENT_PLANNING_SCOPE = 'independent-developments-v2';
 // Selection-contract revision, not a reset of durable subjects or witnessed play.
@@ -67,7 +67,7 @@ OWNED_SCHEMA.value.properties.developments.items.properties.plot_points.items.pr
 OWNED_SCHEMA.value.properties.developments.items.properties.plot_points.items.properties.opens.description = 'A possible later NPC/world action, not a required player choice or lesson; private planning only.';
 
 export function ownedInput({ reference, state, messages, historical = {}, playerNames = [], reviewedMessageCount = 0,
-    continuity, evidence, verifiedProgress = state.realization || {},
+    continuity, evidence, fitHistorical = false, verifiedProgress = state.realization || {},
     verifiedRetiredIds = state.archive.filter(a => a.retirement).map(a => a.development?.id), continuityTokens = 4000 }, maxTokens = 14000,
     protocol = { system: OWNED_SYSTEM, schema: OWNED_SCHEMA }) {
     const names = [...new Set(playerNames.filter(name => typeof name === 'string' && name.trim()))];
@@ -133,6 +133,8 @@ export function ownedInput({ reference, state, messages, historical = {}, player
     // re-tokenizing the same system/schema for each optional memory candidate.
     const protocolTokens = estimateTokenCount(protocol.system + JSON.stringify(protocol.schema));
     const measure = protocol.measure || (value => protocolTokens + estimateTokenCount(JSON.stringify(value)));
+    if (fitHistorical) payload.historical_evidence = fitPlannerHistory(payload.historical_evidence,
+        value => measure({ ...payload, historical_evidence: value }) <= maxTokens);
     const external = fitEvidenceProviders(evidence, continuityTokens,
         value => measure({ ...payload, external_evidence: value }) <= maxTokens);
     if (external.length) payload.external_evidence = external;
@@ -144,7 +146,10 @@ export function ownedInput({ reference, state, messages, historical = {}, player
     if (inputTokens > maxTokens) {
         const referenceTokens = estimateTokenCount(JSON.stringify(payload.source_reference));
         const messageTokens = estimateTokenCount(JSON.stringify(payload.accepted_messages));
-        throw Error(`Planner input ${inputTokens} exceeds ${maxTokens} tokens (reference ${referenceTokens}; messages ${messageTokens}). Reduce source size or raise the input ceiling.`);
+        const historyTokens = estimateTokenCount(JSON.stringify(payload.historical_evidence));
+        const preparationTokens = estimateTokenCount(JSON.stringify({ previous_preparation: payload.previous_preparation,
+            accepted_progress: payload.accepted_progress, closed_subject_ids: payload.closed_subject_ids }));
+        throw Error(`Planner input ${inputTokens} exceeds ${maxTokens} tokens (reference ${referenceTokens}; messages ${messageTokens}; history ${historyTokens}; preparation ${preparationTokens}; section estimates exclude protocol/framing). Reduce source size or raise the input ceiling.`);
     }
     return { prompt, inputTokens, lifecycleRequired: true, verifiedRetiredIds: [...verifiedRetiredIds], verifiedProgress: structuredClone(verifiedProgress), evidenceMessages: structuredClone(messages),
         evidence: { status: external.length ? 'included' : 'omitted-or-unavailable', providers: external.map(e => e.provider) }, indices: messages.map(message => message.index), playerNames: names,
