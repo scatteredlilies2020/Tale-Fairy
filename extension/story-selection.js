@@ -1,6 +1,6 @@
 // One provider response: shared story material + private preparation + witnessed progress.
 // The established subject/evidence transaction remains the storage authority.
-import { ownedInput, ownedPass, OWNED_SCHEMA, needsEventReframe } from './event-planning.js?v=0.14.34';
+import { ownedInput, ownedPass, OWNED_SCHEMA, needsEventReframe } from './event-planning.js?v=0.14.34&planner-input=1';
 import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check } from './campaign-planner.js?v=0.14.34';
 import { REALIZATION_SCHEMA } from './undertaking-lifecycle.js?v=0.14.34';
 import { SELECTED_MATERIAL_SCHEMA, validateSelectedMaterial } from './selected-material.js?v=0.14.36';

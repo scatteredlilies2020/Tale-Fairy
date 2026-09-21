@@ -1,6 +1,6 @@
 import { sha256 } from '/lib.js';
 import { campaignAuthorInstructions, campaignUsable, campaignMaterialUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36';
-import { storyInput as ownedInput, storyPass as ownedPass, needsEventReframe, STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM } from './story-selection.js?v=0.14.36';
+import { storyInput as ownedInput, storyPass as ownedPass, needsEventReframe, STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM } from './story-selection.js?v=0.14.36&planner-input=1';
 import { readCampaignContinuity } from './campaign-continuity.js';
 import { readEvidenceProviders, evidenceRevisionKey } from './evidence-providers.js';
 import { campaignEvidenceMessages, campaignReviewWindow } from './campaign-evidence.js';
@@ -938,7 +938,8 @@ async function runCampaignAnalysis(work) {
         if (result.accepted) renderAnalysisActivity(result.warnings?.length
             ? `Campaign preparation ready · ignored ${result.warnings.length} unsupported extra citation(s)`
             : 'Campaign preparation ready', false);
-        else if (result.error) renderAnalysisActivity(`Previous preparation retained · ${result.error}`, false);
+        else if (result.error) renderAnalysisActivity(`${loadState(currentContext().chatMetadata).campaignPreparation?.revision
+            ? 'Previous preparation retained' : 'No preparation available'} · ${result.error}`, false);
         else renderAnalysisActivity('No new planning pass needed', false);
     }
     return loadState(currentContext().chatMetadata);
@@ -1251,6 +1252,9 @@ function prepareGenerationGuide(state, type) {
     if (archived) renderInjectionActivity(currentGuidanceUsable
         ? 'Ready planner context refreshed for this request · no new planner calls'
         : 'Cached scene excerpts refreshed locally · no new planner calls');
+    else renderInjectionActivity(cache.selection.preparedUsable ? 'Plot preparation ready for this request'
+        : cache.payload ? 'Scene context ready · no current plot preparation'
+            : 'No plot preparation available · story generation can continue');
 }
 
 function assistantTurnNumber(messages = []) {

@@ -69,6 +69,43 @@ function browser(send = async () => ({ choices: [{ message: { content: JSON.stri
     return { ...h, requests, shared };
 }
 
+test('host fits imported lore in one planning request without changing source books or fingerprints', async () => {
+    const h = browser();
+    h.settings.maxPromptTokens = 16000;
+    const entries = Object.fromEntries(Array.from({ length: 37 }, (_, uid) => [uid, {
+        uid, key: ['Harbor'], content: `District ${uid}: boats and homes remain available.`,
+        extensions: { editorOnly: 'unused setting '.repeat(300) },
+    }]));
+    const book = { entries, originalData: { entries } };
+    const before = structuredClone(book);
+    h.scope.selected_world_info = ['City'];
+    h.scope.worldInfoCache.set('City', book);
+    const referenceHash = h.scope.readCampaignSnapshot().referenceHash;
+    await h.scope.analyzeCampaignNow({ manual: true });
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.state().campaignPreparation.revision, 1);
+    const payload = JSON.parse(h.requests[0].prompt);
+    assert.deepEqual(payload.source_reference.worldBooks[0].data.entries.map(e => e.content), Object.values(entries).map(e => e.content));
+    assert.deepEqual(book, before);
+    assert.equal(h.scope.readCampaignSnapshot().referenceHash, referenceHash);
+    delete h.context.chatMetadata[GENERATION_CONTEXT_KEY];
+    h.scope.generationGuideSelection = null;
+    h.prepare();
+    assert.equal(h.statuses.at(-1), 'Plot preparation ready for this request');
+});
+
+test('initial budget failure reports no plan and generation does not retain a preparing label', async () => {
+    const h = browser();
+    h.context.chat.push({ is_user: true, name: 'Neri', mes: 'Protected player contribution. '.repeat(10000) });
+    await h.scope.analyzeCampaignNow({ manual: true });
+    assert.equal(h.requests.length, 0);
+    assert.match(h.statuses.at(-1), /^No preparation available · Planner input .* exceeds/);
+    assert.doesNotMatch(h.statuses.at(-1), /Previous preparation retained/);
+    h.prepare();
+    assert.match(h.statuses.at(-1), /No plot preparation available|Scene context ready/);
+    assert.doesNotMatch(h.statuses.at(-1), /Preparing/);
+});
+
 test('host replaces scene guidance even when an old private subject is omitted, then retires it with final evidence', async () => {
     const wider = structuredClone(design);
     wider.developments[0].id = 'travel';

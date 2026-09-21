@@ -3,7 +3,7 @@
   "loading_order": 65,
   "requires": [],
   "optional": [],
-  "js": "extension/index.js?v=0.14.36",
+  "js": "extension/index.js?v=0.14.36&planner-input=1",
   "css": "extension/style.css?v=0.14.36",
   "generate_interceptor": "livingWorldGuideGenerateInterceptor",
   "author": "ScatteredLilies2020",

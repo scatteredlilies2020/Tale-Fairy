@@ -8,6 +8,7 @@ import { fitEvidenceProviders } from './evidence-providers.js';
 import { REALIZATION_SCHEMA, REALIZATION_INSTRUCTIONS, mergeRealization, needsPlayableReview } from './undertaking-lifecycle.js?v=0.14.34';
 import { check } from './campaign-planner.js?v=0.14.34';
 import { estimateTokenCount } from './token-budget.js';
+import { compactPlannerReference, compactPlannerHistory } from './planner-reference.js';
 
 export const EVENT_PLANNING_SCOPE = 'independent-developments-v2';
 // Selection-contract revision, not a reset of durable subjects or witnessed play.
@@ -74,7 +75,7 @@ export function ownedInput({ reference, state, messages, historical = {}, player
     const reframe = needsEventReframe(state);
     const scopeReframe = reframe && state.preparationFormat === EVENT_POINTS_FORMAT;
     const materialReview = state.storyMaterialVersion !== STORY_MATERIAL_VERSION;
-    let payload = { historical_evidence: historical,
+    let payload = { historical_evidence: compactPlannerHistory(historical, messages),
         // Source applicability does not turn authored situations into evidence.
         // Only the cited episode ledger belongs on the accepted side of this boundary.
         accepted_progress: Object.fromEntries(Object.entries(verifiedProgress)
@@ -125,10 +126,13 @@ export function ownedInput({ reference, state, messages, historical = {}, player
                 }),
         },
         ...(Object.keys(speakers.defaults).length ? { default_speaker_name_by_role: speakers.defaults } : {}),
-        accepted_messages: speakers.messages, source_reference: reference,
+        accepted_messages: speakers.messages, source_reference: compactPlannerReference(reference),
         player_control: { names, scope: 'Only the player supplies these characters deliberate choices and participation.' } };
     if (protocol.project) payload = protocol.project(payload);
-    const measure = value => estimateTokenCount(protocol.system + JSON.stringify(protocol.schema) + JSON.stringify(value));
+    // JSON ends with a delimiter, so the estimator is additive here. Avoid
+    // re-tokenizing the same system/schema for each optional memory candidate.
+    const protocolTokens = estimateTokenCount(protocol.system + JSON.stringify(protocol.schema));
+    const measure = value => protocolTokens + estimateTokenCount(JSON.stringify(value));
     const external = fitEvidenceProviders(evidence, continuityTokens,
         value => measure({ ...payload, external_evidence: value }) <= maxTokens);
     if (external.length) payload.external_evidence = external;
@@ -137,7 +141,11 @@ export function ownedInput({ reference, state, messages, historical = {}, player
     if (memory) payload.continuity_memory = memory;
     const prompt = JSON.stringify(payload);
     const inputTokens = measure(payload);
-    if (inputTokens > maxTokens) throw Error(`Complete event opportunity input ${inputTokens} exceeds ${maxTokens}`);
+    if (inputTokens > maxTokens) {
+        const referenceTokens = estimateTokenCount(JSON.stringify(payload.source_reference));
+        const messageTokens = estimateTokenCount(JSON.stringify(payload.accepted_messages));
+        throw Error(`Planner input ${inputTokens} exceeds ${maxTokens} tokens (lore/card ${referenceTokens}; messages ${messageTokens}). Reduce source size or raise the input ceiling.`);
+    }
     return { prompt, inputTokens, lifecycleRequired: true, verifiedRetiredIds: [...verifiedRetiredIds], verifiedProgress: structuredClone(verifiedProgress), evidenceMessages: structuredClone(messages),
         evidence: { status: external.length ? 'included' : 'omitted-or-unavailable', providers: external.map(e => e.provider) }, indices: messages.map(message => message.index), playerNames: names,
         continuity: { status: memory ? 'included' : continuity?.status === 'current' ? 'omitted-budget-or-empty' : continuity?.status || 'unavailable',
