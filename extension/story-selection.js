@@ -5,7 +5,7 @@ import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check } from './campaign-planner.
 import { REALIZATION_SCHEMA } from './undertaking-lifecycle.js?v=0.14.34&response=2';
 import { SELECTED_MATERIAL_SCHEMA, validateSelectedMaterial } from './selected-material.js?v=0.14.36&rp-plot=1';
 import { BACKGROUND_SCHEMA, validateBackground } from './background-progress.js?v=0.14.34';
-import { SPAN_WITNESS_SCHEMA, witnessMessages, resolveSpanWitnesses } from './accepted-witnesses.js?v=0.14.34';
+import { SPAN_WITNESS_SCHEMA, witnessMessages, resolveSpanWitnesses, reconcileSpanWitnesses } from './accepted-witnesses.js?v=0.14.34&partial-evidence=1';
 import { storyInputTokens } from './story-budget.js';
 import { RP_BRIEF_SCHEMA } from './rp-brief.js';
 import { normalizePlannerResponse } from './planner-response.js?v=1';
@@ -125,6 +125,7 @@ export async function storyPass({ state, input, source, generate }) {
         const reconciled = reconcileDevelopments(raw, { state, schema: STORY_SCHEMA.value.properties.developments.items,
             reusePrevious: !needsEventReframe(state), playerNames: input.playerNames });
         responseAdjustments.push(...reconciled.adjustments);
+        const witnessReview = reconcileSpanWitnesses(raw, input.evidenceMessages);
         check(raw, STORY_SCHEMA.value);
         const scopeReset = needsEventReframe(state) && state.preparationFormat === EVENT_POINTS_FORMAT;
         const updates = new Map(raw.developments.map(subject => [subject.id, subject]));
@@ -181,7 +182,10 @@ export async function storyPass({ state, input, source, generate }) {
                 source: structuredClone(state.source), revision: state.revision, replaced: true });
         }
         next.background = structuredClone(background);
-        return { ...merged, state: next, result, ...(ignoredEpisodeFields.length ? { ignoredEpisodeFields } : {}),
+        return { ...merged, state: next, result,
+            warnings: [...witnessReview.warnings, ...(merged.warnings || [])],
+            skippedProgress: witnessReview.skippedProgress, skippedRetirements: witnessReview.skippedRetirements,
+            ...(ignoredEpisodeFields.length ? { ignoredEpisodeFields } : {}),
             ...(responseAdjustments.length ? { responseAdjustments } : {}),
             ...(reconciled.deferredDevelopments.length ? { deferredDevelopments: reconciled.deferredDevelopments,
                 withheldMaterial: reconciled.withheldMaterial } : {}) };

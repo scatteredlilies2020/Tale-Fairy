@@ -33,9 +33,16 @@ Witnessed progress for existing subjects still passes normal evidence checks.
 The status reports deferred developments and withheld material. No extra model
 call is made, and missing ownership or evidence is never invented.
 
-Explicit invalid values, player ownership, conflicting subject updates and
-unsupported evidence still reject the transaction. The raw response is retained
-in the pass result for diagnostics.
+Unsupported citation addresses are discarded individually. Progress without a
+remaining exact witness is skipped, preserving the previous ledger. Retirement
+without a witness matching its declared message indices is skipped, preserving
+the subject. Independently supported claims and fresh planning can still save.
+The status reports skipped claims; evidence is never guessed or borrowed from
+another stage of an episode. This also handles absent or malformed citations.
+
+Explicit invalid proposal values, player ownership and conflicting subject
+updates still reject the transaction. The raw response is retained in the pass
+result for diagnostics.
 
 ## Writer material, not a preset
 
@@ -79,13 +86,14 @@ summaries, lorebooks or CM.
 
 ## Verification
 
-Local check: **891/891 tests passed on Node 24.17.0**. All six changed or new
+Local check: **895/895 tests passed on Node 24.17.0**. All six changed or new
 JavaScript files passed syntax checks; `git diff --check` passed.
 
 Deterministic tests cover private brief persistence, optional horizons, prompt
 boundaries, source deduplication, budgets, host activation, branch invalidation,
 single-call planning, rebuild/delete isolation, legacy saved packets, partial
-development updates, deferred drafts and preserved ownership/evidence checks.
+development updates, deferred drafts, unsupported citation isolation, stale-plan
+refreshes and preserved ownership/evidence checks.
 
 No live-provider or sustained RP-quality evaluation was performed. Whether a
 model consistently supplies varied, useful developments still needs live play;

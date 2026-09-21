@@ -180,6 +180,27 @@ test('host reports an incomplete new development while saving unrelated usable m
     assert.match(h.prepare().payload, /An original tune has potential/);
 });
 
+test('host saves and injects fresh planning when a progress claim cites an unavailable span', async () => {
+    for (const hasPrevious of [false, true]) {
+        const value = structuredClone(design);
+        const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] }));
+        if (hasPrevious) {
+            await h.scope.analyzeCampaignNow();
+            for (let i = 0; i < 10; i++) h.context.chat.push({ is_user: i % 2 === 0, mes: `Accepted exchange ${i}.` });
+        }
+        value.realization = [{ id: 'music', changes: [{ episodeId: 'unverified-performance', status: 'completed',
+            evidence: [{ index: 0, span: 999 }] }] }];
+        await h.scope.analyzeCampaignNow();
+        assert.equal(h.requests.length, hasPrevious ? 2 : 1);
+        assert.equal(h.state().campaignPreparation.revision, hasPrevious ? 2 : 1);
+        assert.equal(h.state().campaignPreparation.source.messageCount, h.context.chat.length);
+        assert.deepEqual(h.state().campaignPreparation.realization.music.episodes, {});
+        assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
+        assert.match(h.statuses.at(-1), /Campaign preparation ready.*skipped 1 unsupported progress update/);
+        assert.match(h.prepare().payload, /An original tune has potential/);
+    }
+});
+
 test('incomplete drafts cannot hide player ownership from host validation', async () => {
     const value = structuredClone(design);
     value.developments[0].initiative = { owner: 'Neri' };

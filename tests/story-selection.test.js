@@ -83,12 +83,10 @@ test('extra episode fields cannot replace missing or invalid required values', a
     }
 });
 
-test('response tolerance preserves player-control and exact witness validation', async () => {
+test('response tolerance preserves player-control validation', async () => {
     const state = await initial();
     for (const mutate of [
         value => { value.developments[0].initiative.control = 'player'; },
-        value => { value.realization = [{ id: 'music', changes: [{ episodeId: 'show', status: 'completed',
-            evidence: [{ index: 0, span: 999 }] }] }]; },
     ]) {
         const value = body([], [selected()]);
         value.episode.boundary_extra = 'Discardable commentary.';
@@ -196,7 +194,7 @@ test('new owners and missing fresh access defer a draft while retaining the exis
     }
 });
 
-test('partial updates do not conceal invalid ownership, values, conflicting ids or invented witnesses', async () => {
+test('partial updates do not conceal invalid ownership, values or conflicting ids', async () => {
     const state = await initial();
     for (const mutate of [
         value => { value.developments[1].initiative = { control: 'player' }; },
@@ -204,8 +202,6 @@ test('partial updates do not conceal invalid ownership, values, conflicting ids 
         value => { value.developments[1].stakes = 4; },
         value => { value.developments[1].initiative = {}; value.developments[1].background.access.route = 'telepathy'; },
         value => { value.developments.push({ id: 'music' }); },
-        value => { value.realization = [{ id: 'music', changes: [{ episodeId: 'show', status: 'completed',
-            evidence: [{ index: 0, span: 999 }] }] }]; },
     ]) {
         const value = body([], [selected(['music'])]);
         delete value.developments[1].development;
@@ -311,7 +307,7 @@ test('missing or null optional progress makes no new claims and preserves existi
     }
 });
 
-test('exact accepted progress and current selection update together; invented witnesses veto the transaction', async () => {
+test('unsupported progress leaves witnessed history intact while fresh selection saves', async () => {
     const state = await initial();
     const progress = [{ id: 'music', changes: [{ episodeId: 'performance', status: 'completed',
         evidence: [{ index: 0, span: 0 }] }] }];
@@ -322,10 +318,67 @@ test('exact accepted progress and current selection update together; invented wi
     assert.match(campaignPayload(accepted.state), /New contrasting arrangements/);
     const invalid = structuredClone(value);
     invalid.realization[0].changes[0].evidence[0].span = 999;
-    const rejected = await plan(state, invalid);
-    assert.equal(rejected.accepted, false);
-    assert.equal(rejected.state, state);
-    assert.deepEqual(rejected.result.text, JSON.stringify(invalid), 'diagnostics retain the actual provider output');
+    const partial = await plan(accepted.state, invalid);
+    assert.equal(partial.accepted, true, partial.error);
+    assert.deepEqual(partial.state.realization, accepted.state.realization);
+    assert.equal(partial.skippedProgress, 1);
+    assert.equal(partial.warnings.length, 1);
+    assert.match(campaignPayload(partial.state), /New contrasting arrangements/);
+    assert.deepEqual(partial.result.text, JSON.stringify(invalid), 'diagnostics retain the actual provider output');
+});
+
+test('invalid citation addresses are skipped without inventing progress or blocking a first plan', async () => {
+    for (const evidence of [[{ index: 99, span: 0 }], [{ index: 0, span: 999 }],
+        [{ index: 0, span: -1 }], [{ index: 0 }], [{ index: 0, span: 'invented' }],
+        [null], [], null, undefined]) {
+        const value = body([], [selected()], [{ id: 'music', changes: [{ episodeId: 'performance', status: 'completed', evidence }] }]);
+        const result = await plan(emptyCampaign(), value);
+        assert.equal(result.accepted, true, result.error);
+        assert.equal(result.skippedProgress, 1);
+        assert.deepEqual(result.state.realization.music.episodes, {});
+        assert.match(campaignPayload(result.state), /complementary repertoires/);
+        assert.ok(validCampaignState(result.state));
+    }
+});
+
+test('mixed witnesses retain exactly supported progress and do not advance an unsupported later stage', async () => {
+    const evidence = [{ index: 7, role: 'assistant', content: 'The ensemble started rehearsing.\nThe audience arrived.' }];
+    const value = body([], [selected()], [{ id: 'music', changes: [
+        { episodeId: 'performance', status: 'participating', evidence: [{ index: 7, span: 0 }, { index: 7, span: 999 }] },
+        { episodeId: 'performance', status: 'completed', evidence: [{ index: 8, span: 0 }] },
+    ] }]);
+    const result = await plan(emptyCampaign(), value, evidence);
+    assert.equal(result.accepted, true, result.error);
+    const episode = result.state.realization.music.episodes.performance;
+    assert.equal(episode.status, 'participating');
+    assert.deepEqual(episode.witnesses.map(w => [w.index, w.quote]), [[7, 'The ensemble started rehearsing.']]);
+    assert.equal(result.warnings.length, 2);
+    assert.equal(result.skippedProgress, 1);
+    assert.ok(validCampaignState(result.state));
+});
+
+test('retirement uses only exact witnesses agreeing with declared indices and otherwise retains the subject', async () => {
+    const state = await initial();
+    const retirement = { id: 'music', reason: 'Finished.', scope: 'whole-subject',
+        evidence: [0, 999], witnesses: [{ index: 0, span: 0 }, { index: 999, span: 0 }] };
+    const accepted = await plan(state, { ...body([], [selected(['travel'])]), retire: [retirement] });
+    assert.equal(accepted.accepted, true, accepted.error);
+    assert.deepEqual(accepted.state.archive.find(entry => entry.retirement).retirement.evidence, [0]);
+    assert.equal(accepted.skippedRetirements, 0);
+    for (const mutate of [
+        entry => { entry.evidence = [999]; },
+        entry => { entry.witnesses = []; },
+        entry => { delete entry.witnesses; },
+    ]) {
+        const invalid = structuredClone(retirement);
+        mutate(invalid);
+        const result = await plan(state, { ...body([], [selected()]), retire: [invalid] });
+        assert.equal(result.accepted, true, result.error);
+        assert.equal(result.skippedRetirements, 1);
+        assert.deepEqual(result.state.developments, state.developments);
+        assert.equal(result.state.archive.some(entry => entry.retirement), false);
+        assert.ok(validCampaignState(result.state));
+    }
 });
 
 test('formatted source witnesses and continuing participation cannot block a fresh scene selection', async () => {
@@ -347,7 +400,10 @@ test('formatted source witnesses and continuing participation cannot block a fre
     assert.doesNotMatch(campaignPayload(next.state), /Partially rehearsed|span|witness|oven/);
     assert.equal(validCampaignState(JSON.parse(JSON.stringify(next.state))), true);
     const invalid = structuredClone(value); invalid.realization[0].changes[0].evidence[0] = { index: 1, quote: 'invented' };
-    assert.equal((await plan(begun.state, invalid, later)).accepted, false, 'the wire accepts addresses, never generated quote text');
+    const skipped = await plan(begun.state, invalid, later);
+    assert.equal(skipped.accepted, true, skipped.error);
+    assert.equal(skipped.skippedProgress, 1, 'generated quote text never substitutes for an exact address');
+    assert.deepEqual(skipped.state.realization, begun.state.realization);
 });
 
 test('legacy per-subject selections migrate without deleting witnessed progress or durable preparation', async () => {
@@ -387,7 +443,12 @@ test('retirement requires exact whole-subject witnesses and cannot leave danglin
     assert.equal(validCampaignState(accepted.state), true);
     assert.deepEqual(accepted.state.developments.map(s => s.id), ['travel']);
     const falseWitness = structuredClone(retire); falseWitness[0].witnesses[0].span = 999;
-    assert.equal((await plan(state, { ...body(), retire: falseWitness }, evidence)).accepted, false);
+    const retained = await plan(state, { ...body([], [selected()]), retire: falseWitness }, evidence);
+    assert.equal(retained.accepted, true, retained.error);
+    assert.equal(retained.skippedRetirements, 1);
+    assert.deepEqual(retained.state.developments, state.developments);
+    assert.equal(retained.state.archive.some(entry => entry.retirement), false);
+    assert.match(campaignPayload(retained.state), /complementary repertoires/);
 });
 
 test('updated applicability replaces and archives the previous snapshot without forced novelty', async () => {
@@ -581,9 +642,11 @@ test('same-pass final progress and retirement accept overlapping private snapsho
         }
     }
     const bad = structuredClone(progress); bad[0].changes[0].evidence[0].span = 999;
-    const rejected = await plan(state, { ...body([], [selected(['travel'])], bad), retire }, evidence);
-    assert.equal(rejected.accepted, false);
-    assert.equal(rejected.state, state, 'invalid final evidence rolls back retirement too');
+    const partial = await plan(state, { ...body([], [selected(['travel'])], bad), retire }, evidence);
+    assert.equal(partial.accepted, true, partial.error);
+    assert.equal(partial.skippedProgress, 1);
+    assert.equal(partial.state.realization.music.episodes['final-performance'], undefined);
+    assert.equal(partial.state.archive.filter(entry => entry.retirement).length, 1, 'independently verified retirement still applies');
 });
 
 test('private omission during migration retains aims but requires fresh access before selection', async () => {

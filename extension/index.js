@@ -1,6 +1,6 @@
 import { sha256 } from '/lib.js';
 import { campaignAuthorInstructions, campaignPayloadBudget, campaignUsable, campaignMaterialUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1';
-import { storyInput as ownedInput, storyPass as ownedPass, needsEventReframe, STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM } from './story-selection.js?v=0.14.36&planner-input=1&episode-fields=1&token-budget=1&rp-plot=1&response=2&history-budget=1&partial-updates=1';
+import { storyInput as ownedInput, storyPass as ownedPass, needsEventReframe, STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM } from './story-selection.js?v=0.14.36&planner-input=1&episode-fields=1&token-budget=1&rp-plot=1&response=2&history-budget=1&partial-updates=1&partial-evidence=1';
 import { verifyStoryInputBudget } from './story-budget.js';
 import { readCampaignContinuity } from './campaign-continuity.js';
 // Keep the public registration URL stable so external adapters share this registry.
@@ -952,7 +952,9 @@ async function runCampaignAnalysis(work) {
     if (stopSequence === analysisStopSequence && chatId === String(currentContext().getCurrentChatId?.() || '')) {
         if (result.accepted) {
             const notices = [];
-            if (result.warnings?.length) notices.push(`ignored ${result.warnings.length} unsupported extra citation(s)`);
+            if (result.warnings?.length) notices.push(`ignored ${result.warnings.length} unsupported citation(s)`);
+            if (result.skippedProgress) notices.push(`skipped ${result.skippedProgress} unsupported progress update(s)`);
+            if (result.skippedRetirements) notices.push(`retained ${result.skippedRetirements} subject(s) without verified retirement`);
             if (result.ignoredEpisodeFields?.length) notices.push(`ignored ${result.ignoredEpisodeFields.length} extra episode field(s)`);
             if (result.responseAdjustments?.length) notices.push(`normalized ${result.responseAdjustments.length} response variation(s)`);
             if (result.deferredDevelopments?.length) notices.push(`deferred ${result.deferredDevelopments.length} incomplete development(s)`);
