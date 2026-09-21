@@ -74,6 +74,24 @@ test('oversized single-shot input is blocked before every provider route without
     }
 });
 
+test('tracker distinguishes preflight failure from waiting on a dispatched provider request', async () => {
+    for (const route of ['direct', 'profile', 'active']) {
+        const stages = [];
+        const onProgress = stage => stages.push(stage);
+        const blocked = harness([{ valid: true }], { route, inputBudget: 40 });
+        await assert.rejects(blocked.run({ singleShot: true, onProgress }), /exceeds/);
+        assert.deepEqual(stages, ['Checking planner connection and input']);
+        stages.length = 0;
+        const h = harness(() => {
+            assert.ok(stages.some(stage => stage.startsWith('Waiting for planner response')));
+            return { valid: true };
+        }, { route });
+        await h.run({ singleShot: true, onProgress });
+        assert.equal(stages[0], 'Checking planner connection and input');
+        assert.equal(h.requests.length, 1);
+    }
+});
+
 test('active tokenizer overflow blocks generation, but another model never uses that tokenizer', async () => {
     let calls = 0;
     const tokenCounter = async () => { calls++; return 20000; };

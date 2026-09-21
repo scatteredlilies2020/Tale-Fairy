@@ -63,7 +63,7 @@ function browser(send = async () => ({ choices: [{ message: { content: JSON.stri
             return spec.parseResponse(await send({ prompt, signal, meta, spec }));
         },
     });
-    for (const name of ['readCampaignSnapshot', 'buildCampaignHostInput', 'saveCampaignAttempt', 'campaignCompletion', 'runCampaignAnalysis', 'analyzeCampaignNow', 'startCampaignPlanning', 'applyCampaignInstruction', 'rebuildGuideState', 'analyzeNow']) {
+    for (const name of ['showCampaignPhase', 'readCampaignSnapshot', 'buildCampaignHostInput', 'saveCampaignAttempt', 'campaignCompletion', 'runCampaignAnalysis', 'analyzeCampaignNow', 'startCampaignPlanning', 'applyCampaignInstruction', 'rebuildGuideState', 'analyzeNow']) {
         vm.runInContext(source.match(new RegExp(`(?:export )?(?:async )?function ${name}\\([^]*?^}`, 'm'))[0].replace(/^export /u, ''), h.scope);
     }
     return { ...h, requests, shared };
@@ -221,7 +221,7 @@ test('host accepts extra episode commentary in one request and reports the disca
     assert.equal(h.state().campaignPreparation.episode.boundary, design.episode.boundary);
     assert.equal(h.state().campaignPreparation.episode.boundary_extra, undefined);
     assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
-    assert.match(h.statuses.at(-1), /Campaign preparation ready · ignored 1 extra episode field/);
+    assert.match(h.statuses.at(-1), /Campaign preparation ready · \d+s · ignored 1 extra episode field/);
     assert.ok(h.prepare().payload);
 });
 
@@ -436,7 +436,7 @@ test('an interrupted preflight is not reused by a later manual request', async (
     await Promise.all([first, next]);
     assert.equal(locks.requests, 2);
     assert.equal(h.requests.length, 1, 'stopped preflight sends nothing; replacement sends once');
-    assert.equal(h.statuses.at(-1), 'Campaign preparation ready');
+    assert.match(h.statuses.at(-1), /^Campaign preparation ready · \d+s$/);
     assert.equal(h.scope.campaignHostWork, null);
 });
 
@@ -469,7 +469,7 @@ test('preflight errors release page-local work and leave a later manual pass usa
     h.scope.warmPlotWorldInputs = async () => {};
     await h.scope.analyzeCampaignNow({ manual: true });
     assert.equal(h.requests.length, 1);
-    assert.equal(h.statuses.at(-1), 'Campaign preparation ready');
+    assert.match(h.statuses.at(-1), /^Campaign preparation ready · \d+s$/);
 });
 
 test('planner prompt changes invalidate attempt identity without changing accepted-source identity', () => {

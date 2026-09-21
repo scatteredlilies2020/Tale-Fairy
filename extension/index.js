@@ -6,7 +6,8 @@ import { readCampaignContinuity } from './campaign-continuity.js';
 // Keep the public registration URL stable so external adapters share this registry.
 import { readEvidenceProviders, evidenceRevisionKey } from './evidence-providers.js';
 import { campaignEvidenceMessages, campaignReviewWindow } from './campaign-evidence.js';
-import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.36&token-budget=1&rp-plot=1';
+import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.36&token-budget=1&rp-plot=1&progress=1';
+import { campaignAttemptSummary } from './planner-progress.js?v=1';
 import { finalizeNotebookCompactions, writeNotebookArchive } from './notebook-compaction.js?v=0.14.22';
 import { eventSource, event_types, extension_prompt_roles, extension_prompt_types, generateRaw, Generate, setExtensionPrompt, getRequestHeaders, getCharacterCardFields, saveSettingsDebounced } from '/script.js';
 import { getContext } from '/scripts/st-context.js';
@@ -857,6 +858,7 @@ async function saveCampaignAttempt(attempt) {
     if (String(context.getCurrentChatId?.() || '') !== attempt.chatId) throw Error('Chat changed before campaign attempt could be recorded.');
     plannerStorage()?.setItem(`${CAMPAIGN_ATTEMPT_KEY}:${attempt.chatId}`, JSON.stringify(attempt));
     context.updateChatMetadata({ ...context.chatMetadata, [CAMPAIGN_ATTEMPT_KEY]: attempt });
+    renderCampaignAttempt();
     // Reserve the attempt durably before spending the provider request.
     if (typeof context.saveMetadata === 'function') await context.saveMetadata();
 }
@@ -891,7 +893,7 @@ function analyzeCampaignNow({ manual = false } = {}) {
         previous.manual ||= manual;
         return previous.promise;
     }
-    const work = { chatId, stopSequence, manual, promise: null };
+    const work = { chatId, stopSequence, manual, promise: null, startedAt: Date.now(), runId: ++analysisRunId };
     work.promise = Promise.resolve(previous?.promise).catch(() => {}).then(() => {
         if (stopSequence !== analysisStopSequence || chatId !== String(currentContext().getCurrentChatId?.() || '')
             || !getSettings().enabled) return loadState(currentContext().chatMetadata);
@@ -909,7 +911,7 @@ function analyzeCampaignNow({ manual = false } = {}) {
     });
     // Publish before any async preflight or lock acquisition can re-enter.
     campaignHostWork = work;
-    renderAnalysisActivity(previous ? 'Waiting for previous planner to finish' : 'Preparing planner context', true);
+    showCampaignPhase(previous ? 'Waiting for previous planner to finish' : 'Preparing planner context');
     return work.promise;
 }
 
@@ -930,8 +932,10 @@ async function runCampaignAnalysis(work) {
     campaignSession ||= new CampaignSession({ read: readCampaignSnapshot, prepare: buildCampaignHostInput,
         runPass: ownedPass,
         fingerprint: campaignFingerprint, saveAttempt: saveCampaignAttempt, commit: commitCampaignPreparation,
-        interval: () => Number(getSettings().fullReviewInterval) || 8,
+        interval: () => Number(getSettings().fullReviewInterval) || 4,
+        onProgress: showCampaignPhase,
         generate: (prompt, systemPrompt, schema, { signal }) => requestAnalysisOnce(prompt, signal, null, {
+            onProgress: showCampaignPhase,
             singleShot: true, systemPrompt, schema, responseTokens: 6000, parseResponse: campaignCompletion,
             label: 'campaign preparation', cacheNamespace: `campaign-v15:${OWNED_SCHEMA.name}`,
         }),
@@ -940,7 +944,6 @@ async function runCampaignAnalysis(work) {
         if (stopSequence !== analysisStopSequence || chatId !== String(currentContext().getCurrentChatId?.() || '')
             || !getSettings().enabled) return { accepted: false, skipped: 'cancelled-before-lock' };
         const result = campaignSession.request({ manual: work.manual });
-        if (campaignSession.pending) renderAnalysisActivity('Preparing later developments · one request', true);
         return result;
     });
     if (stopSequence === analysisStopSequence && chatId === String(currentContext().getCurrentChatId?.() || '')) {
@@ -952,11 +955,11 @@ async function runCampaignAnalysis(work) {
             const budget = campaignPayloadBudget(saved.campaignPreparation, campaignAuthorInstructions(saved));
             if (budget.omitted) notices.push(`${budget.omitted} oversized writer block(s) withheld; preparation saved`);
             if (budget.authorOverflow) notices.push('saved author instructions exceed the writer budget; shorten them explicitly');
-            renderAnalysisActivity(['Campaign preparation ready', ...notices].join(' · '), false);
+            renderAnalysisActivity(['Campaign preparation ready', elapsedLabel(Date.now() - work.startedAt), ...notices].join(' · '), false);
         }
         else if (result.error) renderAnalysisActivity(`${loadState(currentContext().chatMetadata).campaignPreparation?.revision
             ? 'Previous preparation retained' : 'No preparation available'} · ${result.error}`, false);
-        else renderAnalysisActivity('No new planning pass needed', false);
+        else renderAnalysisActivity(`No new planning pass needed${result.skipped ? ` · ${result.skipped}` : ''}`, false);
     }
     return loadState(currentContext().chatMetadata);
 }
@@ -1715,6 +1718,22 @@ function elapsedLabel(milliseconds) {
     return minutes ? `${minutes}m ${String(remainder).padStart(2, '0')}s` : `${seconds}s`;
 }
 
+function showCampaignPhase(label) {
+    const work = campaignHostWork;
+    if (!work || work.stopSequence !== analysisStopSequence
+        || work.chatId !== String(currentContext().getCurrentChatId?.() || '')) return;
+    showAnalysisPhase(label, work.runId, work.startedAt);
+}
+
+function renderCampaignAttempt() {
+    const status = document.querySelector(`#${EXTENSION_ID}-settings [data-role="attempt-status"]`);
+    if (!status) return;
+    const context = currentContext();
+    const active = campaignHostWork?.chatId === String(context.getCurrentChatId?.() || '')
+        && campaignHostWork.stopSequence === analysisStopSequence;
+    status.textContent = campaignAttemptSummary(context.chatMetadata?.[CAMPAIGN_ATTEMPT_KEY], active);
+}
+
 function clearAnalysisPhase() {
     if (analysisPhaseTimer) clearInterval(analysisPhaseTimer);
     analysisPhaseTimer = null;
@@ -2343,6 +2362,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
     else externalSignal?.addEventListener('abort', forwardAbort, { once: true });
     try {
         controller.signal.throwIfAborted();
+        requestSpec.onProgress?.('Checking planner connection and input');
         await waitForAbortable(detachedPlannerReady, controller.signal);
         controller.signal.throwIfAborted();
         const systemPrompt = requestSpec.systemPrompt || PLANNER_SYSTEM_PROMPT;
@@ -2398,6 +2418,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
                 },
             );
             if (singleShot) {
+                requestSpec.onProgress?.('Waiting for planner response · no live token updates');
                 const response = await sendProfileRaw(PLANNER_OUTPUT_MODE.PROMPT_ONLY);
                 controller.signal.throwIfAborted();
                 return parseResponse(response);
@@ -2464,6 +2485,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
                 () => { samplingEnabled = false; },
             );
             if (singleShot) {
+                requestSpec.onProgress?.('Waiting for planner response · no live token updates');
                 const response = await runActive(PLANNER_OUTPUT_MODE.PROMPT_ONLY);
                 controller.signal.throwIfAborted();
                 return parseResponse(response);
@@ -2505,7 +2527,10 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
             const modePayload = model.provider === 'custom' ? customOutputPayload(reasoningPayload, mode) : reasoningPayload;
             const body = { chat_completion_source: model.provider, model: model.model, messages: plannerMessages(systemPrompt, prompt, schema, mode), max_tokens: plannerOutputTokenBudget(responseTokens, reasoningPayload.reasoning_effort || reasoningBudgetMode), stream: false, ...plannerTemperaturePayload(temperature, samplingEnabled), ...modePayload, ...(mode === PLANNER_OUTPUT_MODE.JSON_SCHEMA ? { json_schema: schema } : {}), ...(model.provider === 'openrouter' ? { api_url: model.url.replace(/\/$/, '') } : { custom_url: model.url.replace(/\/$/, '') }), ...detachedMarker };
             if (model.secretId) body.secret_id = model.secretId;
+            requestSpec.onProgress?.('Waiting for planner response · no live token updates');
             const response = await fetch('/api/backends/chat-completions/generate', { method: 'POST', headers: currentContext().getRequestHeaders?.() || getRequestHeaders?.() || { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
+            controller.signal.throwIfAborted();
+            requestSpec.onProgress?.('Reading planner response');
             const payload = await response.json();
             if (!response.ok || payload?.error) throw new Error(payload?.error?.message || payload?.error || `Analysis request failed (${response.status}).`);
             controller.signal.throwIfAborted();
@@ -2879,6 +2904,7 @@ function campaignBudgetSummary(preparation, instructions) {
 }
 
 function renderBoard(state = loadState(currentContext().chatMetadata)) {
+    renderCampaignAttempt();
     const board = document.querySelector(`#${EXTENSION_ID}-board`);
     if (!board) return;
     const campaign = state.plannerContract === 15;
@@ -3284,7 +3310,7 @@ async function mountUI() {
     uiMountPromise = (async () => {
     // Load the template relative to this module so the extension works from
     // third-party/Tale-Fairy as well as any legacy installation directory.
-    const response = await fetch(new URL(`./settings.html?v=${RUNTIME_VERSION}`, import.meta.url));
+    const response = await fetch(new URL(`./settings.html?v=${RUNTIME_VERSION}&progress=1`, import.meta.url));
     if (!response.ok) {
         throw new Error(`Could not load Tale Fairy settings: ${response.status} ${response.statusText}`);
     }
@@ -3365,7 +3391,9 @@ async function mountUI() {
         save();
     });
     root.querySelector('[data-setting="continuity"]').addEventListener('change', e => { invalidatePlanner(); s.continuityIntegration = e.target.checked; save(); });
-    root.querySelector('[data-setting="full-review-interval"]').addEventListener('change', e => { s.fullReviewInterval = normalizePlannerSchedule({ refreshInterval: e.target.value }).refreshInterval; e.target.value = s.fullReviewInterval; save(); });
+    root.querySelector('[data-setting="full-review-interval"]').addEventListener('change', e => { s.fullReviewInterval = campaignMode()
+        ? Math.min(4, Math.max(3, Math.floor(Number(e.target.value) || 4)))
+        : normalizePlannerSchedule({ refreshInterval: e.target.value }).refreshInterval; e.target.value = s.fullReviewInterval; save(); });
     root.querySelector('[data-setting="recent-budget"]').addEventListener('change', e => { invalidatePlanner(); s.recentContextTokens = Math.max(1000, Math.min(12000, Number(e.target.value) || DEFAULT_SETTINGS.recentContextTokens)); e.target.value = s.recentContextTokens; save(); });
     root.querySelector('[data-setting="summary-budget"]').addEventListener('change', e => { invalidatePlanner(); s.summaryContextTokens = Math.max(1000, Math.min(8000, Number(e.target.value) || 4000)); e.target.value = s.summaryContextTokens; save(); });
     root.querySelector('[data-setting="budget"]').addEventListener('change', e => { invalidatePlanner(); s.maxPromptTokens = Math.max(9000, Math.min(30000, Number(e.target.value) || DEFAULT_SETTINGS.maxPromptTokens)); e.target.value = s.maxPromptTokens; save(); });
@@ -3464,7 +3492,18 @@ function refreshControls(root = document.querySelector(`#${EXTENSION_ID}-setting
     root.querySelector('[data-setting="model"]').value = s.analysisModel;
     root.querySelector('[data-setting="url"]').value = s.analysisUrl;
     root.querySelector('[data-setting="continuity"]').checked = Boolean(s.continuityIntegration);
-    root.querySelector('[data-setting="full-review-interval"]').value = s.fullReviewInterval;
+    const campaign = campaignMode();
+    for (const key of ['recent-budget', 'routine-budget', 'review-budget']) {
+        const control = root.querySelector(`[data-setting="${key}"]`);
+        control.closest('label').hidden = campaign;
+        control.disabled = campaign;
+    }
+    const reviewInterval = root.querySelector('[data-setting="full-review-interval"]');
+    reviewInterval.min = '3';
+    reviewInterval.max = campaign ? '4' : '20';
+    reviewInterval.value = campaign ? Math.min(4, s.fullReviewInterval) : s.fullReviewInterval;
+    const campaignHelp = root.querySelector('[data-role="campaign-budget-help"]');
+    if (campaignHelp) campaignHelp.hidden = !campaign;
     root.querySelector('[data-setting="recent-budget"]').value = s.recentContextTokens;
     root.querySelector('[data-setting="summary-budget"]').value = s.summaryContextTokens;
     root.querySelector('[data-setting="budget"]').value = s.maxPromptTokens;

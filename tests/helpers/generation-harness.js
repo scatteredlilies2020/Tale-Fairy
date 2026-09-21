@@ -53,6 +53,8 @@ export function generationHarness(messages, state = stateApi.defaultState(), met
         generationRevision: 0, analysisStopSequence: 0, transcriptRefreshTimer: null,
         replyRepairInFlight: false,
         renderAnalysisActivity: status => statuses.push(status), renderInjectionActivity: status => statuses.push(status), renderBoard() {}, updatePrompt() {},
+        renderCampaignAttempt() {}, showAnalysisPhase: status => statuses.push(status),
+        elapsedLabel: milliseconds => `${Math.floor(milliseconds / 1000)}s`,
         recordRuntimeStage() {}, scheduleVerificationPersistence() {}, saveSettingsDebounced() {},
         cancelDetachedPlannerJobs: async () => {}, clearAutomaticReplyRepair() {},
         recoverDetachedPlannerJobs: async () => ({ recovered: false, active: false }),

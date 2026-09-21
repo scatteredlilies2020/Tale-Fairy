@@ -1,5 +1,6 @@
 import { CampaignRuntime } from './campaign-runtime.js?v=0.14.36&token-budget=1&rp-plot=1';
 import { campaignReviewInterval } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1';
+import { boundedPlannerResponse, PLANNER_RESPONSE_TIMEOUT_MS } from './planner-progress.js?v=1';
 
 export const CAMPAIGN_ATTEMPT_KEY = 'taleFairyCampaignAttempt';
 const turns = messages => messages.filter(message => !message.is_user).length;
@@ -7,17 +8,20 @@ const turns = messages => messages.filter(message => !message.is_user).length;
 // Event-driven scheduling, not a timer or a critic loop. A persisted attempt
 // reserves one source before sending, including across reloads and failures.
 export class CampaignSession {
-    constructor({ read, prepare, generate, commit, fingerprint, saveAttempt, interval = () => 8, runPass }) {
+    constructor({ read, prepare, generate, commit, fingerprint, saveAttempt, interval = () => 8, runPass,
+        onProgress = () => {}, timeoutMs = PLANNER_RESPONSE_TIMEOUT_MS }) {
         Object.assign(this, { read, fingerprint, saveAttempt, interval });
         this.controller = null;
         this.pending = null;
         this.runtime = new CampaignRuntime({ read, fingerprint, ...(runPass ? { runPass } : {}),
             prepare: async snapshot => {
+                onProgress('Building planner context');
                 const input = await prepare(snapshot);
                 this.controller.signal.throwIfAborted();
                 return input;
             },
             onAttempt: async (snapshot, key) => {
+                onProgress('Recording planner request');
                 const runKey = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
                 this.attempt = { key, runKey, chatId: snapshot.chatId, referenceHash: snapshot.referenceHash,
                     fingerprint: fingerprint(snapshot.messages), messageCount: snapshot.messages.length,
@@ -27,12 +31,19 @@ export class CampaignSession {
                 await saveAttempt(this.attempt);
                 this.controller.signal.throwIfAborted();
             },
-            generate: (prompt, system, schema) => {
+            generate: async (prompt, system, schema) => {
                 this.controller.signal.throwIfAborted();
-                return generate(prompt, system, schema, { signal: this.controller.signal, snapshot: this.attemptSnapshot, attempt: this.attempt });
+                onProgress('Preparing planner request');
+                const result = await boundedPlannerResponse(() => generate(prompt, system, schema,
+                    { signal: this.controller.signal, snapshot: this.attemptSnapshot, attempt: this.attempt }), this.controller, timeoutMs);
+                onProgress('Validating planner response');
+                return result;
             },
-            commit: (state, guard) => !this.controller.signal.aborted
-                && this.read().attempt?.runKey === this.attempt?.runKey && commit(state, guard),
+            commit: (state, guard) => {
+                onProgress('Saving planner preparation');
+                return !this.controller.signal.aborted
+                    && this.read().attempt?.runKey === this.attempt?.runKey && commit(state, guard);
+            },
         });
     }
 
@@ -66,7 +77,9 @@ export class CampaignSession {
             const latest = this.read();
             if (this.attempt && latest.attempt?.runKey === this.attempt.runKey && latest.chatId === snapshot.chatId) {
                 await this.saveAttempt({ ...latest.attempt,
-                    status: controller.signal.aborted ? 'stopped' : result.accepted ? 'complete' : 'failed' });
+                    status: controller.signal.aborted && controller.signal.reason?.name !== 'TimeoutError' ? 'stopped' : result.accepted ? 'complete' : 'failed',
+                    finishedAt: Date.now(), durationMs: Math.max(0, Date.now() - this.attempt.at),
+                    error: String(result.error || '').slice(0, 1000), skipped: result.skipped || '' });
             }
             return result;
         }).finally(() => { this.pending = null; this.controller = null; this.attemptSnapshot = null; this.attempt = null; });

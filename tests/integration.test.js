@@ -26,7 +26,7 @@ test('settings explanations stay concise', () => {
 
 test('manifest, browser runtime, and detached plugin share the release version', () => {
     assert.equal(manifest.version, '0.14.36');
-    assert.equal(manifest.js, 'extension/index.js?v=0.14.36&planner-input=1&episode-fields=1&token-budget=1&rp-plot=1');
+    assert.equal(manifest.js, 'extension/index.js?v=0.14.36&planner-input=1&episode-fields=1&token-budget=1&rp-plot=1&progress=1');
     assert.equal(manifest.css, 'extension/style.css?v=0.14.36');
     assert.equal(pluginPackage.version, manifest.version);
     assert.match(pluginSource, /const VERSION = '0\.14\.36'/);

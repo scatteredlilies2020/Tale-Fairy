@@ -129,3 +129,55 @@ test('a newer run for identical input cannot be overwritten by the older run or 
     assert.equal(f.commits(), 0);
     assert.equal(f.calls(), 1);
 });
+
+test('tracker records ordered stages, completion time and provider failure reason', async () => {
+    const f = fixture();
+    const stages = [];
+    f.session = new CampaignSession({ ...f.options, onProgress: stage => stages.push(stage) });
+    assert.equal((await f.session.request()).accepted, true);
+    assert.deepEqual(stages, ['Building planner context', 'Recording planner request',
+        'Preparing planner request', 'Validating planner response', 'Saving planner preparation']);
+    assert.ok(f.current.attempt.finishedAt >= f.current.attempt.at);
+    assert.ok(f.current.attempt.durationMs >= 0);
+    const failed = fixture(async () => { throw Error('upstream disconnected'); });
+    await failed.session.request();
+    assert.equal(failed.current.attempt.error, 'upstream disconnected');
+    assert.equal(failed.current.attempt.status, 'failed');
+});
+
+test('timeout releases a hung adapter, aborts its signal and rejects late output without a retry', async () => {
+    let release, signal;
+    const f = fixture((_p, _s, _schema, options) => {
+        signal = options.signal;
+        return new Promise(resolve => { release = resolve; });
+    });
+    f.session = new CampaignSession({ ...f.options, timeoutMs: 20 });
+    const result = await f.session.request();
+    assert.match(result.error, /timed out/);
+    assert.equal(signal.aborted, true);
+    assert.equal(signal.reason.name, 'TimeoutError');
+    assert.equal(f.session.pending, null);
+    assert.equal(f.current.attempt.status, 'failed');
+    assert.match(f.current.attempt.error, /timed out/);
+    release(reply);
+    await settle();
+    assert.equal(f.commits(), 0);
+    assert.equal((await f.session.request()).skipped, 'not-due');
+    assert.equal(f.calls(), 1);
+    f.session = new CampaignSession({ ...f.options, generate: async () => reply });
+    assert.equal((await f.session.request({ manual: true })).accepted, true);
+});
+
+test('Stop releases an adapter which ignores abort and cannot commit its late response', async () => {
+    let release;
+    const f = fixture(() => new Promise(resolve => { release = resolve; }));
+    const pending = f.session.request();
+    await settle();
+    f.session.stop();
+    await pending;
+    assert.equal(f.session.pending, null);
+    assert.equal(f.current.attempt.status, 'stopped');
+    release(reply);
+    await settle();
+    assert.equal(f.commits(), 0);
+});

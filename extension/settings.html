@@ -13,6 +13,7 @@
         <span class="living-world-guide-status">Planner: <span data-role="analysis-status">Ready</span></span>
       </div>
       <div class="living-world-guide-status" role="status" aria-live="polite">Story context: <span data-role="injection-status">No request verified on this page</span></div>
+      <div class="living-world-guide-status">Request tracker: <span data-role="attempt-status">No recorded planner request</span></div>
 
       <div class="living-world-guide-card">
         <h4>World and future preparation</h4>
@@ -33,11 +34,11 @@
           </label>
           <label>Summary retrieval pool (tokens)
             <input class="text_pole" type="number" data-setting="summary-budget" min="1000" max="8000" step="500" value="4000">
-            <small>Summary retrieval limit: up to 1,200 tokens for routine updates, 2,400 for reviews, and this setting for rebuilds. Final inclusion depends on the input budget.</small>
+            <small>Maximum summary evidence available to planning. Final inclusion depends on the total input budget.</small>
           </label>
-          <label>Total planner input ceiling / rebuild budget (tokens)
+          <label>Total planner input ceiling (tokens)
             <input class="text_pole" type="number" data-setting="budget" min="9000" max="30000" step="1000" value="16000">
-              <small>Total input limit for every pass, including instructions and evidence. Initialization and rebuilds use this budget, with up to 8,192 output tokens.</small>
+              <small>Total input limit for every pass, including instructions, conversation, evidence and response format.</small>
           </label>
           <label>Routine planner input target (tokens)
             <input class="text_pole" type="number" data-setting="routine-budget" min="6000" max="30000" step="1000" value="6000">
@@ -52,6 +53,7 @@
             <small>Story horizons use at most 4 accepted replies between reviews. Old suggestions then expire; private aims and author instructions remain. Failed reviews recover after new assistant play, not unchanged-input retries.</small>
           </label>
         </div>
+        <small data-role="campaign-budget-help">Planning fits conversation and available evidence within the total input ceiling. Each request allows 6,000 plan output tokens plus a separate reasoning allowance. The elapsed timer tracks waiting, validation and saving; the provider sends no live token progress. A response times out after 10 minutes without an automatic retry. Legacy recent-message, routine and review targets are inactive and hidden.</small>
         <label class="checkbox_label">
           <input type="checkbox" data-setting="continuity">
           <span>Use Continuity context when available</span>
