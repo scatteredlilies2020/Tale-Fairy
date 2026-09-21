@@ -9,6 +9,7 @@ import { SPAN_WITNESS_SCHEMA, witnessMessages, resolveSpanWitnesses } from './ac
 import { storyInputTokens } from './story-budget.js';
 import { RP_BRIEF_SCHEMA } from './rp-brief.js';
 import { normalizePlannerResponse } from './planner-response.js?v=1';
+import { reconcileDevelopments } from './planner-developments.js?v=1';
 export { needsEventReframe };
 
 export const STORY_SCHEMA = structuredClone(OWNED_SCHEMA);
@@ -47,6 +48,7 @@ Write rp_brief before planning: this RP's premise, recurring activities, source 
 
 PRIVATE PREPARATION
 campaign states the broader possibility; episode describes current circumstances. developments updates at most four enduring subjects, not every activity. Omitted subjects stay private. Add only for a useful gap; a quiet or closed RP needs no new subject. Keep stable ids. initiative belongs to an NPC or world process, never the player. Competence permits participation, not agreement or accomplishment. Do not add permission gates or tests of established competence. Completing one experience need not retire its wider subject.
+Include initiative (owner, control, aim), development, stakes and participation for each subject. Omitted durable fields on an existing id retain saved values. Every emitted subject needs fresh background and access; these are never copied from an earlier review.
 
 background describes provisional activity, grounded in capabilities, causes and fictional time. Message count is not elapsed time. Delegation does not prove completion; unknown does not mean unfinished. Reconcile forecasts with accepted changes. Private preparation never proves events or player commitments.
 access concerns a discoverable trace or opportunity, not the whole private process. State its available surface and unknowns. A known opportunity may remain accessible without a fresh update. Use none when no plausible surface can reach play. Never invent contact, travel or an interruption to create access. Contact does not reveal private motives or knowledge.
@@ -120,6 +122,9 @@ export async function storyPass({ state, input, source, generate }) {
                 return false;
             });
         }
+        const reconciled = reconcileDevelopments(raw, { state, schema: STORY_SCHEMA.value.properties.developments.items,
+            reusePrevious: !needsEventReframe(state), playerNames: input.playerNames });
+        responseAdjustments.push(...reconciled.adjustments);
         check(raw, STORY_SCHEMA.value);
         const scopeReset = needsEventReframe(state) && state.preparationFormat === EVENT_POINTS_FORMAT;
         const updates = new Map(raw.developments.map(subject => [subject.id, subject]));
@@ -146,8 +151,8 @@ export async function storyPass({ state, input, source, generate }) {
             throw Error('Realization requires unique retained subject ids, not episode ids');
         }
 
-        // This is a representation adapter, never response repair or a second AI
-        // call. Fresh selection explicitly withdraws old per-subject packets;
+        // This storage adapter makes no second AI call. Fresh selection
+        // explicitly withdraws old per-subject packets;
         // original progress changes still pass the existing strict evidence checks.
         const { selected_material, rp_brief, ...privateUpdate } = raw;
         const resolve = evidence => resolveSpanWitnesses(evidence, input.evidenceMessages);
@@ -177,7 +182,9 @@ export async function storyPass({ state, input, source, generate }) {
         }
         next.background = structuredClone(background);
         return { ...merged, state: next, result, ...(ignoredEpisodeFields.length ? { ignoredEpisodeFields } : {}),
-            ...(responseAdjustments.length ? { responseAdjustments } : {}) };
+            ...(responseAdjustments.length ? { responseAdjustments } : {}),
+            ...(reconciled.deferredDevelopments.length ? { deferredDevelopments: reconciled.deferredDevelopments,
+                withheldMaterial: reconciled.withheldMaterial } : {}) };
     } catch (error) { return { state, accepted: false, error: error.message, ...(result ? { result } : {}) }; }
 }
 

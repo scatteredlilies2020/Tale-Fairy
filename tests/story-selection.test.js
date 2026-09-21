@@ -115,6 +115,120 @@ test('whole-story selection groups independent private aims into one writer circ
     assert.doesNotMatch(campaignPayload(state, [instructions]), /<author-text>/);
 });
 
+test('a missing initiative in the second update retains its saved owner and saves fresh writer material', async () => {
+    const state = await initial();
+    const value = body([], [{ ...selected(), available: 'A new arrangement is available to try.' }]);
+    delete value.developments[1].initiative;
+    const result = await plan(state, value);
+    assert.equal(result.accepted, true, result.error);
+    assert.deepEqual(result.state.developments[1].initiative, state.developments[1].initiative);
+    assert.match(campaignPayload(result.state), /new arrangement/);
+    assert.ok(result.responseAdjustments.includes('$.developments[1].initiative'));
+    assert.equal(result.state.revision, state.revision + 1);
+    assert.ok(validCampaignState(result.state));
+    assert.equal(result.result.text, JSON.stringify(value), 'raw provider output stays intact');
+});
+
+test('background-only updates and partial initiatives retain durable fields without inventing content', async () => {
+    const state = await initial();
+    for (const initiative of [undefined, { aim: 'An explicitly revised musical aim.' }, { owner: subject('music').initiative.owner }]) {
+        const value = body([], [selected()]);
+        value.developments = value.developments.map(({ id, background }) => ({ id, background,
+            ...(initiative ? { initiative: structuredClone(initiative) } : {}) }));
+        const result = await plan(state, value);
+        assert.equal(result.accepted, true, result.error);
+        assert.ok(validCampaignState(result.state));
+        for (const item of result.state.developments) {
+            const prior = state.developments.find(old => old.id === item.id);
+            assert.deepEqual(item.initiative, { ...prior.initiative, ...initiative });
+            assert.equal(item.progression, prior.progression);
+            assert.equal(item.outcomes, prior.outcomes);
+            assert.equal(item.access, prior.access);
+        }
+        assert.match(campaignPayload(result.state), /complementary repertoires/);
+    }
+});
+
+test('an incomplete new subject does not discard an unrelated valid selection', async () => {
+    const value = body([], [selected(['music'])]);
+    delete value.developments[1].initiative;
+    value.realization = [{ id: 'travel', changes: [] }];
+    const result = await plan(emptyCampaign(), value);
+    assert.equal(result.accepted, true, result.error);
+    assert.deepEqual(result.state.developments.map(item => item.id), ['music']);
+    assert.deepEqual(result.deferredDevelopments, [{ id: 'travel', missingFields: ['initiative'] }]);
+    assert.equal(result.withheldMaterial, 0);
+    assert.equal(result.state.realization.travel, undefined);
+    assert.match(campaignPayload(result.state), /complementary repertoires/);
+    assert.ok(validCampaignState(result.state));
+});
+
+test('shared prose depending on an incomplete subject is withheld whole while valid preparation saves', async () => {
+    const value = body([], [selected()]);
+    delete value.developments[1].initiative;
+    const result = await plan(emptyCampaign(), value);
+    assert.equal(result.accepted, true, result.error);
+    assert.deepEqual(result.state.developments.map(item => item.id), ['music']);
+    assert.equal(result.withheldMaterial, 1);
+    assert.deepEqual(result.state.selectedMaterial, []);
+    assert.equal(campaignPayload(result.state), '');
+    assert.ok(validCampaignState(result.state));
+});
+
+test('new owners and missing fresh access defer a draft while retaining the existing subject and witnessed progress', async () => {
+    const state = await initial();
+    for (const mutate of [
+        item => { item.initiative = { owner: 'A different ensemble' }; },
+        item => { item.initiative = { control: 'world' }; },
+        item => { delete item.background.access; },
+        item => { delete item.background; },
+    ]) {
+        const value = body([], [selected(['music'])], [{ id: 'travel', changes: [{ episodeId: 'show', status: 'completed',
+            evidence: [{ index: 0, span: 0 }] }] }]);
+        mutate(value.developments[1]);
+        const result = await plan(state, value);
+        assert.equal(result.accepted, true, result.error);
+        assert.deepEqual(result.state.developments[1], state.developments[1]);
+        assert.equal(result.deferredDevelopments[0].id, 'travel');
+        assert.equal(result.state.realization.travel.episodes.show.status, 'completed');
+        assert.ok(validCampaignState(result.state));
+        assert.match(campaignPayload(result.state), /complementary repertoires/);
+    }
+});
+
+test('partial updates do not conceal invalid ownership, values, conflicting ids or invented witnesses', async () => {
+    const state = await initial();
+    for (const mutate of [
+        value => { value.developments[1].initiative = { control: 'player' }; },
+        value => { value.developments[1].initiative = null; },
+        value => { value.developments[1].stakes = 4; },
+        value => { value.developments[1].initiative = {}; value.developments[1].background.access.route = 'telepathy'; },
+        value => { value.developments.push({ id: 'music' }); },
+        value => { value.realization = [{ id: 'music', changes: [{ episodeId: 'show', status: 'completed',
+            evidence: [{ index: 0, span: 999 }] }] }]; },
+    ]) {
+        const value = body([], [selected(['music'])]);
+        delete value.developments[1].development;
+        mutate(value);
+        const result = await plan(state, value);
+        assert.equal(result.accepted, false);
+        assert.equal(result.state, state);
+    }
+});
+
+test('scope resets do not restore omitted fields from archived proposals', async () => {
+    const state = await initial();
+    state.planningScope = 'obsolete-scope';
+    const value = body([], [selected(['music'])]);
+    delete value.developments[1].initiative;
+    const result = await plan(state, value);
+    assert.equal(result.accepted, true, result.error);
+    assert.deepEqual(result.state.developments.map(item => item.id), ['music']);
+    assert.equal(result.deferredDevelopments[0].id, 'travel');
+    assert.ok(result.state.archive.some(entry => entry.scopeReframe && entry.development.id === 'travel'));
+    assert.ok(validCampaignState(result.state));
+});
+
 test('an explicit quiet snapshot withdraws material without erasing durable aims or inventing progress', async () => {
     const state = await initial();
     const next = await plan(state, body());
@@ -396,10 +510,9 @@ test('inaccessible background survives quiet reviews and later surfaces without 
     assert.doesNotMatch(campaignPayload(surfaced.state), /PRIVATE|Jo|contact|guesthouse/);
 });
 
-test('missing, conflicting, unreviewed or inaccessible background rejects the whole update', async () => {
+test('conflicting, unreviewed or inaccessible background rejects the whole update', async () => {
     const state = await initial();
-    const omitted = body(); delete omitted.developments[0].background;
-    const cases = [omitted, body([], [selected()], [], []),
+    const cases = [body([], [selected()], [], []),
         body([], [], [], [background('music'), background('music', 'none')]),
         body([], [selected()], [], [background('music'), background('travel', 'none')]),
         body([], [], [], [{ ...background('music'), access: { route: 'teleport', basis: 'Invented.' } }, background('travel')]),

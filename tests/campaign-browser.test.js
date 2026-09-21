@@ -149,6 +149,49 @@ test('initial budget failure reports no plan and generation does not retain a pr
     assert.doesNotMatch(h.statuses.at(-1), /Preparing/);
 });
 
+test('host saves a partial update with a missing initiative and injects its fresh selection', async () => {
+    const value = structuredClone(design);
+    const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] }));
+    await h.scope.analyzeCampaignNow({ manual: true });
+    const previous = structuredClone(h.state().campaignPreparation.developments[0].initiative);
+    delete value.developments[0].initiative;
+    value.selected_material[0].available = 'A revised tune is available for shared practice.';
+    await h.scope.analyzeCampaignNow({ manual: true });
+    assert.equal(h.requests.length, 2, 'one provider call per requested review');
+    assert.equal(h.state().campaignPreparation.revision, 2);
+    assert.deepEqual(h.state().campaignPreparation.developments[0].initiative, previous);
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
+    assert.match(h.statuses.at(-1), /Campaign preparation ready.*normalized/);
+    assert.match(h.prepare().payload, /revised tune/);
+});
+
+test('host reports an incomplete new development while saving unrelated usable material', async () => {
+    const value = structuredClone(design);
+    const incomplete = { ...structuredClone(value.developments[0]), id: 'new-subject' };
+    delete incomplete.initiative;
+    value.developments.push(incomplete);
+    const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] }));
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.state().campaignPreparation.revision, 1);
+    assert.equal(h.state().campaignPreparation.developments.length, 1);
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
+    assert.match(h.statuses.at(-1), /deferred 1 incomplete development/);
+    assert.match(h.prepare().payload, /An original tune has potential/);
+});
+
+test('incomplete drafts cannot hide player ownership from host validation', async () => {
+    const value = structuredClone(design);
+    value.developments[0].initiative = { owner: 'Neri' };
+    delete value.developments[0].stakes;
+    const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] }));
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.state().campaignPreparation, null);
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'failed');
+    assert.match(h.statuses.at(-1), /Player cannot own/);
+});
+
 test('uncached lorebooks never block or trigger a book load in active planning', async () => {
     const h = browser();
     h.scope.selected_world_info = ['Not cached'];

@@ -18,6 +18,25 @@ access checks remain. Rest, departure, quiet activity, unresolved disengagement,
 completed work and an independent next undertaking are valid plot possibilities.
 The planner does not decide player actions, advance time or mandate a rotation.
 
+## Partial planner updates
+
+An existing subject can omit unchanged initiative, development, stakes or
+participation fields. The reader retains those fields under the exact saved id.
+Partial initiative objects retain missing fields only when any supplied owner
+and control still match. Reframes and scope resets never reuse old fields.
+
+Incomplete new drafts, or updates without a complete fresh background/access
+assessment, are left out of that review while unrelated valid work saves.
+Existing subjects remain stored. Shared writer prose that depends on a deferred
+draft is withheld as a whole; its ids are never stripped while keeping its prose.
+Witnessed progress for existing subjects still passes normal evidence checks.
+The status reports deferred developments and withheld material. No extra model
+call is made, and missing ownership or evidence is never invented.
+
+Explicit invalid values, player ownership, conflicting subject updates and
+unsupported evidence still reject the transaction. The raw response is retained
+in the pass result for diagnostics.
+
 ## Writer material, not a preset
 
 The writer receives zero or one concise packet of available circumstances.
@@ -60,12 +79,13 @@ summaries, lorebooks or CM.
 
 ## Verification
 
-Local check: **864/864 tests passed on Node 24.19.0**. All 24 changed or new
+Local check: **891/891 tests passed on Node 24.17.0**. All six changed or new
 JavaScript files passed syntax checks; `git diff --check` passed.
 
 Deterministic tests cover private brief persistence, optional horizons, prompt
 boundaries, source deduplication, budgets, host activation, branch invalidation,
-single-call planning, rebuild/delete isolation and legacy saved packets.
+single-call planning, rebuild/delete isolation, legacy saved packets, partial
+development updates, deferred drafts and preserved ownership/evidence checks.
 
 No live-provider or sustained RP-quality evaluation was performed. Whether a
 model consistently supplies varied, useful developments still needs live play;
