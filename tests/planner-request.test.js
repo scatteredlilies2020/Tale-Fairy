@@ -6,10 +6,11 @@ import { AnalysisValidationError, WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA } f
 import * as reasoning from '../extension/reasoning-policy.js';
 import * as output from '../extension/output-negotiation.js';
 import { claimPlannerRecoveryRepair } from '../extension/planner-lifecycle.js';
+import { verifyStoryInputBudget } from '../extension/story-budget.js';
 
 const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
 const take = (start, end) => source.slice(source.indexOf(start), source.indexOf(end));
-function harness(results, { route = 'direct', configured = 'low', activeEffort = 'medium', profile = { preset: 'Planner' }, model = 'generic', url = 'https://example.invalid' } = {}) {
+function harness(results, { route = 'direct', configured = 'low', activeEffort = 'medium', profile = { preset: 'Planner' }, model = 'generic', url = 'https://example.invalid', inputBudget = 16000, tokenCounter } = {}) {
     const requests = [];
     const listeners = new Map();
     const respond = body => {
@@ -23,7 +24,7 @@ function harness(results, { route = 'direct', configured = 'low', activeEffort =
         return result;
     };
     const scope = {
-        ...reasoning, ...output, AnalysisValidationError, claimPlannerRecoveryRepair, WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA,
+        ...reasoning, ...output, AnalysisValidationError, claimPlannerRecoveryRepair, WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA, verifyStoryInputBudget,
         plannerStorage: () => null, AbortController, DOMException, console: { warn() {} },
         EXTENSION_ID: 'test', detachedPlannerReady: Promise.resolve(), detachedPlannerEnabled: false,
         PLANNER_SYSTEM_PROMPT: 'planner', INCREMENTAL_SYSTEM_PROMPT: 'routine',
@@ -31,11 +32,11 @@ function harness(results, { route = 'direct', configured = 'low', activeEffort =
         plannerOutputModeCache: new Map(), parseAnalysisResponse: parseResponse,
         analysisModelOptions: () => route === 'profile' ? { profileId: 'selected' }
             : route === 'active' ? { active: true } : { provider: 'custom', model, url },
-        getSettings: () => ({ analysisReasoningMode: configured }),
+        getSettings: () => ({ analysisReasoningMode: configured, maxPromptTokens: inputBudget }),
         openai_setting_names: { Planner: 0 }, openai_settings: [{ reasoning_effort: 'high' }],
         oai_settings: { reasoning_effort: activeEffort },
         plannerTemperature: () => 0.7, normalizePlannerTemperature: value => value,
-        currentContext: () => ({ getRequestHeaders: () => ({}), mainApi: 'openai', chatCompletionSettings: { chat_completion_source: 'custom' } }),
+        currentContext: () => ({ getRequestHeaders: () => ({}), getTokenCountAsync: tokenCounter, mainApi: 'openai', chatCompletionSettings: { chat_completion_source: 'custom' } }),
         fetch: async (_url, options) => ({ ok: true, json: async () => respond(JSON.parse(options.body)) }),
         ConnectionManagerRequestService: {
             getProfile: () => ({ model, 'api-url': url, ...profile }), validateProfile: () => ({ source: 'custom' }),
@@ -60,10 +61,48 @@ function harness(results, { route = 'direct', configured = 'low', activeEffort =
         + take('async function requestAnalysisOnce(', 'export async function analyzeNow('), scope);
     return {
         requests,
-        run: (spec = {}) => scope.requestAnalysisOnce('current evidence', new AbortController().signal, null, { parseResponse, ...spec }),
+        run: (spec = {}, signal = new AbortController().signal) => scope.requestAnalysisOnce('current evidence', signal, null, { parseResponse, ...spec }),
         runPass: (meta = {}, recovery = null) => scope.requestAnalysis('current evidence', new AbortController().signal, meta, recovery),
     };
 }
+
+test('oversized single-shot input is blocked before every provider route without a retry', async () => {
+    for (const route of ['direct', 'profile', 'active']) {
+        const h = harness([{ valid: true }], { route, inputBudget: 40 });
+        await assert.rejects(h.run({ singleShot: true }), /exceeds.*no provider request sent/);
+        assert.equal(h.requests.length, 0, route);
+    }
+});
+
+test('active tokenizer overflow blocks generation, but another model never uses that tokenizer', async () => {
+    let calls = 0;
+    const tokenCounter = async () => { calls++; return 20000; };
+    const active = harness([{ valid: true }], { route: 'active', tokenCounter });
+    await assert.rejects(active.run({ singleShot: true }), /exceeds/);
+    assert.equal(active.requests.length, 0);
+    assert.equal(calls, 1);
+    for (const route of ['direct', 'profile']) {
+        const h = harness([{ valid: true }], { route, tokenCounter });
+        assert.equal((await h.run({ singleShot: true })).valid, true);
+        assert.equal(h.requests.length, 1);
+    }
+    assert.equal(calls, 1);
+});
+
+test('a stalled active tokenizer does not prevent cancellation or send a provider request', { timeout: 1000 }, async () => {
+    let started;
+    const tokenizing = new Promise(resolve => { started = resolve; });
+    const h = harness([{ valid: true }], { route: 'active', tokenCounter: () => {
+        started();
+        return new Promise(() => {});
+    } });
+    const controller = new AbortController();
+    const rejected = assert.rejects(h.run({ singleShot: true }, controller.signal), error => error.name === 'AbortError');
+    await tokenizing;
+    controller.abort();
+    await rejected;
+    assert.equal(h.requests.length, 0);
+});
 
 test('normal evaluation makes exactly one model request', async () => {
     const h = harness([{ valid: true }]);

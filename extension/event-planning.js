@@ -1,12 +1,12 @@
 // One planning call; story substance, not instructions to its writer.
 // V1 storage remains readable; successful reframing archives old proposals.
 import { CAMPAIGN_MARKER, CAMPAIGN_SCHEMA, EVENT_INITIATIVE_SCHEMA, EVENT_POINTS_FORMAT, EVENT_POINTS_SCHEMA,
-    eventPoints, eventPointWire, mergeCampaign, validateCampaign } from './campaign-planner.js?v=0.14.34';
+    eventPoints, eventPointWire, mergeCampaign, validateCampaign } from './campaign-planner.js?v=0.14.34&rp-plot=1';
 import { compactCampaignSpeakers } from './campaign-evidence.js';
 import { fitCampaignContinuity } from './campaign-continuity.js';
-import { fitEvidenceProviders } from './evidence-providers.js';
+import { fitEvidenceProviders } from './evidence-providers.js?rp-plot=1';
 import { REALIZATION_SCHEMA, REALIZATION_INSTRUCTIONS, mergeRealization, needsPlayableReview } from './undertaking-lifecycle.js?v=0.14.34';
-import { check } from './campaign-planner.js?v=0.14.34';
+import { check } from './campaign-planner.js?v=0.14.34&rp-plot=1';
 import { estimateTokenCount } from './token-budget.js';
 import { compactPlannerReference, compactPlannerHistory } from './planner-reference.js';
 
@@ -132,7 +132,7 @@ export function ownedInput({ reference, state, messages, historical = {}, player
     // JSON ends with a delimiter, so the estimator is additive here. Avoid
     // re-tokenizing the same system/schema for each optional memory candidate.
     const protocolTokens = estimateTokenCount(protocol.system + JSON.stringify(protocol.schema));
-    const measure = value => protocolTokens + estimateTokenCount(JSON.stringify(value));
+    const measure = protocol.measure || (value => protocolTokens + estimateTokenCount(JSON.stringify(value)));
     const external = fitEvidenceProviders(evidence, continuityTokens,
         value => measure({ ...payload, external_evidence: value }) <= maxTokens);
     if (external.length) payload.external_evidence = external;
@@ -144,7 +144,7 @@ export function ownedInput({ reference, state, messages, historical = {}, player
     if (inputTokens > maxTokens) {
         const referenceTokens = estimateTokenCount(JSON.stringify(payload.source_reference));
         const messageTokens = estimateTokenCount(JSON.stringify(payload.accepted_messages));
-        throw Error(`Planner input ${inputTokens} exceeds ${maxTokens} tokens (lore/card ${referenceTokens}; messages ${messageTokens}). Reduce source size or raise the input ceiling.`);
+        throw Error(`Planner input ${inputTokens} exceeds ${maxTokens} tokens (reference ${referenceTokens}; messages ${messageTokens}). Reduce source size or raise the input ceiling.`);
     }
     return { prompt, inputTokens, lifecycleRequired: true, verifiedRetiredIds: [...verifiedRetiredIds], verifiedProgress: structuredClone(verifiedProgress), evidenceMessages: structuredClone(messages),
         evidence: { status: external.length ? 'included' : 'omitted-or-unavailable', providers: external.map(e => e.provider) }, indices: messages.map(message => message.index), playerNames: names,

@@ -1,9 +1,11 @@
 // Candidate single-call campaign preparation; host integration is opt-in.
 // Owns proposals only: accepted history always comes from the conversation.
 import { playableSituations, storyMaterial, validateStoredRealization } from './undertaking-lifecycle.js?v=0.14.34';
-import { validateSelectedMaterial, selectedMaterialPacket } from './selected-material.js?v=0.14.36';
+import { validateSelectedMaterial, selectedMaterialPacket } from './selected-material.js?v=0.14.36&rp-plot=1';
+import { RP_BRIEF_SCHEMA } from './rp-brief.js';
 import { validateBackground } from './background-progress.js?v=0.14.34';
 import { estimateTokenCount } from './token-budget.js';
+import { fitStoryContext, storyContextPayload } from './story-budget.js';
 
 // Matches the existing host's planner-request marker so request interception
 // cannot mistake this internal pass for RP and inject the guide into itself.
@@ -100,6 +102,7 @@ export function emptyCampaign() {
 export function validCampaignState(state) {
     try {
         if (!Number.isSafeInteger(state?.revision) || state.revision < 1 || !Array.isArray(state.archive)) return false;
+        if (state.rpBrief !== undefined) check(state.rpBrief, RP_BRIEF_SCHEMA, '$.rpBrief');
         if (state.realization !== undefined) validateStoredRealization(state.realization, check);
         if (state.background !== undefined) {
             validateBackground(state.background, state.developments, check);
@@ -189,8 +192,7 @@ function contextJson(value) {
     return JSON.stringify(value).replace(/</g, '\\u003c');
 }
 
-export function campaignPayload(state, instructions = []) {
-    const authored = instructions.filter(text => typeof text === 'string' && text.trim());
+function campaignWriterMaterial(state) {
     const possible_developments = state?.revision && state.selectedMaterial !== undefined ? selectedMaterialPacket(state)
         : (state?.revision ? state.developments : []).flatMap(subject => {
         const entry = state.realization?.[subject.id];
@@ -205,11 +207,21 @@ export function campaignPayload(state, instructions = []) {
         return [{ ...origin, developing_conditions: subject.progression,
             possible_consequences: subject.outcomes, access: subject.access }];
     });
-    if (!possible_developments.length && !authored.length) return '';
-    return `<tale-fairy-context>\n${contextJson({
-        ...(possible_developments.length ? { possible_developments } : {}),
-        ...(authored.length ? { author_instructions: authored } : {}),
-    })}\n</tale-fairy-context>`;
+    return possible_developments;
+}
+
+export function campaignPayloadBudget(state, instructions = []) {
+    return fitStoryContext(campaignWriterMaterial(state), instructions.filter(text => typeof text === 'string' && text.trim()));
+}
+
+export function campaignPayload(state, instructions = []) {
+    return campaignPayloadBudget(state, instructions).payload;
+}
+
+// Exact pre-budget serialization authenticates old immutable swipe packets.
+// It is never sent to the writer; authenticated snapshots are rebuilt above.
+export function preBudgetCampaignPayload(state, instructions = []) {
+    return storyContextPayload(campaignWriterMaterial(state), instructions.filter(text => typeof text === 'string' && text.trim()));
 }
 
 // Exact 0.14.32 serialization authenticates saved packets only. Never send it

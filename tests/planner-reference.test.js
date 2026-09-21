@@ -4,6 +4,7 @@ import { compactPlannerReference, compactPlannerHistory } from '../extension/pla
 import { storyInput, STORY_SYSTEM, STORY_SCHEMA } from '../extension/story-selection.js';
 import { emptyCampaign } from '../extension/campaign-planner.js';
 import { estimateTokenCount } from '../extension/token-budget.js';
+import { storyInputTokens } from '../extension/story-budget.js';
 
 test('planner projection preserves complete lore and source identity without import/editor duplication', () => {
     const reference = { persona: 'My character controls the bridge.', worldBooks: [{ name: 'Canon', data: {
@@ -67,7 +68,7 @@ test('large import metadata fits the actual story protocol without deleting lore
     assert.ok(input.inputTokens <= 16000);
     assert.deepEqual(payload.source_reference.worldBooks[0].data.entries.map(e => e.content), Object.values(entries).map(e => e.content));
     assert.equal(payload.accepted_messages[0].spans[0].text, messages[0].content);
-    assert.equal(input.inputTokens, estimateTokenCount(STORY_SYSTEM + JSON.stringify(STORY_SCHEMA) + input.prompt));
+    assert.equal(input.inputTokens, storyInputTokens(input.prompt, STORY_SYSTEM, STORY_SCHEMA));
 });
 
 test('genuinely oversized lore fails with section costs instead of silently truncating canon', () => {
@@ -75,5 +76,5 @@ test('genuinely oversized lore fails with section costs instead of silently trun
         content: 'Every one of these words is lore. '.repeat(4000),
     } } } }] };
     assert.throws(() => storyInput({ reference, state: emptyCampaign(), messages: [] }, 16000),
-        /Planner input \d+ exceeds 16000 tokens \(lore\/card \d+; messages \d+\)/);
+        /Planner input \d+ exceeds 16000 tokens \(reference \d+; messages \d+\)/);
 });

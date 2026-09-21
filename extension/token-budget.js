@@ -22,6 +22,20 @@ export function estimateTokenCount(value) {
     return count;
 }
 
+// Conservative admission estimate for new planner/writer packets. This is not
+// a provider tokenizer: reserve headroom, account for long whitespace/data, and
+// allow non-ASCII characters their UTF-8 byte cost (emoji can be several tokens).
+// Keep the historical estimator unchanged for persisted evidence allocations.
+export function conservativeTokenCount(value) {
+    const text = String(value || '');
+    let extraBytes = 0;
+    for (const character of text) {
+        const point = character.codePointAt(0);
+        if (point > 0x7f) extraBytes += point <= 0x7ff ? 1 : point <= 0xffff ? 2 : 3;
+    }
+    return Math.ceil(Math.max(estimateTokenCount(text) + extraBytes, text.length / 3) * 1.1);
+}
+
 export function truncateToTokenBudget(value, requestedLimit, { fromEnd = false } = {}) {
     const text = String(value || '');
     const limit = Math.max(0, Math.floor(Number(requestedLimit) || 0));

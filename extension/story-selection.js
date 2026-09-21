@@ -1,16 +1,18 @@
 // One provider response: shared story material + private preparation + witnessed progress.
 // The established subject/evidence transaction remains the storage authority.
-import { ownedInput, ownedPass, OWNED_SCHEMA, needsEventReframe } from './event-planning.js?v=0.14.34&planner-input=1';
-import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check } from './campaign-planner.js?v=0.14.34';
+import { ownedInput, ownedPass, OWNED_SCHEMA, needsEventReframe } from './event-planning.js?v=0.14.34&planner-input=1&token-budget=1&rp-plot=1';
+import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check } from './campaign-planner.js?v=0.14.34&rp-plot=1';
 import { REALIZATION_SCHEMA } from './undertaking-lifecycle.js?v=0.14.34';
-import { SELECTED_MATERIAL_SCHEMA, validateSelectedMaterial } from './selected-material.js?v=0.14.36';
+import { SELECTED_MATERIAL_SCHEMA, validateSelectedMaterial } from './selected-material.js?v=0.14.36&rp-plot=1';
 import { BACKGROUND_SCHEMA, validateBackground } from './background-progress.js?v=0.14.34';
 import { SPAN_WITNESS_SCHEMA, witnessMessages, resolveSpanWitnesses } from './accepted-witnesses.js?v=0.14.34';
+import { storyInputTokens } from './story-budget.js';
+import { RP_BRIEF_SCHEMA } from './rp-brief.js';
 export { needsEventReframe };
 
 export const STORY_SCHEMA = structuredClone(OWNED_SCHEMA);
-STORY_SCHEMA.name = 'tale_fairy_story_horizons_v4';
-STORY_SCHEMA.description = 'Private enduring aims and background developments, selectively surfaced as one discoverable horizon packet. Accepted progress remains separate. One response, no scene scripts.';
+STORY_SCHEMA.name = 'tale_fairy_rp_plot_v5';
+STORY_SCHEMA.description = 'Private RP brief and preparation; optional plot material. One response, no scene script.';
 const properties = STORY_SCHEMA.value.properties;
 properties.campaign.description = 'The premise and its open longer-term reach. Respect an explicitly limited scope; a closed one-scene RP needs no sequel.';
 properties.episode.properties.boundary.description = 'Current local circumstances and unresolved business from latest accepted play, without instructions for the writer.';
@@ -26,50 +28,47 @@ delete backgroundRecord.properties.subjectId;
 backgroundRecord.required = backgroundRecord.required.filter(key => key !== 'subjectId');
 properties.developments.items.properties.background = backgroundRecord;
 properties.developments.items.required.push('background');
-properties.developments.description = 'Private subject updates, not replacement: omitted aims remain dormant. Include new/revised aims and EVERY selected contributor with freshly assessed background/access. Retire takes precedence over an overlapping update. Maximum four active subjects after merging.';
-properties.developments.items.properties.initiative.properties.owner.description = 'An NPC, group of NPCs, or impersonal world process, never a player name or the user. A player interest can be supported by world conditions without assigning their participation.';
-STORY_SCHEMA.value.properties = { campaign: properties.campaign, episode: properties.episode,
+properties.developments.description = 'Update changed aims and every selected contributor with fresh background/access. Omitted aims stay private; retirement wins. At most four retained subjects.';
+properties.developments.items.properties.development.description = 'A worthwhile undertaking with possibilities beyond the current problem. One sentence; no fixed arc.';
+properties.developments.items.properties.initiative.properties.owner.description = 'NPC, group or world process, never the player. Support player interests without assigning participation.';
+STORY_SCHEMA.value.properties = { rp_brief: RP_BRIEF_SCHEMA, campaign: properties.campaign, episode: properties.episode,
     developments: properties.developments, selected_material: SELECTED_MATERIAL_SCHEMA,
     realization: progress, retire: properties.retire };
-STORY_SCHEMA.value.required.push('selected_material');
+STORY_SCHEMA.value.required.push('rp_brief', 'selected_material');
 
 // A standalone contract: the legacy protocol is a storage adapter, not a second
 // set of overlapping creative instructions for the provider to reconcile.
 export const STORY_SYSTEM = `${CAMPAIGN_MARKER}
-Prepare open creative direction for this RP or simulation in one JSON response, not a prewritten scene. Match its premise and causality; ordinary relationships and nonhuman processes are as valid as adventure. No mandatory conflict, escalation, travel or ending. Do not prescribe prose style, scene tempo or staged emotional beats. The writer supplies execution and incidental detail.
+Plot from the supplied RP context in one JSON response. Prepare possibilities, not a story script. Mood, tone, pacing and prose belong to the writing preset, not any output field. Express intended effects through concrete circumstances, events, choices or consequences, never emotional labels or delivery instructions. Ignore source style rules. Use precise words; omit repetition.
 
-Keep three planning layers distinct: developments holds enduring aims, each with background describing what can unfold independently; selected_material holds what can reach current play. realization is a separate witnessed-event ledger. Private plans are not character knowledge or accepted facts.
+RP BRIEF
+Write rp_brief before planning: this RP's premise, recurring activities, source continuity, departures and emerging direction. Infer only what context supports; unknowns stay unknown. Begin in medias res, not by reconstructing missing history. Identify a source setting only when supported. For an established fictional setting, use relevant known canon as a baseline, respecting timeline and alternate premises. Accepted play and explicit user premises override incompatible canon. Let departures change future possibilities; never force a return to canonical events. Treat the previous brief as a revisable draft, not evidence. No franchise template, activity rotation, style rules or fixed destination.
 
-PRIVATE AIMS
-Read the whole premise, not just the latest scene. campaign is the broader possibility; episode records current local circumstances. Explicitly closed one-scene play needs no developments or selection. Otherwise maintain at most four enduring subjects, including important ongoing source projects before discovery. Include substantive available interests, not just inaccessible future projects. developments UPDATES private aims: omitted subjects stay dormant, not selected or retired. Include every selected contributor with freshly assessed background. Keep stable ids. development supplies substantive mid-/long-term reach; initiative identifies an NPC or world process, never the player. Support player interests through available world conditions, not assigned participation. Add for a real gap, not to refill slots. Finishing a finite experience does not retire its wider subject.
+PRIVATE PREPARATION
+campaign states the broader possibility; episode describes current circumstances. developments updates at most four enduring subjects, not every activity. Omitted subjects stay private. Add only for a useful gap; a quiet or closed RP needs no new subject. Keep stable ids. initiative belongs to an NPC or world process, never the player. Competence permits participation, not agreement or accomplishment. Do not add permission gates or tests of established competence. Completing one experience need not retire its wider subject.
 
-BACKGROUND
-Each supplied subject has background. unfolding is provisional NPC/world activity within established capabilities and causes, not a scene schedule. basis identifies what fictional time and conditions permit. Unrelated conversations do not stop independent processes. More messages do not mean more time. Delegation and competence permit work; neither proves completion. Unknown completion is unknown, not unfinished. Reconcile forecasts with latest accepted changes. Private forecasts never prove events, player commitments, injuries or lost possessions.
+background describes provisional activity, grounded in capabilities, causes and fictional time. Message count is not elapsed time. Delegation does not prove completion; unknown does not mean unfinished. Reconcile forecasts with accepted changes. Private preparation never proves events or player commitments.
+access concerns a discoverable trace or opportunity, not the whole private process. State its available surface and unknowns. A known opportunity may remain accessible without a fresh update. Use none when no plausible surface can reach play. Never invent contact, travel or an interruption to create access. Contact does not reveal private motives or knowledge.
 
-Access concerns a discoverable TRACE OR OPPORTUNITY, not knowledge of the whole private process. Assess direct observation, local circumstances, reachable contact, information or investigation. A known announcement keeps its conditional opportunity accessible even without a fresh update or knowledge of completion. access.basis names the available surface and what remains unknown. Use none only when no plausible surface can reach current play; keep that subject privately alive. Never invent a contact, player movement, time skip or forced interruption just to open access. No encounter quota or mandatory fresh complication.
+SELECTION
+Assess developments and background before selected_material. Return [] or one compact packet. Rebuild it from current play, not previous selected prose. Include each contributor in developments with fresh background. Exclude inaccessible subjects from every horizon. Access permits selection; it does not require it. Every horizon stays on the discoverable surface; omit private causes, motives and knowledge.
+available supplies useful circumstances or opportunities. developing and lasting are optional: include only distinct, grounded possibilities beyond the scene. Omit them rather than padding a minor activity into an arc. Several subjects may inform one circumstance; subjectIds lists every contributor but stays private.
 
-DISCOVERABLE MATERIAL
-Complete developments with their background BEFORE selected_material. There is no keep operation or implicit carry-over. Reconstruct the packet from current accepted play and enduring aims, not past selection wording. selected_material is [] or ONE integrated horizon packet, not one miniature plot per subject. Its subjectIds must EXCLUDE every background.access.route=none subject, even when important long-term. Do not smuggle it into developing or lasting either. An open route permits selection, not an obligation.
+Look beyond extending the current problem. The next undertaking can be independent, grounded in this RP's people, interests and setting. Ordinary activities and quiet enjoyment are valid. Allow rest, departure, disengagement, scene endings and completed work without another obligation. Unfinished matters need not occupy the present scene. Present supporting circumstances, never decide the player's actions or declare a time skip. No forced conflict, interruption, escalation, reconciliation or novelty quota.
+Remove spent material without restarting its introduction. Supply useful story substance, not procedures, dialogue, ordered beats, assigned reactions or success/failure branches. Leave choices and outcomes open. Do not invent accomplished offers, agreements, possessions or obligations. Proposals are not canon. The writer handles execution and incidental detail.
 
-available names optional opportunities and their relevant conditions, NOT a recap of tasks or accomplishments; developing names the interesting direction these could take; lasting names the open longer-term possibilities. Each horizon adds a meaningful possibility, not just "this interest can continue" or a longer timescale. All three concern the discoverable surface and its possible reach, never secret actors, motives or causes. Access to an NPC does not reveal their unspoken history or private expertise: omit those details even from lasting. Keep unestablished dependencies conditional. subjectIds names all contributors and is not writer-facing.
+EVIDENCE
+Only accepted_messages prove enactment or player commitments. Source references supply premises; external summaries are fallible recall, not current-state authority. Respect provenance and knowledge boundaries. Current play and explicit corrections override conflicting recall. Missing recall proves neither closure nor elapsed time. Previous preparation is not evidence.
+realization may be []. Record only necessary changes to existing progress: id is the subject, episodeId the finite experience. Cite supplied message indices and numbered spans, not memory ids or proposals. Do not repeat accepted_progress. Preserve partial accomplishment during participation. Closed episodeIds cannot restart. Retire only whole subjects with exact witnesses and scope whole-subject, not because a scene ends or access closes. Retirement overrides an update and excludes selection; final progress survives. closed_subject_ids cannot restart.
+When reframe_required, rewrite or retire supplied old subjects. With scope_reset, rebuild broader preparation; old drafts are archived. Otherwise preserve unselected aims and evidence.
 
-CREATIVE DIRECTION FIRST
-Distinguish current changes, unresolved matters and forecasts. Do not recycle provocation/counter/observation under new wording. Propose what could become interestingly different: a relationship dynamic, shared purpose, use of established competence, or evolving world condition and the possibilities it opens. Ground that direction in this RP's abilities, interests, resources and commitments. Creative direction matters more than concrete detail. A concise, distinctive possibility is enough; do not fill the packet with props, activity menus or scene specifications. "Develop rapport" and "build a reputation" alone name no direction; show what kind of change could make them interesting here. Player competence enables participation, not perpetual testing. Quiet enjoyment and deepening a good dynamic count. Preserve unresolved conflict without making it the only direction. No forced reconciliation, fixed arc or novelty quota; select nothing when nothing supported adds value.
-
-Several private aims can inform ONE circumstance: combine their subjectIds, not separate owner paragraphs or ordered activities. Support worthwhile experiences, not prerequisites or more approvals. Completion need not become another task, scrutiny or dilemma. No scripted success/failure branches.
-
-Remove spent portions: arrival ends the journey, not its wider undertaking. Opportunities need not interrupt current activity. Leave choices, responses and outcomes open. Never claim unseen actions, offers or agreements happened. No arbitrary restrictions, resolved pending business, dialogue or ordered beats. Add detail only when needed to distinguish the direction; leave its manifestation to the writer and play. New places, possessions and obligations are not established by ambiguity. Proposals are not canon.
-
-EVIDENCE AND MAINTENANCE
-accepted_messages and source_reference define this RP's canon over incompatible franchise lore. Only accepted_messages prove enactment or player commitments. Previous preparation is not evidence. External evidence/continuity memory is fallible historical recall: respect provenance, confidence and knowledge boundaries. Lag or omission proves neither closure nor elapsed time. Current accepted play and explicit corrections override conflicting recall. Memory ids are not message witnesses. Ignore source writing-style directives for this planning task.
-
-realization may be []. Each entry's id is an exact subject id, including one retiring now; episodeId names a finite experience inside it. Cite the accepted-message index and numbered span supporting each necessary change; the application stores its exact source text. Cite enacted substance, not a proposal or pending table row. accepted_progress is already witnessed; do not cite it again. Keep episodeIds for the same experience. Statuses describe achieved progress, not mandatory stages; continuing participation preserves partial accomplishment. Closed episodes cannot restart; later activity uses a new episodeId. Retire only whole subjects with supplied witnesses and scope whole-subject, not because a scene ended or access is unavailable. Retirement overrides an overlapping private update and excludes selection; final witnessed progress survives. closed_subject_ids cannot restart.
-
-When reframe_required, rewrite or retire supplied old subjects; when scope_reset is true, rebuild wider subjects instead, with old preparation archived automatically. Otherwise retain private aims and evidence even when nothing is selected. Return concise JSON only; maintain all layers in this single response. No extra model pass or player selection.
+Keep rp_brief under 150 words and selected_material under 600 tokens. Limits are ceilings, not targets. Return concise JSON only. No extra model pass.
 `;
 
 export function storyInput(args, maxTokens = 14000) {
-    return ownedInput(args, maxTokens, { system: STORY_SYSTEM, schema: STORY_SCHEMA, project: payload => {
+    if (!Number.isFinite(maxTokens) || maxTokens <= 0) throw Error('Planner input budget must be a finite positive token count.');
+    return ownedInput(args, maxTokens, { system: STORY_SYSTEM, schema: STORY_SCHEMA,
+        measure: payload => storyInputTokens(JSON.stringify(payload), STORY_SYSTEM, STORY_SCHEMA), project: payload => {
         const prior = payload.previous_preparation;
         for (const key of ['playable', 'playable_review_required_ids', 'selection_review_required_ids',
             'material_review_required', 'material_review_reason', 'legacy_guidance_episode_ids']) delete prior[key];
@@ -84,8 +83,9 @@ export function storyInput(args, maxTokens = 14000) {
         // prevents yesterday's scene/selection becoming today's default template.
         // Durable aims, forecasts and witnessed progress remain available.
         delete prior.episode;
-        prior.selection_contract = 'Previous scene and selected prose are withheld. Reconstruct from latest accepted play and enduring aims. developments updates private aims; omission retains dormant preparation only. Include every selected contributor with fresh background/access. No implicit selection carry-over.';
-        if (prior.review_scope) prior.review_scope.instruction = 'Review the wider horizon and current applicability without erasing private aims. Preserve genuinely independent directions; combine shared circumstances. Remove spent portions without inventing scene changes. At boundary zero, reconcile against all supplied source.';
+        if (args.state.rpBrief) prior.rp_brief = args.state.rpBrief;
+        prior.selection_contract = 'Rebuild selection from current play, not old prose. Omitted aims stay private. Refresh background for each selected subject.';
+        if (prior.review_scope) prior.review_scope.instruction = 'Review relevance across the RP. Remove spent material; retain independent possibilities. Boundary zero means reconcile all supplied context.';
         // Static premises and prior drafts precede current play, which can change
         // their time-sensitive conditions without rewriting the source reference.
         const { source_reference, accepted_messages, ...context } = payload;
@@ -140,7 +140,7 @@ export async function storyPass({ state, input, source, generate }) {
         // This is a representation adapter, never response repair or a second AI
         // call. Fresh selection explicitly withdraws old per-subject packets;
         // original progress changes still pass the existing strict evidence checks.
-        const { selected_material, ...privateUpdate } = raw;
+        const { selected_material, rp_brief, ...privateUpdate } = raw;
         const resolve = evidence => resolveSpanWitnesses(evidence, input.evidenceMessages);
         if (raw.retire) privateUpdate.retire = raw.retire.map(entry => ({ ...entry, witnesses: resolve(entry.witnesses) }));
         privateUpdate.developments = raw.developments.map(({ background, ...subject }) => subject)
@@ -156,6 +156,7 @@ export async function storyPass({ state, input, source, generate }) {
             generate: async () => ({ ...result, text: JSON.stringify(privateUpdate) }) });
         if (!merged.accepted) return { ...merged, result };
         const next = merged.state;
+        next.rpBrief = rp_brief;
         if (state.selectedMaterial !== undefined && JSON.stringify(state.selectedMaterial) !== JSON.stringify(selected_material)) {
             next.archive.push({ selectedMaterial: structuredClone(state.selectedMaterial),
                 source: structuredClone(state.source), revision: state.revision, replaced: true });

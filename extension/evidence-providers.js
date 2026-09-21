@@ -1,5 +1,5 @@
 import { readCampaignContinuity, fitCampaignContinuity } from './campaign-continuity.js';
-import { estimateTokenCount } from './token-budget.js';
+import { conservativeTokenCount } from './token-budget.js?story-budget=1';
 
 // Opt-in, synchronous cached reads only. No scraping, extraction, subscription,
 // network, model call, or write method is part of this interface.
@@ -64,15 +64,31 @@ export function readEvidenceProviders(context, { continuityBridge, continuityEna
 export function fitEvidenceProviders(evidence, tokenLimit, fits) {
     const limit = Math.max(0, Math.min(12000, Number(tokenLimit) || 0));
     const result = [];
+    const seen = new Set();
     for (const snapshot of evidence || []) {
         if (!['current', 'context'].includes(snapshot.status)) continue;
         const meta = { provider: snapshot.provider, owner: snapshot.owner, confidence: snapshot.confidence,
             provenance: snapshot.provenance };
-        const packed = fitCampaignContinuity({ ...snapshot, status: 'current' }, limit, value => {
-            const next = [...result, { ...value, ...meta }];
-            return estimateTokenCount(JSON.stringify(next)) <= limit && fits(next);
+        // Deduplicate exact text only, in provider order. Similar statements
+        // may differ in scope or provenance and must not be merged.
+        const summary = seen.has(snapshot.summary?.trim()) ? '' : snapshot.summary;
+        const local = new Set(seen);
+        if (summary?.trim()) local.add(summary.trim());
+        const records = (snapshot.records || []).filter(record => {
+            const text = record.text?.trim();
+            if (!text || local.has(text)) return false;
+            local.add(text);
+            return true;
         });
-        if (packed) result.push({ ...packed, ...meta });
+        const packed = fitCampaignContinuity({ ...snapshot, summary, records, status: 'current' }, limit, value => {
+            const next = [...result, { ...value, ...meta }];
+            return conservativeTokenCount(JSON.stringify(next)) <= limit && fits(next);
+        });
+        if (packed) {
+            result.push({ ...packed, ...meta });
+            if (packed.summary) seen.add(packed.summary.trim());
+            for (const record of packed.records) seen.add(record.text.trim());
+        }
     }
     return result;
 }

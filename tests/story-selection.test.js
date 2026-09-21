@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { storyInput, storyPass, STORY_SCHEMA, STORY_SYSTEM } from '../extension/story-selection.js';
 import { ownedInput, ownedPass } from '../extension/event-planning.js';
 import { emptyCampaign, campaignPayload, validCampaignState } from '../extension/campaign-planner.js';
-import { estimateTokenCount } from '../extension/token-budget.js';
+import { storyInputTokens } from '../extension/story-budget.js';
 
 const messages = [{ index: 0, role: 'user', content: 'We arrived in Mere. The performance is finished.' }];
 const source = { chatId: 'story', referenceHash: 'premise', messageCount: 1, fingerprint: 'accepted' };
@@ -20,6 +20,7 @@ const background = (subjectId, route = 'direct') => ({ subjectId,
     basis: 'PRIVATE established shared interests; no further time has passed.',
     access: { route, basis: route === 'none' ? 'PRIVATE currently beyond contact.' : 'PRIVATE the ensemble is present in Mere.' } });
 const body = (developments = [], selected_material = [], realization = [], backgrounds = ['music', 'travel'].map(id => background(id))) => ({
+    rp_brief: 'PRIVATE an ensemble explores music and life between engagements. No established franchise.',
     campaign: 'PRIVATE a season of creative exchange.',
     episode: { subject: 'Performance', status: 'finished', boundary: 'The performance is finished.' },
     selected_material, developments: backgrounds.map(({ subjectId, ...record }) => ({
@@ -195,6 +196,7 @@ test('legacy per-subject selections migrate without deleting witnessed progress 
         changes: [{ episodeId: 'performance', status: 'completed', evidence: [{ index: 0, quote: 'The performance is finished.' }] }],
         playable: [{ episodeId: 'later-work', when: 'On the road toward Mere.', direction: 'OLD scripted material.', middle: 'OLD dilemma.', future: 'OLD ending.' }] }], [background('music')]);
     delete legacyValue.selected_material;
+    delete legacyValue.rp_brief;
     legacyValue.developments.forEach(subject => delete subject.background);
     const legacy = await ownedPass({ state: emptyCampaign(), source,
         input: ownedInput({ state: emptyCampaign(), reference: {}, messages }),
@@ -282,33 +284,31 @@ test('the actual contract and private background are budgeted without old inject
     assert.equal(Object.keys(JSON.parse(input.prompt)).at(-1), 'accepted_messages');
     assert.deepEqual(prior.developments.map(({ id, background }) => ({ subjectId: id, ...background })), state.background);
     assert.doesNotMatch(JSON.stringify(prior), /"playable"|selection_review_required/);
-    assert.equal(input.inputTokens, estimateTokenCount(STORY_SYSTEM + JSON.stringify(STORY_SCHEMA) + input.prompt));
+    assert.equal(input.inputTokens, storyInputTokens(input.prompt, STORY_SYSTEM, STORY_SCHEMA));
     assert.ok(STORY_SCHEMA.value.required.includes('selected_material'));
     assert.ok(STORY_SCHEMA.value.properties.developments.items.required.includes('background'));
     const fields = Object.keys(STORY_SCHEMA.value.properties);
     assert.ok(fields.indexOf('developments') < fields.indexOf('selected_material'), 'assess discoverability before writing the handoff');
     assert.equal(STORY_SCHEMA.value.properties.realization.items.properties.playable, undefined);
     assert.equal(STORY_SCHEMA.value.properties.realization.items.properties.selection, undefined);
-    assert.match(STORY_SYSTEM, /There is no keep operation or implicit carry-over/);
-    assert.match(STORY_SYSTEM, /Several private aims can inform ONE circumstance/);
-    assert.match(STORY_SYSTEM, /lasting names the open longer-term possibilities/);
-    assert.match(STORY_SYSTEM, /Creative direction matters more than concrete detail/);
-    assert.match(STORY_SYSTEM, /Player competence enables participation/);
-    assert.match(STORY_SYSTEM, /Access to an NPC does not reveal their unspoken history/);
-    assert.ok(STORY_SYSTEM.split(/\s+/).length < 1100, 'Keep one concise contract instead of accumulating overlapping prompts');
-    assert.match(STORY_SCHEMA.value.properties.selected_material.items.properties.lasting.description, /Not alternative favorable\/adverse outcomes/);
+    assert.match(STORY_SYSTEM, /Rebuild it from current play, not previous selected prose/);
+    assert.match(STORY_SYSTEM, /Several subjects may inform one circumstance/);
+    assert.match(STORY_SYSTEM, /developing and lasting are optional/);
+    assert.match(STORY_SYSTEM, /Competence permits participation, not agreement or accomplishment/);
+    assert.match(STORY_SYSTEM, /Contact does not reveal private motives or knowledge/);
+    assert.ok(STORY_SYSTEM.split(/\s+/).length < 800, 'Keep one concise contract instead of accumulating overlapping prompts');
+    assert.match(STORY_SCHEMA.value.properties.selected_material.items.properties.lasting.description, /No guaranteed ending/);
     assert.doesNotMatch(STORY_SYSTEM, /Connect an available premise to developing conditions and conditional consequences/);
 });
 
 test('creative direction stays open without requiring a detailed scene plan', async () => {
-    assert.match(STORY_SYSTEM, /what could become interestingly different/);
-    assert.match(STORY_SYSTEM, /Quiet enjoyment and deepening a good dynamic count/);
-    assert.match(STORY_SYSTEM, /No forced reconciliation, fixed arc or novelty quota/);
-    assert.match(STORY_SYSTEM, /leave its manifestation to the writer and play/);
+    assert.match(STORY_SYSTEM, /Ordinary activities and quiet enjoyment are valid/);
+    assert.match(STORY_SYSTEM, /No forced conflict, interruption, escalation, reconciliation or novelty quota/);
+    assert.match(STORY_SYSTEM, /writer handles execution and incidental detail/);
     assert.doesNotMatch(STORY_SYSTEM, /Give an activity actual subject matter|Specific proposed content is welcome/);
     const developing = STORY_SCHEMA.value.properties.selected_material.items.properties.developing.description;
-    assert.match(developing, /Creative direction/);
-    assert.match(developing, /without requiring concrete scene details/);
+    assert.match(developing, /changes beyond this scene/);
+    assert.match(developing, /not staged scenes or writing directions/);
     const direction = {
         subjectIds: ['music'],
         available: 'The ensemble is together after a shared performance, with room to pursue its common interest.',
@@ -517,4 +517,76 @@ test('progress ids are checked before adapter placeholders can obscure the actua
     assert.equal(result.accepted, false);
     assert.match(result.error, /unique retained subject ids, not episode ids/);
     assert.equal(result.state, state);
+});
+
+test('RP brief is bounded private context, revised in the existing pass and never injected', async () => {
+    const state = await initial();
+    assert.equal(state.rpBrief, body().rp_brief);
+    assert.equal(JSON.parse(storyInput({ state, reference: {}, messages }).prompt).previous_preparation.rp_brief, state.rpBrief);
+    assert.doesNotMatch(campaignPayload(state), /PRIVATE|rp_brief|rpBrief/);
+    const revised = { ...body([], [selected()]), rp_brief: 'PRIVATE travel now matters more than performance.' };
+    const result = await plan(state, revised);
+    assert.equal(result.accepted, true, result.error);
+    assert.equal(result.state.rpBrief, revised.rp_brief);
+    assert.equal(validCampaignState(JSON.parse(JSON.stringify(result.state))), true);
+    for (const rp_brief of ['', 'x'.repeat(901), null, { canon: 'Not a tracker' }]) {
+        assert.equal((await plan(state, { ...revised, rp_brief })).accepted, false);
+    }
+    const missing = { ...revised }; delete missing.rp_brief;
+    assert.equal((await plan(state, missing)).accepted, false);
+    const legacy = structuredClone(state); delete legacy.rpBrief;
+    assert.equal(validCampaignState(legacy), true, 'old preparation remains readable');
+});
+
+test('brief contract recognizes source canon without enforcing its route or inventing missing history', () => {
+    for (const rule of [/established fictional setting/, /timeline and alternate premises/,
+        /Accepted play and explicit user premises override incompatible canon/,
+        /never force a return to canonical events/, /unknowns stay unknown/,
+        /Begin in medias res/, /No franchise template, activity rotation, style rules or fixed destination/]) {
+        assert.match(STORY_SYSTEM, rule);
+    }
+});
+
+test('rest, disengagement and separate activities need no new progress status or forced future', async () => {
+    let state = await initial();
+    const ledger = structuredClone(state.realization);
+    for (const available of [
+        'The inn has rooms for the night; the unfinished arrangement can wait.',
+        'The investigation remains unresolved; the open road offers a way onward.',
+        'The performance is over. The town market is open independently of the ensemble.',
+        'A quiet shared meal is available without another engagement.',
+    ]) {
+        const result = await plan(state, body([], [{ subjectIds: ['music'], available }]));
+        assert.equal(result.accepted, true, result.error);
+        assert.deepEqual(packet(result.state).possible_developments, [{ available_circumstances: available }]);
+        assert.deepEqual(result.state.realization, ledger, 'no new activity or pause tracking');
+        state = result.state;
+    }
+    const quiet = await plan(state, body());
+    assert.equal(quiet.accepted, true, quiet.error);
+    assert.equal(campaignPayload(quiet.state), '');
+    assert.deepEqual(quiet.state.developments, state.developments);
+});
+
+test('optional horizons may be absent, but malformed present fields still fail', async () => {
+    const state = await initial();
+    const entry = { subjectIds: ['music'], available: 'The evening is free.' };
+    const later = await plan(state, body([], [{ ...entry, lasting: 'A recurring shared interest could endure.' }]));
+    assert.equal(later.accepted, true, later.error);
+    assert.equal(packet(later.state).possible_developments[0].mid_term_possibilities, undefined);
+    for (const developing of ['', null, 'x'.repeat(901)]) {
+        assert.equal((await plan(state, body([], [{ ...entry, developing }]))).accepted, false);
+    }
+});
+
+test('planner contract excludes preset directions from all fields; effects come from story substance', async () => {
+    assert.match(STORY_SYSTEM, /Mood, tone, pacing and prose belong to the writing preset, not any output field/);
+    assert.match(STORY_SYSTEM, /concrete circumstances, events, choices or consequences, never emotional labels or delivery instructions/);
+    assert.match(STORY_SCHEMA.value.properties.rp_brief.description, /no mood, tone, pacing, prose rules/);
+    assert.match(STORY_SCHEMA.value.properties.selected_material.description, /no mood, tone, pacing or prose directives/);
+    const available = 'The inn has a spare room and hot supper. Tomorrow’s coach leaves at dawn; the unfinished inquiry can wait.';
+    const result = await plan(await initial(), body([], [{ subjectIds: ['music'], available }]));
+    assert.equal(result.accepted, true, result.error);
+    assert.deepEqual(packet(result.state), { possible_developments: [{ available_circumstances: available }] });
+    assert.doesNotMatch(campaignPayload(result.state), /tone|mood|pacing|style|PRIVATE/);
 });

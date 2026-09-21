@@ -1,4 +1,4 @@
-import { campaignPass, campaignPayload, campaignUsable, campaignMaterialUsable } from './campaign-planner.js?v=0.14.36';
+import { campaignPass, campaignPayload, campaignUsable, campaignMaterialUsable } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1';
 
 // Host-independent background pass lifecycle. The host supplies canonical
 // source hashes, a ONE-REQUEST provider, and a synchronous compare-and-swap

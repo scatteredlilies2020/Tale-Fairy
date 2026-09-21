@@ -2,6 +2,32 @@
 
 Tale Fairy is a standalone SillyTavern extension that acts as a **background creative Game Master**, preparing a playable middle and future while the roleplay model writes the story. It combines a persistent private notebook with selective factual world awareness—not a full world simulation, a prose generator, or a fixed event script.
 
+## Local RP plotting update
+
+- A short private RP brief captures the premise, recurring activities, source
+  continuity, departures and emerging direction. Accepted play overrides canon;
+  missing history stays unknown. No franchise template or fixed arc.
+- Rest, disengagement, genuine endings and independent next undertakings are
+  valid possibilities. Mid- and long-term writer material is optional.
+- Generated material contains circumstances and possibilities, not mood, tone,
+  pacing or prose directions. Any intended effect comes from story substance;
+  the writing preset remains in control of delivery.
+- One existing planner call reads available context, exposed summaries and
+  host-activated lore. No whole-lorebook load or scan, new tracking system,
+  external canon lookup, or extra AI call.
+
+Refresh ST; the next successful review adopts the brief without a reset.
+See [scope and verification](docs/rp-plotting.md).
+
+### Token safety
+
+Planner admission now accounts conservatively for the complete request envelope.
+Writer context is fitted to 1,000 estimated tokens by withholding whole optional
+story blocks, not clipping conditions or deleting saved preparation. Explicit
+author instructions are preserved; author-only overflow is reported. No extra
+AI call or preset change is introduced.
+See [token limits, verification and remaining provider constraints](docs/token-safety.md).
+
 ## What changes in 0.14.36
 
 **Creative direction first, not detailed scene planning.** Tale Fairy now prioritizes

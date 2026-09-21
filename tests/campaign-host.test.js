@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { emptyCampaign, mergeCampaign, campaignPayload, validCampaignState, CAMPAIGN_MARKER } from '../extension/campaign-planner.js';
+import { emptyCampaign, mergeCampaign, campaignPayload, preBudgetCampaignPayload, validCampaignState, CAMPAIGN_MARKER } from '../extension/campaign-planner.js';
 import { CampaignRuntime } from '../extension/campaign-runtime.js';
 import * as injection from '../extension/request-injection.js';
 import { defaultState, saveState, loadState, buildPromptPayload, guidanceSnapshot, isDirectionCurrent } from '../extension/state.js';
@@ -332,16 +332,25 @@ test('ready revisions replace older retry packets without changing a frozen in-f
     assert.equal(h.calls.length, 0);
 });
 
-test('campaign cache admits whole schema-bounded designs, not truncated or unrelated payloads', () => {
+test('campaign cache authenticates old large designs but rebuilds bounded writer packets', () => {
     const h = generationHarness(messages());
     const state = attach(h);
     state.campaignPreparation.developments = Array.from({ length: 4 }, (_, i) => ({ id: `subject-${i}`,
         premise: '"'.repeat(1600), progression: '"'.repeat(2400), outcomes: '"'.repeat(1600), access: '"'.repeat(900) }));
     h.context.chatMetadata = saveState(h.context.chatMetadata, state);
     const payload = h.prepare().payload;
-    assert.ok(payload.length > 24000, 'escaped text remains valid without an arbitrary cache cutoff');
+    assert.equal(payload, '', 'oversized story blocks stay saved, not injected');
+    assert.deepEqual(h.state().campaignPreparation.developments, state.campaignPreparation.developments);
     const entries = generationContextEntries(h.context.chatMetadata[GENERATION_CONTEXT_KEY]);
     assert.equal(entries.length, 1);
     assert.equal(entries[0].payload, payload);
+    const oldPayload = preBudgetCampaignPayload(state.campaignPreparation);
+    assert.ok(oldPayload.length > 24000, 'old escaped packets still authenticate without arbitrary character cutoffs');
+    const archive = { entries: [{ ...entries[0], payload: oldPayload }] };
+    assert.equal(generationContextEntries(archive).length, 1);
+    h.context.chatMetadata[GENERATION_CONTEXT_KEY] = archive;
+    h.scope.generationGuideSelection = null;
+    assert.equal(h.prepare('swipe').payload, '', 'an authenticated old snapshot cannot bypass the new cap');
+    assert.equal(archive.entries[0].payload, oldPayload, 'immutable archived bytes are preserved');
     assert.equal(generationContextEntries({ entries: [{ ...entries[0], payload: '<tale-fairy-context>fabricated</tale-fairy-context>' }] }).length, 0);
 });

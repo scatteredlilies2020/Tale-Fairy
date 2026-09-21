@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { readEvidenceProviders, fitEvidenceProviders, registerEvidenceProvider, evidencePrefix } from '../extension/evidence-providers.js';
 import { ownedInput } from '../extension/event-planning.js';
@@ -9,6 +10,17 @@ const snapshot = c => ({ chatId: 'test', owner: 'character:3', status: 'current'
     coverage: { messageCount: c.chat.length, sourcePrefix: evidencePrefix(c.chat) },
     records: [{ id: 'booking', text: 'The booking was declined.', sourceRange: { from: 0, to: 0 }, canonicalStatus: 'closed' }] });
 const read = (c, value) => readEvidenceProviders(c, { continuityEnabled: false, adapters: [{ id: 'fixture-summary', version: 1, read: () => value }] });
+
+test('browser reader uses the same registry as the documented public registration URL', async () => {
+    const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
+    const path = source.match(/import \{ readEvidenceProviders, evidenceRevisionKey \} from '([^']+)'/)[1];
+    const browserApi = await import(new URL(path, new URL('../extension/index.js', import.meta.url)));
+    const c = context();
+    const unregister = registerEvidenceProvider({ id: 'public-registration', version: 1, read: () => snapshot(c) });
+    try {
+        assert.ok(browserApi.readEvidenceProviders(c, { continuityEnabled: false }).some(item => item.provider === 'public-registration'));
+    } finally { unregister(); }
+});
 
 test('standalone TF is usable with no memory extension, and disabled or replacement paths never read providers', () => {
     assert.equal(readEvidenceProviders(context())[0].status, 'unavailable');

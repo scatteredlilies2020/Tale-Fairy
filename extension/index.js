@@ -1,10 +1,12 @@
 import { sha256 } from '/lib.js';
-import { campaignAuthorInstructions, campaignUsable, campaignMaterialUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36';
-import { storyInput as ownedInput, storyPass as ownedPass, needsEventReframe, STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM } from './story-selection.js?v=0.14.36&planner-input=1&episode-fields=1';
+import { campaignAuthorInstructions, campaignPayloadBudget, campaignUsable, campaignMaterialUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1';
+import { storyInput as ownedInput, storyPass as ownedPass, needsEventReframe, STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM } from './story-selection.js?v=0.14.36&planner-input=1&episode-fields=1&token-budget=1&rp-plot=1';
+import { verifyStoryInputBudget } from './story-budget.js';
 import { readCampaignContinuity } from './campaign-continuity.js';
+// Keep the public registration URL stable so external adapters share this registry.
 import { readEvidenceProviders, evidenceRevisionKey } from './evidence-providers.js';
 import { campaignEvidenceMessages, campaignReviewWindow } from './campaign-evidence.js';
-import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.36';
+import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.36&token-budget=1&rp-plot=1';
 import { finalizeNotebookCompactions, writeNotebookArchive } from './notebook-compaction.js?v=0.14.22';
 import { eventSource, event_types, extension_prompt_roles, extension_prompt_types, generateRaw, Generate, setExtensionPrompt, getRequestHeaders, getCharacterCardFields, saveSettingsDebounced } from '/script.js';
 import { getContext } from '/scripts/st-context.js';
@@ -13,7 +15,7 @@ import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
 import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, buildStoryEvidence, storyEvidenceQuery, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.22';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultPlannerState as defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadPlannerState as loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.23';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultPlannerState as defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadPlannerState as loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.23&token-budget=1&rp-plot=1';
 import { isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.22';
 import { selectSituationalOpenings } from './situations.js?v=0.13.9';
 import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.14.22';
@@ -43,8 +45,11 @@ import { defaultPreparedWorld, preparedWorldUsable, unchangedSourcePrefix, stamp
 import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.9';
 import { canRetainSuccessfulPlan, createSafetyFallbackState } from './fallback-direction.js?v=0.14.22';
 import { classifyAssistantReply } from './response-usability.js?v=0.13.9';
-import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, legacyPlotInputKey, migrateCampaignBudgetKeys, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.34';
+import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, legacyPlotInputKey, migrateCampaignBudgetKeys, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.34&token-budget=1&rp-plot=1';
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
+import { ActivatedStoryContext, readHostStoryEvidence } from './rp-context.js';
+
+const activatedStoryContext = new ActivatedStoryContext();
 
 const EXTENSION_ID = 'living-world-guide';
 const RUNTIME_VERSION = '0.14.36';
@@ -728,6 +733,8 @@ function migrateCampaignReferences(context = currentContext()) {
 }
 
 async function warmPlotWorldInputs(context = currentContext()) {
+    // The current planner reads host-exposed context, never whole books.
+    if (campaignMode(context)) { migrateCampaignReferences(context); return; }
     const chatId = String(context.getCurrentChatId?.() || '');
     // Page reload clears ST's in-memory lore cache. Read the selected books
     // before deciding a saved packet is incompatible; this is not an AI call.
@@ -782,8 +789,13 @@ function readCampaignSnapshot() {
         continuityEnabled: s.continuityIntegration !== false, replacement,
         enabled: context.chatMetadata?.taleFairyEvidence !== 'off' });
     const continuity = evidence.find(e => e.provider === 'continuity-memory') || { status: replacement ? 'replacement' : 'off' };
-    const worlds = plotWorldNames(context, world_info, selected_world_info);
     const inputs = generationInputs(context, state);
+    const reference = { ...bootstrapContext(context, { broad: true }), authorInstructions: campaignAuthorInstructions(state) };
+    if (!replacement && context.chatMetadata?.taleFairyEvidence !== 'off') {
+        const hostEvidence = readHostStoryEvidence(context, { ownPromptKey: PROMPT_KEY, activated: activatedStoryContext,
+            exclude: [...Object.values(reference).filter(value => typeof value === 'string'), ...accepted.map(message => message.mes)] });
+        if (hostEvidence) evidence.push(hostEvidence);
+    }
     const referenceHash = plotInputKey(chatId, [], inputs);
     let attempt = context.chatMetadata?.[CAMPAIGN_ATTEMPT_KEY];
     try {
@@ -810,9 +822,7 @@ function readCampaignSnapshot() {
         requestSignature: campaignFingerprint({ contract: OWNED_SCHEMA, prompt: OWNED_SYSTEM, settings: Object.fromEntries(['analysisSource', 'analysisProvider', 'analysisProfileId',
             'analysisModel', 'analysisUrl', 'analysisSecretId', 'analysisReasoningMode', 'analysisTemperature', 'maxPromptTokens', 'continuityIntegration', 'summaryContextTokens']
             .map(key => [key, s[key]])) }),
-        reference: { ...bootstrapContext(context, { broad: true }), authorInstructions: campaignAuthorInstructions(state),
-            worldBooks: worlds.map(name => ({ name, data: worldInfoCache.get(name) })) },
-        missingWorlds: worlds.filter(name => !worldInfoCache.has(name)),
+        reference,
         continuity, evidence,
         evidenceKey: evidenceRevisionKey(evidence),
         continuityTokens: s.summaryContextTokens ?? 4000,
@@ -821,7 +831,6 @@ function readCampaignSnapshot() {
 }
 
 function buildCampaignHostInput(snapshot) {
-    if (snapshot.missingWorlds.length) throw Error('Selected world books are unavailable; no campaign request sent.');
     if (snapshot.state.revision && !validCampaignState(snapshot.state)) throw Error('Saved campaign is invalid; inspect or rebuild it before planning.');
     const historical = { ...buildStoryEvidence(snapshot.messages), opening: undefined };
     const messages = snapshot.messages.map((m, index) => ({ index, role: m.is_user ? 'user' : 'assistant', name: m.name || '', content: m.mes || '' }));
@@ -939,6 +948,10 @@ async function runCampaignAnalysis(work) {
             const notices = [];
             if (result.warnings?.length) notices.push(`ignored ${result.warnings.length} unsupported extra citation(s)`);
             if (result.ignoredEpisodeFields?.length) notices.push(`ignored ${result.ignoredEpisodeFields.length} extra episode field(s)`);
+            const saved = loadState(currentContext().chatMetadata);
+            const budget = campaignPayloadBudget(saved.campaignPreparation, campaignAuthorInstructions(saved));
+            if (budget.omitted) notices.push(`${budget.omitted} oversized writer block(s) withheld; preparation saved`);
+            if (budget.authorOverflow) notices.push('saved author instructions exceed the writer budget; shorten them explicitly');
             renderAnalysisActivity(['Campaign preparation ready', ...notices].join(' · '), false);
         }
         else if (result.error) renderAnalysisActivity(`${loadState(currentContext().chatMetadata).campaignPreparation?.revision
@@ -2347,6 +2360,15 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
         const compactModes = requestSpec.compactOutput ? [PLANNER_OUTPUT_MODE.PROMPT_ONLY] : null;
         const detachedMarker = detachedPlannerEnabled && detachedMeta ? { _taleFairyPlanner: detachedMeta } : {};
         const model = analysisModelOptions();
+        if (singleShot) {
+            const context = currentContext();
+            // The active tokenizer is not authoritative for a different direct
+            // model or connection profile. Those routes use the local reserve.
+            const counter = model.active && typeof context.getTokenCountAsync === 'function'
+                ? context.getTokenCountAsync.bind(context) : null;
+            await waitForAbortable(verifyStoryInputBudget(prompt, systemPrompt, schema, Number(getSettings().maxPromptTokens) || 16000, counter), controller.signal);
+            controller.signal.throwIfAborted();
+        }
         const temperature = requestSpec.temperature === undefined ? plannerTemperature() : normalizePlannerTemperature(requestSpec.temperature);
         if (model.profileId) {
             const profile = ConnectionManagerRequestService.getProfile(model.profileId);
@@ -2839,13 +2861,21 @@ function scratchpadList(items, formatter, fallback) {
 function campaignSelectionSummary(preparation) {
     if (preparation.selectedMaterial === undefined) return '';
     return `SELECTED STORY HORIZONS\n${preparation.selectedMaterial.map(entry =>
-        `Available circumstances: ${entry.available}\nMid-term possibilities: ${entry.developing}\nLong-term possibilities: ${entry.lasting}`
+        [`Available circumstances: ${entry.available}`, entry.developing && `Mid-term possibilities: ${entry.developing}`,
+            entry.lasting && `Long-term possibilities: ${entry.lasting}`].filter(Boolean).join('\n')
     ).join('\n\n') || 'No additional development selected; enduring aims remain private.'}`;
 }
 
 function campaignBackgroundSummary(entry) {
     if (!entry) return '';
     return `Private background (provisional): ${entry.unfolding}\nGrounding / time: ${entry.basis}\nAccess · ${entry.access.route}: ${entry.access.basis}`;
+}
+
+function campaignBudgetSummary(preparation, instructions) {
+    const budget = campaignPayloadBudget(preparation, instructions);
+    return `WRITER TOKEN BUDGET · estimated ${budget.tokens}/${budget.limit} including framing and saved instructions.`
+        + (budget.omitted ? ` ${budget.omitted} whole story block(s) withheld; originals remain saved.` : '')
+        + (budget.authorOverflow ? ' Author instructions alone exceed the limit; they remain verbatim. Shorten them explicitly or adjust the host context budget.' : '');
 }
 
 function renderBoard(state = loadState(currentContext().chatMetadata)) {
@@ -2895,8 +2925,10 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         scratchpadText(board, 'scratchpad-prepared', validCampaignState(preparation) ? [
             `CAMPAIGN PREPARATION · revision ${preparation.revision} · ${preparedReady(state, messagesFromChat(currentContext().chat || [])) ? 'compatible with current play' : 'source changed; not injected'}`,
             preparation.campaign,
+            preparation.rpBrief && `RP OPERATING BRIEF (private)\n${preparation.rpBrief}`,
             `EPISODE · ${preparation.episode.status}: ${preparation.episode.subject}\n${preparation.episode.boundary}`,
             campaignSelectionSummary(preparation),
+            campaignBudgetSummary(preparation, campaignAuthorInstructions(state)),
             ...preparation.developments.map(item => [
                 `[${item.id}] ${preparation.realization?.[item.id] ? '' : preparation.preparationFormat === EVENT_POINTS_FORMAT
                     ? eventPointWire(item).plot_points.map(point => `Event opportunity: ${point.event}\nOpens: ${point.opens}`).join('\n\n') : item.premise}`,
@@ -2913,7 +2945,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
                 `Development: ${item.progression}`, `${['plot-points-v1', 'event-opportunities-v1'].includes(state.campaignPreparation.preparationFormat) ? 'Stakes' : 'Outcomes'}: ${item.outcomes}`, `Participation: ${item.access}`,
             ].filter(Boolean).join('\n')),
             `${preparation.archive.length} prior designs/boundaries retained in chat metadata. Proposals are not established story facts.`,
-        ].filter(Boolean).join('\n\n') : 'No valid campaign preparation yet. Previous material is retained in metadata; no legacy scene plan is injected.', '');
+        ].filter(Boolean).join('\n\n') : `No valid campaign preparation yet. Previous material is retained in metadata; no legacy scene plan is injected.\n\n${campaignBudgetSummary(null, campaignAuthorInstructions(state))}`, '');
     }
     const archives = board.querySelector('[data-role="scratchpad-archives"]');
     if (archives) {
@@ -3049,6 +3081,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     }
 }
 async function resetState({ rebuilding = false } = {}) {
+    activatedStoryContext.clear();
     let context = currentContext();
     context.updateChatMetadata({ ...context.chatMetadata, [GENERATION_CONTEXT_KEY]: null, [REPLACEMENT_PENDING_KEY]: null });
     context = currentContext();
@@ -3529,8 +3562,12 @@ function bindContinuityBridge() {
 eventSource.on(event_types.CHAT_COMPLETION_PROMPT_READY, ensureChatCompletionRequestGuidance);
 eventSource.on(event_types.CHAT_COMPLETION_SETTINGS_READY, ensureProviderChatRequestGuidance);
 eventSource.on(event_types.GENERATE_AFTER_COMBINE_PROMPTS, ensureTextCompletionRequestGuidance);
+if (event_types.WORLD_INFO_ACTIVATED) eventSource.on(event_types.WORLD_INFO_ACTIVATED, entries => {
+    if (getSettings().enabled && isStoryGeneration(activeGenerationType)) activatedStoryContext.capture(currentContext(), entries);
+});
 eventSource.on(event_types.GENERATION_STARTED, (type, _options, dryRun) => {
     if (dryRun) return;
+    if (isStoryGeneration(type)) activatedStoryContext.clear();
     clearAutomaticReplyRepair();
     activeGenerationType = String(type || '');
     if (type === 'swipe' || type === 'regenerate') {
@@ -3714,6 +3751,7 @@ eventSource.on(event_types.MESSAGE_SWIPED, messageId => {
 });
 for (const event of [event_types.WORLDINFO_UPDATED, event_types.WORLDINFO_SETTINGS_UPDATED, event_types.CHARACTER_EDITED, event_types.PERSONA_CHANGED, event_types.PERSONA_UPDATED]) {
     if (event) eventSource.on(event, () => {
+        if (event !== event_types.WORLDINFO_SETTINGS_UPDATED) activatedStoryContext.clear();
         if (!generationGuideSelection) return;
         const context = currentContext();
         const chatId = String(context.getCurrentChatId?.() || '');
@@ -3723,6 +3761,7 @@ for (const event of [event_types.WORLDINFO_UPDATED, event_types.WORLDINFO_SETTIN
     });
 }
 eventSource.on(event_types.CHAT_CHANGED, () => {
+    activatedStoryContext.clear();
     clearAutomaticReplyRepair();
     activeGenerationType = '';
     renderInjectionActivity('No request verified in this chat on this page');

@@ -16,6 +16,7 @@ import { isStoryGeneration, refreshGameMasterContract } from '../../extension/ga
 import { sampleDirectorSignals } from '../../extension/director-sampling.js';
 import { selectSituationalOpenings } from '../../extension/situations.js';
 import { canRetainSuccessfulPlan, createSafetyFallbackState } from '../../extension/fallback-direction.js';
+import { ActivatedStoryContext, readHostStoryEvidence } from '../../extension/rp-context.js';
 
 const source = readFileSync(new URL('../../extension/index.js', import.meta.url), 'utf8');
 export function generationHarness(messages, state = stateApi.defaultState(), metadata = {}) {
@@ -31,6 +32,7 @@ export function generationHarness(messages, state = stateApi.defaultState(), met
     };
     const names = ['GENERATION_STARTED', 'GENERATION_ENDED', 'GENERATION_STOPPED', 'MESSAGE_RECEIVED', 'MESSAGE_SENT', 'MESSAGE_EDITED', 'MESSAGE_UPDATED', 'MESSAGE_DELETED', 'MESSAGE_SWIPED', 'WORLDINFO_UPDATED', 'WORLDINFO_SETTINGS_UPDATED', 'CHARACTER_EDITED', 'PERSONA_CHANGED', 'PERSONA_UPDATED'];
     const scope = {
+        activatedStoryContext: new ActivatedStoryContext(), readHostStoryEvidence,
         ...stateApi, ...cacheApi, ...scheduleApi, ...coalescerApi, ...preparedApi, ...campaignApi, ...compactionApi,
         ownedInput, ownedPass, needsEventReframe, OWNED_SCHEMA, OWNED_SYSTEM, CampaignSession, CAMPAIGN_ATTEMPT_KEY,
         getRequestHeaders: () => ({}), sha256: bytes => createHash('sha256').update(bytes).digest('hex'),
@@ -77,7 +79,8 @@ export function generationHarness(messages, state = stateApi.defaultState(), met
         assert.ok(match, name);
         vm.runInContext(match[0].replace(/^export /u, ''), scope);
     }
-    vm.runInContext(source.slice(source.indexOf('eventSource.on(event_types.GENERATION_STARTED,'), source.indexOf('eventSource.on(event_types.CHAT_CHANGED,')), scope);
+    scope.event_types.WORLD_INFO_ACTIVATED = 'WORLD_INFO_ACTIVATED';
+    vm.runInContext(source.slice(source.indexOf('if (event_types.WORLD_INFO_ACTIVATED)'), source.indexOf('eventSource.on(event_types.CHAT_CHANGED,')), scope);
     return {
         scope, context, settings, calls, statuses,
         state: () => scope.loadState(context.chatMetadata),

@@ -1,5 +1,5 @@
-import { CampaignRuntime } from './campaign-runtime.js?v=0.14.36';
-import { campaignReviewInterval } from './campaign-planner.js?v=0.14.36';
+import { CampaignRuntime } from './campaign-runtime.js?v=0.14.36&token-budget=1&rp-plot=1';
+import { campaignReviewInterval } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1';
 
 export const CAMPAIGN_ATTEMPT_KEY = 'taleFairyCampaignAttempt';
 const turns = messages => messages.filter(message => !message.is_user).length;

@@ -12,7 +12,7 @@ import { readCampaignContinuity } from '../extension/campaign-continuity.js';
 import { materialHorizons } from '../extension/selected-material.js';
 import { extractTaleFairyContext } from '../extension/request-injection.js';
 import { legacyPlotInputKey, GENERATION_CONTEXT_KEY, generationContextEntries } from '../extension/generation-context.js';
-import { campaignPayload, objectiveGuidancePayload, legacyCampaignPayload } from '../extension/campaign-planner.js';
+import { campaignPayload, campaignPayloadBudget, objectiveGuidancePayload, legacyCampaignPayload } from '../extension/campaign-planner.js';
 
 const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
 test('notebook presents integrated horizons once and distinguishes quiet from legacy selection', () => {
@@ -42,7 +42,7 @@ const memorySnapshot = () => ({ chatId: 'story', status: 'current', revision: 1,
     prompt: 'Private Chronicle: the prior engagement ended.', planningEvidence: [{ id: 'memory-music',
         text: 'Jo is still composing; no new engagement was accepted.', category: 'states', canonicalStatus: 'current',
         sourceRange: { chatKey: 'character:0:chat:story', from: 0, to: 0 } }] });
-const design = { realization: [], selected_material: [{ subjectIds: ['music'], available: 'An original tune has potential for contrasting arrangements.', developing: 'Different arrangements could change whose contribution the group values across later sessions.', lasting: 'The repertoire could support shared authorship and distinct musical identities.' }], campaign: 'A changing body of original work.', episode: { subject: 'Public bill', status: 'finished', boundary: 'The public bill is over.' },
+const design = { rp_brief: 'PRIVATE an ensemble explores music and life between engagements. No established franchise.', realization: [], selected_material: [{ subjectIds: ['music'], available: 'An original tune has potential for contrasting arrangements.', developing: 'Different arrangements could change whose contribution the group values across later sessions.', lasting: 'The repertoire could support shared authorship and distinct musical identities.' }], campaign: 'A changing body of original work.', episode: { subject: 'Public bill', status: 'finished', boundary: 'The public bill is over.' },
     developments: [{ id: 'music', initiative: { control: 'npc', owner: 'Jo', aim: 'Compose a piece worth keeping.' },
         background: { unfolding: 'PRIVATE Jo can work on arrangements independently.', basis: 'PRIVATE established composition; no new time skip.',
             access: { route: 'contact', basis: 'PRIVATE the ensemble is together after the show.' } },
@@ -69,7 +69,30 @@ function browser(send = async () => ({ choices: [{ message: { content: JSON.stri
     return { ...h, requests, shared };
 }
 
-test('host fits imported lore in one planning request without changing source books or fingerprints', async () => {
+test('notebook distinguishes estimated writer cap from preserved author-only overflow', () => {
+    const scope = vm.createContext({ campaignPayloadBudget });
+    vm.runInContext(source.match(/function campaignBudgetSummary\([^]*?^}/m)[0], scope);
+    assert.match(scope.campaignBudgetSummary(null, []), /estimated 0\/1000/);
+    const note = 'Explicit instruction. '.repeat(700);
+    assert.match(scope.campaignBudgetSummary(null, [note]), /Author instructions alone exceed.*remain verbatim/);
+});
+
+test('oversized writer material is saved, withheld and reported without another model call', async () => {
+    const value = structuredClone(design);
+    for (const key of ['available', 'developing', 'lasting']) value.selected_material[0][key] = '音'.repeat(800);
+    const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] }));
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.state().campaignPreparation.revision, 1);
+    assert.deepEqual(h.state().campaignPreparation.selectedMaterial, value.selected_material);
+    assert.match(h.statuses.at(-1), /oversized writer block.*withheld.*saved/);
+    assert.equal(h.prepare().payload, '');
+    h.scope.generationGuideSelection = null;
+    assert.equal(h.prepare('swipe').payload, '');
+    assert.equal(h.requests.length, 1);
+});
+
+test('host ignores whole lorebooks without changing source books or fingerprints', async () => {
     const h = browser();
     h.settings.maxPromptTokens = 16000;
     const entries = Object.fromEntries(Array.from({ length: 37 }, (_, uid) => [uid, {
@@ -85,7 +108,8 @@ test('host fits imported lore in one planning request without changing source bo
     assert.equal(h.requests.length, 1);
     assert.equal(h.state().campaignPreparation.revision, 1);
     const payload = JSON.parse(h.requests[0].prompt);
-    assert.deepEqual(payload.source_reference.worldBooks[0].data.entries.map(e => e.content), Object.values(entries).map(e => e.content));
+    assert.equal(payload.source_reference.worldBooks, undefined);
+    assert.doesNotMatch(h.requests[0].prompt, /District 0|unused setting/);
     assert.deepEqual(book, before);
     assert.equal(h.scope.readCampaignSnapshot().referenceHash, referenceHash);
     delete h.context.chatMetadata[GENERATION_CONTEXT_KEY];
@@ -104,6 +128,87 @@ test('initial budget failure reports no plan and generation does not retain a pr
     h.prepare();
     assert.match(h.statuses.at(-1), /No plot preparation available|Scene context ready/);
     assert.doesNotMatch(h.statuses.at(-1), /Preparing/);
+});
+
+test('uncached lorebooks never block or trigger a book load in active planning', async () => {
+    const h = browser();
+    h.scope.selected_world_info = ['Not cached'];
+    h.scope.loadWorldInfo = async () => { throw Error('Planner must not load books'); };
+    await h.scope.startCampaignPlanning();
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.state().campaignPreparation.rpBrief, design.rp_brief);
+    assert.doesNotMatch(h.requests[0].prompt, /worldBooks/);
+    assert.doesNotMatch(h.prepare().payload, /PRIVATE|rpBrief|rp_brief/);
+});
+
+test('host summaries and observed activated lore share optional budget in the single pass', async () => {
+    const h = browser();
+    h.context.extensionPrompts = { summary: { value: 'A previous journey ended.' },
+        lore: { value: 'OVERSIZED OPTIONAL SOURCE '.repeat(10000) },
+        style: { value: 'PRESET STYLE' }, test: { value: 'OLD TF PLOT' } };
+    h.settings.summaryContextTokens = 1000;
+    await h.emit('GENERATION_STARTED', 'normal', {}, false);
+    await h.emit('WORLD_INFO_ACTIVATED', [{ content: 'The inn has a spare room.' }]);
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 1);
+    const input = JSON.parse(h.requests[0].prompt);
+    const recall = input.external_evidence.find(item => item.provider === 'host-story-context');
+    assert.ok(recall);
+    assert.equal(recall.confidence, 'lower-confidence-context');
+    assert.match(JSON.stringify(recall), /previous journey ended|inn has a spare room/);
+    assert.doesNotMatch(h.requests[0].prompt, /OVERSIZED OPTIONAL SOURCE|PRESET STYLE|OLD TF PLOT/);
+    assert.equal(h.context.extensionPrompts.summary.value, 'A previous journey ended.');
+    h.context.chatMetadata.taleFairyEvidence = 'off';
+    assert.equal(h.scope.readCampaignSnapshot().evidence.length, 0);
+});
+
+test('host activation cache clears before an empty generation and ignores non-story requests', async () => {
+    const h = browser();
+    const records = () => h.scope.readCampaignSnapshot().evidence.find(item => item.provider === 'host-story-context')?.records || [];
+    await h.emit('GENERATION_STARTED', 'normal', {}, false);
+    await h.emit('WORLD_INFO_ACTIVATED', [{ content: 'Only this branch.' }]);
+    assert.equal(records().length, 1);
+    await h.emit('GENERATION_STARTED', 'normal', {}, true);
+    assert.equal(records().length, 1, 'dry runs do not destroy observed input');
+    await h.emit('GENERATION_STARTED', 'normal', {}, false);
+    assert.equal(records().length, 0, 'no activation event cannot reuse last generation');
+    await h.emit('GENERATION_STARTED', 'quiet', {}, false);
+    await h.emit('WORLD_INFO_ACTIVATED', [{ content: 'Non-story generation.' }]);
+    assert.equal(records().length, 0);
+    await h.emit('GENERATION_STARTED', 'normal', {}, false);
+    await h.emit('WORLD_INFO_ACTIVATED', [{ content: 'Before an edit.' }]);
+    await h.emit('WORLDINFO_UPDATED');
+    assert.equal(records().length, 0);
+});
+
+test('notebook omits absent horizons and labels the RP brief private', () => {
+    const scope = vm.createContext({});
+    vm.runInContext(source.match(/function campaignSelectionSummary\([^]*?^}/m)[0], scope);
+    assert.equal(scope.campaignSelectionSummary({ selectedMaterial: [{ subjectIds: ['music'], available: 'A room is available.' }] }),
+        'SELECTED STORY HORIZONS\nAvailable circumstances: A room is available.');
+    assert.match(source, /RP OPERATING BRIEF \(private\)/);
+});
+
+test('rebuild replaces the private brief; delete removes it without touching host summaries or lore', async () => {
+    const h = browser();
+    h.context.chatMetadata.summary = 'External summary stays.';
+    const book = { entries: { 0: { content: 'Unmodified source.' } } };
+    h.scope.worldInfoCache.set('Book', book);
+    await h.scope.analyzeCampaignNow();
+    const saved = h.state().campaignPreparation;
+    await h.scope.rebuildGuideState();
+    assert.equal(h.requests.length, 2);
+    const input = JSON.parse(h.requests[1].prompt);
+    assert.equal(input.previous_preparation.rp_brief, undefined);
+    assert.equal(input.previous_preparation.developments.length, 0);
+    assert.match(h.requests[1].prompt, /External summary stays/);
+    assert.deepEqual(h.state().campaignPreparation.archive[0].preparation, saved);
+    await h.emit('WORLD_INFO_ACTIVATED', [{ content: 'Cached surface.' }]);
+    await h.scope.resetState();
+    assert.equal(h.state().campaignPreparation, null);
+    assert.equal(h.scope.activatedStoryContext.snapshot, null);
+    assert.equal(h.context.chatMetadata.summary, 'External summary stays.');
+    assert.equal(h.scope.worldInfoCache.get('Book'), book);
 });
 
 test('host accepts extra episode commentary in one request and reports the discarded field', async () => {
@@ -533,7 +638,7 @@ test('actual campaign entry builds evidence, uses single-shot transport and comm
     assert.equal(h.requests.length, 1);
     const request = h.requests[0];
     assert.equal(request.spec.singleShot, true);
-    assert.equal(request.spec.schema.name, 'tale_fairy_story_horizons_v4');
+    assert.equal(request.spec.schema.name, 'tale_fairy_rp_plot_v5');
     assert.equal(request.spec.reasoningMode, undefined, 'honor saved reasoning instead of legacy forced Off');
     assert.equal(request.meta, null, 'no legacy detached recovery contract');
     const input = JSON.parse(request.prompt);
