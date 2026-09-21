@@ -49,6 +49,57 @@ async function initial() {
     return result.state;
 }
 
+test('extra episode metadata does not discard a valid single-call plan or enter stored context', async () => {
+    for (const state of [emptyCampaign(), await initial()]) {
+        const value = body([], [selected()]);
+        const canonicalEpisode = structuredClone(value.episode);
+        value.episode.boundary_extra = 'EXTRA COMMENTARY must not become plot material.';
+        value.episode.extra_notes = { status: 'invented', retire: ['music'] };
+        const result = await plan(state, value);
+        assert.equal(result.accepted, true, result.error);
+        assert.deepEqual(result.state.episode, canonicalEpisode);
+        assert.deepEqual(result.ignoredEpisodeFields, ['boundary_extra', 'extra_notes']);
+        assert.equal(result.state.developments.length, 2);
+        assert.ok(validCampaignState(result.state));
+        assert.doesNotMatch(JSON.stringify(result.state), /boundary_extra|EXTRA COMMENTARY|extra_notes/);
+        assert.equal(result.result.text, JSON.stringify(value), 'raw response remains available for diagnostics');
+    }
+});
+
+test('extra episode fields cannot replace missing or invalid required values', async () => {
+    const state = await initial();
+    for (const episode of [
+        { subject: 'Show', status: 'finished', boundary_extra: 'Not a substitute for boundary.' },
+        { subject: 'Show', status: 'finished', boundary: '', boundary_extra: 'Nonblank extra.' },
+        { subject: 'Show', status: 'invalid', boundary: 'Finished.', boundary_extra: 'Extra.' },
+        { subject: 'Show', status: 'finished', boundary: { text: 'Wrong type' }, boundary_extra: 'Extra.' },
+        null, [], 'Finished',
+    ]) {
+        const result = await plan(state, { ...body(), episode });
+        assert.equal(result.accepted, false);
+        assert.equal(result.state, state);
+        assert.match(result.error, /\$\.episode/);
+    }
+});
+
+test('episode tolerance never weakens unknown-field, player-control or witness validation', async () => {
+    const state = await initial();
+    for (const mutate of [
+        value => { value.unknown_operation = 'retire'; },
+        value => { value.developments[0].unknown_operation = 'retire'; },
+        value => { value.developments[0].initiative.control = 'player'; },
+        value => { value.realization = [{ id: 'music', changes: [{ episodeId: 'show', status: 'completed',
+            evidence: [{ index: 0, span: 999 }] }] }]; },
+    ]) {
+        const value = body([], [selected()]);
+        value.episode.boundary_extra = 'Discardable commentary.';
+        mutate(value);
+        const result = await plan(state, value);
+        assert.equal(result.accepted, false);
+        assert.equal(result.state, state);
+    }
+});
+
 test('whole-story selection groups independent private aims into one writer circumstance', async () => {
     const state = await initial();
     assert.equal(validCampaignState(state), true);

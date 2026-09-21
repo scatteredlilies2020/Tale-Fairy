@@ -106,6 +106,20 @@ test('initial budget failure reports no plan and generation does not retain a pr
     assert.doesNotMatch(h.statuses.at(-1), /Preparing/);
 });
 
+test('host accepts extra episode commentary in one request and reports the discarded field', async () => {
+    const response = structuredClone(design);
+    response.episode.boundary_extra = 'Extra provider commentary.';
+    const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(response) }, finish_reason: 'stop' }] }));
+    await h.scope.analyzeCampaignNow({ manual: true });
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.state().campaignPreparation.revision, 1);
+    assert.equal(h.state().campaignPreparation.episode.boundary, design.episode.boundary);
+    assert.equal(h.state().campaignPreparation.episode.boundary_extra, undefined);
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
+    assert.match(h.statuses.at(-1), /Campaign preparation ready · ignored 1 extra episode field/);
+    assert.ok(h.prepare().payload);
+});
+
 test('host replaces scene guidance even when an old private subject is omitted, then retires it with final evidence', async () => {
     const wider = structuredClone(design);
     wider.developments[0].id = 'travel';

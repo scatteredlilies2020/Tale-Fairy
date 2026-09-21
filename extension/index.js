@@ -1,6 +1,6 @@
 import { sha256 } from '/lib.js';
 import { campaignAuthorInstructions, campaignUsable, campaignMaterialUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36';
-import { storyInput as ownedInput, storyPass as ownedPass, needsEventReframe, STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM } from './story-selection.js?v=0.14.36&planner-input=1';
+import { storyInput as ownedInput, storyPass as ownedPass, needsEventReframe, STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM } from './story-selection.js?v=0.14.36&planner-input=1&episode-fields=1';
 import { readCampaignContinuity } from './campaign-continuity.js';
 import { readEvidenceProviders, evidenceRevisionKey } from './evidence-providers.js';
 import { campaignEvidenceMessages, campaignReviewWindow } from './campaign-evidence.js';
@@ -935,9 +935,12 @@ async function runCampaignAnalysis(work) {
         return result;
     });
     if (stopSequence === analysisStopSequence && chatId === String(currentContext().getCurrentChatId?.() || '')) {
-        if (result.accepted) renderAnalysisActivity(result.warnings?.length
-            ? `Campaign preparation ready · ignored ${result.warnings.length} unsupported extra citation(s)`
-            : 'Campaign preparation ready', false);
+        if (result.accepted) {
+            const notices = [];
+            if (result.warnings?.length) notices.push(`ignored ${result.warnings.length} unsupported extra citation(s)`);
+            if (result.ignoredEpisodeFields?.length) notices.push(`ignored ${result.ignoredEpisodeFields.length} extra episode field(s)`);
+            renderAnalysisActivity(['Campaign preparation ready', ...notices].join(' · '), false);
+        }
         else if (result.error) renderAnalysisActivity(`${loadState(currentContext().chatMetadata).campaignPreparation?.revision
             ? 'Previous preparation retained' : 'No preparation available'} · ${result.error}`, false);
         else renderAnalysisActivity('No new planning pass needed', false);

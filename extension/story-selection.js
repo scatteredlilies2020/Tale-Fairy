@@ -99,6 +99,18 @@ export async function storyPass({ state, input, source, generate }) {
         result = await generate(input.prompt, STORY_SYSTEM, STORY_SCHEMA);
         if (['length', 'max_tokens', 'max_output_tokens'].includes(String(result.finishReason).toLowerCase())) throw Error('Truncated story selection response');
         const raw = JSON.parse(result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
+        // Episode is descriptive bookkeeping, not a command or an evidence
+        // ledger. Some JSON-mode providers add commentary fields despite the
+        // schema. Discard those extras, never guess/merge a required value.
+        // Keep the original provider text in result for diagnostics.
+        const ignoredEpisodeFields = [];
+        if (raw?.episode && typeof raw.episode === 'object' && !Array.isArray(raw.episode)) {
+            for (const key of Object.keys(raw.episode)) {
+                if (Object.hasOwn(STORY_SCHEMA.value.properties.episode.properties, key)) continue;
+                ignoredEpisodeFields.push(key);
+                delete raw.episode[key];
+            }
+        }
         check(raw, STORY_SCHEMA.value);
         const scopeReset = needsEventReframe(state) && state.preparationFormat === EVENT_POINTS_FORMAT;
         const updates = new Map(raw.developments.map(subject => [subject.id, subject]));
@@ -154,7 +166,7 @@ export async function storyPass({ state, input, source, generate }) {
                 source: structuredClone(state.source), revision: state.revision, replaced: true });
         }
         next.background = structuredClone(background);
-        return { ...merged, state: next, result };
+        return { ...merged, state: next, result, ...(ignoredEpisodeFields.length ? { ignoredEpisodeFields } : {}) };
     } catch (error) { return { state, accepted: false, error: error.message, ...(result ? { result } : {}) }; }
 }
 
