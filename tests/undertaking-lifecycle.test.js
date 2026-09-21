@@ -17,6 +17,46 @@ const plan = async (state, data, evidence = messages) => ownedPass({ state,
     input: ownedInput({ state, reference: {}, messages: evidence }), source,
     generate: async () => ({ text: JSON.stringify(data) }) });
 
+test('repeated episode observations combine compatible witnessed stages regardless of response order', () => {
+    const evidence = ['Jo proposed a duet.', 'Jo began the duet.', 'Jo played part of the duet.', 'Jo finished the duet.']
+        .map((content, index) => ({ index, role: 'assistant', content }));
+    const changes = ['introduced', 'participating', 'partial', 'completed'].map((status, index) => ({
+        episodeId: 'duet', status, evidence: [{ index, quote: evidence[index].content }],
+    }));
+    for (const order of [changes, [...changes].reverse(), [...changes, changes[3]]]) {
+        const result = mergeRealization({}, [{ id: 'music', changes: order, playable: [] }],
+            { subjects: ['music'], messages: evidence, source: { ...source, messageCount: 4 } });
+        assert.equal(result.music.episodes.duet.status, 'completed');
+        assert.deepEqual(result.music.episodes.duet.witnesses.map(w => w.index), [3]);
+    }
+});
+
+test('duplicate status evidence is deduplicated and bounded without inventing a witness', () => {
+    const evidence = Array.from({ length: 8 }, (_, index) => ({ index, role: 'assistant', content: `Practice ${index} continued.` }));
+    const changes = evidence.map(({ index, content }) => ({ episodeId: 'duet', status: 'participating',
+        evidence: [{ index, quote: content }] }));
+    const result = mergeRealization({}, [{ id: 'music', changes: [...changes, changes[7]] }],
+        { subjects: ['music'], messages: evidence, source: { ...source, messageCount: 8 } });
+    assert.deepEqual(result.music.episodes.duet.witnesses.map(w => w.index), [4, 5, 6, 7]);
+});
+
+test('joining repeated episodes preserves conflict, provenance and closed-state checks', () => {
+    const current = { subjects: ['music'], messages, source };
+    const combined = (...entries) => [{ id: 'music', changes: entries.flatMap(e => e.changes), playable: [] }];
+    assert.throws(() => mergeRealization({}, combined(entry('completed'), entry('declined')), current), /Conflicting outcomes/);
+    const invented = entry('introduced'); invented.changes[0].evidence[0].quote = 'Invented progress.';
+    assert.throws(() => mergeRealization({}, combined(invented, entry()), current), /exact supplied/);
+    const previous = mergeRealization({}, [entry('partial')], current);
+    const newer = { index: 1, role: 'assistant', content: 'Jo continues practicing.' };
+    const continued = entry('participating'); continued.changes[0].evidence = [{ index: 1, quote: newer.content }];
+    assert.throws(() => mergeRealization(previous, combined(continued, entry('completed')),
+        { ...current, messages: [...messages, newer], source: { ...source, messageCount: 2 } }), /newly accepted/);
+    const completed = mergeRealization({}, [entry()], current);
+    assert.throws(() => mergeRealization(completed, combined(entry('introduced'), continued),
+        { ...current, messages: [...messages, newer], source: { ...source, messageCount: 2 } }), /restart or regress/);
+    assert.equal(previous.music.episodes.duet.status, 'partial');
+});
+
 test('completed episode stops being injected while its subject and substantive changed experience survive', async () => {
     const result = await plan(emptyCampaign(), body([entry()]));
     assert.equal(result.accepted, true, result.error);

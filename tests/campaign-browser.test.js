@@ -118,6 +118,24 @@ test('host ignores whole lorebooks without changing source books or fingerprints
     assert.equal(h.statuses.at(-1), 'Plot preparation ready for this request');
 });
 
+test('host saves repeated episode progression and reports normalized details without another request', async () => {
+    const value = structuredClone(design);
+    value.realization = [{ id: 'music', changes: [
+        { episodeId: 'show', status: 'participating', evidence: [{ index: 0, span: 0 }] },
+        { episodeId: 'show', status: ' Completed ', evidence: [{ index: '1', span: '0' }] },
+    ] }];
+    value.developments[0].commentary = 'Ignore optional commentary.';
+    const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] }));
+    h.context.chat[0].mes = 'Mara began the performance.';
+    h.context.chat[1].mes = 'I finish playing the last chord.';
+    await h.scope.analyzeCampaignNow({ manual: true });
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.state().campaignPreparation.revision, 1);
+    assert.equal(h.state().campaignPreparation.realization.music.episodes.show.status, 'completed');
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
+    assert.match(h.statuses.at(-1), /Campaign preparation ready.*normalized/);
+});
+
 test('initial budget failure reports no plan and generation does not retain a preparing label', async () => {
     const h = browser();
     h.context.chat.push({ is_user: true, name: 'Neri', mes: 'Protected player contribution. '.repeat(10000) });

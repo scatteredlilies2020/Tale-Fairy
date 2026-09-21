@@ -83,11 +83,9 @@ test('extra episode fields cannot replace missing or invalid required values', a
     }
 });
 
-test('episode tolerance never weakens unknown-field, player-control or witness validation', async () => {
+test('response tolerance preserves player-control and exact witness validation', async () => {
     const state = await initial();
     for (const mutate of [
-        value => { value.unknown_operation = 'retire'; },
-        value => { value.developments[0].unknown_operation = 'retire'; },
         value => { value.developments[0].initiative.control = 'player'; },
         value => { value.realization = [{ id: 'music', changes: [{ episodeId: 'show', status: 'completed',
             evidence: [{ index: 0, span: 999 }] }] }]; },
@@ -130,16 +128,11 @@ test('an explicit quiet snapshot withdraws material without erasing durable aims
     assert.equal(quiet.state.archive.length, next.state.archive.length, 'unchanged snapshot does not grow the archive');
 });
 
-test('missing or malformed selection, legacy keep and unknown references fail atomically', async () => {
+test('missing, conflicting or malformed selection and unknown references fail atomically', async () => {
     const state = await initial();
     const omitted = body(); delete omitted.selected_material;
     const cases = [omitted, { ...body(), selected_material: null },
-        body([], [selected(), selected()]), body([], [selected(['unknown'])]),
-        body([], [selected(['music', 'music'])]), body([], [{ ...selected(), id: '__proto__' }]),
-        body([], [{ ...selected(), episodeId: 'wrong-contract' }]),
-        body([], [], [{ id: 'music', selection: 'keep' }]),
-        body([], [], [{ id: 'music', playable: [] }]),
-        body([], [], [{ id: 'music' }, { id: 'music' }]),
+        body([], [selected(), { ...selected(), available: 'A different competing packet.' }]), body([], [selected(['unknown'])]),
         body([], [], [{ id: 'unknown' }]),
     ];
     for (const value of cases) {
@@ -150,6 +143,58 @@ test('missing or malformed selection, legacy keep and unknown references fail at
     const truncated = await plan(state, body(), messages, { finishReason: 'length' });
     assert.equal(truncated.accepted, false);
     assert.equal(truncated.state, state);
+});
+
+test('harmless response variations and obsolete metadata preserve usable planning without entering saved state', async () => {
+    const value = body([], [selected(['music', 'music', 'travel']), selected(['music', 'travel'])]);
+    value.episode.status = ' Finished ';
+    value.unknown_operation = 'retire';
+    value.developments[0].unknown_operation = 'retire';
+    value.developments[0].initiative.control = ' NPC ';
+    value.developments.push(structuredClone(value.developments[0]));
+    value.retire = null;
+    value.realization = [{ id: 'music', selection: 'keep' }, { id: 'music', playable: [] }];
+    const result = await plan(emptyCampaign(), value);
+    assert.equal(result.accepted, true, result.error);
+    assert.ok(result.responseAdjustments.length);
+    assert.equal(result.state.developments.length, 2);
+    assert.equal(result.state.selectedMaterial.length, 1);
+    assert.deepEqual(result.state.selectedMaterial[0].subjectIds, ['music', 'travel']);
+    assert.equal(result.state.episode.status, 'finished');
+    assert.doesNotMatch(JSON.stringify(result.state), /unknown_operation|selection.*keep/);
+    assert.ok(validCampaignState(result.state));
+    assert.equal(result.result.text, JSON.stringify(value), 'original response is retained');
+});
+
+test('split realization rows and repeated episode stages save a valid first plan in one call', async () => {
+    const evidence = [
+        { index: 0, role: 'assistant', content: 'The ensemble began practicing.' },
+        { index: 1, role: 'assistant', content: 'The ensemble completed the performance.' },
+    ];
+    const value = body([], [selected()], [
+        { id: 'music', changes: [{ episodeId: 'show', status: ' Completed ', evidence: [{ index: '1', span: '0' }] }] },
+        { id: 'music', changes: [{ episodeId: 'show', status: 'participating', evidence: [{ index: 0, span: 0 }] }] },
+    ]);
+    const result = await plan(emptyCampaign(), value, evidence);
+    assert.equal(result.accepted, true, result.error);
+    assert.equal(result.state.realization.music.episodes.show.status, 'completed');
+    assert.deepEqual(result.state.realization.music.episodes.show.witnesses.map(w => w.index), [1]);
+    assert.ok(validCampaignState(result.state));
+    assert.ok(result.responseAdjustments.length);
+});
+
+test('missing or null optional progress makes no new claims and preserves existing witnessed history', async () => {
+    const progress = [{ id: 'music', changes: [{ episodeId: 'show', status: 'completed', evidence: [{ index: 0, span: 0 }] }] }];
+    const first = await plan(emptyCampaign(), body([], [selected()], progress));
+    assert.equal(first.accepted, true, first.error);
+    for (const omitted of [true, false]) {
+        const value = body([], [selected()]);
+        if (omitted) delete value.realization; else value.realization = null;
+        const next = await plan(first.state, value);
+        assert.equal(next.accepted, true, next.error);
+        assert.deepEqual(next.state.realization, first.state.realization);
+        assert.ok(validCampaignState(next.state));
+    }
 });
 
 test('exact accepted progress and current selection update together; invented witnesses veto the transaction', async () => {
@@ -351,11 +396,11 @@ test('inaccessible background survives quiet reviews and later surfaces without 
     assert.doesNotMatch(campaignPayload(surfaced.state), /PRIVATE|Jo|contact|guesthouse/);
 });
 
-test('missing, duplicate, unreviewed or inaccessible background rejects the whole update', async () => {
+test('missing, conflicting, unreviewed or inaccessible background rejects the whole update', async () => {
     const state = await initial();
     const omitted = body(); delete omitted.developments[0].background;
-    const cases = [omitted, { ...body(), background: null }, body([], [selected()], [], []),
-        body([], [], [], [background('music'), background('music')]),
+    const cases = [omitted, body([], [selected()], [], []),
+        body([], [], [], [background('music'), background('music', 'none')]),
         body([], [selected()], [], [background('music'), background('travel', 'none')]),
         body([], [], [], [{ ...background('music'), access: { route: 'teleport', basis: 'Invented.' } }, background('travel')]),
     ];
@@ -465,11 +510,11 @@ test('four active subjects can replace four retiring subjects without dropping f
     assert.equal(restart.accepted, false, 'a closed id cannot restart');
 });
 
-test('retirement without an existing subject and repeated retirement operations are rejected', async () => {
+test('retirement without an existing subject and conflicting retirement operations are rejected', async () => {
     const state = await initial();
     const retire = { id: 'unknown', reason: 'Closed.', scope: 'whole-subject', evidence: [0],
         witnesses: [{ index: 0, span: 0 }] };
-    for (const entries of [[retire], [{ ...retire, id: 'music' }, { ...retire, id: 'music' }]]) {
+    for (const entries of [[retire], [{ ...retire, id: 'music' }, { ...retire, id: 'music', reason: 'A different explanation.' }]]) {
         const next = await plan(state, { ...body(), retire: entries });
         assert.equal(next.accepted, false);
         assert.equal(next.state, state);
@@ -568,15 +613,18 @@ test('rest, disengagement and separate activities need no new progress status or
     assert.deepEqual(quiet.state.developments, state.developments);
 });
 
-test('optional horizons may be absent, but malformed present fields still fail', async () => {
+test('optional horizons may be absent or empty while oversized content still respects storage bounds', async () => {
     const state = await initial();
     const entry = { subjectIds: ['music'], available: 'The evening is free.' };
     const later = await plan(state, body([], [{ ...entry, lasting: 'A recurring shared interest could endure.' }]));
     assert.equal(later.accepted, true, later.error);
     assert.equal(packet(later.state).possible_developments[0].mid_term_possibilities, undefined);
-    for (const developing of ['', null, 'x'.repeat(901)]) {
-        assert.equal((await plan(state, body([], [{ ...entry, developing }]))).accepted, false);
+    for (const developing of ['', null, '   ']) {
+        const result = await plan(state, body([], [{ ...entry, developing }]));
+        assert.equal(result.accepted, true, result.error);
+        assert.equal(result.state.selectedMaterial[0].developing, undefined);
     }
+    assert.equal((await plan(state, body([], [{ ...entry, developing: 'x'.repeat(901) }]))).accepted, false);
 });
 
 test('planner contract excludes preset directions from all fields; effects come from story substance', async () => {

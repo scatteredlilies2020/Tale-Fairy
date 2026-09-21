@@ -5,7 +5,7 @@ import { CAMPAIGN_MARKER, CAMPAIGN_SCHEMA, EVENT_INITIATIVE_SCHEMA, EVENT_POINTS
 import { compactCampaignSpeakers } from './campaign-evidence.js';
 import { fitCampaignContinuity } from './campaign-continuity.js';
 import { fitEvidenceProviders } from './evidence-providers.js?rp-plot=1';
-import { REALIZATION_SCHEMA, REALIZATION_INSTRUCTIONS, mergeRealization, needsPlayableReview } from './undertaking-lifecycle.js?v=0.14.34';
+import { REALIZATION_SCHEMA, REALIZATION_INSTRUCTIONS, mergeRealization, needsPlayableReview } from './undertaking-lifecycle.js?v=0.14.34&response=2';
 import { check } from './campaign-planner.js?v=0.14.34&rp-plot=1';
 import { estimateTokenCount } from './token-budget.js';
 import { compactPlannerReference, compactPlannerHistory } from './planner-reference.js';

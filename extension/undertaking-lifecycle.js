@@ -25,6 +25,7 @@ const LEGACY_REALIZATION_SCHEMA = { type: 'array', maxItems: 4, items: {
 const SAVED_REALIZATION_SCHEMA = structuredClone(LEGACY_REALIZATION_SCHEMA);
 SAVED_REALIZATION_SCHEMA.items.properties.playable.items.required = ['episodeId', 'when', 'situation'];
 export const REALIZATION_SCHEMA = structuredClone(LEGACY_REALIZATION_SCHEMA);
+REALIZATION_SCHEMA.items.properties.changes.description = 'One current observation per episodeId. Use its latest supported status, not a row for each historical stage.';
 // Up to four active subjects plus final evidence for four retiring in this transaction.
 REALIZATION_SCHEMA.maxItems = 8;
 REALIZATION_SCHEMA.items.properties.selection = { type: 'string', enum: ['keep'],
@@ -108,12 +109,10 @@ export function mergeRealization(previous, updates, { subjects, messages, source
             kept.add(update.id);
         }
         const episodes = structuredClone(old.episodes);
-        const episodeIds = new Set();
+        const observations = new Map();
         for (const change of update.changes || []) {
             if (['__proto__', 'constructor', 'prototype'].includes(change.episodeId)) throw Error('Unsafe episode id');
-            if (episodeIds.has(change.episodeId)) throw Error('Duplicate episode change');
-            episodeIds.add(change.episodeId);
-            let witnesses = change.evidence.map(e => {
+            const witnesses = change.evidence.map(e => {
                 const m = supplied.get(e.index);
                 const quote = m && matchedWitness(m.content, e.quote);
                 if (!quote) {
@@ -125,6 +124,24 @@ export function mergeRealization(previous, updates, { subjects, messages, source
             // One bad extra citation must not veto independently supported progress.
             // Never invent, relocate or fuzzy-match a quote; zero exact witnesses fails.
             if (!witnesses.length) throw Error('Progress requires an exact supplied accepted-message witness');
+            const existing = observations.get(change.episodeId);
+            if (existing && closed(existing.status) && closed(change.status) && existing.status !== change.status) {
+                throw Error(`Conflicting outcomes for episode ${change.episodeId}`);
+            }
+            // A model may describe several witnessed stages of one experience.
+            // Join compatible milestones independently of output order. Only
+            // evidence for the resulting status can authorize its advancement;
+            // a newer introduction cannot authenticate an old completion quote.
+            if (!existing || (!closed(existing.status) && (closed(change.status) || rank[change.status] > rank[existing.status]))) {
+                observations.set(change.episodeId, { ...change, witnesses });
+            } else if (existing.status === change.status) {
+                existing.witnesses = [...new Map([...existing.witnesses, ...witnesses]
+                    .map(w => [JSON.stringify([w.index, w.quote]), w])).values()]
+                    .sort((a, b) => a.index - b.index).slice(-4);
+            }
+        }
+        for (const change of observations.values()) {
+            let witnesses = change.witnesses;
             const prior = episodes[change.episodeId];
             // Participation can continue after partial accomplishment. Join that
             // observation with the achieved milestone instead of treating it as

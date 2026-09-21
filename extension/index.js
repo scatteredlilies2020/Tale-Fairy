@@ -1,6 +1,6 @@
 import { sha256 } from '/lib.js';
 import { campaignAuthorInstructions, campaignPayloadBudget, campaignUsable, campaignMaterialUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1';
-import { storyInput as ownedInput, storyPass as ownedPass, needsEventReframe, STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM } from './story-selection.js?v=0.14.36&planner-input=1&episode-fields=1&token-budget=1&rp-plot=1';
+import { storyInput as ownedInput, storyPass as ownedPass, needsEventReframe, STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM } from './story-selection.js?v=0.14.36&planner-input=1&episode-fields=1&token-budget=1&rp-plot=1&response=2';
 import { verifyStoryInputBudget } from './story-budget.js';
 import { readCampaignContinuity } from './campaign-continuity.js';
 // Keep the public registration URL stable so external adapters share this registry.
@@ -951,6 +951,7 @@ async function runCampaignAnalysis(work) {
             const notices = [];
             if (result.warnings?.length) notices.push(`ignored ${result.warnings.length} unsupported extra citation(s)`);
             if (result.ignoredEpisodeFields?.length) notices.push(`ignored ${result.ignoredEpisodeFields.length} extra episode field(s)`);
+            if (result.responseAdjustments?.length) notices.push(`normalized ${result.responseAdjustments.length} harmless response variation(s)`);
             const saved = loadState(currentContext().chatMetadata);
             const budget = campaignPayloadBudget(saved.campaignPreparation, campaignAuthorInstructions(saved));
             if (budget.omitted) notices.push(`${budget.omitted} oversized writer block(s) withheld; preparation saved`);

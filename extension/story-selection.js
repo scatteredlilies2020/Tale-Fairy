@@ -1,13 +1,14 @@
 // One provider response: shared story material + private preparation + witnessed progress.
 // The established subject/evidence transaction remains the storage authority.
-import { ownedInput, ownedPass, OWNED_SCHEMA, needsEventReframe } from './event-planning.js?v=0.14.34&planner-input=1&token-budget=1&rp-plot=1';
+import { ownedInput, ownedPass, OWNED_SCHEMA, needsEventReframe } from './event-planning.js?v=0.14.34&planner-input=1&token-budget=1&rp-plot=1&response=2';
 import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check } from './campaign-planner.js?v=0.14.34&rp-plot=1';
-import { REALIZATION_SCHEMA } from './undertaking-lifecycle.js?v=0.14.34';
+import { REALIZATION_SCHEMA } from './undertaking-lifecycle.js?v=0.14.34&response=2';
 import { SELECTED_MATERIAL_SCHEMA, validateSelectedMaterial } from './selected-material.js?v=0.14.36&rp-plot=1';
 import { BACKGROUND_SCHEMA, validateBackground } from './background-progress.js?v=0.14.34';
 import { SPAN_WITNESS_SCHEMA, witnessMessages, resolveSpanWitnesses } from './accepted-witnesses.js?v=0.14.34';
 import { storyInputTokens } from './story-budget.js';
 import { RP_BRIEF_SCHEMA } from './rp-brief.js';
+import { normalizePlannerResponse } from './planner-response.js?v=1';
 export { needsEventReframe };
 
 export const STORY_SCHEMA = structuredClone(OWNED_SCHEMA);
@@ -98,18 +99,26 @@ export async function storyPass({ state, input, source, generate }) {
     try {
         result = await generate(input.prompt, STORY_SYSTEM, STORY_SCHEMA);
         if (['length', 'max_tokens', 'max_output_tokens'].includes(String(result.finishReason).toLowerCase())) throw Error('Truncated story selection response');
-        const raw = JSON.parse(result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
-        // Episode is descriptive bookkeeping, not a command or an evidence
-        // ledger. Some JSON-mode providers add commentary fields despite the
-        // schema. Discard those extras, never guess/merge a required value.
-        // Keep the original provider text in result for diagnostics.
-        const ignoredEpisodeFields = [];
-        if (raw?.episode && typeof raw.episode === 'object' && !Array.isArray(raw.episode)) {
-            for (const key of Object.keys(raw.episode)) {
-                if (Object.hasOwn(STORY_SCHEMA.value.properties.episode.properties, key)) continue;
-                ignoredEpisodeFields.push(key);
-                delete raw.episode[key];
-            }
+        const normalized = normalizePlannerResponse(JSON.parse(result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')), STORY_SCHEMA.value);
+        const raw = normalized.value;
+        const ignoredEpisodeFields = normalized.ignoredFields.filter(path => path.startsWith('$.episode.')).map(path => path.slice('$.episode.'.length));
+        const responseAdjustments = [...normalized.adjustments, ...normalized.ignoredFields.filter(path => !path.startsWith('$.episode.'))];
+        if (raw && typeof raw === 'object' && !Array.isArray(raw) && raw.realization == null) {
+            raw.realization = [];
+            responseAdjustments.push('$.realization');
+        }
+        // Progress may be split across several rows for the same subject. Its
+        // changes remain independently checked by the evidence ledger below.
+        if (Array.isArray(raw?.realization)) {
+            const grouped = new Map();
+            raw.realization = raw.realization.filter((entry, index) => {
+                if (!entry || typeof entry.id !== 'string' || entry.changes !== undefined && !Array.isArray(entry.changes)) return true;
+                const previous = grouped.get(entry.id);
+                if (!previous) { grouped.set(entry.id, entry); return true; }
+                previous.changes = [...(previous.changes || []), ...(entry.changes || [])];
+                responseAdjustments.push(`$.realization[${index}]`);
+                return false;
+            });
         }
         check(raw, STORY_SCHEMA.value);
         const scopeReset = needsEventReframe(state) && state.preparationFormat === EVENT_POINTS_FORMAT;
@@ -167,7 +176,8 @@ export async function storyPass({ state, input, source, generate }) {
                 source: structuredClone(state.source), revision: state.revision, replaced: true });
         }
         next.background = structuredClone(background);
-        return { ...merged, state: next, result, ...(ignoredEpisodeFields.length ? { ignoredEpisodeFields } : {}) };
+        return { ...merged, state: next, result, ...(ignoredEpisodeFields.length ? { ignoredEpisodeFields } : {}),
+            ...(responseAdjustments.length ? { responseAdjustments } : {}) };
     } catch (error) { return { state, accepted: false, error: error.message, ...(result ? { result } : {}) }; }
 }
 
