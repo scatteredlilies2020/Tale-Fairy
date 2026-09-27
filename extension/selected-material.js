@@ -7,9 +7,9 @@ export const SELECTED_MATERIAL_SCHEMA = { type: 'array', maxItems: 1,
             subjectIds: { type: 'array', minItems: 1, maxItems: 4, uniqueItems: true,
                 items: { type: 'string', minLength: 1, maxLength: 80 },
                 description: 'Exact contributing subject ids. Exclude inaccessible subjects from every horizon.' },
-            available: text('Relevant circumstances or opportunities, not a task recap. Unestablished prerequisites remain conditional.'),
-            developing: text('Optional changes beyond this scene, not staged scenes or writing directions. Omit when unsupported or redundant.'),
-            lasting: text('Optional long-term possibilities. No guaranteed ending or success/failure branches. Omit when unsupported or redundant.'),
+            available: text('An authored opportunity or source of change beyond known facts. Invent compatible material; keep unestablished prerequisites conditional. Not a recap.'),
+            developing: text('Optional invented changes beyond this scene, not staged scenes or writing directions. Consistency is required, prior enactment is not. Omit redundant material.'),
+            lasting: text('Optional invented longer-term possibilities consistent with the RP. No guaranteed ending or success/failure branches. Prior enactment is not required.'),
         } },
 };
 

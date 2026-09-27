@@ -6,12 +6,12 @@ export const BACKGROUND_SCHEMA = { type: 'array', maxItems: 4,
     items: { type: 'object', additionalProperties: false,
         required: ['subjectId', 'unfolding', 'basis', 'access'], properties: {
             subjectId: text(80, 'Exact enduring subject id.'),
-            unfolding: text(700, 'NPC/world activity or process that can develop independently. A provisional possibility, not an unseen accomplished fact or player action.'),
-            basis: text(500, 'Source-grounded cause and fictional time or conditions supporting this stage. If time or prerequisites are unknown, retain the conditional stage; message count is not elapsed time.'),
+            unfolding: text(700, 'Invent specific compatible NPC/world activity, intentions or possible discoveries. Provisional preparation, not an unseen accomplished fact or player action. More than routines continuing or results remaining unknown.'),
+            basis: text(500, 'Explain consistency with established capabilities, interests, causes and fictional time; invented possibilities need no prior enactment. Unknown prerequisites remain conditional; message count is not elapsed time.'),
             access: { type: 'object', additionalProperties: false, required: ['route', 'basis'], properties: {
                 route: { type: 'string', enum: ['none', 'direct', 'local', 'contact', 'information', 'investigation'],
-                    description: 'Access to a currently available trace or opportunity, not full private knowledge. information needs an existing relevant report or announcement, not just a channel for future news. none if no surface is available. direct includes nonhuman processes.' },
-                basis: text(500, 'The accessible surface and its knowledge limits, or why none can reach current play. Do not invent a contact, trip, discovery or time jump to open access.'),
+                    description: 'Plausible access through current people, places, interests or plans, not full private knowledge. Proposed opportunities need not already be enacted. none for unreachable or unrelated private activity; direct includes nonhuman processes.' },
+                basis: text(500, 'Name the existing bridge and proposed discoverable surface, or explain why none can reach play. Required contact, travel or discovery stays conditional; do not claim it already happened or reveal secrets.'),
             } },
         } },
 };

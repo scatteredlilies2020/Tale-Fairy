@@ -525,7 +525,6 @@ test('creative direction stays open without requiring a detailed scene plan', as
     assert.match(STORY_SYSTEM, /Ordinary activities and quiet enjoyment are valid/);
     assert.match(STORY_SYSTEM, /No forced conflict, interruption, escalation, reconciliation or novelty quota/);
     assert.match(STORY_SYSTEM, /writer handles execution and incidental detail/);
-    assert.doesNotMatch(STORY_SYSTEM, /Give an activity actual subject matter|Specific proposed content is welcome/);
     const developing = STORY_SCHEMA.value.properties.selected_material.items.properties.developing.description;
     assert.match(developing, /changes beyond this scene/);
     assert.match(developing, /not staged scenes or writing directions/);
@@ -542,6 +541,46 @@ test('creative direction stays open without requiring a detailed scene plan', as
         mid_term_possibilities: direction.developing,
         long_term_possibilities: direction.lasting,
     }], 'a directional possibility reaches the writer without added scenes, details or mandated outcomes');
+});
+
+test('creativity takes priority and evidence constrains history, not invention', () => {
+    assert.match(STORY_SYSTEM, /Creativity is the primary goal/);
+    assert.match(STORY_SYSTEM, /Make substantive creative choices, including surprising ones/);
+    assert.match(STORY_SYSTEM, /Choose possible answers to mysteries privately/);
+    assert.match(STORY_SYSTEM, /after subtracting known facts, what playable invention remains/);
+    assert.match(STORY_SYSTEM, /A proposed opportunity need not already have been offered or accepted/);
+    assert.match(STORY_SYSTEM, /Evidence requirements apply to historical claims, not creative proposals/);
+    const fields = STORY_SCHEMA.value.properties;
+    assert.match(fields.selected_material.items.properties.available.description, /Invent compatible material/);
+    assert.match(fields.developments.items.properties.development.description, /not a recap/);
+    assert.match(fields.developments.items.properties.background.properties.basis.description, /invented possibilities need no prior enactment/);
+});
+
+test('a new conditional opportunity reaches the writer without becoming witnessed history on review', async () => {
+    const proposal = {
+        subjectIds: ['music'],
+        available: 'If the ensemble visits the harbor, a boatwright could offer a playable tide-organ made from discarded foghorns; its notes change with the water level.',
+        developing: 'Adapting a familiar piece for the tide-organ could become an exchange between boatbuilders and traveling musicians.',
+    };
+    const draft = body([{
+        ...subject('music'),
+        development: 'PRIVATE a boatwright could seek musicians to explore the musical use of a tide-organ.',
+    }], [proposal], [], [{
+        subjectId: 'music',
+        unfolding: 'PRIVATE proposed tide-organ experiment, not an established encounter or completed construction.',
+        basis: 'PRIVATE a compatible invention for a visiting ensemble; no elapsed travel or player agreement is assumed.',
+        access: { route: 'local', basis: 'PRIVATE conditional on visiting the harbor; the proposed boatwright can offer contact there.' },
+    }]);
+    const result = await plan(await initial(), draft);
+    assert.equal(result.accepted, true, result.error);
+    assert.equal(packet(result.state).possible_developments[0].available_circumstances, proposal.available);
+    const reviewed = await plan(result.state, draft);
+    assert.equal(reviewed.accepted, true, reviewed.error);
+    const nextInput = JSON.parse(storyInput({ state: reviewed.state, reference: {}, messages }).prompt);
+    assert.doesNotMatch(JSON.stringify(nextInput.accepted_progress), /tide-organ|boatwright/);
+    assert.deepEqual(reviewed.state.realization.music.episodes, {});
+    assert.match(JSON.stringify(nextInput.previous_preparation), /tide-organ/);
+    assert.doesNotMatch(campaignPayload(reviewed.state), /PRIVATE/);
 });
 
 test('inaccessible background survives quiet reviews and later surfaces without becoming accepted history', async () => {

@@ -180,7 +180,7 @@ if (args.includes('--revalidate-plan')) {
     const reference = resolvedPlannerReference(fixture.reference, fixture);
     const input = ownedInput({ reference, state, playerNames: [fixture.userName], reviewedMessageCount: state.source?.messageCount || 0,
         messages: campaignEvidenceMessages(messages.filter(m => indices.has(m.index)), { narrative: true }),
-        historical: { ...historical, opening: undefined } }, prior.inputBudget);
+        historical: { ...historical, opening: undefined }, fitHistorical: Boolean(prior.historyBudgetOmission) }, prior.inputBudget);
     const request = read(path.join(output, id + '-request.json'));
     if (request.find(message => message.role === 'user')?.content !== input.prompt) throw Error('Source or prior preparation changed; recorded output cannot be reused');
     const run = newRun('validation');
@@ -222,8 +222,11 @@ if (args.includes('--plan')) {
             const evidence = narrative || args.includes('--text-evidence') ? campaignEvidenceMessages(selected, { narrative }) : selected;
             const selectedHistorical = narrative ? { ...historical, opening: undefined } : historical;
             input = (owned ? ownedInput : campaignInput)({ reference, state, messages: evidence,
-                historical: selectedHistorical, playerNames: [fixture.userName], reviewedMessageCount: reviewedCount }, run.inputBudget);
-            run.evidence = input.indices; run.inputTokens = input.inputTokens; break;
+                historical: selectedHistorical, playerNames: [fixture.userName], reviewedMessageCount: reviewedCount,
+                fitHistorical: owned && count === 2 }, run.inputBudget);
+            run.evidence = input.indices; run.inputTokens = input.inputTokens;
+            run.historyBudgetOmission = JSON.parse(input.prompt).historical_evidence?.budget_omission || null;
+            break;
         } catch (e) { if (!e.message.includes('exceeds')) throw e; }
     }
     if (!input) throw Error('Complete source and retained preparation do not fit');
