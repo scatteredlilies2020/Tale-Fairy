@@ -70,9 +70,60 @@ export function savedWriterBody(oai, preset, messages, maxTokens = preset.maxOut
         thinking: { type: oai.show_thoughts ? 'enabled' : 'disabled' }, ...(oai.show_thoughts ? { reasoning_effort: preset.reasoning } : {}) };
 }
 
+// Narrow text-only Gemini adapter for isolated follow-through probes. Conversion,
+// safety defaults and reasoning mapping come from the installed ST host itself.
+export function savedGoogleWriterBody(oai, preset, prompt, thinkingBudget, safetySettings, maxTokens = preset.maxOutput) {
+    if (oai.chat_completion_source !== 'makersuite' || preset.source !== 'makersuite'
+        || oai.google_model !== preset.model || oai.temp_openai !== preset.temperature
+        || oai.reasoning_effort !== preset.reasoning) throw Error('Writer configuration changed or unsupported');
+    if (preset.model !== 'gemini-3.8-flash' || oai.enable_web_search || oai.request_images) throw Error('Unsupported saved Gemini writer');
+    const thinkingConfig = { includeThoughts: Boolean(oai.show_thoughts) };
+    if (Number.isInteger(thinkingBudget)) thinkingConfig.thinkingBudget = thinkingBudget;
+    if (typeof thinkingBudget === 'string' && thinkingBudget) thinkingConfig.thinkingLevel = thinkingBudget;
+    return { contents: prompt.contents, safetySettings,
+        generationConfig: { candidateCount: 1, maxOutputTokens: maxTokens, temperature: preset.temperature,
+            topP: oai.top_p_openai, ...(oai.top_k_openai ? { topK: oai.top_k_openai } : {}), thinkingConfig,
+            ...(Number.isInteger(oai.seed) && oai.seed >= 0 ? { seed: oai.seed } : {}) },
+        ...(oai.use_sysprompt && prompt.system_instruction?.parts?.length ? { systemInstruction: prompt.system_instruction } : {}) };
+}
+
+async function isolatedGoogleWriter(root, oai, preset, names) {
+    savedGoogleWriterBody(oai, preset, { contents: [] }, undefined, []);
+    const { setConfigFilePath, getConfigValue } = await import(pathToFileURL(path.join(root, 'src/util.js')));
+    setConfigFilePath(path.join(root, 'config.yaml'));
+    const { convertGooglePrompt, calculateGoogleBudgetTokens } = await import(pathToFileURL(path.join(root, 'src/prompt-converters.js')));
+    const { GEMINI_SAFETY } = await import(pathToFileURL(path.join(root, 'src/constants.js')));
+    const secrets = JSON.parse(fs.readFileSync(path.join(root, 'data/default-user/secrets.json'), 'utf8'));
+    const key = oai.reverse_proxy ? oai.proxy_password : secrets.api_key_makersuite?.find(s => s.active)?.value;
+    if (!key) throw Error('Configured writer credential unavailable');
+    const endpoint = new URL(oai.reverse_proxy || 'https://generativelanguage.googleapis.com');
+    if (!(endpoint.protocol === 'https:' || endpoint.protocol === 'http:' && ['127.0.0.1', 'localhost', '[::1]'].includes(endpoint.hostname))
+        || endpoint.username || endpoint.password || endpoint.search || endpoint.hash || endpoint.port === '8000') throw Error('Unsupported writer endpoint');
+    endpoint.pathname = endpoint.pathname.replace(/\/$/, '') + `/${getConfigValue('gemini.apiVersion', 'v1beta')}/models/${preset.model}:generateContent`;
+    endpoint.searchParams.set('key', key);
+    return {
+        configuration: { source: preset.source, model: preset.model, temperature: preset.temperature, reasoning: preset.reasoning,
+            promptProcessing: 'installed ST convertGooglePrompt; text-only isolated probe' },
+        prepare: messages => structuredClone(messages),
+        async generate(messages, maxTokens = preset.maxOutput) {
+            const prompt = convertGooglePrompt(structuredClone(messages), preset.model, oai.use_sysprompt,
+                { userName: names.userName || 'Player', charName: names.characterName || 'Storyteller', groupNames: [], startsWithGroupName: () => false });
+            const body = savedGoogleWriterBody(oai, preset, prompt, calculateGoogleBudgetTokens(maxTokens, preset.reasoning, preset.model), GEMINI_SAFETY, maxTokens);
+            const response = await fetch(endpoint, { method: 'POST', redirect: 'error', signal: AbortSignal.timeout(300000),
+                headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+            if (!response.ok) throw Object.assign(Error('HTTP failure'), { status: response.status,
+                diagnostic: writerFailureDetails(await response.text(), [key]) });
+            const data = await response.json(), candidate = data.candidates?.[0];
+            return { text: (candidate?.content?.parts || []).filter(part => !part.thought && typeof part.text === 'string').map(part => part.text).join(''),
+                usage: data.usageMetadata, finishReason: candidate?.finishReason, reportedModel: data.modelVersion || null };
+        },
+    };
+}
+
 export async function isolatedWriterProvider(root, preset, names = {}) {
     const read = p => JSON.parse(fs.readFileSync(p, 'utf8'));
     const oai = read(path.join(root, 'data/default-user/settings.json')).oai_settings;
+    if (preset.source === 'makersuite') return isolatedGoogleWriter(root, oai, preset, names);
     savedWriterBody(oai, preset, []); // Validate before reading credentials.
     const openai = oai.chat_completion_source === 'openai';
     const secrets = read(path.join(root, 'data/default-user/secrets.json'));

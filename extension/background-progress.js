@@ -6,7 +6,7 @@ export const BACKGROUND_SCHEMA = { type: 'array', maxItems: 4,
     items: { type: 'object', additionalProperties: false,
         required: ['subjectId', 'unfolding', 'basis', 'access'], properties: {
             subjectId: text(80, 'Exact enduring subject id.'),
-            unfolding: text(700, 'Invent specific compatible NPC/world activity, intentions or possible discoveries. Provisional preparation, not an unseen accomplished fact or player action. More than routines continuing or results remaining unknown.'),
+            unfolding: text(700, 'Choose specific NPC/world activity and what its owner does next independently of player interest. Authored preparation, not an unseen accomplished fact or player action. Keep actual prerequisites and outcomes open, not initiative itself.'),
             basis: text(500, 'Explain consistency with established capabilities, interests, causes and fictional time; invented possibilities need no prior enactment. Unknown prerequisites remain conditional; message count is not elapsed time.'),
             access: { type: 'object', additionalProperties: false, required: ['route', 'basis'], properties: {
                 route: { type: 'string', enum: ['none', 'direct', 'local', 'contact', 'information', 'investigation'],

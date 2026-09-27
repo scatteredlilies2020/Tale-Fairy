@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { DEVELOPMENT_CONTRACT } from '../extension/story-budget.js';
 import { campaignPayload, emptyCampaign } from '../extension/campaign-planner.js';
 import { OWNED_SYSTEM, OWNED_SCHEMA, STORY_MATERIAL_VERSION, ownedInput, ownedPass } from '../extension/event-planning.js';
 import { storyMaterial } from '../extension/undertaking-lifecycle.js';
@@ -175,7 +176,7 @@ for (const [domain, owner, selected] of [
     test(`${domain}: useful unnamed material survives the full pass without injected objective commands`, async () => {
         const result = await plan(emptyCampaign(), body([subject('subject', owner)], [{ id: 'subject', changes: [], playable: [selected] }]));
         assert.equal(result.accepted, true, result.error);
-        assert.deepEqual(parse(result.state), { possible_developments: [{ source: owner, ...storyMaterial(selected) }] });
+        assert.deepEqual(parse(result.state), { development_contract: DEVELOPMENT_CONTRACT, possible_developments: [{ source: owner, ...storyMaterial(selected) }] });
         assert.doesNotMatch(campaignPayload(result.state), /PRIVATE|objective|application|provenance|episodeId/);
         assert.deepEqual(result.state.realization.subject.episodes, {}, 'a proposal does not establish progress');
         assert.equal(result.state.storyMaterialVersion, STORY_MATERIAL_VERSION);

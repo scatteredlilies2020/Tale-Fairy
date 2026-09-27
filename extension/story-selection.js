@@ -3,10 +3,10 @@
 import { ownedInput, ownedPass, OWNED_SCHEMA, needsEventReframe } from './event-planning.js?v=0.14.34&planner-input=1&token-budget=1&rp-plot=1&response=2&history-budget=1';
 import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check } from './campaign-planner.js?v=0.14.34&rp-plot=1';
 import { REALIZATION_SCHEMA } from './undertaking-lifecycle.js?v=0.14.34&response=2';
-import { SELECTED_MATERIAL_SCHEMA, validateSelectedMaterial } from './selected-material.js?v=0.14.36&rp-plot=1&creative=1';
-import { BACKGROUND_SCHEMA, validateBackground } from './background-progress.js?v=0.14.34&creative=1';
+import { SELECTED_MATERIAL_SCHEMA, validateSelectedMaterial } from './selected-material.js?v=0.14.36&rp-plot=1&creative=1&follow-through=1';
+import { BACKGROUND_SCHEMA, validateBackground } from './background-progress.js?v=0.14.34&creative=1&follow-through=1';
 import { SPAN_WITNESS_SCHEMA, witnessMessages, resolveSpanWitnesses, reconcileSpanWitnesses } from './accepted-witnesses.js?v=0.14.34&partial-evidence=1';
-import { storyInputTokens } from './story-budget.js';
+import { storyInputTokens } from './story-budget.js?follow-through=1';
 import { RP_BRIEF_SCHEMA } from './rp-brief.js';
 import { normalizePlannerResponse } from './planner-response.js?v=1';
 import { reconcileDevelopments } from './planner-developments.js?v=1';
@@ -31,7 +31,7 @@ backgroundRecord.required = backgroundRecord.required.filter(key => key !== 'sub
 properties.developments.items.properties.background = backgroundRecord;
 properties.developments.items.required.push('background');
 properties.developments.description = 'Update changed aims and every selected contributor with fresh background/access. Omitted aims stay private; retirement wins. At most four retained subjects.';
-properties.developments.items.properties.development.description = 'An authored source of change: what NPCs or the world could do, discover or create, and what that opens. Invent compatible possibilities beyond the current problem, not a recap or fixed arc.';
+properties.developments.items.properties.development.description = 'An authored source of change: choose what NPCs or the world do next and what that opens. Definite initiative, open participation and outcomes; not a recap, maybe-hook or fixed arc. Preparation is not accepted history.';
 properties.developments.items.properties.initiative.properties.owner.description = 'NPC, group or world process, never the player. Support player interests without assigning participation.';
 STORY_SCHEMA.value.properties = { rp_brief: RP_BRIEF_SCHEMA, campaign: properties.campaign, episode: properties.episode,
     developments: properties.developments, selected_material: SELECTED_MATERIAL_SCHEMA,
@@ -41,7 +41,7 @@ STORY_SCHEMA.value.required.push('rp_brief', 'selected_material');
 // A standalone contract: the legacy protocol is a storage adapter, not a second
 // set of overlapping creative instructions for the provider to reconcile.
 export const STORY_SYSTEM = `${CAMPAIGN_MARKER}
-Creativity is the primary goal. Be an inventive GM, not a continuity summarizer. In one JSON response, author interesting possibilities the transcript does not already supply: new events, NPC agendas, discoveries, encounters, relationships, opportunities and larger directions. Make substantive creative choices, including surprising ones; do not outsource the idea to the writer. Continuity is a boundary against contradictions, not the deliverable or a requirement for prior evidence of an invention. Mood, tone, pacing and prose belong to the writing preset, not any output field. Use concrete circumstances, events, choices or consequences, never emotional labels or delivery instructions.
+Creativity is the primary goal. Be an inventive GM, not a continuity summarizer. Author new events, NPC agendas, discoveries, relationships and larger directions. Make substantive creative choices, including surprising ones. Continuity prevents contradictions; invention needs no prior evidence. Mood, tone, pacing and prose belong to the writing preset, not any output field. Use concrete circumstances, events, choices or consequences, never emotional labels or delivery instructions.
 
 RP BRIEF
 Write rp_brief first: premise, recurring interests, source continuity, departures and emerging direction. For past events, unknowns stay unknown; this does not prohibit future invention. Begin in medias res. For an established fictional setting, use compatible known canon, respecting timeline and alternate premises. Accepted play and explicit user premises override incompatible canon; never force a return to canonical events. The previous brief is a draft, not evidence. No franchise template, activity rotation, style rules or fixed destination.
@@ -50,14 +50,15 @@ PRIVATE PREPARATION
 campaign states broader possibilities; episode describes current facts. developments updates at most four enduring subjects. Keep stable ids; omitted subjects stay private. Revise vague old aims into substantive preparation, not repeated uncertainty. initiative belongs to an NPC or world process, never the player. Competence permits participation, not agreement or accomplishment. Do not add permission gates or tests of established competence.
 Include initiative (owner, control, aim), development, stakes, participation and fresh background/access. Omitted durable fields retain saved values on existing ids.
 
-background develops specific provisional NPC/world activity and its causal basis. Invent what an investigation could uncover, what someone wants, or a new undertaking; do not stop at "a lead might emerge" or "routines continue". Choose possible answers to mysteries privately instead of preserving every unknown forever. Label these as proposals, not established history. Fictional time and prerequisites constrain enactment, not imagination. Message count is not elapsed time.
+background chooses definite NPC/world initiative and its causal basis: what the owner does next independently of player interest. Choose possible answers to mysteries privately instead of preserving every unknown forever. This is authored preparation, not established history. Fictional time and prerequisites constrain enactment, not imagination. Message count is not elapsed time.
 access identifies a plausible bridge through current people, places, interests or plans. A proposed opportunity need not already have been offered or accepted. Invent compatible discoverable surfaces; keep any required contact, travel or discovery conditional, not already accomplished. Use none for unrelated or unreachable private activity. Contact does not reveal private motives or knowledge.
 
 SELECTION
 Assess preparation before selected_material. Return [] or one compact packet. Rebuild it from current play, not previous selected prose. Include each contributor with fresh background. Exclude inaccessible subjects from every horizon; keep hidden causes and knowledge private.
-available supplies an authored opportunity or source of change, not a recap. developing and lasting are optional: distinct changes beyond the scene, not padding. Several subjects may inform one circumstance; subjectIds stays private. Think beyond the next reply. Let recent player interests open new directions instead of defaulting to old investigations or obligations. A future opportunity can be selected before travel or acceptance; state its condition without forcing it into the present scene.
+available supplies a selected development to enact, not a maybe-hook: definite NPC/world action and an observable surface. Condition only real time, place or causal prerequisites, not initiative on player interest. developing and lasting are optional: follow-through beyond the scene with open outcomes. Several subjects may inform one circumstance; subjectIds stays private. Think beyond the next reply. A future opportunity can be selected before travel or acceptance without forcing it into the present scene.
+follow_through_subject_ids identifies the previous selection. Carry unplayed developments forward under stable ids; do not reroll merely because they have not appeared yet. Advance them with accepted play, revising for contradiction, changed relevance or user choice. Dormant material stays private.
 
-Check added value before returning: after subtracting known facts, what playable invention remains? "Friends could grow closer" or "police may find a lead" adds little. Supply what they could share or discover and why it matters. Prefer a distinctive possibility over safe generic filler. This is an internal check, not another call.
+Check added value before returning: after subtracting known facts, what playable invention remains? Supply what people do or discover and why it matters, not "a lead might emerge". Prefer a distinctive development over generic filler. This is an internal check, not another call.
 Ordinary activities and quiet enjoyment are valid. Allow rest, departure, disengagement and endings without another obligation. No forced conflict, interruption, escalation, reconciliation or novelty quota. Keep useful unplayed ideas; omit empty material rather than recycling a recap. Never decide player actions or declare a time skip. No dialogue scripts, ordered beats, assigned reactions or guaranteed outcomes. Proposals are not canon. The writer handles execution and incidental detail.
 
 EVIDENCE
@@ -86,8 +87,11 @@ export function storyInput(args, maxTokens = 14000) {
         // prevents yesterday's scene/selection becoming today's default template.
         // Durable aims, forecasts and witnessed progress remain available.
         delete prior.episode;
+        const retained = new Set(prior.developments.map(subject => subject.id));
+        prior.follow_through_subject_ids = [...new Set((args.state.selectedMaterial || [])
+            .flatMap(entry => entry.subjectIds).filter(id => retained.has(id)))];
         if (args.state.rpBrief) prior.rp_brief = args.state.rpBrief;
-        prior.selection_contract = 'Invent useful possibilities consistent with current play, not a recap or old selected prose. Revise vague drafts; omitted aims stay private. Proposals are not evidence. Refresh background for each selected subject.';
+        prior.selection_contract = 'Invent and carry forward selected developments, not recaps or rerolled maybe-hooks. Definite NPC initiative; open player participation and outcomes. Preparation is not evidence. Refresh background for each selected subject.';
         if (prior.review_scope) prior.review_scope.instruction = 'Review relevance across the RP. Remove spent material; retain independent possibilities. Boundary zero means reconcile all supplied context.';
         // Static premises and prior drafts precede current play, which can change
         // their time-sensitive conditions without rewriting the source reference.

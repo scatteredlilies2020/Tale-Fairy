@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { DEVELOPMENT_CONTRACT } from '../extension/story-budget.js';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { generationHarness } from './helpers/generation-harness.js';
@@ -732,7 +733,7 @@ test('actual campaign entry builds evidence, uses single-shot transport and comm
     assert.equal(h.state().campaignPreparation.developments[0].initiative.owner, 'Jo');
     assert.match(h.prepare().payload, /An original tune has potential/);
     assert.deepEqual(JSON.parse(h.prepare().payload.replace(/<\/?tale-fairy-context>/g, '').trim()),
-        { possible_developments: design.selected_material.map(materialHorizons) }, 'actual host injects discoverable material, not private ownership or a whole future plan');
+        { development_contract: DEVELOPMENT_CONTRACT, possible_developments: design.selected_material.map(materialHorizons) }, 'actual host injects discoverable material, not private ownership or a whole future plan');
     assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
 });
 
@@ -858,7 +859,7 @@ test('normal host review upgrades a v1 independent plan without a separate contr
     assert.deepEqual(state.campaignPreparation.archive.find(entry => entry.scopeReframe).development, previous.developments[0]);
     assert.deepEqual(state.campaignInstructions, [{ text: 'Keep the next journey open.' }]);
     const packet = JSON.parse(h.prepare().payload.replace(/<\/?tale-fairy-context>/g, '').trim());
-    assert.deepEqual(Object.keys(packet), ['possible_developments', 'author_instructions']);
+    assert.deepEqual(Object.keys(packet), ['development_contract', 'possible_developments', 'author_instructions']);
 });
 
 test('actual owned host review converts retained legacy subjects and archives their complete prior form', async () => {
@@ -1178,7 +1179,7 @@ test('author instruction is retained verbatim and reaches writer and the single 
     const selected = h.prepare();
     assert.ok(selected.payload.includes(note));
     assert.deepEqual(JSON.parse(selected.payload.replace(/<\/?tale-fairy-context>/g, '').trim()),
-        { possible_developments: design.selected_material.map(materialHorizons), author_instructions: [note] });
+        { development_contract: DEVELOPMENT_CONTRACT, possible_developments: design.selected_material.map(materialHorizons), author_instructions: [note] });
     h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata));
     h.scope.generationGuideSelection = null;
     assert.equal(h.prepare().payload, selected.payload, 'retry cache includes the exact author instructions');

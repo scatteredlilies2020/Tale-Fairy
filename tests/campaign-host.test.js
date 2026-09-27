@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
-import { emptyCampaign, mergeCampaign, campaignPayload, preBudgetCampaignPayload, validCampaignState, CAMPAIGN_MARKER } from '../extension/campaign-planner.js';
+import { emptyCampaign, mergeCampaign, campaignPayload, preFollowThroughCampaignPayload, preBudgetCampaignPayload, validCampaignState, CAMPAIGN_MARKER } from '../extension/campaign-planner.js';
 import { CampaignRuntime } from '../extension/campaign-runtime.js';
 import * as injection from '../extension/request-injection.js';
 import { defaultState, saveState, loadState, buildPromptPayload, guidanceSnapshot, isDirectionCurrent } from '../extension/state.js';
@@ -329,6 +329,23 @@ test('ready revisions replace older retry packets without changing a frozen in-f
     h.scope.generationGuideSelection = null;
     assert.match(h.prepare().payload, /New contrasting musical possibilities/);
     assert.doesNotMatch(h.prepare().payload, /A revised long-term design/);
+    assert.equal(h.calls.length, 0);
+});
+
+test('campaign cache authenticates old bounded packets and adds follow-through without rewriting archives', () => {
+    const h = generationHarness(messages());
+    const state = attach(h);
+    const current = h.prepare().payload;
+    const entries = generationContextEntries(h.context.chatMetadata[GENERATION_CONTEXT_KEY]);
+    const oldPayload = preFollowThroughCampaignPayload(state.campaignPreparation);
+    assert.doesNotMatch(oldPayload, /development_contract/);
+    assert.match(current, /development_contract/);
+    const archive = { entries: [{ ...entries[0], payload: oldPayload }] };
+    assert.equal(generationContextEntries(archive).length, 1);
+    h.context.chatMetadata[GENERATION_CONTEXT_KEY] = archive;
+    h.scope.generationGuideSelection = null;
+    assert.equal(h.prepare('swipe').payload, current);
+    assert.equal(archive.entries[0].payload, oldPayload);
     assert.equal(h.calls.length, 0);
 });
 

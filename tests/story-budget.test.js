@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { conservativeTokenCount, estimateTokenCount } from '../extension/token-budget.js';
-import { fitStoryContext, storyContextPayload, storyInputTokens, verifyStoryInputBudget, WRITER_CONTEXT_TOKEN_LIMIT } from '../extension/story-budget.js';
+import { fitStoryContext, storyContextPayload, storyInputTokens, verifyStoryInputBudget, WRITER_CONTEXT_TOKEN_LIMIT, DEVELOPMENT_CONTRACT } from '../extension/story-budget.js';
 import { storyInput, STORY_SYSTEM, STORY_SCHEMA } from '../extension/story-selection.js';
 import { emptyCampaign } from '../extension/campaign-planner.js';
 import { plannerMessages, PLANNER_OUTPUT_MODE } from '../extension/output-negotiation.js';
@@ -40,6 +40,27 @@ test('writer fitting retains complete small packets with exact escaped instructi
     const decoded = JSON.parse(report.payload.replace(/<\/?tale-fairy-context>/g, ''));
     assert.deepEqual(decoded.author_instructions, notes);
     assert.doesNotMatch(report.payload, /<my instruction>/);
+});
+
+test('follow-through is an explicit bounded writer contract, not a chance gate or factual promotion', () => {
+    const material = [{ available_circumstances: 'If they visit the arena, Bolin could dispute an old match diagram.' }];
+    const report = fitStoryContext(material, []);
+    const decode = payload => JSON.parse(payload.replace(/<\/?tale-fairy-context>/g, ''));
+    assert.equal(decode(report.payload).development_contract, DEVELOPMENT_CONTRACT);
+    assert.deepEqual(decode(report.payload).possible_developments, material, 'legacy hedging is not rewritten as historical fact');
+    assert.match(DEVELOPMENT_CONTRACT, /when its stated circumstances fit/);
+    assert.match(DEVELOPMENT_CONTRACT, /do not wait for the player/);
+    assert.match(DEVELOPMENT_CONTRACT, /without forced travel, time skips or unrelated interruptions/);
+    assert.match(DEVELOPMENT_CONTRACT, /participation and outcomes remain open/);
+    assert.match(DEVELOPMENT_CONTRACT, /not already-accepted history/);
+    assert.equal(report.tokens, conservativeTokenCount(report.payload));
+    assert.ok(report.tokens <= report.limit);
+    const old = fitStoryContext(material, [], { followThrough: false });
+    assert.equal(decode(old.payload).development_contract, undefined);
+    assert.equal(old.payload, storyContextPayload(material, [], { followThrough: false }));
+    assert.ok(old.tokens < report.tokens);
+    assert.equal(fitStoryContext([], []).payload, '');
+    assert.deepEqual(decode(fitStoryContext([], ['Rest tonight.']).payload), { author_instructions: ['Rest tonight.'] });
 });
 
 test('oversized integrated packets are omitted whole, not separated from their prerequisites', () => {

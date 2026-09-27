@@ -21,8 +21,8 @@ test('preset snapshot uses order enablement, keeps only safe fields and reproduc
 
 test('preset snapshot labels the selected writer instead of an inactive provider model', () => {
     const oai_settings = { prompts: [], prompt_order: [{ character_id: 100001, order: [] }],
-        openai_model: 'active-openai', deepseek_model: 'saved-deepseek', custom_model: 'saved-custom' };
-    for (const [source, expected] of [['openai', 'active-openai'], ['deepseek', 'saved-deepseek'], ['custom', 'saved-custom'], ['unknown', null]]) {
+        openai_model: 'active-openai', deepseek_model: 'saved-deepseek', custom_model: 'saved-custom', google_model: 'saved-gemini' };
+    for (const [source, expected] of [['openai', 'active-openai'], ['deepseek', 'saved-deepseek'], ['custom', 'saved-custom'], ['makersuite', 'saved-gemini'], ['unknown', null]]) {
         const settings = { oai_settings: { ...oai_settings, chat_completion_source: source } };
         const before = structuredClone(settings);
         assert.equal(presetSnapshot(settings).model, expected);

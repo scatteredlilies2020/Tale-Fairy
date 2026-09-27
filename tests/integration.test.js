@@ -26,7 +26,7 @@ test('settings explanations stay concise', () => {
 
 test('manifest, browser runtime, and detached plugin share the release version', () => {
     assert.equal(manifest.version, '0.14.36');
-    assert.equal(manifest.js, 'extension/index.js?v=0.14.36&planner-input=1&episode-fields=1&token-budget=1&rp-plot=1&progress=1&response=2&history-budget=1&partial-updates=1&partial-evidence=1&creative=1');
+    assert.equal(manifest.js, 'extension/index.js?v=0.14.36&planner-input=1&episode-fields=1&token-budget=1&rp-plot=1&progress=1&response=2&history-budget=1&partial-updates=1&partial-evidence=1&creative=1&follow-through=1');
     assert.equal(manifest.css, 'extension/style.css?v=0.14.36');
     assert.equal(pluginPackage.version, manifest.version);
     assert.match(pluginSource, /const VERSION = '0\.14\.36'/);
@@ -35,9 +35,9 @@ test('manifest, browser runtime, and detached plugin share the release version',
 
 test('creative contract updates invalidate the browser entry and schema imports', async () => {
     const story = await readFile(new URL('../extension/story-selection.js', import.meta.url), 'utf8');
-    assert.match(source, /from '\.\/story-selection\.js\?[^']*&creative=1'/);
+    assert.match(source, /from '\.\/story-selection\.js\?[^']*&creative=1&follow-through=1'/);
     for (const module of ['selected-material', 'background-progress']) {
-        assert.match(story, new RegExp(`from '\\./${module}\\.js\\?[^']*&creative=1'`));
+        assert.match(story, new RegExp(`from '\\./${module}\\.js\\?[^']*&creative=1&follow-through=1'`));
     }
 });
 

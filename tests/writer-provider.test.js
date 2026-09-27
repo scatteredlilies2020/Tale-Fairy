@@ -1,6 +1,30 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { writerFailureDetails, savedWriterBody } from '../scripts/isolated-writer-provider.mjs';
+import { writerFailureDetails, savedWriterBody, savedGoogleWriterBody } from '../scripts/isolated-writer-provider.mjs';
+
+test('isolated Gemini writer preserves saved sampling and installed-host reasoning without credentials in the body', () => {
+    const preset = { source: 'makersuite', model: 'gemini-3.8-flash', temperature: 0.9, reasoning: 'auto', maxOutput: 2000 };
+    const oai = { chat_completion_source: preset.source, google_model: preset.model, temp_openai: 0.9, reasoning_effort: 'auto',
+        show_thoughts: true, top_p_openai: 1, top_k_openai: 0, seed: -1, use_sysprompt: false, proxy_password: 'SECRET' };
+    const prompt = { contents: [{ role: 'user', parts: [{ text: 'Continue.' }] }], system_instruction: { parts: [{ text: 'System' }] } };
+    const before = structuredClone({ oai, prompt });
+    const body = savedGoogleWriterBody(oai, preset, prompt, 'high', [{ category: 'host-default' }]);
+    assert.deepEqual(body, { contents: prompt.contents, safetySettings: [{ category: 'host-default' }], generationConfig: {
+        candidateCount: 1, maxOutputTokens: 2000, temperature: 0.9, topP: 1, thinkingConfig: { includeThoughts: true, thinkingLevel: 'high' } } });
+    assert.deepEqual({ oai, prompt }, before);
+    assert.doesNotMatch(JSON.stringify(body), /SECRET|System/);
+    const configured = savedGoogleWriterBody({ ...oai, use_sysprompt: true, seed: 7, top_k_openai: 30 }, preset, prompt, -1, []);
+    assert.deepEqual(configured.systemInstruction, prompt.system_instruction);
+    assert.equal(configured.generationConfig.thinkingConfig.thinkingBudget, -1);
+    assert.equal(configured.generationConfig.seed, 7);
+    assert.equal(configured.generationConfig.topK, 30);
+    for (const change of [{ google_model: 'other' }, { temp_openai: 0.2 }, { reasoning_effort: 'high' }, { chat_completion_source: 'openai' }]) {
+        assert.throws(() => savedGoogleWriterBody({ ...oai, ...change }, preset, prompt, -1, []), /configuration changed/);
+    }
+    for (const change of [{ enable_web_search: true }, { request_images: true }]) {
+        assert.throws(() => savedGoogleWriterBody({ ...oai, ...change }, preset, prompt, -1, []), /Unsupported saved Gemini/);
+    }
+});
 
 test('isolated saved OpenAI writer preserves the selected model and host token/reasoning mapping', () => {
     const preset = { source: 'openai', model: 'gpt-5.6-sol', temperature: 0.9, reasoning: 'low', maxOutput: 6000 };

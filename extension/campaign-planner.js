@@ -5,7 +5,7 @@ import { validateSelectedMaterial, selectedMaterialPacket } from './selected-mat
 import { RP_BRIEF_SCHEMA } from './rp-brief.js';
 import { validateBackground } from './background-progress.js?v=0.14.34';
 import { estimateTokenCount } from './token-budget.js';
-import { fitStoryContext, storyContextPayload } from './story-budget.js';
+import { fitStoryContext, storyContextPayload } from './story-budget.js?follow-through=1';
 
 // Matches the existing host's planner-request marker so request interception
 // cannot mistake this internal pass for RP and inject the guide into itself.
@@ -218,10 +218,16 @@ export function campaignPayload(state, instructions = []) {
     return campaignPayloadBudget(state, instructions).payload;
 }
 
+// Authenticate pre-follow-through bounded swipe packets without replaying their
+// old handoff contract. Normal outgoing packets always use campaignPayload.
+export function preFollowThroughCampaignPayload(state, instructions = []) {
+    return fitStoryContext(campaignWriterMaterial(state), instructions.filter(text => typeof text === 'string' && text.trim()), { followThrough: false }).payload;
+}
+
 // Exact pre-budget serialization authenticates old immutable swipe packets.
 // It is never sent to the writer; authenticated snapshots are rebuilt above.
 export function preBudgetCampaignPayload(state, instructions = []) {
-    return storyContextPayload(campaignWriterMaterial(state), instructions.filter(text => typeof text === 'string' && text.trim()));
+    return storyContextPayload(campaignWriterMaterial(state), instructions.filter(text => typeof text === 'string' && text.trim()), { followThrough: false });
 }
 
 // Exact 0.14.32 serialization authenticates saved packets only. Never send it

@@ -28,7 +28,7 @@ export function presetSnapshot(settings) {
         .map(({ identifier, name, role, content, injection_position, injection_depth, injection_order }) => ({ identifier, name, role, content, injection_position, injection_depth, injection_order }));
     // Saved settings retain inactive providers' models. Never label a frozen
     // OpenAI preset with an old DeepSeek selection in substitution reports.
-    const modelKey = { openai: 'openai_model', deepseek: 'deepseek_model', custom: 'custom_model' }[oai.chat_completion_source];
+    const modelKey = { openai: 'openai_model', deepseek: 'deepseek_model', custom: 'custom_model', makersuite: 'google_model' }[oai.chat_completion_source];
     return { prompts, model: modelKey ? oai[modelKey] ?? null : null, source: oai.chat_completion_source, reasoning: oai.reasoning_effort,
         temperature: oai.temp_openai, context: oai.openai_max_context, maxOutput: oai.openai_max_tokens };
 }

@@ -36,20 +36,22 @@ export function storyContextJson(value) {
     return JSON.stringify(value).replace(/</g, '\\u003c');
 }
 
-export function storyContextPayload(material, authored) {
+export const DEVELOPMENT_CONTRACT = 'Selected material is intended story development, not a menu of chance-triggered hooks. Bring NPC/world activity into observable play when its stated circumstances fit; do not wait for the player to request activation. Until then, carry it forward without forced travel, time skips or unrelated interruptions. Could/might wording does not add a random activation gate. Player participation and outcomes remain open. Preparation is not already-accepted history; current play and explicit user choices take precedence.';
+
+export function storyContextPayload(material, authored, { followThrough = true } = {}) {
     if (!material.length && !authored.length) return '';
     return `<tale-fairy-context>\n${storyContextJson({
-        ...(material.length ? { possible_developments: material } : {}),
+        ...(material.length ? { ...(followThrough ? { development_contract: DEVELOPMENT_CONTRACT } : {}), possible_developments: material } : {}),
         ...(authored.length ? { author_instructions: authored } : {}),
     })}\n</tale-fairy-context>`;
 }
 
-export function fitStoryContext(material, authored) {
+export function fitStoryContext(material, authored, options) {
     const selected = [];
-    let payload = storyContextPayload(selected, authored);
+    let payload = storyContextPayload(selected, authored, options);
     const authorTokens = conservativeTokenCount(payload);
     for (const entry of material) {
-        const candidate = storyContextPayload([...selected, entry], authored);
+        const candidate = storyContextPayload([...selected, entry], authored, options);
         // Never clip a sentence, separate a prerequisite from its possibility,
         // or split an integrated horizon packet. Saved preparation is untouched.
         if (conservativeTokenCount(candidate) <= WRITER_CONTEXT_TOKEN_LIMIT) {

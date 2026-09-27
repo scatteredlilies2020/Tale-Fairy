@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { storyInput, storyPass, STORY_SCHEMA, STORY_SYSTEM } from '../extension/story-selection.js';
 import { ownedInput, ownedPass } from '../extension/event-planning.js';
 import { emptyCampaign, campaignPayload, validCampaignState } from '../extension/campaign-planner.js';
-import { storyInputTokens } from '../extension/story-budget.js';
+import { storyInputTokens, DEVELOPMENT_CONTRACT } from '../extension/story-budget.js';
 
 const messages = [{ index: 0, role: 'user', content: 'We arrived in Mere. The performance is finished.' }];
 const source = { chatId: 'story', referenceHash: 'premise', messageCount: 1, fingerprint: 'accepted' };
@@ -556,6 +556,26 @@ test('creativity takes priority and evidence constrains history, not invention',
     assert.match(fields.developments.items.properties.background.properties.basis.description, /invented possibilities need no prior enactment/);
 });
 
+test('selected subjects carry forward by identity without copying hooks or inventing progress', async () => {
+    const state = await initial();
+    const input = JSON.parse(storyInput({ state, reference: {}, messages }).prompt);
+    assert.deepEqual(input.previous_preparation.follow_through_subject_ids, ['music', 'travel']);
+    assert.equal(input.previous_preparation.selected_material, undefined);
+    assert.doesNotMatch(JSON.stringify(input.previous_preparation), /complementary repertoires/);
+    assert.match(STORY_SYSTEM, /do not reroll merely because they have not appeared yet/);
+    assert.match(STORY_SYSTEM, /not initiative on player interest/);
+    const next = await plan(state, body([], [selected()]));
+    assert.equal(next.accepted, true, next.error);
+    assert.deepEqual(next.state.realization, state.realization);
+    assert.deepEqual(JSON.parse(storyInput({ state: next.state, reference: {}, messages }).prompt)
+        .previous_preparation.follow_through_subject_ids, ['music', 'travel']);
+    const reset = structuredClone(state);
+    // Unknown ids never become preservation instructions even in malformed old selection.
+    reset.selectedMaterial = [{ ...selected(), subjectIds: ['unknown'] }];
+    assert.deepEqual(JSON.parse(storyInput({ state: reset, reference: {}, messages }).prompt)
+        .previous_preparation.follow_through_subject_ids, []);
+});
+
 test('a new conditional opportunity reaches the writer without becoming witnessed history on review', async () => {
     const proposal = {
         subjectIds: ['music'],
@@ -767,7 +787,7 @@ test('an accessible conditional opportunity does not expose its unknown private 
     records[0].access.basis = 'PRIVATE a posted notice makes possible collaboration known, not its outcome.';
     const result = await plan(state, body([], [selected(['music'])], [], records));
     assert.equal(result.accepted, true, result.error);
-    assert.doesNotMatch(campaignPayload(result.state), /PRIVATE|completion|outcome|posted notice/);
+    assert.doesNotMatch(JSON.stringify(packet(result.state).possible_developments), /PRIVATE|completion|outcome|posted notice/);
     assert.deepEqual(result.state.realization, state.realization);
 });
 
@@ -850,6 +870,6 @@ test('planner contract excludes preset directions from all fields; effects come 
     const available = 'The inn has a spare room and hot supper. Tomorrow’s coach leaves at dawn; the unfinished inquiry can wait.';
     const result = await plan(await initial(), body([], [{ subjectIds: ['music'], available }]));
     assert.equal(result.accepted, true, result.error);
-    assert.deepEqual(packet(result.state), { possible_developments: [{ available_circumstances: available }] });
+    assert.deepEqual(packet(result.state), { development_contract: DEVELOPMENT_CONTRACT, possible_developments: [{ available_circumstances: available }] });
     assert.doesNotMatch(campaignPayload(result.state), /tone|mood|pacing|style|PRIVATE/);
 });
