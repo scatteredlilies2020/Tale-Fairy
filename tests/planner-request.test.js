@@ -6,7 +6,7 @@ import { AnalysisValidationError, WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA } f
 import * as reasoning from '../extension/reasoning-policy.js';
 import * as output from '../extension/output-negotiation.js';
 import { claimPlannerRecoveryRepair } from '../extension/planner-lifecycle.js';
-import { verifyStoryInputBudget } from '../extension/story-budget.js';
+import { fitStoryInputBudget } from '../extension/story-budget.js';
 
 const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
 const take = (start, end) => source.slice(source.indexOf(start), source.indexOf(end));
@@ -24,7 +24,7 @@ function harness(results, { route = 'direct', configured = 'low', activeEffort =
         return result;
     };
     const scope = {
-        ...reasoning, ...output, AnalysisValidationError, claimPlannerRecoveryRepair, WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA, verifyStoryInputBudget,
+        ...reasoning, ...output, AnalysisValidationError, claimPlannerRecoveryRepair, WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA, fitStoryInputBudget,
         plannerStorage: () => null, AbortController, DOMException, console: { warn() {} },
         EXTENSION_ID: 'test', detachedPlannerReady: Promise.resolve(), detachedPlannerEnabled: false,
         PLANNER_SYSTEM_PROMPT: 'planner', INCREMENTAL_SYSTEM_PROMPT: 'routine',

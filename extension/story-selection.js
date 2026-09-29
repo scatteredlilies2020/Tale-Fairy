@@ -1,6 +1,7 @@
 // One provider response: shared story material + private preparation + witnessed progress.
 // The established subject/evidence transaction remains the storage authority.
-import { ownedInput, ownedPass, OWNED_SCHEMA, needsEventReframe } from './event-planning.js?v=0.14.34&planner-input=1&token-budget=1&rp-plot=1&response=2&history-budget=1';
+import { ownedInput, ownedPass, OWNED_SCHEMA, needsEventReframe } from './event-planning.js?v=0.14.34&planner-input=1&token-budget=1&rp-plot=1&response=2&history-budget=1&compaction=1';
+import { compactPlannerPayload } from './planner-compaction.js';
 import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check } from './campaign-planner.js?v=0.14.34&rp-plot=1';
 import { REALIZATION_SCHEMA } from './undertaking-lifecycle.js?v=0.14.34&response=2';
 import { SELECTED_MATERIAL_SCHEMA, validateSelectedMaterial } from './selected-material.js?v=0.14.36&rp-plot=1&creative=1&follow-through=1';
@@ -71,7 +72,7 @@ Keep rp_brief under 150 words and selected_material under 600 tokens. Limits are
 
 export function storyInput(args, maxTokens = 14000) {
     if (!Number.isFinite(maxTokens) || maxTokens <= 0) throw Error('Planner input budget must be a finite positive token count.');
-    return ownedInput(args, maxTokens, { system: STORY_SYSTEM, schema: STORY_SCHEMA,
+    return ownedInput(args, maxTokens, { system: STORY_SYSTEM, schema: STORY_SCHEMA, compact: compactPlannerPayload,
         measure: payload => storyInputTokens(JSON.stringify(payload), STORY_SYSTEM, STORY_SCHEMA), project: payload => {
         const prior = payload.previous_preparation;
         for (const key of ['playable', 'playable_review_required_ids', 'selection_review_required_ids',

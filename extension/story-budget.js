@@ -1,5 +1,6 @@
 import { conservativeTokenCount } from './token-budget.js?story-budget=1';
 import { plannerMessages, PLANNER_OUTPUT_MODE } from './output-negotiation.js?v=0.14.22';
+import { compactProgressPayload, compactMessagePayload } from './planner-compaction.js';
 
 export const WRITER_CONTEXT_TOKEN_LIMIT = 1000;
 const envelopes = new WeakMap();
@@ -19,8 +20,7 @@ export function storyInputTokens(prompt, system, schema) {
     return envelope.tokens + conservativeTokenCount(JSON.stringify(prompt));
 }
 
-export async function verifyStoryInputBudget(prompt, system, schema, limit, tokenCounter) {
-    if (!Number.isFinite(limit) || limit <= 0) throw Error('Planner input budget must be a finite positive token count.');
+async function measureStoryInput(prompt, system, schema, tokenCounter) {
     let tokens = storyInputTokens(prompt, system, schema);
     if (typeof tokenCounter === 'function') {
         try {
@@ -28,8 +28,43 @@ export async function verifyStoryInputBudget(prompt, system, schema, limit, toke
             if (Number.isFinite(measured) && measured > 0) tokens = Math.max(tokens, Math.ceil(measured) + 64);
         } catch { /* An unavailable tokenizer never disables the local guard. */ }
     }
-    if (tokens > limit) throw Error(`Planner input ${tokens} exceeds ${limit} tokens including request framing; no provider request sent. Reduce source size or raise the input ceiling.`);
     return tokens;
+}
+
+function checkInputLimit(tokens, limit) {
+    if (!Number.isFinite(limit) || limit <= 0) throw Error('Planner input budget must be a finite positive token count.');
+    if (tokens > limit) throw Error(`Planner input ${tokens} exceeds ${limit} tokens including request framing; no provider request sent. Required context cannot fit without revising its content; saved preparation is intact.`);
+}
+
+export async function verifyStoryInputBudget(prompt, system, schema, limit, tokenCounter) {
+    checkInputLimit(0, limit);
+    const tokens = await measureStoryInput(prompt, system, schema, tokenCounter);
+    checkInputLimit(tokens, limit);
+    return tokens;
+}
+
+// The active tokenizer may find an overrun after local assembly. Refit the
+// exact outgoing prompt with the same lossless encodings before rejecting it.
+// No generation call, changed evidence addresses, or provider retry is needed.
+export async function fitStoryInputBudget(prompt, system, schema, limit, tokenCounter) {
+    checkInputLimit(0, limit);
+    let tokens = await measureStoryInput(prompt, system, schema, tokenCounter);
+    if (tokens > limit) {
+        let payload;
+        try { payload = JSON.parse(prompt); } catch { /* Legacy non-JSON prompt: guard only. */ }
+        if (payload && typeof payload === 'object' && !Array.isArray(payload)) {
+            for (const compact of [compactProgressPayload, compactMessagePayload]) {
+                if (tokens <= limit) break;
+                const candidate = compact(payload);
+                if (candidate === payload) continue;
+                const candidatePrompt = JSON.stringify(candidate);
+                const candidateTokens = await measureStoryInput(candidatePrompt, system, schema, tokenCounter);
+                if (candidateTokens < tokens) { payload = candidate; prompt = candidatePrompt; tokens = candidateTokens; }
+            }
+        }
+    }
+    checkInputLimit(tokens, limit);
+    return { prompt, tokens };
 }
 
 export function storyContextJson(value) {

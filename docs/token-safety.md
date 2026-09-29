@@ -16,6 +16,14 @@ critic, scanner or retry call is added.
 - Keep the existing input ceiling. Optional recall and older assistant context
   yield to required sources; required evidence and instructions are not silently
   clipped. Impossible inputs fail locally before a provider request.
+- Before shrinking the conversation or shedding historical excerpts, try
+  lossless request compaction. The progress ledger uses shared subject, source
+  and witness tables, with common provenance fields stated once. Every episode,
+  status, exact quote and source field remains reconstructible. If needed,
+  accepted-message spans use `[span, text]` rows with their columns stated once.
+  Span numbers, text, speakers and evidence validation inputs stay unchanged.
+  Neither encoding rewrites saved preparation, canon or chat text. Each candidate
+  is measured against the full envelope and used only if it saves tokens.
 - If the smallest protected conversation window still exceeds the ceiling,
   shed whole optional historical excerpts before failing. Thin the fullest
   timeline epochs first to retain wider coverage, then open-thread recall and
@@ -29,6 +37,9 @@ critic, scanner or retry call is added.
   not be measured as though it were the active writer. An unavailable tokenizer
   never disables the conservative guard, and a smaller count cannot lower it.
   Cancellation remains available if the host tokenizer stalls.
+  If the active tokenizer finds an overrun, try the same lossless compaction
+  against its count before rejecting the request. Already compacted inputs are
+  not encoded twice. There is no additional generation or provider retry.
 - Exposed summaries, host-activated lore and optional memory providers share
   the existing summary budget. Deduplicate exact text and omit whole sources
   that do not fit; do not load whole books or compress sources with another call.
@@ -59,7 +70,9 @@ tokenizer, advertised limits, or extra host/extension content. These guards boun
 TF's contribution; they do not rewrite the writer's history, lore, preset or
 response budget. Truncated planner output remains rejected without JSON repair.
 
-Tests exercise multilingual/escaped input, large data and whitespace, exact
+Tests exercise lossless ledger/span reconstruction, growing progress ledgers,
+distinct same-message witnesses, unknown fields, tokenizer-driven compaction,
+multilingual/escaped input, large data and whitespace, exact
 budget boundaries, transport preflight, unavailable tokenizers, whole-block
 omission, author-note preservation, and cache migration. They are deterministic
 engineering checks, not a live-provider or creative-quality evaluation.

@@ -1,7 +1,7 @@
 import { sha256 } from '/lib.js';
 import { campaignAuthorInstructions, campaignPayloadBudget, campaignUsable, campaignMaterialUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1';
-import { storyInput as ownedInput, storyPass as ownedPass, needsEventReframe, STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM } from './story-selection.js?v=0.14.36&planner-input=1&episode-fields=1&token-budget=1&rp-plot=1&response=2&history-budget=1&partial-updates=1&partial-evidence=1&creative=1&follow-through=1';
-import { verifyStoryInputBudget } from './story-budget.js?follow-through=1';
+import { storyInput as ownedInput, storyPass as ownedPass, needsEventReframe, STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM } from './story-selection.js?v=0.14.36&planner-input=1&episode-fields=1&token-budget=1&rp-plot=1&response=2&history-budget=1&partial-updates=1&partial-evidence=1&creative=1&follow-through=1&compaction=1';
+import { fitStoryInputBudget } from './story-budget.js?follow-through=1&compaction=1';
 import { readCampaignContinuity } from './campaign-continuity.js';
 // Keep the public registration URL stable so external adapters share this registry.
 import { readEvidenceProviders, evidenceRevisionKey } from './evidence-providers.js';
@@ -2394,7 +2394,8 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
             // model or connection profile. Those routes use the local reserve.
             const counter = model.active && typeof context.getTokenCountAsync === 'function'
                 ? context.getTokenCountAsync.bind(context) : null;
-            await waitForAbortable(verifyStoryInputBudget(prompt, systemPrompt, schema, Number(getSettings().maxPromptTokens) || 16000, counter), controller.signal);
+            const fitted = await waitForAbortable(fitStoryInputBudget(prompt, systemPrompt, schema, Number(getSettings().maxPromptTokens) || 16000, counter), controller.signal);
+            prompt = fitted.prompt;
             controller.signal.throwIfAborted();
         }
         const temperature = requestSpec.temperature === undefined ? plannerTemperature() : normalizePlannerTemperature(requestSpec.temperature);

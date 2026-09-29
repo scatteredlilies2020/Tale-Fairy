@@ -133,6 +133,7 @@ export function ownedInput({ reference, state, messages, historical = {}, player
     // re-tokenizing the same system/schema for each optional memory candidate.
     const protocolTokens = estimateTokenCount(protocol.system + JSON.stringify(protocol.schema));
     const measure = protocol.measure || (value => protocolTokens + estimateTokenCount(JSON.stringify(value)));
+    if (protocol.compact) payload = protocol.compact(payload, measure, maxTokens);
     if (fitHistorical) payload.historical_evidence = fitPlannerHistory(payload.historical_evidence,
         value => measure({ ...payload, historical_evidence: value }) <= maxTokens);
     const external = fitEvidenceProviders(evidence, continuityTokens,
@@ -149,7 +150,7 @@ export function ownedInput({ reference, state, messages, historical = {}, player
         const historyTokens = estimateTokenCount(JSON.stringify(payload.historical_evidence));
         const preparationTokens = estimateTokenCount(JSON.stringify({ previous_preparation: payload.previous_preparation,
             accepted_progress: payload.accepted_progress, closed_subject_ids: payload.closed_subject_ids }));
-        throw Error(`Planner input ${inputTokens} exceeds ${maxTokens} tokens (reference ${referenceTokens}; messages ${messageTokens}; history ${historyTokens}; preparation ${preparationTokens}; section estimates exclude protocol/framing). Reduce source size or raise the input ceiling.`);
+        throw Error(`Planner input ${inputTokens} exceeds ${maxTokens} tokens (reference ${referenceTokens}; messages ${messageTokens}; history ${historyTokens}; preparation ${preparationTokens}; section estimates exclude protocol/framing). Required context still exceeds the ceiling after fitting; no provider request sent and saved preparation is intact.`);
     }
     return { prompt, inputTokens, lifecycleRequired: true, verifiedRetiredIds: [...verifiedRetiredIds], verifiedProgress: structuredClone(verifiedProgress), evidenceMessages: structuredClone(messages),
         evidence: { status: external.length ? 'included' : 'omitted-or-unavailable', providers: external.map(e => e.provider) }, indices: messages.map(message => message.index), playerNames: names,
