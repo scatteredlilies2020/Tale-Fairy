@@ -45,7 +45,7 @@ for (const [name, invalid] of [
     } });
     assert.equal(calls, 2);
     assert.equal(result.accepted, true, result.error);
-    assert.equal(result.recovery.status, 'complete');
+    assert.equal(result.recovery.status, name.startsWith('oversized') ? 'shortened' : 'complete');
     assert.equal(validCampaignState(result.state), true);
     assert.ok(result.budget.plan <= 1200 && result.budget.selected <= 600);
     assert.deepEqual(state, original);
@@ -86,16 +86,17 @@ test('host-classified truncated output can be replaced without trusting its part
     assert.equal(result.accepted, true);
 });
 
-test('correction that cannot fit required context spends no second request', async () => {
+test('correction preserves protected input above a soft target instead of blocking the second request', async () => {
     const prepared = input();
     prepared.inputLimit = 1;
     let calls = 0;
     const result = await storyPassWithRecovery({ state: emptyCampaign(), input: prepared, source, generate: async () => {
-        calls++; return { text: 'not JSON', finishReason: 'stop' };
+        return ++calls === 1 ? { text: 'not JSON', finishReason: 'stop' } : response(draft());
     } });
-    assert.equal(calls, 1);
-    assert.equal(result.recovery.status, 'unavailable');
-    assert.match(result.error, /cannot fit within/);
+    assert.equal(calls, 2);
+    assert.equal(result.accepted, true);
+    assert.equal(result.recovery.status, 'complete');
+    assert.ok(result.budgetNotices.some(notice => notice.startsWith('input ')));
 });
 
 
@@ -111,4 +112,24 @@ test('correction feedback fits when the original request reaches its configured 
     } });
     assert.equal(calls, 2);
     assert.equal(result.accepted, true);
+});
+
+for (const failure of ['invalid', 'larger', 'provider']) test(`valid above-target output survives a ${failure} shortening result`, async () => {
+    const first = draft();
+    first.selected_material[0].available = '音'.repeat(500);
+    const prepared = input(), state = emptyCampaign(), before = structuredClone(state);
+    let calls = 0;
+    const result = await storyPassWithRecovery({ state, input: prepared, source, generate: async () => {
+        if (++calls === 1) return response(first);
+        if (failure === 'provider') throw Error('Provider offline');
+        if (failure === 'invalid') return { text: 'invalid JSON' };
+        const larger = draft(); larger.selected_material[0].available = '音'.repeat(900);
+        return response(larger);
+    } });
+    assert.equal(calls, 2);
+    assert.equal(result.accepted, true);
+    assert.equal(result.recovery.status, 'target-retained');
+    assert.deepEqual(result.state.selectedMaterial, first.selected_material);
+    assert.equal(validCampaignState(result.state), true);
+    assert.deepEqual(state, before);
 });

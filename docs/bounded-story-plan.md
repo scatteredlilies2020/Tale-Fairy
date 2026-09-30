@@ -4,8 +4,8 @@
 
 `extension/index.js` now calls `bounded-story.js`. The former `story-selection.js`
 pipeline remains for legacy regression coverage and comparison, not routine host
-planning. A successful first response uses one background request. Invalid output
-gets at most one automatic correction in the same reserved pass, with no new
+planning. A valid first response within target uses one background request. Invalid
+or oversized output gets at most one correction or best-effort shortening in the same reserved pass, with no new
 scheduling mode. Existing source/transaction checks, cancellation, retry
 reservation, four-reply maximum material freshness, presets and author controls
 are retained. Reply counts schedule reviews; they do not advance fictional time
@@ -39,7 +39,7 @@ An attempt to build a bridge can end while a desire to connect communities remai
 A later theatre production need not be bridge fallout. Success, failure, rest and
 departure are legitimate; effective actions must not generate endless prerequisites.
 These creative expectations are explicit model instructions. Code validates shape,
-ownership names, access references, evidence addresses, transitions and budgets; it
+ownership names, access references, evidence addresses and transitions, and measures sizing targets; it
 cannot determine whether a proposed arc is genuinely different or a cited sentence
 actually entails the model's interpretation. Renaming a repeated plot is not
 semantically prevented by an id check.
@@ -66,8 +66,8 @@ does not verify the model's franchise knowledge. Absence of established departur
 does not prove complete canon fidelity.
 
 Analysis is part of the same provider response, not an additional analysis call.
-It is limited to 300 serialized tokens **within**, not in addition to, the existing
-1,200-token working plan. The complete input still fits at most 8,000 tokens;
+It targets 300 serialized tokens **within**, not in addition to, the existing
+1,200-token working-plan target. The complete input targets 10,000 tokens;
 schema and analysis instructions are counted. `direction`, developments and
 selected material must reflect the analysis. Only the selected opportunities go
 to the writer; the provisional profile remains private and is not promoted to
@@ -77,8 +77,9 @@ as text, so it can be inspected and corrected through existing author instructio
 Working-plan storage remains version 1: old plans and archive checkpoints without
 this optional saved field are valid. New outputs must include it. The next normal
 pass adds it without resetting revision, ids, preparations or review coverage.
-Invalid/missing/oversized analysis rejects the response transactionally and uses
-the existing single correction allowance. Schema cache invalidation propagates
+Invalid/missing analysis rejects the response transactionally; valid oversized
+analysis gets best-effort shortening using the same single correction allowance.
+Schema cache invalidation propagates
 through all browser importers, including save/load and review validation.
 
 Offline tests cover authored Naruto RP fixtures with no established departure,
@@ -134,25 +135,35 @@ uses short field allowances, and the planner shares 1,200 prose characters acros
 the whole plan rather than filling every field independently. Existing wording
 still uses the original compatibility bounds when validating saved or returned
 state: a valid plan is not rejected merely for exceeding a drafting target.
-Oversized or malformed responses still cannot be committed.
+Malformed or structurally invalid responses still cannot be committed. Token
+targets alone no longer invalidate an otherwise valid response.
 
-Before input admission fails, the bounded planner now uses the existing lossless
+Before shedding optional context, the planner uses the existing lossless
 span-table encoding. It removes repeated JSON labels while preserving exact text,
 speaker identity and citation addresses; validation uses the untouched messages.
-No limit increase or clipping is introduced. An invalid output can now trigger
-the one bounded correction described below.
+Source and surviving spans are not clipped. An invalid or above-target output
+can trigger the one correction described below.
 
 ### Automatic output correction
 
 The live host uses `storyPassWithRecovery`. Invalid JSON, truncated output, schema,
-ownership, citation, lifecycle and token-budget errors get one new response with
+ownership, citation and lifecycle errors get one new response with
 specific validation feedback and shorter drafting fields. It uses the same source
 and validates the complete replacement. Rejected text is not clipped or partly
 committed. Short correction instructions replace verbose drafting advice to make
 room for feedback at the original input boundary. Diagnostic text has a bounded
 token allowance. Correction input is measured with its actual schema and feedback;
 optional external evidence can be omitted whole to fit, while required source and
-accepted spans stay intact. If they cannot fit, no correction request is sent.
+unreviewed choices and the latest exchange stay intact. Verified reviewed context
+can be omitted whole. If protected input alone cannot fit, it is sent intact with
+an over-target notice rather than causing a local token-limit failure.
+
+Valid output above the plan/packet/analysis targets receives one best-effort
+shortening request. Accept the replacement only when valid and its normalized
+target overrun improves. Otherwise retain the valid first result, with notices;
+never erase good preparation solely because a tokenizer estimate is high. There
+are still at most two provider requests per planning pass. Cancellation and
+source/state/save guards apply to either chosen result.
 
 The session persists request counts under the original reservation, checks Stop,
 source/reference/settings/state identity before each send (including after the
@@ -163,11 +174,11 @@ authentication, rate-limit, connection and timeout failures are not treated as
 invalid output and do not spend a corrective request. The UI records recovery
 success/failure and refreshes the preview after background work settles.
 
-| Component | Ceiling | Enforcement |
+| Component | Target / allowance | Policy |
 | --- | ---: | --- |
-| Total planner input | 8,000 | Complete system/schema/payload estimate; host tokenizer preflight can increase the count, never lower it |
-| Working plan | 1,200 | Conservative count of serialized plan; reject overflow |
-| Generated selected packet | 600 | Conservative count of serialized selection; reject overflow |
+| Total planner input | 10,000 | Complete system/schema/payload estimate; automatically fit optional context; report irreducible overruns |
+| Working plan | 1,200 | Conservative count; one best-effort shortening, not token-based rejection |
+| Generated selected packet | 600 | Conservative count; same shortening allowance as the plan |
 | Optional external evidence | 1,000 | Include whole available records only when total input fits |
 | Planner response allowance | 3,000 | Provider output setting, with the existing separate reasoning allowance |
 | Entire writer context | 1,000 | Existing framing/author-note admission; withhold whole optional packet if needed |
@@ -175,12 +186,13 @@ success/failure and refreshes the preview after background work settles.
 These are conservative local estimates, not promises of exact provider billing.
 User-authored instructions are preserved verbatim and may exceed the aggregate
 writer limit; the UI reports that exception. Reasoning expenditure is separate.
-Old larger input settings are capped at 8,000; the UI permits 3,000–8,000.
+The UI permits targets of 3,000–10,000. The former 8,000 default migrates once
+to 10,000; smaller custom targets and later explicit 8,000 choices are preserved.
 
 Routine requests contain the working plan, complete enabled source references,
 recent accepted spans and optional evidence, not the archive or episode ledger.
-The host reduces the recent window when necessary, retaining opening context and
-all unreviewed player contributions. Source-compatible reviewed contributions may
+The host reduces optional context when necessary, retaining the latest exchange and
+all unreviewed player contributions. Source-compatible reviewed contributions, including the opening, may
 leave that window. Source edits invalidate affected checkpoints and consequence
 carry. Omission is explicitly not evidence of absence or completion.
 
@@ -197,13 +209,14 @@ Rebuild is now request intent rather than an immediate reset. Only a successful
 validated pass archives and replaces the current preparation; preflight, provider
 and validation failures preserve it. Recovery also understands older failed resets
 whose complete preparation was nested in a rebuild archive, reserving their id
-revision space. Attempt recording precedes input construction, so a local budget
-failure displays zero requests rather than a previous successful request.
+revision space. Attempt recording precedes input construction, so a real local
+validation failure displays zero requests rather than a previous successful request.
 
 There is no way to fit arbitrarily large required source text or unreviewed input
-losslessly into a fixed ceiling. Such requests fail locally before provider spend,
-with an actionable error and saved preparation intact. There is no silent clipping,
-larger fallback budget or automatic paid summarization. Archive growth no
+losslessly into a fixed ceiling. The active planner therefore uses a soft target:
+send irreducible protected input intact, report its size, and respect any actual
+provider failure transactionally. There is no silent clipping or automatic paid
+summarization. Archive growth no
 longer raises normal prompt size; local archive storage itself is not bounded.
 
 ## Migration and compatibility
@@ -304,3 +317,26 @@ The long-chat regression now runs through host commit, completed-attempt recordi
 and writer-packet availability instead of stopping at input admission. Commit
 rejections are displayed as unsaved results, not unnecessary planning passes.
 The extended suite passes 970 tests; no live provider request was made for this fix.
+
+### October 1 soft-target regression check
+
+The repeated overflow was not fixed by ledger compaction alone: the host still
+included the first two messages after verifying their review checkpoint, while
+RP-analysis instructions increased the full request overhead. Those reviewed
+messages can now yield to source, the saved plan and the latest exchange. Default
+ingestion targets 10,000 tokens, up from 8,000; token-only overruns no longer
+prevent dispatch or invalidate otherwise valid preparation.
+
+A read-only reconstruction of the saved 413-message chat (revision 52, verified
+review through 411 messages) fitted the complete envelope to an estimated
+7,719/8,000 tokens with the latest exchange, or 9,018/10,000 with an additional
+exchange. Source and fresh user/assistant evidence stayed intact, including the
+latest status block. These are conservative local counts, not measured provider
+usage. No live chat, preset or provider request was changed or sent.
+
+Synthetic regressions preserve this long-opening/source/plan/latest-exchange
+shape without committing private RP content. Coverage includes active-tokenizer
+refitting, actual-sent citation checks, input-target migration, valid-output
+retention when shortening fails, and cancellation/source guards before commit.
+The full deterministic suite passes 1,015 tests. Live-provider behavior and
+creative quality were not evaluated by this check.

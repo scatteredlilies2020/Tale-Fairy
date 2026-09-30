@@ -1,6 +1,7 @@
 import { conservativeTokenCount } from './token-budget.js?story-budget=1';
 import { plannerMessages, PLANNER_OUTPUT_MODE } from './output-negotiation.js?v=0.14.22';
 import { compactProgressPayload, compactMessagePayload } from './planner-compaction.js';
+import { optionalPlannerContexts } from './planner-context.js?soft-targets=1';
 
 export const WRITER_CONTEXT_TOKEN_LIMIT = 1000;
 const envelopes = new WeakMap();
@@ -44,9 +45,10 @@ export async function verifyStoryInputBudget(prompt, system, schema, limit, toke
 }
 
 // The active tokenizer may find an overrun after local assembly. Refit the
-// exact outgoing prompt with the same lossless encodings before rejecting it.
-// No generation call, changed evidence addresses, or provider retry is needed.
-export async function fitStoryInputBudget(prompt, system, schema, limit, tokenCounter) {
+// exact outgoing prompt with lossless encodings, then whole optional context.
+// The caller returns the sent prompt to evidence validation. No generation call,
+// changed evidence addresses, or provider retry is needed.
+export async function fitStoryInputBudget(prompt, system, schema, limit, tokenCounter, { softTarget = false } = {}) {
     checkInputLimit(0, limit);
     let tokens = await measureStoryInput(prompt, system, schema, tokenCounter);
     if (tokens > limit) {
@@ -61,10 +63,24 @@ export async function fitStoryInputBudget(prompt, system, schema, limit, tokenCo
                 const candidateTokens = await measureStoryInput(candidatePrompt, system, schema, tokenCounter);
                 if (candidateTokens < tokens) { payload = candidate; prompt = candidatePrompt; tokens = candidateTokens; }
             }
+            if (tokens > limit) for (const candidate of optionalPlannerContexts(payload)) {
+                let fitted = candidate, candidatePrompt = JSON.stringify(fitted);
+                let candidateTokens = await measureStoryInput(candidatePrompt, system, schema, tokenCounter);
+                for (const compact of [compactProgressPayload, compactMessagePayload]) {
+                    if (candidateTokens <= limit) break;
+                    const encoded = compact(fitted);
+                    if (encoded === fitted) continue;
+                    const encodedPrompt = JSON.stringify(encoded);
+                    const encodedTokens = await measureStoryInput(encodedPrompt, system, schema, tokenCounter);
+                    if (encodedTokens < candidateTokens) { fitted = encoded; candidatePrompt = encodedPrompt; candidateTokens = encodedTokens; }
+                }
+                if (candidateTokens < tokens) { prompt = candidatePrompt; tokens = candidateTokens; }
+                if (tokens <= limit) break;
+            }
         }
     }
-    checkInputLimit(tokens, limit);
-    return { prompt, tokens };
+    if (!softTarget) checkInputLimit(tokens, limit);
+    return { prompt, tokens, overTarget: Math.max(0, tokens - limit) };
 }
 
 export function storyContextJson(value) {

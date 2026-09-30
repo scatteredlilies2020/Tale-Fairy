@@ -1,4 +1,4 @@
-import { check } from './campaign-planner.js?v=0.14.34&rp-plot=1&rp-understanding=1';
+import { check } from './campaign-planner.js?v=0.14.34&rp-plot=1&rp-understanding=1&soft-targets=1';
 
 // Reuse durable proposal fields under the same id. Background/access still
 // needs a fresh assessment; an incomplete draft must not veto unrelated work.

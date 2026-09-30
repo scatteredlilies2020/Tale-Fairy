@@ -103,7 +103,6 @@ test('RP analysis validates structure, original-world semantics and its own boun
         [rp => { rp.basis = 'franchise'; }, /Non-original/],
         [rp => { rp.basis = 'anime'; }, /invalid enum/],
         [rp => { delete rp.uncertainty; }, /missing uncertainty/],
-        [rp => { rp.anchors = '界'.repeat(200); }, /RP understanding exceeds 300/],
     ]) {
         const raw = response(); mutate(raw.plan.rpUnderstanding);
         const failed = await pass(raw, state);
@@ -241,7 +240,7 @@ for (const [name, change, error] of [
     ['unknown selection id', r => r.selected_material[0].subjectIds = ['unknown'], /unknown/],
     ['unwitnessed fact', r => r.plan.consequences.push({ id: 'success', text: 'Ren won.' }), /witnesses/],
     ['invalid span', r => { r.plan.consequences.push({ id: 'success', text: 'Ren won.' }); r.observations.push({ id: 'success', evidence: [{ index: 0, span: 99 }] }); }, /span/i],
-    ['oversized Unicode packet', r => { r.selected_material[0].available = '音'.repeat(900); }, /600 tokens/],
+    ['invalid packet field', r => { r.selected_material[0].available = '音'.repeat(901); }, /900 characters/],
 ]) test(`rejects ${name} without mutating saved preparation`, async () => {
     const raw = response(); change(raw);
     const state = emptyCampaign(), before = structuredClone(state);
@@ -263,22 +262,27 @@ test('source-invalidated consequences cannot carry as facts', async () => {
     assert.match(rejected.error, /witnesses/);
 });
 
-test('working plan count and tokens are independent hard limits', () => {
+test('structural plan bounds remain mandatory but token estimates are soft targets', () => {
     const raw = response();
     raw.plan.developments = Array.from({ length: 5 }, (_, i) => development(`r1-${i}`));
     assert.throws(() => validateWorkingPlan(raw.plan, check), /array bounds/);
     raw.plan.developments.pop();
     for (const d of raw.plan.developments) d.initiative = '音'.repeat(400);
     assert.ok(planTokens(raw.plan) > 1200);
-    assert.throws(() => validateWorkingPlan(raw.plan, check), /1200 tokens/);
+    assert.doesNotThrow(() => validateWorkingPlan(raw.plan, check));
 });
 
-test('complete request ceiling includes schema and instructions and cannot be raised', () => {
-    assert.equal(plannerInputLimit(100000), 8000);
+test('complete request target includes schema and instructions without rejecting protected input', () => {
+    assert.equal(plannerInputLimit(), 10000);
+    assert.equal(plannerInputLimit(100000), 10000);
     assert.equal(plannerInputLimit(5000), 5000);
     assert.throws(() => plannerInputLimit(Infinity), /finite/);
-    assert.throws(() => storyInput({ reference: { rules: 'Required rule. '.repeat(6000) }, state: emptyCampaign(), messages }, 100000), /exceeds 8000/);
-    assert.throws(() => storyInput({ reference: {}, state: emptyCampaign(), messages }, 1), /including instructions\/schema/);
+    const reference = { rules: 'Required rule. '.repeat(6000) };
+    const large = storyInput({ reference, state: emptyCampaign(), messages }, 100000);
+    assert.ok(large.inputOverTarget > 0);
+    assert.equal(large.inputLimit, 10000);
+    assert.deepEqual(JSON.parse(large.prompt).source_reference, reference);
+    assert.ok(storyInput({ reference: {}, state: emptyCampaign(), messages }, 1).inputOverTarget > 0);
     assert.ok(STORY_SYSTEM.includes('No turn timers'));
     assert.equal(STORY_SCHEMA.name, 'tale_fairy_working_plan_rp_v1');
 });
@@ -321,7 +325,7 @@ test('metadata rejects tampered mirrors, evidence and bounds', async () => {
     assert.equal(validCampaignState(bad), false);
     const unknown = structuredClone(state); unknown.workingPlanVersion = 2;
     assert.equal(validCampaignState(unknown), false);
-    const oversize = structuredClone(state); oversize.selectedMaterial[0].available = '音'.repeat(900);
+    const oversize = structuredClone(state); oversize.selectedMaterial[0].available = '音'.repeat(901);
     assert.equal(validCampaignState(oversize), false);
     const raw = response(); raw.plan.consequences = [{ id: 'crossing', text: 'The bridge is repaired.' }];
     raw.observations = [{ id: 'crossing', evidence: [{ index: 0, span: 0 }] }];
@@ -342,6 +346,35 @@ test('changing a consequence under its existing id still requires new evidence',
     const rejected = await pass(raw, first.state);
     assert.equal(rejected.state, first.state);
     assert.match(rejected.error, /requires accepted-message witnesses/);
+});
+
+test('token targets do not invalidate structurally valid multilingual output or saved state', async () => {
+    const raw = response();
+    raw.plan.rpUnderstanding.anchors = '界'.repeat(200);
+    raw.plan.developments[0].initiative = '音'.repeat(400);
+    raw.selected_material[0].available = '音'.repeat(900);
+    const result = await pass(raw);
+    assert.equal(result.accepted, true, result.error);
+    assert.equal(validCampaignState(result.state), true);
+    assert.deepEqual(result.state.workingPlan, raw.plan);
+    assert.deepEqual(result.state.selectedMaterial, raw.selected_material);
+    assert.ok(result.budget.plan > 1200 && result.budget.selected > 600 && result.budget.understanding > 300);
+    assert.equal(result.budgetNotices.length, 3);
+});
+
+test('consequences cannot cite reviewed spans removed by final transport fitting', async () => {
+    const built = input(), payload = JSON.parse(built.prompt);
+    payload.accepted_messages = payload.accepted_messages.filter(m => m.index !== 0);
+    const raw = response();
+    raw.plan.consequences = [{ id: 'crossing', text: 'The bridge is repaired.' }];
+    raw.observations = [{ id: 'crossing', evidence: [{ index: 0, span: 0 }] }];
+    const state = emptyCampaign();
+    const result = await storyPass({ state, source, input: built, generate: async () => ({
+        text: JSON.stringify(raw), plannerPrompt: JSON.stringify(payload), plannerInputTokens: 4999,
+    }) });
+    assert.equal(result.accepted, false);
+    assert.equal(result.state, state);
+    assert.match(result.error, /exact supplied/);
 });
 
 test('generation asks for compact fields while admission preserves valid existing wording', async () => {

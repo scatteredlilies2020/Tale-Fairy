@@ -1,14 +1,14 @@
-import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1';
+import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1';
 import { compactPlannerReference } from './planner-reference.js?history-budget=1';
 import { compactCampaignSpeakers } from './campaign-evidence.js';
 import { witnessMessages, resolveSpanWitnesses, SPAN_WITNESS_SCHEMA } from './accepted-witnesses.js?v=0.14.34&partial-evidence=1';
 import { fitEvidenceProviders } from './evidence-providers.js';
 import { SELECTED_MATERIAL_SCHEMA, validateSelectedMaterial } from './selected-material.js?v=0.14.36&rp-plot=1';
-import { storyInputTokens } from './story-budget.js?follow-through=1';
-import { compactPlannerPayload } from './planner-compaction.js';
+import { storyInputTokens } from './story-budget.js?follow-through=1&soft-targets=1';
+import { fitPlannerContext } from './planner-context.js?soft-targets=1';
 import { WORKING_PLAN_SCHEMA, WORKING_PLAN_VERSION, WORKING_PLAN_LIMIT, SELECTED_PACKET_LIMIT, RP_UNDERSTANDING_LIMIT,
-    PLANNER_INPUT_LIMIT, planTokens, plannerInputLimit, validateWorkingPlan, workingPlanProjection } from './working-plan.js?rp-understanding=1';
-export { PLANNER_INPUT_LIMIT, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './working-plan.js?rp-understanding=1';
+    PLANNER_INPUT_LIMIT, planTokens, plannerInputLimit, validateWorkingPlan, workingPlanProjection } from './working-plan.js?rp-understanding=1&soft-targets=1';
+export { PLANNER_INPUT_LIMIT, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './working-plan.js?rp-understanding=1&soft-targets=1';
 
 const text = maxLength => ({ type: 'string', minLength: 1, maxLength });
 const object = properties => ({ type: 'object', additionalProperties: false, required: Object.keys(properties), properties });
@@ -52,11 +52,11 @@ Use relevant past events to shape what is plausible, changed or meaningful, not 
 
 Analyze before planning: rpUnderstanding is a compact, revisable interpretation, not verified history. Identify original/franchise/mixed/unclear basis, setting and relevant era; names alone do not prove a franchise. canonIntent reflects the user's stated preference (follow/flexible/alternate), otherwise unspecified. divergence separately describes established causal impact: none-established, local, major or unclear, not a count of edits. For original RP both are not-applicable; derive its rules and possibilities from the supplied world, not a borrowed canon.
 
-anchors records still-applicable rules, relationships and premises; departures records established changes and affected future prerequisites. experiences records fitting opportunities; uncertainty flags missing era, canon knowledge or intent without inventing answers. Familiar franchise knowledge is provisional, not researched fact; supplied references, explicit corrections and accepted play override it. No established change is not proof of complete canon fidelity. Following canon permits compatible expectations, not predetermined player choices. Local changes affect what depends on them; unrelated anchors can remain. Major changes require new causal possibilities, not forced return to canon. Check direction, developments and selected_material against this analysis. Update it when play changes the basis; earlier analysis is not evidence. Aim for 180 tokens including JSON, never above ${RP_UNDERSTANDING_LIMIT}, within the existing plan budget; do not make a lore encyclopedia.
+anchors records still-applicable rules, relationships and premises; departures records established changes and affected future prerequisites. experiences records fitting opportunities; uncertainty flags missing era, canon knowledge or intent without inventing answers. Familiar franchise knowledge is provisional, not researched fact; supplied references, explicit corrections and accepted play override it. No established change is not proof of complete canon fidelity. Following canon permits compatible expectations, not predetermined player choices. Local changes affect what depends on them; unrelated anchors can remain. Major changes require new causal possibilities, not forced return to canon. Check direction, developments and selected_material against this analysis. Update it when play changes the basis; earlier analysis is not evidence. Aim for 180 tokens including JSON, keep below the target of ${RP_UNDERSTANDING_LIMIT}, within the existing plan budget; do not make a lore encyclopedia.
 
-Return a complete replacement plan, at most four developments and ${WORKING_PLAN_LIMIT} tokens total. direction holds the RP's broader range of fitting experiences, not today's agenda; retain that scope across scene changes, revising it for actual premise changes. Reframe a scene-bound previous direction from the RP basis. threads holds relevant long-running interests/relationships, not obligations. consequences holds at most four relevant witnessed results, not a lifetime ledger. Earlier history stays local.
+Return a complete replacement plan, at most four developments; keep the whole plan below the ${WORKING_PLAN_LIMIT}-token target. direction holds the RP's broader range of fitting experiences, not today's agenda; retain that scope across scene changes, revising it for actual premise changes. Reframe a scene-bound previous direction from the RP basis. threads holds relevant long-running interests/relationships, not obligations. consequences holds at most four relevant witnessed results, not a lifetime ledger. Earlier history stays local.
 
-Draft below the ceiling: aim for 800 tokens for the ENTIRE serialized plan, including JSON. Spend at most 1200 characters of prose across the whole plan, fewer for non-Latin text. Use short clauses; field maxima are safety bounds, not allocations. Preserve exact ids, distinct unfinished initiatives and prerequisites; do not drop work merely to fit. Avoid duplicated facts and scene recaps. Shorten within this response, not in an extra call.
+Draft below the target: aim for 800 tokens for the ENTIRE serialized plan, including JSON. Spend at most 1200 characters of prose across the whole plan, fewer for non-Latin text. Use short clauses; field maxima are safety bounds, not allocations. Preserve exact ids, distinct unfinished initiatives and prerequisites; do not drop work merely to fit. Avoid duplicated facts and scene recaps. Shorten within this response, not in an extra call.
 
 Developments may be arcs, side activities or emerging opportunities. question is what can be explored or experienced, not necessarily a problem. initiative supplies concrete NPC/world activity. resolution says when this experience can conclude or pass, without requiring a challenge, reward or player participation. beyond offers fitting follow-through or a different experience, not another prerequisite. Keep an id's specific meaning; unrelated opportunities need new ids. access gives a plausible bridge and real prerequisites; none is private/unreachable. Do not expose private causes to the writer.
 
@@ -66,7 +66,7 @@ For every removed development return one exit: closed means ended in play; chang
 
 consequences are accepted facts; the rest is creative preparation. New/changed consequences need observations with their ids and exact supplied index/span citations. Unchanged verified consequences can carry without new citations. Do not manufacture player agreement, achievements or unseen actions as history. Source references supply premises; external recall and drafts are not proof of enactment. Current play/corrections override them; omitted context proves neither absence nor resolution.
 
-selected_material is [] or one integrated packet under ${SELECTED_PACKET_LIMIT} tokens; aim for 300 tokens including JSON. Reference only retained, accessible developments. available supplies an observable opportunity through concrete NPC/world activity. Invitations are valid when backed by something to experience, not repeated permission-seeking. developing/lasting can offer reachable later possibilities without forcing them into this scene. Condition only genuine prerequisites; participation and outcomes stay open. No dialogue scripts, ordered beats, assigned player feelings, travel or commitments. Preserve useful unplayed material rather than rerolling. Empty beats filler. Check both RP fit and added experience beyond merely continuing the exchange. Concise JSON only.
+selected_material is [] or one integrated packet below the ${SELECTED_PACKET_LIMIT}-token target; aim for 300 tokens including JSON. Reference only retained, accessible developments. available supplies an observable opportunity through concrete NPC/world activity. Invitations are valid when backed by something to experience, not repeated permission-seeking. developing/lasting can offer reachable later possibilities without forcing them into this scene. Condition only genuine prerequisites; participation and outcomes stay open. No dialogue scripts, ordered beats, assigned player feelings, travel or commitments. Preserve useful unplayed material rather than rerolling. Empty beats filler. Check both RP fit and added experience beyond merely continuing the exchange. Concise JSON only.
 `;
 
 export const needsEventReframe = state => state?.workingPlanVersion !== WORKING_PLAN_VERSION;
@@ -117,19 +117,22 @@ export function storyInput({ reference, state, messages, playerNames = [], previ
         previous_plan: previous, rebuild: !previousUsable || migration, new_id_prefix: newIdPrefix,
         player_names: names,
         coverage: { reviewed_before: reviewedMessageCount, supplied_messages: messages.length,
+            ...(reviewedMessageCount ? { reviewed_context_optional: true } : {}),
             ...(reviewedMessageCount && (!previousUsable || resetPlan)
                 ? { review_boundary: 'Verified prior review of this unchanged source prefix; old plans and outcomes are not restored by this coverage.' } : {}),
             omitted_context: 'Only supplied accepted spans prove new outcomes. Earlier history stays local; absence from this request is not resolution.' },
         ...(Object.keys(speakers.defaults).length ? { default_speaker_name_by_role: speakers.defaults } : {}),
         accepted_messages: witnessMessages(speakers.messages) };
     const measure = value => storyInputTokens(JSON.stringify(value), STORY_SYSTEM, STORY_SCHEMA);
-    payload = compactPlannerPayload(payload, measure, limit);
+    payload = fitPlannerContext(payload, measure, limit);
     const external = fitEvidenceProviders(evidence ?? (continuity ? [{ ...continuity, provider: 'continuity-memory' }] : []),
         Math.min(1000, Math.max(0, Number(continuityTokens) || 0)), value => measure({ ...payload, external_evidence: value }) <= limit);
     if (external.length) payload.external_evidence = external;
     const prompt = JSON.stringify(payload), inputTokens = measure(payload);
-    if (inputTokens > limit) throw Error(`Planner input ${inputTokens} exceeds ${limit} tokens (including instructions/schema). Required source or unreviewed messages cannot fit whole; reduce the supplied source or backlog explicitly. No provider request sent; saved preparation is intact.`);
-    return { prompt, inputTokens, inputLimit: limit, resetPlan, nextRevision, indices: messages.map(m => m.index), evidenceMessages: structuredClone(messages),
+    const indices = payload.accepted_messages.map(m => m.index);
+    return { prompt, inputTokens, inputLimit: limit, resetPlan, nextRevision, indices,
+        evidenceMessages: structuredClone(messages.filter(m => indices.includes(m.index))),
+        inputOverTarget: Math.max(0, inputTokens - limit),
         previousPlan: previous, rebuild: payload.rebuild, newIdPrefix, playerNames: names,
         verifiedPlanEvidence: structuredClone(trustedEvidence),
         evidence: { status: external.length ? 'included' : 'omitted-or-unavailable', providers: external.map(e => e.provider) },
@@ -148,7 +151,6 @@ export async function storyPass({ state, input, source, generate }) {
         const raw = JSON.parse(result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
         check(raw, responseShape);
         validateWorkingPlan(raw.plan, check, input.playerNames);
-        if (planTokens(raw.selected_material) > SELECTED_PACKET_LIMIT) throw Error(`Selected writer packet exceeds ${SELECTED_PACKET_LIMIT} tokens`);
         const before = new Map((input.previousPlan.developments || []).map(d => [d.id, d]));
         const after = new Set(raw.plan.developments.map(d => d.id));
         const exits = new Map(raw.exits.map(exit => [exit.id, exit]));
@@ -157,7 +159,16 @@ export async function storyPass({ state, input, source, generate }) {
             if (!before.has(item.id) && !item.id.startsWith(input.newIdPrefix)) throw Error('New development requires the supplied id prefix');
         }
         if (!input.rebuild && [...before.keys()].some(id => !after.has(id) && !exits.has(id))) throw Error('Removed development requires an explicit exit');
-        const resolve = refs => resolveSpanWitnesses(refs, input.evidenceMessages);
+        // Transport preflight can shed more reviewed context when the active
+        // tokenizer counts higher. Evidence must exist in the actual sent
+        // request, not just the larger locally assembled candidate.
+        const sent = JSON.parse(result.plannerPrompt ?? input.prompt);
+        const supplied = new Set((sent.accepted_messages || []).flatMap(message => message.spans
+            .map(span => `${message.index}:${Array.isArray(span) ? span[0] : span.span}`)));
+        const resolve = refs => {
+            if (refs.some(ref => !supplied.has(`${ref.index}:${ref.span}`))) throw Error('Witness requires an exact supplied accepted-message span');
+            return resolveSpanWitnesses(refs, input.evidenceMessages);
+        };
         const transitions = raw.exits.map(exit => {
             if (!before.has(exit.id) || after.has(exit.id)) throw Error('Exit requires a removed previous development');
             if (['closed', 'changed'].includes(exit.disposition) && !exit.evidence.length) throw Error('Closing or superseding an undertaking requires witnessed events');
@@ -192,8 +203,13 @@ export async function storyPass({ state, input, source, generate }) {
         const next = { revision: input.nextRevision, ...projection, archive, source: structuredClone(source),
             preparationFormat: EVENT_POINTS_FORMAT, workingPlanVersion: WORKING_PLAN_VERSION,
             workingPlan: structuredClone(raw.plan), planEvidence, selectedMaterial: structuredClone(raw.selected_material) };
-        return { accepted: true, state: next, result, warnings: [], migration: input.migration,
-            budget: { input: input.inputTokens, plan: planTokens(raw.plan), selected: planTokens(raw.selected_material) } };
+        const budget = { input: result.plannerInputTokens ?? input.inputTokens, plan: planTokens(raw.plan),
+            selected: planTokens(raw.selected_material), understanding: planTokens(raw.plan.rpUnderstanding) };
+        const targets = { input: input.inputLimit, plan: WORKING_PLAN_LIMIT, selected: SELECTED_PACKET_LIMIT, understanding: RP_UNDERSTANDING_LIMIT };
+        const budgetNotices = Object.entries(targets).filter(([key, target]) => budget[key] > target)
+            .map(([key, target]) => `${key} ${budget[key]}/${target} token target; kept intact`);
+        const outputOverrun = ['plan', 'selected', 'understanding'].reduce((sum, key) => sum + Math.max(0, budget[key] / targets[key] - 1), 0);
+        return { accepted: true, state: next, result, warnings: [], migration: input.migration, budget, budgetNotices, outputOverrun };
     } catch (error) {
         return { accepted: false, state, error: error.message,
             recoverableOutput: received || error.code === 'TF_INVALID_PLANNER_RESPONSE',
@@ -205,12 +221,12 @@ function correctionInput(input, failure) {
     const limit = plannerInputLimit(input.inputLimit);
     let payload = JSON.parse(input.prompt);
     // Supply validation feedback as data. Never append an unbounded rejected
-    // draft to the context, cut source text, or raise the configured ceiling.
+    // draft to the context, cut source text, or silently raise the configured target.
     const detail = String(failure.error).slice(0, 320);
     payload.response_correction = { error: planTokens(detail) <= 80 ? detail : 'Previous output failed validation. Check the complete response shape and shared budgets.' };
     // Replace verbose drafting advice, not story context, to make room for
     // feedback even when the original input used its entire local budget.
-    const system = STORY_SYSTEM.replace(/Draft below the ceiling:[^\n]+/u,
+    const system = STORY_SYSTEM.replace(/Draft below the target:[^\n]+/u,
         'Automatic correction: return a corrected complete JSON response; aim for 700 plan / 250 selected tokens. Preserve ids and unfinished initiatives. response_correction is validation feedback, not history.');
     const schema = structuredClone(STORY_SCHEMA);
     const plan = schema.value.properties.plan.properties;
@@ -222,13 +238,8 @@ function correctionInput(input, failure) {
     for (const key of ['question', 'initiative', 'resolution', 'beyond']) development[key].maxLength = 70;
     development.access.properties.basis.maxLength = 60;
     const measure = value => storyInputTokens(JSON.stringify(value), system, schema);
-    payload = compactPlannerPayload(payload, measure, limit);
-    if (measure(payload) > limit && payload.external_evidence) {
-        delete payload.external_evidence;
-        payload = compactPlannerPayload(payload, measure, limit);
-    }
+    payload = fitPlannerContext(payload, measure, limit);
     const tokens = measure(payload);
-    if (tokens > limit) throw Error(`Automatic correction cannot fit within the ${limit}-token input limit; saved preparation is intact.`);
     return { input: { ...input, prompt: JSON.stringify(payload), inputTokens: tokens }, schema, system };
 }
 
@@ -237,11 +248,18 @@ function correctionInput(input, failure) {
 // Transport/authentication/timeouts are not output errors and never loop here.
 export async function storyPassWithRecovery(args) {
     const first = await storyPass(args);
-    if (first.accepted || !first.recoverableOutput) return first;
+    const refine = first.accepted && first.outputOverrun > 0;
+    if (!refine && (first.accepted || !first.recoverableOutput)) return first;
+    const failure = refine ? { error: 'Valid response is above sizing targets. Shorten prose without losing ids, prerequisites or unfinished initiatives: plan 1200, selected packet 600, RP analysis 300 tokens.' } : first;
     let correction;
-    try { correction = correctionInput(args.input, first); }
-    catch (error) { return { ...first, error: `${first.error} ${error.message}`, recovery: { status: 'unavailable', reason: first.error } }; }
+    try { correction = correctionInput(args.input, failure); }
+    catch (error) { return refine ? first : { ...first, error: `${first.error} ${error.message}`, recovery: { status: 'unavailable', reason: first.error } }; }
     const next = await storyPass({ ...args, input: correction.input,
-        generate: prompt => args.generate(prompt, correction.system, correction.schema, { recoveryReason: first.error }) });
-    return { ...next, recovery: { status: next.accepted ? 'complete' : 'failed', reason: first.error } };
+        generate: prompt => args.generate(prompt, correction.system, correction.schema, { recoveryReason: failure.error }) });
+    // A sizing target is not grounds to throw away an otherwise valid result.
+    // Transaction/cancellation checks still run before the chosen result commits.
+    if (refine && (!next.accepted || next.outputOverrun >= first.outputOverrun)) {
+        return { ...first, recovery: { status: 'target-retained', reason: failure.error } };
+    }
+    return { ...next, recovery: { status: next.accepted ? refine ? 'shortened' : 'complete' : 'failed', reason: failure.error } };
 }

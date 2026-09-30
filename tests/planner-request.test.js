@@ -62,16 +62,18 @@ function harness(results, { route = 'direct', configured = 'low', activeEffort =
         + take('async function requestAnalysisOnce(', 'export async function analyzeNow('), scope);
     return {
         requests,
-        run: (spec = {}, signal = new AbortController().signal) => scope.requestAnalysisOnce('current evidence', signal, null, { parseResponse, ...spec }),
+        run: ({ prompt = 'current evidence', ...spec } = {}, signal = new AbortController().signal) => scope.requestAnalysisOnce(prompt, signal, null, { parseResponse, ...spec }),
         runPass: (meta = {}, recovery = null) => scope.requestAnalysis('current evidence', new AbortController().signal, meta, recovery),
     };
 }
 
-test('oversized single-shot input is blocked before every provider route without a retry', async () => {
+test('irreducible single-shot input above the target is sent intact on every provider route', async () => {
     for (const route of ['direct', 'profile', 'active']) {
         const h = harness([{ valid: true }], { route, inputBudget: 40 });
-        await assert.rejects(h.run({ singleShot: true }), /exceeds.*no provider request sent/);
-        assert.equal(h.requests.length, 0, route);
+        const result = await h.run({ singleShot: true });
+        assert.equal(result.plannerPrompt, 'current evidence');
+        assert.ok(result.plannerInputTokens > 40);
+        assert.equal(h.requests.length, 1, route);
     }
 });
 
@@ -79,8 +81,8 @@ test('tracker distinguishes preflight failure from waiting on a dispatched provi
     for (const route of ['direct', 'profile', 'active']) {
         const stages = [];
         const onProgress = stage => stages.push(stage);
-        const blocked = harness([{ valid: true }], { route, inputBudget: 40 });
-        await assert.rejects(blocked.run({ singleShot: true, onProgress }), /exceeds/);
+        const blocked = harness([{ valid: true }], { route, inputBudget: -1 });
+        await assert.rejects(blocked.run({ singleShot: true, onProgress }), /finite positive/);
         assert.deepEqual(stages, ['Checking planner connection and input']);
         stages.length = 0;
         const h = harness(() => {
@@ -93,12 +95,13 @@ test('tracker distinguishes preflight failure from waiting on a dispatched provi
     }
 });
 
-test('active tokenizer overflow blocks generation, but another model never uses that tokenizer', async () => {
+test('active tokenizer over-target counts are reported; another model never uses that tokenizer', async () => {
     let calls = 0;
     const tokenCounter = async () => { calls++; return 20000; };
     const active = harness([{ valid: true }], { route: 'active', tokenCounter });
-    await assert.rejects(active.run({ singleShot: true }), /exceeds/);
-    assert.equal(active.requests.length, 0);
+    const result = await active.run({ singleShot: true });
+    assert.equal(result.plannerInputTokens, 20064);
+    assert.equal(active.requests.length, 1);
     assert.equal(calls, 1);
     for (const route of ['direct', 'profile']) {
         const h = harness([{ valid: true }], { route, tokenCounter });
@@ -108,10 +111,12 @@ test('active tokenizer overflow blocks generation, but another model never uses 
     assert.equal(calls, 1);
 });
 
-test('legacy larger settings cannot raise the active transport ceiling above 8000', async () => {
-    const h = harness([{ valid: true }], { route: 'active', inputBudget: 30000, tokenCounter: async () => 8001 });
-    await assert.rejects(h.run({ singleShot: true }), /exceeds 8000/);
-    assert.equal(h.requests.length, 0);
+test('the larger input target still measures rather than rejecting protected context', async () => {
+    const h = harness([{ valid: true }], { route: 'active', inputBudget: 30000, tokenCounter: async () => 10001 });
+    const result = await h.run({ singleShot: true });
+    assert.equal(plannerInputLimit(30000), 10000);
+    assert.equal(result.plannerInputTokens, 10065);
+    assert.equal(h.requests.length, 1);
 });
 
 test('a stalled active tokenizer does not prevent cancellation or send a provider request', { timeout: 1000 }, async () => {
@@ -127,6 +132,26 @@ test('a stalled active tokenizer does not prevent cancellation or send a provide
     controller.abort();
     await rejected;
     assert.equal(h.requests.length, 0);
+});
+
+test('the transport returns the actual fitted prompt and count to citation validation', async () => {
+    const payload = { source_reference: { rule: 'Player choices stay open.' },
+        coverage: { reviewed_before: 2, reviewed_context_optional: true, supplied_messages: 3 },
+        accepted_messages: [
+            { index: 0, role: 'assistant', spans: [{ span: 0, text: 'Already reviewed opening. '.repeat(100) }] },
+            { index: 2, role: 'user', spans: [{ span: 0, text: 'I leave.' }] },
+            { index: 3, role: 'assistant', spans: [{ span: 0, text: 'The road opens.' }] },
+        ] };
+    const h = harness([{ valid: true }], { route: 'active', inputBudget: 6000,
+        tokenCounter: async envelope => envelope.includes('Already reviewed opening') ? 9000 : 5000 });
+    const result = await h.run({ singleShot: true, prompt: JSON.stringify(payload) });
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.requests[0].messages[0].content,
+        output.plannerPrompt(result.plannerPrompt, { value: { type: 'object' } }, output.PLANNER_OUTPUT_MODE.PROMPT_ONLY));
+    assert.equal(result.plannerInputTokens, 5064);
+    const sent = JSON.parse(result.plannerPrompt);
+    assert.deepEqual(sent.accepted_messages.map(m => m.index), [2, 3]);
+    assert.deepEqual(sent.source_reference, payload.source_reference);
 });
 
 test('normal evaluation makes exactly one model request', async () => {

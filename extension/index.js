@@ -1,13 +1,13 @@
 import { sha256 } from '/lib.js';
-import { campaignAuthorInstructions, campaignPayloadBudget, campaignUsable, campaignMaterialUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1';
-import { storyInput as ownedInput, storyPassWithRecovery as ownedPass, nextPlanRevision, STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1';
-import { fitStoryInputBudget } from './story-budget.js?follow-through=1&compaction=1';
+import { campaignAuthorInstructions, campaignPayloadBudget, campaignUsable, campaignMaterialUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1';
+import { storyInput as ownedInput, storyPassWithRecovery as ownedPass, nextPlanRevision, STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1';
+import { fitStoryInputBudget } from './story-budget.js?follow-through=1&compaction=1&soft-targets=1';
 import { readCampaignContinuity } from './campaign-continuity.js';
 // Keep the public registration URL stable so external adapters share this registry.
 import { readEvidenceProviders, evidenceRevisionKey } from './evidence-providers.js';
 import { campaignEvidenceMessages, campaignReviewWindow } from './campaign-evidence.js';
-import { campaignReviewedCount } from './campaign-review.js?rp-understanding=1';
-import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.36&token-budget=1&rp-plot=1&progress=1&follow-through=1&working-plan=1&recovery=1&review-checkpoint=1&rp-understanding=1';
+import { campaignReviewedCount } from './campaign-review.js?rp-understanding=1&soft-targets=1';
+import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.36&token-budget=1&rp-plot=1&progress=1&follow-through=1&working-plan=1&recovery=1&review-checkpoint=1&rp-understanding=1&soft-targets=1';
 import { campaignAttemptSummary } from './planner-progress.js?v=1&recovery=1&review-checkpoint=1';
 import { finalizeNotebookCompactions, writeNotebookArchive } from './notebook-compaction.js?v=0.14.22';
 import { eventSource, event_types, extension_prompt_roles, extension_prompt_types, generateRaw, Generate, setExtensionPrompt, getRequestHeaders, getCharacterCardFields, saveSettingsDebounced } from '/script.js';
@@ -16,8 +16,8 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, buildStoryEvidence, storyEvidenceQuery, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.22&rp-understanding=1';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultPlannerState as defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadPlannerState as loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.23&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1';
+import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, buildStoryEvidence, storyEvidenceQuery, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.22&rp-understanding=1&soft-targets=1';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultPlannerState as defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadPlannerState as loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.23&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1';
 import { isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.22';
 import { selectSituationalOpenings } from './situations.js?v=0.13.9';
 import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.14.22';
@@ -42,12 +42,12 @@ import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } f
 import { hasUsableCausalContext } from './causal-context.js?v=0.14.22';
 import { formatHiddenMotives } from './scratchpad-format.js?v=0.13.9';
 import { WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA } from './world-planner.js?v=0.14.22';
-import { buildWorldPlannerPrompt } from './analysis.js?v=0.14.22&rp-understanding=1';
+import { buildWorldPlannerPrompt } from './analysis.js?v=0.14.22&rp-understanding=1&soft-targets=1';
 import { defaultPreparedWorld, preparedWorldUsable, unchangedSourcePrefix, stampPreparedWorld } from './prepared-world.js?v=0.14.22';
 import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.9';
-import { canRetainSuccessfulPlan, createSafetyFallbackState } from './fallback-direction.js?v=0.14.22&rp-understanding=1';
+import { canRetainSuccessfulPlan, createSafetyFallbackState } from './fallback-direction.js?v=0.14.22&rp-understanding=1&soft-targets=1';
 import { classifyAssistantReply } from './response-usability.js?v=0.13.9';
-import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, legacyPlotInputKey, migrateCampaignBudgetKeys, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.34&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1';
+import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, legacyPlotInputKey, migrateCampaignBudgetKeys, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.34&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1';
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 import { ActivatedStoryContext, readHostStoryEvidence } from './rp-context.js';
 
@@ -66,7 +66,7 @@ const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
 const INJECTION_POSITIONS = new Set(['before-main', 'after-main', 'before-character-definitions', 'after-character-definitions', 'before-example-messages', 'after-example-messages', 'before-an', 'after-an', 'before-chat-history', 'after-chat-history', 'before-jailbreak', 'after-jailbreak', 'at-depth']);
-const DEFAULT_SETTINGS = { enabled: true, mode: 'balanced', analysisProfileId: '', analysisSource: 'active', analysisProvider: 'custom', analysisModel: '', analysisUrl: '', analysisSecretId: '', analysisReasoningMode: 'auto', analysisTemperature: 1, directSettingsMigrated: false, directCustomModel: '', directCustomUrl: '', directCustomSecretId: '', directOpenRouterModel: '', directOpenRouterUrl: '', directOpenRouterSecretId: '', injectionPosition: 'at-depth', injectionDepth: 1, injectionRole: DEFAULT_INJECTION_ROLE, includeWorldInfo: false, showDirectorNotes: false, recentContextTokens: 6000, messageTokenLimit: 700, maxPromptTokens: 8000, continuityIntegration: true, summaryContextTokens: 1000, fullReviewInterval: DEFAULT_REFRESH_INTERVAL, contextSettingsVersion: 13 };
+const DEFAULT_SETTINGS = { enabled: true, mode: 'balanced', analysisProfileId: '', analysisSource: 'active', analysisProvider: 'custom', analysisModel: '', analysisUrl: '', analysisSecretId: '', analysisReasoningMode: 'auto', analysisTemperature: 1, directSettingsMigrated: false, directCustomModel: '', directCustomUrl: '', directCustomSecretId: '', directOpenRouterModel: '', directOpenRouterUrl: '', directOpenRouterSecretId: '', injectionPosition: 'at-depth', injectionDepth: 1, injectionRole: DEFAULT_INJECTION_ROLE, includeWorldInfo: false, showDirectorNotes: false, recentContextTokens: 6000, messageTokenLimit: 700, maxPromptTokens: 10000, continuityIntegration: true, summaryContextTokens: 1000, fullReviewInterval: DEFAULT_REFRESH_INTERVAL, contextSettingsVersion: 14 };
 let settings = null;
 let analysisPromise = null;
 let campaignSession = null;
@@ -211,6 +211,9 @@ function getSettings() {
     if (previousContextVersion > 0 && previousContextVersion < 12) {
         if (Number(settings.routineInputTokens) === 10000) settings.routineInputTokens = DEFAULT_ROUTINE_INPUT;
     }
+    // Move the former default to the modestly larger soft input target once;
+    // preserve smaller custom targets and any later choice to return to 8,000.
+    if (previousContextVersion < 14 && Number(settings.maxPromptTokens) === 8000) settings.maxPromptTokens = 10000;
     settings.contextSettingsVersion = DEFAULT_SETTINGS.contextSettingsVersion;
     settings.fullReviewInterval = normalizePlannerSchedule({ refreshInterval: settings.fullReviewInterval }).refreshInterval;
     if (!settings.directSettingsMigrated) {
@@ -830,7 +833,7 @@ function readCampaignSnapshot() {
         continuity, evidence,
         evidenceKey: evidenceRevisionKey(evidence),
         continuityTokens: s.summaryContextTokens ?? 1000,
-        inputBudget: plannerInputLimit(Number(s.maxPromptTokens) || 8000),
+        inputBudget: plannerInputLimit(Number(s.maxPromptTokens) || 10000),
     };
 }
 
@@ -841,16 +844,18 @@ function buildCampaignHostInput(snapshot) {
     const reviewedCount = campaignReviewedCount(snapshot.state, { ...snapshot, fingerprint: campaignFingerprint });
     const verifiedPlanEvidence = Object.fromEntries(Object.entries(snapshot.state.planEvidence || {}).filter(([, entry]) =>
         campaignUsable({ source: entry.source }, { ...snapshot, fingerprint: campaignFingerprint })));
-    let failure;
+    let best;
     for (const count of [32, 24, 20, 16, 12, 8, 4, 2]) {
         const selected = campaignReviewWindow(messages, count, reviewedCount);
-        try {
-            return ownedInput({ reference: snapshot.reference, state: snapshot.state, playerNames: snapshot.playerNames, reviewedMessageCount: reviewedCount,
+        const input = ownedInput({ reference: snapshot.reference, state: snapshot.state, playerNames: snapshot.playerNames, reviewedMessageCount: reviewedCount,
                 messages: campaignEvidenceMessages(selected, { narrative: true }), previousUsable, verifiedPlanEvidence, resetPlan: snapshot.rebuild,
                 continuity: snapshot.continuity, evidence: snapshot.evidence, continuityTokens: snapshot.continuityTokens }, snapshot.inputBudget);
-        } catch (error) { if (!error.message.includes('exceeds')) throw error; failure = error; }
+        if (!best || input.inputTokens < best.inputTokens) best = input;
+        if (input.inputTokens <= input.inputLimit) return input;
     }
-    throw failure;
+    // The target drives fitting, not failure. Only irreducible protected input
+    // can remain above it; do not clip source or mark unseen choices reviewed.
+    return best;
 }
 
 async function saveCampaignAttempt(attempt) {
@@ -957,6 +962,8 @@ async function runCampaignAnalysis(work) {
         if (result.accepted) {
             const notices = [];
             if (result.recovery?.status === 'complete') notices.push('invalid response corrected automatically');
+            if (result.recovery?.status === 'shortened') notices.push('preparation shortened automatically');
+            if (result.budgetNotices?.length) notices.push(...result.budgetNotices);
             if (result.warnings?.length) notices.push(`ignored ${result.warnings.length} unsupported citation(s)`);
             if (result.skippedProgress) notices.push(`skipped ${result.skippedProgress} unsupported progress update(s)`);
             if (result.skippedRetirements) notices.push(`retained ${result.skippedRetirements} subject(s) without verified retirement`);
@@ -2383,7 +2390,12 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
         const systemPrompt = requestSpec.systemPrompt || PLANNER_SYSTEM_PROMPT;
         const schema = requestSpec.schema || ANALYSIS_SCHEMA;
         const responseTokens = Math.max(128, Number(requestSpec.responseTokens) || INCREMENTAL_RESPONSE_TOKENS);
-        const parseResponse = requestSpec.parseResponse || (value => parseAnalysisResponse(value, prompt));
+        const responseParser = requestSpec.parseResponse || (value => parseAnalysisResponse(value, prompt));
+        let plannerInputTokens;
+        const parseResponse = value => {
+            const parsed = responseParser(value);
+            return requestSpec.singleShot === true ? { ...parsed, plannerPrompt: prompt, plannerInputTokens } : parsed;
+        };
         const requestedReasoningMode = requestSpec.reasoningMode || '';
         const requestLabel = requestSpec.label || 'planner';
         const cacheNamespace = requestSpec.cacheNamespace || 'analysis';
@@ -2402,8 +2414,9 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
             // model or connection profile. Those routes use the local reserve.
             const counter = model.active && typeof context.getTokenCountAsync === 'function'
                 ? context.getTokenCountAsync.bind(context) : null;
-            const fitted = await waitForAbortable(fitStoryInputBudget(prompt, systemPrompt, schema, plannerInputLimit(Number(getSettings().maxPromptTokens) || 8000), counter), controller.signal);
+            const fitted = await waitForAbortable(fitStoryInputBudget(prompt, systemPrompt, schema, plannerInputLimit(Number(getSettings().maxPromptTokens) || 10000), counter, { softTarget: true }), controller.signal);
             prompt = fitted.prompt;
+            plannerInputTokens = fitted.tokens;
             controller.signal.throwIfAborted();
         }
         const temperature = requestSpec.temperature === undefined ? plannerTemperature() : normalizePlannerTemperature(requestSpec.temperature);
@@ -2929,7 +2942,7 @@ function workingPlanSummary(preparation) {
         `LONG-RUNNING THREADS (private)\n${plan.threads}`,
         ...plan.consequences.map(fact => `Cited consequence: ${fact.text}`),
         ...plan.developments.map(d => `[${d.kind} · ${d.id}] ${d.question}\n${d.owner}: ${d.initiative}\nCan settle when: ${d.resolution}\nBeyond: ${d.beyond}\nAccess · ${d.access.route}: ${d.access.basis}`),
-        'LIMITS · 8,000 input / 1,200 working plan / 600 selected packet. Archived history is not resent.',
+        'TARGETS · 10,000 input / 1,200 working plan / 600 selected packet. Context is fitted automatically; token estimates alone do not invalidate preparation. Archived history is not resent.',
         ...preparation.archive.filter(entry => entry.migration?.omittedDrafts).map(entry =>
             `Migration retained ${entry.migration.omittedDrafts} oversized old drafts only in the local archive; they were not sent or declared completed.`),
     ].join('\n\n');
@@ -3366,7 +3379,7 @@ async function mountUI() {
     uiMountPromise = (async () => {
     // Load the template relative to this module so the extension works from
     // third-party/Tale-Fairy as well as any legacy installation directory.
-    const response = await fetch(new URL(`./settings.html?v=${RUNTIME_VERSION}&progress=1&working-plan=1`, import.meta.url));
+    const response = await fetch(new URL(`./settings.html?v=${RUNTIME_VERSION}&progress=1&working-plan=1&soft-targets=1`, import.meta.url));
     if (!response.ok) {
         throw new Error(`Could not load Tale Fairy settings: ${response.status} ${response.statusText}`);
     }

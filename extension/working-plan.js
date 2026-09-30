@@ -3,7 +3,9 @@
 import { conservativeTokenCount } from './token-budget.js';
 
 export const WORKING_PLAN_VERSION = 1;
-export const PLANNER_INPUT_LIMIT = 8000;
+// Historical export names are retained for callers; these are sizing targets,
+// not validity checks. Schema, evidence and ownership checks remain mandatory.
+export const PLANNER_INPUT_LIMIT = 10000;
 export const WORKING_PLAN_LIMIT = 1200;
 export const SELECTED_PACKET_LIMIT = 600;
 export const PLANNER_OUTPUT_LIMIT = 3000;
@@ -53,14 +55,12 @@ export function validateWorkingPlan(plan, check, playerNames = []) {
         if (rp.basis !== 'original' && (rp.canonIntent === 'not-applicable' || rp.divergence === 'not-applicable')) {
             throw Error('Non-original or unclear RP must state canon uncertainty rather than not-applicable');
         }
-        if (planTokens(rp) > RP_UNDERSTANDING_LIMIT) throw Error(`RP understanding exceeds ${RP_UNDERSTANDING_LIMIT} tokens`);
     }
     for (const rows of [plan.developments, plan.consequences]) {
         if (new Set(rows.map(row => row.id)).size !== rows.length) throw Error('Duplicate working-plan id');
     }
     const players = new Set(playerNames.map(name => name.trim().toLocaleLowerCase()));
     if (plan.developments.some(row => players.has(row.owner.trim().toLocaleLowerCase()))) throw Error('Player cannot own a planned initiative');
-    if (planTokens(plan) > WORKING_PLAN_LIMIT) throw Error(`Working plan exceeds ${WORKING_PLAN_LIMIT} tokens; saved preparation is intact.`);
 }
 
 // Compatibility projection for the existing writer, inspector and persistence
@@ -86,7 +86,6 @@ export function validateWorkingState(state, check) {
     for (const [key, value] of Object.entries(workingPlanProjection(state.workingPlan))) {
         if (JSON.stringify(state[key]) !== JSON.stringify(value)) throw Error(`Working-plan projection mismatch: ${key}`);
     }
-    if (planTokens(state.selectedMaterial) > SELECTED_PACKET_LIMIT) throw Error('Selected packet exceeds its token limit');
     const evidence = state.planEvidence;
     if (!evidence || typeof evidence !== 'object' || Array.isArray(evidence)
         || Object.keys(evidence).length !== state.workingPlan.consequences.length) throw Error('Invalid plan evidence');

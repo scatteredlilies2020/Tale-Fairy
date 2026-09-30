@@ -4,6 +4,20 @@ Tale Fairy is a standalone SillyTavern extension that acts as a **background cre
 
 ## Bounded working plan (current development update)
 
+Planner ingestion now targets **10,000 tokens** (up from 8,000), including
+instructions, schema and framing. These are sizing targets, not local rejection
+thresholds. Automatic fitting removes whole optional reviewed context—including
+an already-reviewed opening—before sending. Source, saved plans, fresh player
+choices and the latest exchange remain intact. The former 8,000 default migrates
+once; smaller custom targets remain unchanged.
+
+Valid output above the 1,200-token plan / 600-token packet targets gets one
+best-effort shortening attempt. If shortening fails, the valid first result is
+retained rather than discarded for its token estimate. Schema, evidence, player
+ownership, cancellation and atomic save checks still apply. Irreducible protected
+input may exceed its target, visibly reported; the provider's real context window
+still applies. Refresh ST and use **Guide now**; no reset is needed.
+
 The planner now saves an explicit **RP understanding** in the private notebook:
 original/franchise/mixed setting, canon preference, established divergence,
 remaining anchors, changes and effects, fitting experiences, and uncertainties.
@@ -11,7 +25,7 @@ Canon preference and divergence are separate: wanting to follow canon does not
 erase a major change made in play. Local changes affect dependent possibilities,
 not the entire setting; larger changes can invalidate later canon prerequisites.
 Original worlds need no franchise. This analysis is provisional, not verified
-canon research, and stays within the same request and existing token ceilings.
+canon research, and stays within the same request and shared sizing targets.
 Refresh ST and use **Guide now** to see it; older plans remain usable without reset.
 
 The active planner now explicitly prepares **opportunities tailored to the RP**:
@@ -29,34 +43,33 @@ local archive instead of treating the whole chat as unreviewed. Only an exact
 unchanged prefix with matching chat/source references qualifies; newer player
 contributions remain whole. Rebuild retains existing preparation until success,
 and preflight failures replace stale success labels with a no-request attempt.
-The 8,000-token cap is unchanged. Refresh ST, then use **Guide now**; no reset is
-needed for an older failed rebuild.
+Refresh ST, then use **Guide now**; no reset is needed for an older failed rebuild.
 
 Invalid planner output now gets **one automatic correction request** within the
 same planning pass. Oversized plans/packets, malformed or truncated JSON, and
 validation failures receive specific feedback and tighter drafting allowances.
-The correction obeys the same input/output limits and must pass all validation
+The correction uses the same input/output targets and must pass all validation
 before saving. Stop, changed sources, disabled planning and chat switches prevent
 the correction from sending. The attempt tracker reports when it was used.
 Two invalid responses preserve the saved plan and stop; reloads do not reset the
 attempt. Connection, authentication and timeout failures do not trigger this
-output-correction request. Successful first responses still use one call.
+output-correction request. Valid first responses within target still use one call.
 
-The active planner now keeps **at most four finite developments in a 1,200-token
-working plan**, separate from long-running ambitions and relationships. Arcs can
+The active planner now keeps **at most four finite developments**, targeting a
+**1,200-token working plan**, separate from long-running ambitions and relationships. Arcs can
 overlap, resolve, fail or give way to independent directions; no turn deadline or
 predetermined ending. Specific unfinished NPC/world initiatives carry forward.
 
-A successful planner pass supplies at most **600 tokens of generated writer material**.
-Its entire input, including instructions and schema, is capped at **8,000 tokens**;
+A planner pass targets **600 tokens of generated writer material**.
+Its entire input, including instructions and schema, targets **10,000 tokens**;
 the old growing episode/evidence ledger is no longer resent. Original preparation
 and witnessed outcomes remain in the local archive. Optional external recall is
 read-only, capped at 1,000 tokens and unnecessary for standalone operation.
 
 Refresh SillyTavern to load the new entry point. Existing preparation remains
-unchanged until a successful review migrates it. Oversized required source or
-unreviewed player input stops before a request rather than silently losing text.
-These are enforced engineering limits, not proof of better storytelling: the
+unchanged until a successful review migrates it. Required source or unreviewed
+player input is never silently clipped to hit a target.
+These are engineering controls, not proof of better storytelling: the
 matched writer comparison is still a separate live-quality gate.
 See [implementation, migration and evaluation protocol](docs/bounded-story-plan.md).
 
