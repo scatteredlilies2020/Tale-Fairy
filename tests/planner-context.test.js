@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { storyInput, STORY_SYSTEM, STORY_SCHEMA } from '../extension/bounded-story.js';
 import { storyInputTokens, fitStoryInputBudget } from '../extension/story-budget.js';
 import { emptyCampaign } from '../extension/campaign-planner.js';
-import { optionalPlannerContexts } from '../extension/planner-context.js';
+import { fitPlannerContext, optionalPlannerContexts } from '../extension/planner-context.js';
 
 const prose = (size, text = 'People travel among distinct towns. Their choices change local relationships. ') => text.repeat(Math.ceil(size / text.length)).slice(0, size);
 const reference = { description: prose(1607), personality: prose(535), scenario: prose(915), persona: prose(115) };
@@ -53,6 +53,27 @@ test('reviewed omissions need explicit coverage; latest exchange and unreviewed 
     }
     const reviewed = [...optionalPlannerContexts({ ...payload, coverage: { ...payload.coverage, reviewed_before: 413 } })];
     assert.deepEqual(reviewed.at(-1).accepted_messages, messages.slice(-2), 'manual replan still sees latest exchange');
+});
+
+test('optional prior story map yields before evidence or reviewed play when fitting', () => {
+    const payload = { source_reference: reference, previous_plan: { direction: 'Protected plan.' },
+        prior_story_map: { storyScope: 'Places beyond this scene.', independentSource: 'Townspeople plan a fair.' },
+        accepted_messages: messages, external_evidence: [{ content: 'Optional recall.' }],
+        coverage: { reviewed_before: 411, reviewed_context_optional: true } };
+    const candidates = [...optionalPlannerContexts(payload)];
+    assert.equal(candidates[0].prior_story_map, undefined);
+    assert.ok(candidates[0].external_evidence);
+    assert.deepEqual(candidates[0].accepted_messages, messages);
+    assert.deepEqual(candidates[0].source_reference, reference);
+    assert.deepEqual(candidates[0].previous_plan, payload.previous_plan);
+    assert.equal(candidates[0].coverage.omitted_prior_story_map, true);
+    assert.equal(candidates[1].external_evidence, undefined);
+    const measure = value => JSON.stringify(value).length;
+    const fitted = fitPlannerContext(payload, measure, measure(payload) - 10);
+    assert.equal(fitted.prior_story_map, undefined);
+    assert.deepEqual(fitted.source_reference, reference);
+    assert.deepEqual(fitted.previous_plan, payload.previous_plan);
+    assert.deepEqual(fitted.accepted_messages, messages);
 });
 
 test('active tokenizer refits optional context against the actual outgoing envelope', async () => {

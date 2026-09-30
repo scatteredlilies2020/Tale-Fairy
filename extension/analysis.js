@@ -1,6 +1,6 @@
-import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.14.22&rp-understanding=1&soft-targets=1';
+import { fingerprintMessages, normalizeState, stateForPrompt } from './state.js?v=0.14.22&rp-understanding=1&soft-targets=1&story-map=1';
 import { leadingGeneratedStatusSummary, sceneStatus } from './transcript-status.js?v=0.14.5';
-import { plotExcerpt } from './generation-context.js?v=0.14.22&rp-understanding=1&soft-targets=1';
+import { plotExcerpt } from './generation-context.js?v=0.14.22&rp-understanding=1&soft-targets=1&story-map=1';
 import { estimateTokenCount, truncateToTokenBudget } from './token-budget.js?v=0.11.96';
 import { compactSummarySources } from './summary-context.js?v=0.14.22';
 import { relevantExcerpt } from './evidence-selection.js?v=0.13.9';

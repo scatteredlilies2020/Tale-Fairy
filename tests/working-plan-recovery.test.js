@@ -38,6 +38,8 @@ for (const [name, invalid] of [
         assert.match(system, /corrected complete JSON/);
         assert.ok(schema.value.properties.plan.required.includes('rpUnderstanding'));
         assert.equal(schema.value.properties.plan.properties.rpUnderstanding.properties.departures.maxLength, 70);
+        assert.equal(schema.value.properties.plan.properties.rpUnderstanding.properties.storyScope.maxLength, 70);
+        assert.equal(schema.value.properties.plan.properties.rpUnderstanding.properties.independentSource.maxLength, 70);
         assert.ok(payload.response_correction.error);
         assert.deepEqual(payload.source_reference, JSON.parse(prepared.prompt).source_reference);
         assert.deepEqual(payload.accepted_messages, JSON.parse(prepared.prompt).accepted_messages);

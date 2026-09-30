@@ -30,11 +30,14 @@ test('active contract tailors opportunities without adding a memory store or a c
     assert.match(STORY_SYSTEM, /Reframe a scene-bound previous direction from the RP basis/);
     assert.match(STORY_SYSTEM, /without requiring a challenge, reward or player participation/);
     assert.match(STORY_SYSTEM, /Invitations are valid when backed by something to experience/);
+    assert.match(STORY_SYSTEM, /storyScope names the particular setting\/era\/premise's wider story territory/);
+    assert.match(STORY_SYSTEM, /independentSource names one plausible NPC, routine, institution or world force/);
+    assert.match(STORY_SYSTEM, /keep one concrete off-scene possibility in private developments/);
     assert.match(STORY_SYSTEM, /unrelated opportunities need new ids/);
     assert.match(STORY_SYSTEM, /participation and outcomes stay open/);
     assert.doesNotMatch(STORY_SYSTEM, /not another invitation/);
-    assert.ok(storyInputTokens('', STORY_SYSTEM, STORY_SCHEMA) <= 3200,
-        'Explicit RP analysis must leave at least 4800 of the 8k envelope for source and state.');
+    assert.ok(storyInputTokens('', STORY_SYSTEM, STORY_SCHEMA) <= 3500,
+        'The fixed contract must leave most of the 10k target for source and state.');
     assert.deepEqual(Object.keys(STORY_SCHEMA.value.properties.plan.properties),
         ['rpUnderstanding', 'direction', 'threads', 'consequences', 'developments']);
 });
@@ -64,6 +67,8 @@ test('RP analysis distinguishes canon intent from causal divergence and stays pr
     assert.match(STORY_SYSTEM, /Check direction, developments and selected_material against this analysis/);
     assert.match(STORY_SYSTEM, /earlier analysis is not evidence/);
     assert.ok(STORY_SCHEMA.value.properties.plan.required.includes('rpUnderstanding'));
+    assert.ok(STORY_SCHEMA.value.properties.plan.properties.rpUnderstanding.required.includes('storyScope'));
+    assert.ok(STORY_SCHEMA.value.properties.plan.properties.rpUnderstanding.required.includes('independentSource'));
 });
 
 test('old bounded metadata upgrades without resetting revision, ids, review coverage or archives', async () => {
@@ -83,6 +88,33 @@ test('old bounded metadata upgrades without resetting revision, ids, review cove
     assert.deepEqual(next.state.archive.at(-1).workingPlan, old.workingPlan);
     assert.deepEqual(old, untouched);
     assert.deepEqual(JSON.parse(input(next.state).prompt).previous_plan.rpUnderstanding, originalUnderstanding());
+});
+
+test('older RP analyses without a story map stay valid, but new output needs both fields', async () => {
+    const first = await pass();
+    const old = structuredClone(first.state);
+    delete old.workingPlan.rpUnderstanding.storyScope;
+    delete old.workingPlan.rpUnderstanding.independentSource;
+    assert.equal(validCampaignState(old), true);
+    assert.deepEqual(JSON.parse(input(old).prompt).previous_plan.rpUnderstanding, old.workingPlan.rpUnderstanding);
+    for (const key of ['storyScope', 'independentSource']) {
+        const raw = response(); delete raw.plan.rpUnderstanding[key];
+        const result = await pass(raw, old);
+        assert.equal(result.accepted, false);
+        assert.match(result.error, new RegExp(`missing ${key}`));
+        assert.equal(result.state, old);
+    }
+});
+
+test('rebuild keeps only a provisional story map, not old plans or outcomes', async () => {
+    const prior = (await pass()).state;
+    const prepared = input(prior, { resetPlan: true });
+    const sent = JSON.parse(prepared.prompt);
+    assert.deepEqual(sent.previous_plan.developments, []);
+    assert.deepEqual(sent.prior_story_map, Object.fromEntries(Object.entries(prior.workingPlan.rpUnderstanding)
+        .filter(([key]) => key !== 'uncertainty')));
+    assert.doesNotMatch(JSON.stringify(sent.prior_story_map), /bridge|Ren hopes/i);
+    assert.match(STORY_SYSTEM, /prior_story_map is only a hypothesis/);
 });
 
 test('missing analysis fails transactionally instead of inferring a default franchise', async () => {
@@ -175,6 +207,8 @@ test('recovery of an old failed rebuild reserves archived revision ids without r
     const built = input(state);
     assert.equal(built.newIdPrefix, 'r51-');
     assert.deepEqual(built.previousPlan.developments, []);
+    assert.deepEqual(JSON.parse(input(state, { resetPlan: true }).prompt).prior_story_map.storyScope,
+        prior.workingPlan.rpUnderstanding.storyScope);
     const raw = response();
     raw.plan.developments[0].id = 'r51-new';
     raw.selected_material[0].subjectIds = ['r51-new'];
@@ -284,7 +318,7 @@ test('complete request target includes schema and instructions without rejecting
     assert.deepEqual(JSON.parse(large.prompt).source_reference, reference);
     assert.ok(storyInput({ reference: {}, state: emptyCampaign(), messages }, 1).inputOverTarget > 0);
     assert.ok(STORY_SYSTEM.includes('No turn timers'));
-    assert.equal(STORY_SCHEMA.name, 'tale_fairy_working_plan_rp_v1');
+    assert.equal(STORY_SCHEMA.name, 'tale_fairy_working_plan_rp_v2');
 });
 
 test('legacy migration archives whole preparation and fails transactionally', async () => {

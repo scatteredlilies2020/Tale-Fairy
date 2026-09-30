@@ -27,9 +27,15 @@ export const RP_UNDERSTANDING_SCHEMA = object({
     divergence: choice(['none-established', 'local', 'major', 'unclear', 'not-applicable']),
     anchors: text(200),
     departures: text(200),
+    storyScope: text(150),
     experiences: text(180),
+    independentSource: text(150),
     uncertainty: text(160),
 });
+// Older saved analyses lack these two fields. Keep them readable until the next
+// provider pass supplies a complete story map; new responses require both.
+RP_UNDERSTANDING_SCHEMA.required = RP_UNDERSTANDING_SCHEMA.required
+    .filter(key => key !== 'storyScope' && key !== 'independentSource');
 export const WORKING_PLAN_SCHEMA = object({
     direction: text(600),
     threads: text(600),

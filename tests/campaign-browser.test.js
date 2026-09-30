@@ -142,11 +142,13 @@ const opportunityCases = [
         available: 'If they later enter the next town market, a seller displays hand-annotated maps of old northern routes.',
     },
     {
-        name: 'city opportunity respects a departure from canon',
-        understanding: { basis: 'franchise', setting: 'City RP after a negotiated truce', canonIntent: 'unspecified', divergence: 'major',
+        name: 'Korra-era city opportunity respects a departure from canon',
+        understanding: { basis: 'franchise', setting: 'Korra-era city RP after a negotiated truce', canonIntent: 'unspecified', divergence: 'major',
             anchors: 'City life, sport and friendships.', departures: 'The truce replaces faction conflict; the hall reopened.',
-            experiences: 'Shared civic projects and relationships.', uncertainty: 'Future canon events are not established.' },
-        scenario: 'A city RP with civic life, sport and friendships. In this version the factions negotiated a truce.',
+            storyScope: 'Urban civic life after the established truce.', experiences: 'Shared civic projects and relationships.',
+            independentSource: 'Community volunteers organize hall activities beyond the cafe.',
+            uncertainty: 'Future canon events are not established.' },
+        scenario: 'Avatar: Korra-era city RP with civic life, sport and friendships. In this version the factions negotiated a truce.',
         past: 'The council ratified the truce; the neighborhood reopened its community hall.',
         current: 'I finish my noodles by the window.',
         direction: 'Explore city life and relationships after the negotiated truce.',
@@ -167,7 +169,8 @@ const opportunityCases = [
         current: 'I arrive at the yard.',
         understanding: { basis: 'franchise', setting: 'Naruto; village training era supplied by card', canonIntent: 'follow', divergence: 'none-established',
             anchors: 'The village trains teams and posts missions.', departures: 'None established; this does not verify all canon.',
-            experiences: 'Training, missions and team relationships.', uncertainty: 'Exact canon chronology remains unspecified.' },
+            storyScope: 'Village team life and missions in the supplied era.', experiences: 'Training, missions and team relationships.',
+            independentSource: 'The mission board receives work beyond this training yard.', uncertainty: 'Exact canon chronology remains unspecified.' },
         direction: 'Village training, missions and relationships with open participation.', threads: 'Develop team skills.',
         owner: 'Instructor', question: 'What can the team practice?', initiative: 'The instructor lays out a team exercise.',
         resolution: 'The practice concludes or is passed over.', beyond: 'Mission work remains available.',
@@ -179,7 +182,8 @@ const opportunityCases = [
         past: 'The team accepted a different mentor, who teaches through tracking exercises.', current: 'I arrive at our training yard.',
         understanding: { basis: 'franchise', setting: 'Naruto; village training era supplied by card', canonIntent: 'follow', divergence: 'local',
             anchors: 'Village institutions and missions still apply.', departures: 'Changed mentor affects team training, not unrelated village premises.',
-            experiences: 'Tracking practice, team bonds and missions.', uncertainty: 'Other canon details remain provisional.' },
+            storyScope: 'Team life under the new mentor; village work remains.', experiences: 'Tracking practice, team bonds and missions.',
+            independentSource: 'Village mission staff continue posting assignments.', uncertainty: 'Other canon details remain provisional.' },
         direction: 'Village missions and team growth under the changed mentor.', threads: 'Learn the new mentor approach.',
         owner: 'New mentor', question: 'How does this team follow a trail?', initiative: 'The new mentor sets a tracking course.',
         resolution: 'The course concludes or is declined.', beyond: 'Tracking can matter on later missions.',
@@ -191,7 +195,8 @@ const opportunityCases = [
         past: 'The villages ratified the alliance and opened joint training to their teams.', current: 'I stop beside the training noticeboard.',
         understanding: { basis: 'franchise', setting: 'Naruto; alliance continuity established in this RP', canonIntent: 'follow', divergence: 'major',
             anchors: 'Team training and village identities remain.', departures: 'Alliance removes hostile prerequisites; future inter-village events must adapt.',
-            experiences: 'Joint training, cultural exchange and new missions.', uncertainty: 'Do not assume later canon conflicts still occur.' },
+            storyScope: 'Team and inter-village life under the established alliance.', experiences: 'Joint training, cultural exchange and new missions.',
+            independentSource: 'Allied instructors arrange sessions independently of the team.', uncertainty: 'Do not assume later canon conflicts still occur.' },
         direction: 'Explore team life and inter-village opportunities after the alliance.', threads: 'Build relationships across villages.',
         owner: 'Joint instructors', question: 'What can allied teams learn together?', initiative: 'Instructors post a joint training session.',
         resolution: 'The session ends or passes without attendance.', beyond: 'Shared missions may grow from the alliance.',
@@ -248,6 +253,8 @@ for (const correction of [false, true]) test(`${example.name}: ${correction ? 'c
     assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
     assert.ok(h.prepare().payload.includes(example.available), 'Opportunity survives the real host commit and writer selection.');
     assert.ok(!h.prepare().payload.includes(value.plan.rpUnderstanding.uncertainty), 'Private provisional analysis is not injected as a fact.');
+    assert.ok(!h.prepare().payload.includes(value.plan.rpUnderstanding.storyScope), 'Private story scope is not a writer directive.');
+    assert.ok(!h.prepare().payload.includes(value.plan.rpUnderstanding.independentSource), 'Off-scene activity stays private until selected.');
     assert.deepEqual(h.context.chat, untouched, 'Planning does not enact participation, travel or time passage.');
     const nextInput = h.scope.buildCampaignHostInput(h.scope.readCampaignSnapshot());
     assert.equal(JSON.parse(nextInput.prompt).previous_plan.direction, example.direction,
@@ -1021,7 +1028,7 @@ test('actual campaign entry builds evidence, uses single-shot transport and comm
     assert.equal(h.requests.length, 1);
     const request = h.requests[0];
     assert.equal(request.spec.singleShot, true);
-    assert.equal(request.spec.schema.name, 'tale_fairy_working_plan_rp_v1');
+    assert.equal(request.spec.schema.name, 'tale_fairy_working_plan_rp_v2');
     assert.equal(request.spec.responseTokens, 3000);
     assert.equal(request.spec.reasoningMode, undefined, 'honor saved reasoning instead of legacy forced Off');
     assert.equal(request.meta, null, 'no legacy detached recovery contract');

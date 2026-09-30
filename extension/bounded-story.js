@@ -1,14 +1,14 @@
-import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1';
+import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1';
 import { compactPlannerReference } from './planner-reference.js?history-budget=1';
 import { compactCampaignSpeakers } from './campaign-evidence.js';
 import { witnessMessages, resolveSpanWitnesses, SPAN_WITNESS_SCHEMA } from './accepted-witnesses.js?v=0.14.34&partial-evidence=1';
 import { fitEvidenceProviders } from './evidence-providers.js';
 import { SELECTED_MATERIAL_SCHEMA, validateSelectedMaterial } from './selected-material.js?v=0.14.36&rp-plot=1';
-import { storyInputTokens } from './story-budget.js?follow-through=1&soft-targets=1';
-import { fitPlannerContext } from './planner-context.js?soft-targets=1';
+import { storyInputTokens } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1';
+import { fitPlannerContext } from './planner-context.js?soft-targets=1&story-map=1';
 import { WORKING_PLAN_SCHEMA, WORKING_PLAN_VERSION, WORKING_PLAN_LIMIT, SELECTED_PACKET_LIMIT, RP_UNDERSTANDING_LIMIT,
-    PLANNER_INPUT_LIMIT, planTokens, plannerInputLimit, validateWorkingPlan, workingPlanProjection } from './working-plan.js?rp-understanding=1&soft-targets=1';
-export { PLANNER_INPUT_LIMIT, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './working-plan.js?rp-understanding=1&soft-targets=1';
+    PLANNER_INPUT_LIMIT, planTokens, plannerInputLimit, validateWorkingPlan, workingPlanProjection } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1';
+export { PLANNER_INPUT_LIMIT, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1';
 
 const text = maxLength => ({ type: 'string', minLength: 1, maxLength });
 const object = properties => ({ type: 'object', additionalProperties: false, required: Object.keys(properties), properties });
@@ -29,11 +29,14 @@ const responseShape = withoutDescriptions(object({
     selected_material: selection,
 }));
 responseShape.properties.plan.required.push('rpUnderstanding');
+responseShape.properties.plan.properties.rpUnderstanding.required.push('storyScope', 'independentSource');
 // Admission and saved-state compatibility keep the original field ceilings.
 // Drafting needs much smaller allowances: those ceilings are not a budget to
 // fill independently, and JSON keys/ids consume part of the shared token cap.
-export const STORY_SCHEMA = { name: 'tale_fairy_working_plan_rp_v1', value: structuredClone(responseShape) };
+export const STORY_SCHEMA = { name: 'tale_fairy_working_plan_rp_v2', value: structuredClone(responseShape) };
 const draftPlan = STORY_SCHEMA.value.properties.plan.properties;
+draftPlan.rpUnderstanding.properties.storyScope.maxLength = 110;
+draftPlan.rpUnderstanding.properties.independentSource.maxLength = 110;
 draftPlan.direction.maxLength = 140;
 draftPlan.threads.maxLength = 140;
 draftPlan.consequences.items.properties.text.maxLength = 120;
@@ -52,7 +55,7 @@ Use relevant past events to shape what is plausible, changed or meaningful, not 
 
 Analyze before planning: rpUnderstanding is a compact, revisable interpretation, not verified history. Identify original/franchise/mixed/unclear basis, setting and relevant era; names alone do not prove a franchise. canonIntent reflects the user's stated preference (follow/flexible/alternate), otherwise unspecified. divergence separately describes established causal impact: none-established, local, major or unclear, not a count of edits. For original RP both are not-applicable; derive its rules and possibilities from the supplied world, not a borrowed canon.
 
-anchors records still-applicable rules, relationships and premises; departures records established changes and affected future prerequisites. experiences records fitting opportunities; uncertainty flags missing era, canon knowledge or intent without inventing answers. Familiar franchise knowledge is provisional, not researched fact; supplied references, explicit corrections and accepted play override it. No established change is not proof of complete canon fidelity. Following canon permits compatible expectations, not predetermined player choices. Local changes affect what depends on them; unrelated anchors can remain. Major changes require new causal possibilities, not forced return to canon. Check direction, developments and selected_material against this analysis. Update it when play changes the basis; earlier analysis is not evidence. Aim for 180 tokens including JSON, keep below the target of ${RP_UNDERSTANDING_LIMIT}, within the existing plan budget; do not make a lore encyclopedia.
+anchors records still-applicable rules, relationships and premises; departures records established changes and affected future prerequisites. storyScope names the particular setting/era/premise's wider story territory, not prose style or a mandatory plot. experiences names fitting concrete experiences. independentSource names one plausible NPC, routine, institution or world force that can act beyond this scene; mundane is valid. Use "None warranted by this scope" for a deliberately closed RP, not invented conflict. A prior_story_map is only a hypothesis to check against source and accepted play, never evidence. Retain still-plausible scope and independent activity across scene changes. uncertainty flags missing era, canon knowledge or intent without inventing answers. Familiar franchise knowledge is provisional, not researched fact; supplied references, explicit corrections and accepted play override it. No established change is not proof of complete canon fidelity. Following canon permits compatible expectations, not predetermined player choices. Local changes affect what depends on them; unrelated anchors can remain. Major changes require new causal possibilities, not forced return to canon. Check direction, developments and selected_material against this analysis. Update it when play changes the basis; earlier analysis is not evidence. Keep below the ${RP_UNDERSTANDING_LIMIT}-token target within the existing plan budget; do not make a lore encyclopedia.
 
 Return a complete replacement plan, at most four developments; keep the whole plan below the ${WORKING_PLAN_LIMIT}-token target. direction holds the RP's broader range of fitting experiences, not today's agenda; retain that scope across scene changes, revising it for actual premise changes. Reframe a scene-bound previous direction from the RP basis. threads holds relevant long-running interests/relationships, not obligations. consequences holds at most four relevant witnessed results, not a lifetime ledger. Earlier history stays local.
 
@@ -60,7 +63,7 @@ Draft below the target: aim for 800 tokens for the ENTIRE serialized plan, inclu
 
 Developments may be arcs, side activities or emerging opportunities. question is what can be explored or experienced, not necessarily a problem. initiative supplies concrete NPC/world activity. resolution says when this experience can conclude or pass, without requiring a challenge, reward or player participation. beyond offers fitting follow-through or a different experience, not another prerequisite. Keep an id's specific meaning; unrelated opportunities need new ids. access gives a plausible bridge and real prerequisites; none is private/unreachable. Do not expose private causes to the writer.
 
-Reconcile actual play: continue useful work, retire ended attempts, or introduce independent possibilities from the wider RP. Do not turn every opportunity into fallout from the current problem. Let effective actions solve obstacles without moving goalposts, resetting achievements or adding hidden layers. Aftermath need not be unfinished business. Allow rest, celebration, departure and quiet enjoyment. No turn timers, forced time skips, compulsory escalation, scene rotation or novelty quota. Fictional time, causes and player choices govern transitions; NPCs need not await manual activation.
+Reconcile actual play: continue useful work, retire ended attempts, or introduce independent possibilities from the wider RP. When scope supports it and capacity allows, keep one concrete off-scene possibility in private developments; do not force it into selected_material or invent a threat. Do not turn every opportunity into fallout from the current problem. Let effective actions solve obstacles without moving goalposts, resetting achievements or adding hidden layers. Aftermath need not be unfinished business. Allow rest, celebration, departure and quiet enjoyment. No turn timers, forced time skips, compulsory escalation, scene rotation or novelty quota. Fictional time, causes and player choices govern transitions; NPCs need not await manual activation.
 
 For every removed development return one exit: closed means ended in play; changed means actual events superseded it. Both require exact supplied message/span evidence. paused and dropped withdraw preparation, not claim fictional completion; they require no evidence. Retained ids cannot exit. Omission is not closure. Migration/rebuild may replace old drafts without exits. New ids must start with new_id_prefix; never revive an ended attempt under a new id. Broader relationships may continue as different work.
 
@@ -80,6 +83,21 @@ function legacyDraft(state) {
     }
     if (state.rpBrief && planTokens({ ...result, previousBrief: state.rpBrief }) <= WORKING_PLAN_LIMIT) result.previousBrief = state.rpBrief;
     return result;
+}
+
+function provisionalStoryMap(state) {
+    let understanding = state?.workingPlan?.rpUnderstanding;
+    if (!understanding) {
+        for (let i = (state?.archive?.length || 0) - 1; i >= 0; i--) {
+            understanding = state.archive[i]?.preparation?.workingPlan?.rpUnderstanding;
+            if (understanding) break;
+        }
+    }
+    if (!understanding || typeof understanding !== 'object' || Array.isArray(understanding)) return null;
+    const fields = ['basis', 'setting', 'canonIntent', 'divergence', 'anchors', 'departures', 'storyScope', 'experiences', 'independentSource'];
+    const map = Object.fromEntries(fields.filter(key => typeof understanding[key] === 'string' && understanding[key].trim())
+        .map(key => [key, understanding[key]]));
+    return Object.keys(map).length ? map : null;
 }
 
 // Older rebuilds reset revision to zero before sending. Keep their archived id
@@ -113,8 +131,10 @@ export function storyInput({ reference, state, messages, playerNames = [], previ
     const speakers = compactCampaignSpeakers(messages);
     const names = [...new Set(playerNames.filter(name => typeof name === 'string' && name.trim()))];
     const nextRevision = nextPlanRevision(state), newIdPrefix = `r${nextRevision}-`;
+    const priorStoryMap = resetPlan ? provisionalStoryMap(state) : null;
     let payload = { source_reference: compactPlannerReference(reference),
         previous_plan: previous, rebuild: !previousUsable || migration, new_id_prefix: newIdPrefix,
+        ...(priorStoryMap ? { prior_story_map: priorStoryMap } : {}),
         player_names: names,
         coverage: { reviewed_before: reviewedMessageCount, supplied_messages: messages.length,
             ...(reviewedMessageCount ? { reviewed_context_optional: true } : {}),
@@ -231,7 +251,7 @@ function correctionInput(input, failure) {
     const schema = structuredClone(STORY_SCHEMA);
     const plan = schema.value.properties.plan.properties;
     for (const key of ['direction', 'threads']) plan[key].maxLength = 100;
-    for (const key of ['setting', 'anchors', 'departures', 'experiences', 'uncertainty']) {
+    for (const key of ['setting', 'anchors', 'departures', 'storyScope', 'experiences', 'independentSource', 'uncertainty']) {
         plan.rpUnderstanding.properties[key].maxLength = 70;
     }
     const development = plan.developments.items.properties;
