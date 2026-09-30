@@ -10,7 +10,7 @@ import * as compactionApi from '../../extension/notebook-compaction.js';
 import * as preparedApi from '../../extension/prepared-world.js';
 import * as campaignApi from '../../extension/campaign-planner.js';
 import { storyInput as ownedInput, storyPass as ownedPass, needsEventReframe,
-    STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM } from '../../extension/story-selection.js';
+    STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from '../../extension/bounded-story.js';
 import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from '../../extension/campaign-session.js';
 import { isStoryGeneration, refreshGameMasterContract } from '../../extension/game-master.js';
 import { sampleDirectorSignals } from '../../extension/director-sampling.js';
@@ -34,7 +34,7 @@ export function generationHarness(messages, state = stateApi.defaultState(), met
     const scope = {
         activatedStoryContext: new ActivatedStoryContext(), readHostStoryEvidence,
         ...stateApi, ...cacheApi, ...scheduleApi, ...coalescerApi, ...preparedApi, ...campaignApi, ...compactionApi,
-        ownedInput, ownedPass, needsEventReframe, OWNED_SCHEMA, OWNED_SYSTEM, CampaignSession, CAMPAIGN_ATTEMPT_KEY,
+        ownedInput, ownedPass, needsEventReframe, OWNED_SCHEMA, OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit, CampaignSession, CAMPAIGN_ATTEMPT_KEY,
         getRequestHeaders: () => ({}), sha256: bytes => createHash('sha256').update(bytes).digest('hex'),
         isStoryGeneration, refreshGameMasterContract, sampleDirectorSignals, selectSituationalOpenings, createSafetyFallbackState, canRetainSuccessfulPlan,
         // ST returns a new context with a snapshot reference to its metadata.

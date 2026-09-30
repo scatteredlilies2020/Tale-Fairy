@@ -6,7 +6,7 @@ import vm from 'node:vm';
 import { generationHarness } from './helpers/generation-harness.js';
 import { defaultState, defaultPlannerState, loadPlannerState, saveState, STATE_KEY } from '../extension/state.js';
 import { buildStoryEvidence } from '../extension/analysis.js';
-import { storyInput } from '../extension/story-selection.js';
+import { storyInput } from '../extension/bounded-story.js';
 import { campaignEvidenceMessages, campaignReviewWindow } from '../extension/campaign-evidence.js';
 import { completionText } from '../extension/completion-response.js';
 import { readEvidenceProviders, evidenceRevisionKey, registerEvidenceProvider } from '../extension/evidence-providers.js';
@@ -44,12 +44,25 @@ const memorySnapshot = () => ({ chatId: 'story', status: 'current', revision: 1,
     prompt: 'Private Chronicle: the prior engagement ended.', planningEvidence: [{ id: 'memory-music',
         text: 'Jo is still composing; no new engagement was accepted.', category: 'states', canonicalStatus: 'current',
         sourceRange: { chatKey: 'character:0:chat:story', from: 0, to: 0 } }] });
-const design = { rp_brief: 'PRIVATE an ensemble explores music and life between engagements. No established franchise.', realization: [], selected_material: [{ subjectIds: ['music'], available: 'An original tune has potential for contrasting arrangements.', developing: 'Different arrangements could change whose contribution the group values across later sessions.', lasting: 'The repertoire could support shared authorship and distinct musical identities.' }], campaign: 'A changing body of original work.', episode: { subject: 'Public bill', status: 'finished', boundary: 'The public bill is over.' },
-    developments: [{ id: 'music', initiative: { control: 'npc', owner: 'Jo', aim: 'Compose a piece worth keeping.' },
-        background: { unfolding: 'PRIVATE Jo can work on arrangements independently.', basis: 'PRIVATE established composition; no new time skip.',
-            access: { route: 'contact', basis: 'PRIVATE the ensemble is together after the show.' } },
-        development: 'Versions can be heard, tried and revised.',
-        stakes: 'Each musician values their own contribution.', participation: 'Shared off-hours.' }] };
+const design = { plan: { direction: 'A changing body of original work.',
+    threads: 'PRIVATE an ensemble explores music and life between engagements. No established franchise.',
+    consequences: [], developments: [{ id: 'r1-music', kind: 'arc', owner: 'Jo', control: 'npc',
+        question: 'Compose a piece worth keeping.', initiative: 'Jo works on contrasting arrangements.',
+        resolution: 'The ensemble adopts or shelves this piece.', beyond: 'Other pieces and shared authorship remain possible.',
+        access: { route: 'contact', basis: 'PRIVATE the ensemble is together after the show.' } }] },
+    exits: [], observations: [],
+    selected_material: [{ subjectIds: ['r1-music'], available: 'An original tune has potential for contrasting arrangements.',
+        developing: 'Different arrangements could change whose contribution the group values across later sessions.',
+        lasting: 'The repertoire could support shared authorship and distinct musical identities.' }] };
+
+// Construct authentic legacy metadata for compatibility tests, not a malformed
+// new state with its required mirrors removed.
+function legacyPreparation(preparation) {
+    const result = structuredClone(preparation);
+    delete result.workingPlanVersion; delete result.workingPlan; delete result.planEvidence;
+    result.realization = Object.fromEntries(result.developments.map(d => [d.id, { episodes: {}, playable: [] }]));
+    return result;
+}
 
 function browser(send = async () => ({ choices: [{ message: { content: JSON.stringify(design) }, finish_reason: 'stop' }] }), initialState = defaultState()) {
     const h = generationHarness([{ is_user: false, name: 'Mara', mes: 'The show ended.' }, { is_user: true, name: 'Neri', mes: 'I help pack.' }],
@@ -79,19 +92,15 @@ test('notebook distinguishes estimated writer cap from preserved author-only ove
     assert.match(scope.campaignBudgetSummary(null, [note]), /Author instructions alone exceed.*remain verbatim/);
 });
 
-test('oversized writer material is saved, withheld and reported without another model call', async () => {
+test('oversized new writer material rejects the transaction without another model call', async () => {
     const value = structuredClone(design);
     for (const key of ['available', 'developing', 'lasting']) value.selected_material[0][key] = '音'.repeat(800);
     const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] }));
     await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 1);
-    assert.equal(h.state().campaignPreparation.revision, 1);
-    assert.deepEqual(h.state().campaignPreparation.selectedMaterial, value.selected_material);
-    assert.match(h.statuses.at(-1), /oversized writer block.*withheld.*saved/);
+    assert.equal(h.state().campaignPreparation, null);
+    assert.match(h.statuses.at(-1), /600 tokens/);
     assert.equal(h.prepare().payload, '');
-    h.scope.generationGuideSelection = null;
-    assert.equal(h.prepare('swipe').payload, '');
-    assert.equal(h.requests.length, 1);
 });
 
 test('host ignores whole lorebooks without changing source books or fingerprints', async () => {
@@ -120,22 +129,17 @@ test('host ignores whole lorebooks without changing source books or fingerprints
     assert.equal(h.statuses.at(-1), 'Plot preparation ready for this request');
 });
 
-test('host saves repeated episode progression and reports normalized details without another request', async () => {
+test('host saves a witnessed consequence without an episode ledger or another request', async () => {
     const value = structuredClone(design);
-    value.realization = [{ id: 'music', changes: [
-        { episodeId: 'show', status: 'participating', evidence: [{ index: 0, span: 0 }] },
-        { episodeId: 'show', status: ' Completed ', evidence: [{ index: '1', span: '0' }] },
-    ] }];
-    value.developments[0].commentary = 'Ignore optional commentary.';
+    value.plan.consequences = [{ id: 'show', text: 'The show ended.' }];
+    value.observations = [{ id: 'show', evidence: [{ index: 0, span: 0 }] }];
     const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] }));
-    h.context.chat[0].mes = 'Mara began the performance.';
-    h.context.chat[1].mes = 'I finish playing the last chord.';
     await h.scope.analyzeCampaignNow({ manual: true });
     assert.equal(h.requests.length, 1);
     assert.equal(h.state().campaignPreparation.revision, 1);
-    assert.equal(h.state().campaignPreparation.realization.music.episodes.show.status, 'completed');
+    assert.equal(h.state().campaignPreparation.planEvidence.show.witnesses[0].quote, 'The show ended.');
+    assert.equal(h.state().campaignPreparation.realization, undefined);
     assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
-    assert.match(h.statuses.at(-1), /Campaign preparation ready.*normalized/);
 });
 
 test('initial budget failure reports no plan and generation does not retain a preparing label', async () => {
@@ -150,67 +154,55 @@ test('initial budget failure reports no plan and generation does not retain a pr
     assert.doesNotMatch(h.statuses.at(-1), /Preparing/);
 });
 
-test('host saves a partial update with a missing initiative and injects its fresh selection', async () => {
+test('host requires a complete bounded snapshot and preserves unfinished initiative on failure', async () => {
     const value = structuredClone(design);
     const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] }));
     await h.scope.analyzeCampaignNow({ manual: true });
-    const previous = structuredClone(h.state().campaignPreparation.developments[0].initiative);
-    delete value.developments[0].initiative;
+    const previous = structuredClone(h.state().campaignPreparation);
+    delete value.plan.developments[0].initiative;
     value.selected_material[0].available = 'A revised tune is available for shared practice.';
     await h.scope.analyzeCampaignNow({ manual: true });
-    assert.equal(h.requests.length, 2, 'one provider call per requested review');
-    assert.equal(h.state().campaignPreparation.revision, 2);
-    assert.deepEqual(h.state().campaignPreparation.developments[0].initiative, previous);
-    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
-    assert.match(h.statuses.at(-1), /Campaign preparation ready.*normalized/);
-    assert.match(h.prepare().payload, /revised tune/);
+    assert.equal(h.requests.length, 2);
+    assert.deepEqual(h.state().campaignPreparation, previous);
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'failed');
+    assert.doesNotMatch(h.prepare().payload, /revised tune/);
 });
 
-test('host reports an incomplete new development while saving unrelated usable material', async () => {
+test('host rejects an incomplete new development atomically', async () => {
     const value = structuredClone(design);
-    const incomplete = { ...structuredClone(value.developments[0]), id: 'new-subject' };
+    const incomplete = { ...structuredClone(value.plan.developments[0]), id: 'r1-new' };
     delete incomplete.initiative;
-    value.developments.push(incomplete);
-    const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] }));
-    await h.scope.analyzeCampaignNow();
-    assert.equal(h.requests.length, 1);
-    assert.equal(h.state().campaignPreparation.revision, 1);
-    assert.equal(h.state().campaignPreparation.developments.length, 1);
-    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
-    assert.match(h.statuses.at(-1), /deferred 1 incomplete development/);
-    assert.match(h.prepare().payload, /An original tune has potential/);
-});
-
-test('host saves and injects fresh planning when a progress claim cites an unavailable span', async () => {
-    for (const hasPrevious of [false, true]) {
-        const value = structuredClone(design);
-        const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] }));
-        if (hasPrevious) {
-            await h.scope.analyzeCampaignNow();
-            for (let i = 0; i < 10; i++) h.context.chat.push({ is_user: i % 2 === 0, mes: `Accepted exchange ${i}.` });
-        }
-        value.realization = [{ id: 'music', changes: [{ episodeId: 'unverified-performance', status: 'completed',
-            evidence: [{ index: 0, span: 999 }] }] }];
-        await h.scope.analyzeCampaignNow();
-        assert.equal(h.requests.length, hasPrevious ? 2 : 1);
-        assert.equal(h.state().campaignPreparation.revision, hasPrevious ? 2 : 1);
-        assert.equal(h.state().campaignPreparation.source.messageCount, h.context.chat.length);
-        assert.deepEqual(h.state().campaignPreparation.realization.music.episodes, {});
-        assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
-        assert.match(h.statuses.at(-1), /Campaign preparation ready.*skipped 1 unsupported progress update/);
-        assert.match(h.prepare().payload, /An original tune has potential/);
-    }
-});
-
-test('incomplete drafts cannot hide player ownership from host validation', async () => {
-    const value = structuredClone(design);
-    value.developments[0].initiative = { owner: 'Neri' };
-    delete value.developments[0].stakes;
+    value.plan.developments.push(incomplete);
     const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] }));
     await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 1);
     assert.equal(h.state().campaignPreparation, null);
     assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'failed');
+    assert.match(h.statuses.at(-1), /missing initiative/);
+});
+
+test('host rejects unavailable consequence witnesses and leaves prior preparation intact', async () => {
+    for (const hasPrevious of [false, true]) {
+        const value = structuredClone(design);
+        const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] }));
+        if (hasPrevious) await h.scope.analyzeCampaignNow();
+        const before = structuredClone(h.state().campaignPreparation);
+        value.plan.consequences = [{ id: 'show', text: 'The show ended.' }];
+        value.observations = [{ id: 'show', evidence: [{ index: 0, span: 999 }] }];
+        await h.scope.analyzeCampaignNow({ manual: true });
+        assert.equal(h.requests.length, hasPrevious ? 2 : 1);
+        assert.deepEqual(h.state().campaignPreparation, before);
+        assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'failed');
+    }
+});
+
+test('player ownership is rejected at the host boundary', async () => {
+    const value = structuredClone(design);
+    value.plan.developments[0].owner = 'Neri';
+    const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] }));
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.state().campaignPreparation, null);
     assert.match(h.statuses.at(-1), /Player cannot own/);
 });
 
@@ -220,7 +212,7 @@ test('uncached lorebooks never block or trigger a book load in active planning',
     h.scope.loadWorldInfo = async () => { throw Error('Planner must not load books'); };
     await h.scope.startCampaignPlanning();
     assert.equal(h.requests.length, 1);
-    assert.equal(h.state().campaignPreparation.rpBrief, design.rp_brief);
+    assert.equal(h.state().campaignPreparation.rpBrief, design.plan.threads);
     assert.doesNotMatch(h.requests[0].prompt, /worldBooks/);
     assert.doesNotMatch(h.prepare().payload, /PRIVATE|rpBrief|rp_brief/);
 });
@@ -283,8 +275,8 @@ test('rebuild replaces the private brief; delete removes it without touching hos
     await h.scope.rebuildGuideState();
     assert.equal(h.requests.length, 2);
     const input = JSON.parse(h.requests[1].prompt);
-    assert.equal(input.previous_preparation.rp_brief, undefined);
-    assert.equal(input.previous_preparation.developments.length, 0);
+    assert.equal(input.previous_plan.threads, undefined);
+    assert.equal(input.previous_plan.developments.length, 0);
     assert.match(h.requests[1].prompt, /External summary stays/);
     assert.deepEqual(h.state().campaignPreparation.archive[0].preparation, saved);
     await h.emit('WORLD_INFO_ACTIVATED', [{ content: 'Cached surface.' }]);
@@ -295,30 +287,24 @@ test('rebuild replaces the private brief; delete removes it without touching hos
     assert.equal(h.scope.worldInfoCache.get('Book'), book);
 });
 
-test('host accepts extra episode commentary in one request and reports the discarded field', async () => {
+test('host rejects unknown snapshot fields without silently reinterpreting them', async () => {
     const response = structuredClone(design);
-    response.episode.boundary_extra = 'Extra provider commentary.';
+    response.plan.ending = 'A prescribed ending.';
     const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(response) }, finish_reason: 'stop' }] }));
     await h.scope.analyzeCampaignNow({ manual: true });
     assert.equal(h.requests.length, 1);
-    assert.equal(h.state().campaignPreparation.revision, 1);
-    assert.equal(h.state().campaignPreparation.episode.boundary, design.episode.boundary);
-    assert.equal(h.state().campaignPreparation.episode.boundary_extra, undefined);
-    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
-    assert.match(h.statuses.at(-1), /Campaign preparation ready · \d+s · ignored 1 extra episode field/);
-    assert.ok(h.prepare().payload);
+    assert.equal(h.state().campaignPreparation, null);
+    assert.match(h.statuses.at(-1), /unexpected ending/);
 });
 
-test('host replaces scene guidance even when an old private subject is omitted, then retires it with final evidence', async () => {
+test('host keeps multiple arcs then closes finite work with witnessed events', async () => {
     const wider = structuredClone(design);
-    wider.developments[0].id = 'travel';
-    wider.selected_material[0] = { subjectIds: ['travel'], available: 'Open regional routes.',
-        developing: 'Recurring visits can support exchanges between communities.', lasting: 'Different places could become familiar homes.' };
+    wider.plan.developments.push({ ...structuredClone(wider.plan.developments[0]), id: 'r2-travel', kind: 'emerging',
+        question: 'Which regional exchanges can form?', initiative: 'Carriers establish a route between neighboring communities.' });
+    wider.selected_material[0] = { subjectIds: ['r2-travel'], available: 'Open regional routes.' };
     const closing = structuredClone(wider);
-    closing.retire = [{ id: 'music', scope: 'whole-subject', reason: 'The undertaking is permanently closed.',
-        evidence: [3], witnesses: [{ index: 3, span: 0 }] }];
-    closing.realization = [{ id: 'music', changes: [{ episodeId: 'last-performance', status: 'completed',
-        evidence: [{ index: 3, span: 0 }] }] }];
+    closing.plan.developments.shift();
+    closing.exits = [{ id: 'r1-music', disposition: 'closed', reason: 'The finite production ended.', evidence: [{ index: 3, span: 0 }] }];
     const replies = [design, wider, closing];
     const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(replies.shift()) }, finish_reason: 'stop' }] }));
     await h.scope.analyzeCampaignNow({ manual: true });
@@ -326,27 +312,26 @@ test('host replaces scene guidance even when an old private subject is omitted, 
     await h.scope.analyzeCampaignNow({ manual: true });
     assert.equal(h.state().campaignPreparation.revision, 2);
     assert.equal(h.state().campaignPreparation.developments.length, 2);
-    assert.match(h.prepare().payload, /Open regional routes/);
-    assert.doesNotMatch(h.prepare().payload, /original tune/);
-    h.context.chat.push({ is_user: true, name: 'Neri', mes: 'The final performance is finished. We permanently abandon the musical undertaking.' });
+    h.context.chat.push({ is_user: true, name: 'Neri', mes: 'The final performance is finished.' });
     await h.scope.analyzeCampaignNow({ manual: true });
-    assert.equal(h.requests.length, 3, 'exactly one request per review, no repair pass');
+    assert.equal(h.requests.length, 3);
     const saved = h.state().campaignPreparation;
     assert.equal(saved.revision, 3);
-    assert.deepEqual(saved.developments.map(entry => entry.id), ['travel']);
-    assert.equal(saved.realization.music.episodes['last-performance'].status, 'completed');
+    assert.deepEqual(saved.developments.map(entry => entry.id), ['r2-travel']);
+    assert.equal(saved.archive.at(-1).transitions[0].witnesses[0].quote, 'The final performance is finished.');
+    assert.equal(saved.workingPlan.threads, design.plan.threads);
     const payload = h.prepare().payload;
     assert.match(payload, /Open regional routes/);
     h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata));
     h.scope.generationGuideSelection = null;
-    assert.equal(h.prepare().payload, payload, 'metadata reload keeps the current exact injection');
+    assert.equal(h.prepare().payload, payload);
 });
 
 test('shared selection survives actual metadata, cache authentication and retries without duplicating private subjects', async () => {
     const grouped = structuredClone(design);
-    grouped.developments.push({ ...structuredClone(grouped.developments[0]), id: 'exchange',
-        initiative: { control: 'npc', owner: 'Sef', aim: 'Exchange private arrangements with fellow musicians.' } });
-    grouped.selected_material[0].subjectIds.push('exchange');
+    grouped.plan.developments.push({ ...structuredClone(grouped.plan.developments[0]), id: 'r1-exchange', owner: 'Sef',
+        initiative: 'Exchange private arrangements with fellow musicians.' });
+    grouped.selected_material[0].subjectIds.push('r1-exchange');
     const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(grouped) }, finish_reason: 'stop' }] }));
     await h.scope.analyzeCampaignNow();
     const selected = h.prepare();
@@ -372,7 +357,7 @@ test('shared selection survives actual metadata, cache authentication and retrie
 
 test('a malformed whole-story snapshot never partially replaces host preparation or starts a repair request', async () => {
     const invalid = structuredClone(design); delete invalid.selected_material;
-    invalid.developments[0].development = 'A private update that must not commit.';
+    invalid.plan.developments[0].initiative = 'A private update that must not commit.';
     const replies = [design, invalid];
     const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(replies.shift()) }, finish_reason: 'stop' }] }));
     await h.scope.analyzeCampaignNow({ manual: true });
@@ -722,13 +707,14 @@ test('actual campaign entry builds evidence, uses single-shot transport and comm
     assert.equal(h.requests.length, 1);
     const request = h.requests[0];
     assert.equal(request.spec.singleShot, true);
-    assert.equal(request.spec.schema.name, 'tale_fairy_rp_plot_v5');
+    assert.equal(request.spec.schema.name, 'tale_fairy_working_plan_v1');
+    assert.equal(request.spec.responseTokens, 3000);
     assert.equal(request.spec.reasoningMode, undefined, 'honor saved reasoning instead of legacy forced Off');
     assert.equal(request.meta, null, 'no legacy detached recovery contract');
     const input = JSON.parse(request.prompt);
     assert.deepEqual(input.accepted_messages.at(-1).spans, [{ span: 0, text: 'I help pack.' }]);
     assert.ok(input.source_reference);
-    assert.deepEqual(input.player_control.names, ['Neri']);
+    assert.deepEqual(input.player_names, ['Neri']);
     assert.equal(h.state().campaignPreparation.revision, 1);
     assert.equal(h.state().campaignPreparation.developments[0].initiative.owner, 'Jo');
     assert.match(h.prepare().payload, /An original tune has potential/);
@@ -741,9 +727,10 @@ test('reload and retry authenticate old scene packets but inject only story mate
     const h = browser();
     await h.scope.analyzeNow({ force: true });
     const legacy = structuredClone(h.state());
+    legacy.campaignPreparation = legacyPreparation(legacy.campaignPreparation);
     delete legacy.campaignPreparation.selectedMaterial;
     delete legacy.campaignPreparation.background;
-    legacy.campaignPreparation.realization.music.playable = [{ episodeId: 'arrangement', when: 'At noon.',
+    legacy.campaignPreparation.realization['r1-music'].playable = [{ episodeId: 'arrangement', when: 'At noon.',
         situation: 'OLD SCRIPTED ENTRANCE', resolution: { owner: 'npc', actors: ['Jo'], endpoint: 'FIXED ENDING' } }];
     const packet = h.scope.buildGenerationPacket(legacy, h.context.chat, h.context);
     packet.payload = legacyCampaignPayload(legacy.campaignPreparation);
@@ -774,10 +761,11 @@ test('0.14.32 packets authenticate exactly but reload and every retry rebuild on
     const h = browser();
     await h.scope.analyzeNow({ force: true });
     const old = structuredClone(h.state());
+    old.campaignPreparation = legacyPreparation(old.campaignPreparation);
     delete old.campaignPreparation.storyMaterialVersion;
     delete old.campaignPreparation.selectedMaterial;
     delete old.campaignPreparation.background;
-    old.campaignPreparation.realization.music.playable = [{ episodeId: 'arrangement', when: 'If the musicians choose to collaborate.', direction: design.selected_material[0].available, middle: design.selected_material[0].developing, future: design.selected_material[0].lasting }];
+    old.campaignPreparation.realization['r1-music'].playable = [{ episodeId: 'arrangement', when: 'If the musicians choose to collaborate.', direction: design.selected_material[0].available, middle: design.selected_material[0].developing, future: design.selected_material[0].lasting }];
     const packet = h.scope.buildGenerationPacket(old, h.context.chat, h.context);
     packet.payload = objectiveGuidancePayload(old.campaignPreparation);
     assert.match(packet.payload, /long_term_direction|development_guidance/);
@@ -806,103 +794,97 @@ test('0.14.32 packets authenticate exactly but reload and every retry rebuild on
 test('host review boundary follows the accepted preparation prefix and resets after an edit', async () => {
     const h = browser();
     await h.scope.analyzeCampaignNow({ manual: true });
-    h.context.chat.push({ is_user: false, name: 'Mara', mes: 'The company leaves.' }, { is_user: true, name: 'Neri', mes: 'I ask about the next town.' });
+    h.context.chat.push({ is_user: false, mes: 'The company leaves.' }, { is_user: true, mes: 'I ask about the next town.' });
     await h.scope.analyzeCampaignNow({ manual: true });
     assert.equal(h.requests.length, 2);
-    const review = JSON.parse(h.requests[1].prompt).previous_preparation.review_scope;
-    assert.equal(review.accepted_before, 2);
-    assert.deepEqual(review.newly_reviewed_indices, [2, 3]);
+    const review = JSON.parse(h.requests[1].prompt).coverage;
+    assert.equal(review.reviewed_before, 2);
+    assert.equal(review.supplied_messages, 4);
     h.context.chat[0].mes = 'Corrected earlier source.';
     const rebuilt = JSON.parse(h.scope.buildCampaignHostInput(h.scope.readCampaignSnapshot()).prompt);
-    assert.equal(rebuilt.previous_preparation.review_scope.accepted_before, 0);
-    assert.deepEqual(rebuilt.previous_preparation.review_scope.newly_reviewed_indices, [0, 1, 2, 3]);
+    assert.equal(rebuilt.coverage.reviewed_before, 0);
+    assert.equal(rebuilt.rebuild, true);
 });
 
-test('a planning-scope upgrade reconsiders earlier player choices and replaces the local plan in one call', async () => {
+test('legacy migration honors source-compatible reviewed coverage without replaying all history', async () => {
     const h = browser();
     await h.scope.analyzeCampaignNow();
     const state = h.state();
+    state.campaignPreparation = legacyPreparation(state.campaignPreparation);
     for (let i = 0; i < 40; i++) h.context.chat.push(
-        { is_user: false, name: 'Mara', mes: `Stop ${i}.` },
-        { is_user: true, name: 'Neri', mes: `We choose region ${i}.` });
+        { is_user: false, name: 'Mara', mes: `Stop ${i}.` }, { is_user: true, name: 'Neri', mes: `We choose region ${i}.` });
     state.campaignPreparation.source.messageCount = h.context.chat.length;
     state.campaignPreparation.source.fingerprint = h.scope.campaignFingerprint(h.context.chat);
-    delete state.campaignPreparation.planningScope;
     h.context.chatMetadata = saveState(h.context.chatMetadata, state);
-    h.context.chat.push({ is_user: false, name: 'Mara', mes: 'More local business.' });
-    const built = h.scope.buildCampaignHostInput(h.scope.readCampaignSnapshot());
-    const payload = JSON.parse(built.prompt);
-    assert.equal(payload.previous_preparation.reframe_required, true);
-    assert.deepEqual(payload.accepted_messages.filter(m => m.role === 'user').map(m => m.index),
-        h.context.chat.flatMap((m, index) => m.is_user ? [index] : []), 'protect all earlier player choices during the one-time reframe');
-    assert.deepEqual(payload.previous_preparation.developments, []);
-    assert.equal(payload.previous_preparation.scope_reset, true);
+    h.context.chat.push({ is_user: false, mes: 'More local business.' });
+    const payload = JSON.parse(h.scope.buildCampaignHostInput(h.scope.readCampaignSnapshot()).prompt);
+    assert.equal(payload.previous_plan.migration, true);
+    assert.equal(payload.coverage.reviewed_before, 82);
+    assert.ok(payload.accepted_messages.length < h.context.chat.length);
     await h.scope.analyzeCampaignNow({ manual: true });
-    assert.equal(h.requests.length, 2, 'one call for the initial plan and one for the scope upgrade');
-    assert.equal(h.state().campaignPreparation.planningScope, 'independent-developments-v2');
-    assert.equal(h.state().campaignPreparation.archive.filter(entry => entry.development).length, 1);
+    assert.equal(h.requests.length, 2);
+    assert.equal(h.state().campaignPreparation.workingPlanVersion, 1);
+    assert.ok(h.state().campaignPreparation.archive.at(-1).legacyPreparation);
 });
 
-test('normal host review upgrades a v1 independent plan without a separate control or lost author notes', async () => {
+test('normal host review migrates legacy preparation without separate controls or lost author notes', async () => {
     const h = browser();
     await h.scope.analyzeCampaignNow();
-    const previous = structuredClone(h.state().campaignPreparation);
+    const previous = legacyPreparation(h.state().campaignPreparation);
     previous.planningScope = 'independent-developments-v1';
     h.context.chatMetadata = saveState(h.context.chatMetadata, { ...h.state(), campaignPreparation: previous,
         campaignInstructions: [{ text: 'Keep the next journey open.' }] });
     await h.scope.analyzeNow({ force: true });
     assert.equal(h.requests.length, 2);
     assert.equal(h.requests[1].spec.singleShot, true);
-    assert.equal(JSON.parse(h.requests[1].prompt).previous_preparation.scope_reset, true);
+    assert.equal(JSON.parse(h.requests[1].prompt).previous_plan.migration, true);
     const state = h.state();
-    assert.equal(state.campaignPreparation.planningScope, 'independent-developments-v2');
-    assert.deepEqual(state.campaignPreparation.archive.find(entry => entry.scopeReframe).development, previous.developments[0]);
+    assert.equal(state.campaignPreparation.workingPlanVersion, 1);
+    assert.deepEqual(state.campaignPreparation.archive.at(-1).legacyPreparation.developments, previous.developments);
     assert.deepEqual(state.campaignInstructions, [{ text: 'Keep the next journey open.' }]);
-    const packet = JSON.parse(h.prepare().payload.replace(/<\/?tale-fairy-context>/g, '').trim());
-    assert.deepEqual(Object.keys(packet), ['development_contract', 'possible_developments', 'author_instructions']);
 });
 
-test('actual owned host review converts retained legacy subjects and archives their complete prior form', async () => {
+test('actual host review converts unowned legacy subjects and archives their prior form', async () => {
     const h = browser();
     await h.scope.analyzeCampaignNow();
-    const previous = structuredClone(h.state().campaignPreparation);
+    const previous = legacyPreparation(h.state().campaignPreparation);
     delete previous.developments[0].initiative;
     delete previous.preparationFormat;
     previous.developments[0].premise = 'A retained legacy musical premise.';
     h.context.chatMetadata = saveState(h.context.chatMetadata, { ...h.state(), campaignPreparation: previous });
     await h.scope.analyzeCampaignNow({ manual: true });
-    assert.equal(h.requests.length, 2, 'one call per distinct review');
+    assert.equal(h.requests.length, 2);
     const input = JSON.parse(h.requests[1].prompt);
-    assert.equal(input.previous_preparation.developments[0].premise, previous.developments[0].premise);
-    assert.equal(input.previous_preparation.developments[0].initiative, undefined);
-    const next = h.state().campaignPreparation;
-    assert.equal(next.revision, 2);
-    assert.equal(next.developments[0].initiative.owner, 'Jo');
-    assert.deepEqual(next.archive.find(item => item.development)?.development, previous.developments[0]);
+    assert.equal(input.previous_plan.developments[0].development, previous.developments[0].progression);
+    assert.equal(input.previous_plan.developments[0].initiative, undefined);
+    const state = h.state().campaignPreparation;
+    assert.equal(state.revision, 2);
+    assert.equal(state.developments[0].initiative.owner, 'Jo');
+    assert.deepEqual(state.archive.at(-1).legacyPreparation.developments, previous.developments);
 });
 
-test('host reframes old plot essays from retained objectives in one call and archives their prose', async () => {
+test('host archives old plot essays without replaying their prose', async () => {
     const h = browser();
     await h.scope.analyzeCampaignNow();
-    const previous = structuredClone(h.state().campaignPreparation);
+    const previous = legacyPreparation(h.state().campaignPreparation);
     previous.preparationFormat = 'plot-points-v1';
     previous.developments[0].premise = 'OLD ESSAY TEMPLATE';
     h.context.chatMetadata = saveState(h.context.chatMetadata, { ...h.state(), campaignPreparation: previous });
     await h.scope.analyzeCampaignNow({ manual: true });
     assert.equal(h.requests.length, 2);
-    const previousInput = JSON.parse(h.requests[1].prompt).previous_preparation;
-    assert.equal(previousInput.reframe_required, true);
-    assert.deepEqual(previousInput.developments[0].previous_objective, previous.developments[0].initiative);
-    assert.equal(JSON.stringify(previousInput).includes('OLD ESSAY TEMPLATE'), false);
+    const input = JSON.parse(h.requests[1].prompt).previous_plan;
+    assert.equal(input.migration, true);
+    assert.deepEqual(input.developments[0].initiative, previous.developments[0].initiative);
+    assert.equal(JSON.stringify(input).includes('OLD ESSAY TEMPLATE'), false);
     const state = h.state().campaignPreparation;
-    assert.equal(state.preparationFormat, 'event-opportunities-v1');
-    assert.equal(state.archive.find(entry => entry.development?.premise === 'OLD ESSAY TEMPLATE').development.premise, 'OLD ESSAY TEMPLATE');
-    assert.match(h.prepare().payload, /"possible_developments":\[\{/);
+    assert.equal(state.workingPlanVersion, 1);
+    assert.equal(state.archive.at(-1).legacyPreparation.developments[0].premise, 'OLD ESSAY TEMPLATE');
+    assert.match(h.prepare().payload, /possible_developments/);
 });
 
 test('actual owned host rejects planned player ownership in one call without repair or commit', async () => {
     const invalid = structuredClone(design);
-    invalid.developments[0].initiative.owner = 'Neri';
+    invalid.plan.developments[0].owner = 'Neri';
     const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(invalid) }, finish_reason: 'stop' }] }));
     await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 1);
@@ -916,14 +898,14 @@ test('actual host factors repeated speaker labels while preserving every initial
     const h = browser();
     for (let i = 0; i < 40; i++) h.context.chat.push(
         { is_user: true, name: 'Neri', mes: `I choose the north road ${i}.` },
-        { is_user: false, name: 'Mara', mes: 'The road continues. '.repeat(600) });
+        { is_user: false, name: 'Mara', mes: 'The road continues. '.repeat(300) });
     const input = h.scope.buildCampaignHostInput(h.scope.readCampaignSnapshot());
     const payload = JSON.parse(input.prompt);
     assert.equal(payload.default_speaker_name_by_role.user, 'Neri');
     const users = payload.accepted_messages.filter(m => m.role === 'user');
     assert.equal(users.length, 41);
     assert.ok(users.every(m => !Object.hasOwn(m, 'name') && m.spans.map(s => s.text).join('') === h.context.chat[m.index].mes));
-    assert.deepEqual(payload.player_control.names, ['Neri']);
+    assert.deepEqual(payload.player_names, ['Neri']);
     assert.equal(h.requests.length, 0);
 });
 
@@ -945,7 +927,7 @@ test('real received/end events share persisted cadence and never invoke reply re
 test('ordinary received events automatically commit a quiet snapshot and later restore reviewed material without repair calls', async () => {
     const revised = structuredClone(design);
     revised.selected_material[0].available = 'A different musical collaboration is available.';
-    const responses = [design, { ...design, selected_material: [], realization: [] }, revised];
+    const responses = [design, { ...design, selected_material: [] }, revised];
     const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(responses.shift()) }, finish_reason: 'stop' }] }));
     await h.scope.analyzeCampaignNow();
     const first = structuredClone(h.state().campaignPreparation);
@@ -961,7 +943,7 @@ test('ordinary received events automatically commit a quiet snapshot and later r
     assert.equal(h.requests.length, 2, 'one scheduled review, no correction or manual trigger');
     const quiet = structuredClone(h.state().campaignPreparation);
     assert.deepEqual(quiet.selectedMaterial, []);
-    assert.deepEqual(quiet.realization.music.playable, []);
+    assert.equal(quiet.realization, undefined);
     assert.deepEqual(quiet.developments, first.developments);
     assert.equal(h.prepare().payload, '', 'old pre-review packet must not survive a committed review');
     await h.scope.analyzeCampaignNow();
@@ -970,7 +952,7 @@ test('ordinary received events automatically commit a quiet snapshot and later r
     assert.equal(h.requests.length, 3);
     assert.match(h.prepare().payload, /different musical collaboration/);
     assert.doesNotMatch(h.prepare().payload, /An original tune has potential/);
-    assert.equal(h.state().campaignPreparation.realization.music.needsPlayableReview, undefined);
+    assert.equal(h.state().campaignPreparation.realization, undefined);
     assert.equal(h.calls.length, 0, 'no legacy repair path');
 });
 
@@ -1002,26 +984,20 @@ test('oversized protected player contribution fails before spending a request an
     assert.match(h.statuses.join('\n'), /exceeds/);
 });
 
-test('host fits a small overrun by omitting optional history before its single provider request', async () => {
+test('host shrinks old prose without replaying a growing extracted-history ledger', async () => {
     const h = browser();
     for (let i = 0; i < 40; i++) h.context.chat.push({ is_user: false,
-        mes: `District ${i} traditions include ` + 'neighbors maintaining boats and exchanging supplies by the harbor '.repeat(80) + '.' });
+        mes: `District ${i} traditions include ` + 'neighbors maintaining boats and exchanging supplies by the harbor '.repeat(80) });
     h.context.chat.push({ is_user: true, mes: 'I decline the offer and keep my boat.' }, { is_user: false, mes: 'The boat remains here.' });
-    const snapshot = h.scope.readCampaignSnapshot();
-    const messages = snapshot.messages.map((m, index) => ({ index, role: m.is_user ? 'user' : 'assistant', name: m.name || '', content: m.mes || '' }));
-    const args = { reference: snapshot.reference, state: snapshot.state, playerNames: snapshot.playerNames,
-        messages: campaignEvidenceMessages(campaignReviewWindow(messages, 2), { narrative: true }),
-        historical: { ...buildStoryEvidence(snapshot.messages), opening: undefined } };
-    const full = storyInput(args, 100000);
-    h.settings.maxPromptTokens = full.inputTokens - 361;
-    assert.throws(() => storyInput(args, h.settings.maxPromptTokens), /exceeds/);
     const before = structuredClone(h.context.chat);
+    h.settings.maxPromptTokens = 8000;
     await h.scope.analyzeCampaignNow({ manual: true });
     assert.equal(h.requests.length, 1, h.statuses.join('\n'));
     assert.equal(h.state().campaignPreparation.revision, 1);
     const payload = JSON.parse(h.requests[0].prompt);
-    assert.ok(payload.historical_evidence.budget_omission.excerpts > 0);
-    assert.deepEqual(payload.accepted_messages, JSON.parse(full.prompt).accepted_messages);
+    assert.equal(payload.historical_evidence, undefined);
+    assert.ok(payload.accepted_messages.length < h.context.chat.length);
+    assert.ok(payload.accepted_messages.some(m => m.spans.some(s => s.text.includes('I decline the offer'))));
     assert.deepEqual(h.context.chat, before);
 });
 
@@ -1079,7 +1055,7 @@ test('normal startup migrates legacy data automatically and Rebuild stays single
     assert.equal(h.state().plannerContract, 15);
     assert.equal(h.state().campaignPreparation.revision, 1);
     assert.deepEqual(h.state().campaignPreparation.archive[0].preparation, before);
-    assert.equal(JSON.parse(h.requests[1].prompt).previous_preparation.developments.length, 0);
+    assert.equal(JSON.parse(h.requests[1].prompt).previous_plan.developments.length, 0);
     assert.equal(h.state().userNotes[0].text, 'No forced public solo.');
 });
 
@@ -1214,19 +1190,16 @@ test('literal author markup stays intact as text without escaping the context en
     assert.equal(h.requests.length, 1);
 });
 
-test('host discards progress interpretations whose accepted prefix changed, while preserving the saved ledger for review', async () => {
-    const h = browser();
+test('host withholds source-invalidated consequences while retaining local evidence', async () => {
+    const response = structuredClone(design);
+    response.plan.consequences = [{ id: 'show', text: 'The show ended.' }];
+    response.observations = [{ id: 'show', evidence: [{ index: 0, span: 0 }] }];
+    const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(response) }, finish_reason: 'stop' }] }));
     await h.scope.analyzeCampaignNow();
-    const saved = h.state();
-    saved.campaignPreparation.realization.music.episodes.arrangement = {
-        status: 'introduced', witnesses: [{ index: 0, role: 'assistant', quote: 'The show ended.' }],
-        source: structuredClone(saved.campaignPreparation.source),
-    };
-    h.context.chatMetadata = saveState(h.context.chatMetadata, saved);
     h.context.chat[0].mes = 'The show did not happen.';
     const input = JSON.parse(h.scope.buildCampaignHostInput(h.scope.readCampaignSnapshot()).prompt);
-    assert.deepEqual(input.accepted_progress, {});
-    assert.equal(h.state().campaignPreparation.realization.music.episodes.arrangement.status, 'introduced');
+    assert.deepEqual(input.previous_plan.consequences, []);
+    assert.equal(h.state().campaignPreparation.planEvidence.show.text, 'The show ended.');
     assert.equal(h.prepare().payload, '');
 });
 
@@ -1252,7 +1225,7 @@ test('generic evidence reaches the actual host and same-source correction reject
     } finally { unregister(); }
 });
 
-test('retirement guards are branch-specific and cannot impose an edited-away closure on the new source', async () => {
+test('retirement archives remain local on both original and edited sources', async () => {
     const h = browser();
     await h.scope.analyzeCampaignNow();
     const state = h.state();
@@ -1260,9 +1233,10 @@ test('retirement guards are branch-specific and cannot impose an edited-away clo
         development: { id: 'old-subject' }, source: structuredClone(state.campaignPreparation.source) });
     h.context.chatMetadata = saveState(h.context.chatMetadata, state);
     let input = JSON.parse(h.scope.buildCampaignHostInput(h.scope.readCampaignSnapshot()).prompt);
-    assert.deepEqual(input.closed_subject_ids, ['old-subject']);
+    assert.equal(input.closed_subject_ids, undefined);
     h.context.chat[0].mes = 'An edited branch where that undertaking is still open.';
     input = JSON.parse(h.scope.buildCampaignHostInput(h.scope.readCampaignSnapshot()).prompt);
-    assert.deepEqual(input.closed_subject_ids, []);
+    assert.equal(input.closed_subject_ids, undefined);
+    assert.equal(input.rebuild, true);
     assert.equal(h.state().campaignPreparation.archive.at(-1).development.id, 'old-subject');
 });

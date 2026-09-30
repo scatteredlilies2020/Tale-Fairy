@@ -33,11 +33,11 @@
             <small>Recent-message limit: up to 3,000 tokens for routine updates, 4,500 for reviews, and this setting for rebuilds. Earlier context comes from retrieval and summaries.</small>
           </label>
           <label>Summary retrieval pool (tokens)
-            <input class="text_pole" type="number" data-setting="summary-budget" min="1000" max="8000" step="500" value="4000">
+            <input class="text_pole" type="number" data-setting="summary-budget" min="0" max="1000" step="250" value="1000">
             <small>Maximum summary evidence available to planning. Final inclusion depends on the total input budget.</small>
           </label>
           <label>Total planner input ceiling (tokens)
-            <input class="text_pole" type="number" data-setting="budget" min="9000" max="30000" step="1000" value="16000">
+            <input class="text_pole" type="number" data-setting="budget" min="3000" max="8000" step="1000" value="8000">
               <small>Total input limit for every pass, including instructions, conversation, evidence and response format.</small>
           </label>
           <label>Routine planner input target (tokens)
@@ -53,7 +53,7 @@
             <small>Story horizons use at most 4 accepted replies between reviews. Old suggestions then expire; private aims and author instructions remain. Failed reviews recover after new assistant play, not unchanged-input retries.</small>
           </label>
         </div>
-        <small data-role="campaign-budget-help">Planning fits conversation and available evidence within the total input ceiling. Each request allows 6,000 plan output tokens plus a separate reasoning allowance. The elapsed timer tracks waiting, validation and saving; the provider sends no live token progress. A response times out after 10 minutes without an automatic retry. Legacy recent-message, routine and review targets are inactive and hidden.</small>
+        <small data-role="campaign-budget-help">One request: at most 8,000 input tokens, a 1,200-token working plan and a 600-token writer packet. Output allowance: 3,000 tokens plus separate reasoning. Old preparation stays archived locally. Oversized required context stops before sending. Legacy routine and review targets are inactive.</small>
         <label class="checkbox_label">
           <input type="checkbox" data-setting="continuity">
           <span>Use Continuity context when available</span>

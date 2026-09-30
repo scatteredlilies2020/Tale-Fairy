@@ -7,6 +7,7 @@ import * as reasoning from '../extension/reasoning-policy.js';
 import * as output from '../extension/output-negotiation.js';
 import { claimPlannerRecoveryRepair } from '../extension/planner-lifecycle.js';
 import { fitStoryInputBudget } from '../extension/story-budget.js';
+import { plannerInputLimit } from '../extension/working-plan.js';
 
 const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
 const take = (start, end) => source.slice(source.indexOf(start), source.indexOf(end));
@@ -24,7 +25,7 @@ function harness(results, { route = 'direct', configured = 'low', activeEffort =
         return result;
     };
     const scope = {
-        ...reasoning, ...output, AnalysisValidationError, claimPlannerRecoveryRepair, WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA, fitStoryInputBudget,
+        ...reasoning, ...output, AnalysisValidationError, claimPlannerRecoveryRepair, WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA, fitStoryInputBudget, plannerInputLimit,
         plannerStorage: () => null, AbortController, DOMException, console: { warn() {} },
         EXTENSION_ID: 'test', detachedPlannerReady: Promise.resolve(), detachedPlannerEnabled: false,
         PLANNER_SYSTEM_PROMPT: 'planner', INCREMENTAL_SYSTEM_PROMPT: 'routine',
@@ -105,6 +106,12 @@ test('active tokenizer overflow blocks generation, but another model never uses 
         assert.equal(h.requests.length, 1);
     }
     assert.equal(calls, 1);
+});
+
+test('legacy larger settings cannot raise the active transport ceiling above 8000', async () => {
+    const h = harness([{ valid: true }], { route: 'active', inputBudget: 30000, tokenCounter: async () => 8001 });
+    await assert.rejects(h.run({ singleShot: true }), /exceeds 8000/);
+    assert.equal(h.requests.length, 0);
 });
 
 test('a stalled active tokenizer does not prevent cancellation or send a provider request', { timeout: 1000 }, async () => {

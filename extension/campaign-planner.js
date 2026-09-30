@@ -6,6 +6,7 @@ import { RP_BRIEF_SCHEMA } from './rp-brief.js';
 import { validateBackground } from './background-progress.js?v=0.14.34';
 import { estimateTokenCount } from './token-budget.js';
 import { fitStoryContext, storyContextPayload } from './story-budget.js?follow-through=1';
+import { validateWorkingState } from './working-plan.js';
 
 // Matches the existing host's planner-request marker so request interception
 // cannot mistake this internal pass for RP and inject the guide into itself.
@@ -102,6 +103,7 @@ export function emptyCampaign() {
 export function validCampaignState(state) {
     try {
         if (!Number.isSafeInteger(state?.revision) || state.revision < 1 || !Array.isArray(state.archive)) return false;
+        if (state.workingPlanVersion !== undefined || state.workingPlan !== undefined) validateWorkingState(state, check);
         if (state.rpBrief !== undefined) check(state.rpBrief, RP_BRIEF_SCHEMA, '$.rpBrief');
         if (state.realization !== undefined) validateStoredRealization(state.realization, check);
         if (state.background !== undefined) {

@@ -1,12 +1,12 @@
 import { sha256 } from '/lib.js';
-import { campaignAuthorInstructions, campaignPayloadBudget, campaignUsable, campaignMaterialUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1';
-import { storyInput as ownedInput, storyPass as ownedPass, needsEventReframe, STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM } from './story-selection.js?v=0.14.36&planner-input=1&episode-fields=1&token-budget=1&rp-plot=1&response=2&history-budget=1&partial-updates=1&partial-evidence=1&creative=1&follow-through=1&compaction=1';
+import { campaignAuthorInstructions, campaignPayloadBudget, campaignUsable, campaignMaterialUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1';
+import { storyInput as ownedInput, storyPass as ownedPass, STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './bounded-story.js?working-plan=1';
 import { fitStoryInputBudget } from './story-budget.js?follow-through=1&compaction=1';
 import { readCampaignContinuity } from './campaign-continuity.js';
 // Keep the public registration URL stable so external adapters share this registry.
 import { readEvidenceProviders, evidenceRevisionKey } from './evidence-providers.js';
 import { campaignEvidenceMessages, campaignReviewWindow } from './campaign-evidence.js';
-import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.36&token-budget=1&rp-plot=1&progress=1&follow-through=1';
+import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.36&token-budget=1&rp-plot=1&progress=1&follow-through=1&working-plan=1';
 import { campaignAttemptSummary } from './planner-progress.js?v=1';
 import { finalizeNotebookCompactions, writeNotebookArchive } from './notebook-compaction.js?v=0.14.22';
 import { eventSource, event_types, extension_prompt_roles, extension_prompt_types, generateRaw, Generate, setExtensionPrompt, getRequestHeaders, getCharacterCardFields, saveSettingsDebounced } from '/script.js';
@@ -16,7 +16,7 @@ import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
 import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, buildStoryEvidence, storyEvidenceQuery, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.22';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultPlannerState as defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadPlannerState as loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.23&token-budget=1&rp-plot=1&follow-through=1';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultPlannerState as defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadPlannerState as loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.23&token-budget=1&rp-plot=1&follow-through=1&working-plan=1';
 import { isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.22';
 import { selectSituationalOpenings } from './situations.js?v=0.13.9';
 import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.14.22';
@@ -46,7 +46,7 @@ import { defaultPreparedWorld, preparedWorldUsable, unchangedSourcePrefix, stamp
 import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.9';
 import { canRetainSuccessfulPlan, createSafetyFallbackState } from './fallback-direction.js?v=0.14.22';
 import { classifyAssistantReply } from './response-usability.js?v=0.13.9';
-import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, legacyPlotInputKey, migrateCampaignBudgetKeys, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.34&token-budget=1&rp-plot=1&follow-through=1';
+import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, legacyPlotInputKey, migrateCampaignBudgetKeys, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.34&token-budget=1&rp-plot=1&follow-through=1&working-plan=1';
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 import { ActivatedStoryContext, readHostStoryEvidence } from './rp-context.js';
 
@@ -65,7 +65,7 @@ const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
 const INJECTION_POSITIONS = new Set(['before-main', 'after-main', 'before-character-definitions', 'after-character-definitions', 'before-example-messages', 'after-example-messages', 'before-an', 'after-an', 'before-chat-history', 'after-chat-history', 'before-jailbreak', 'after-jailbreak', 'at-depth']);
-const DEFAULT_SETTINGS = { enabled: true, mode: 'balanced', analysisProfileId: '', analysisSource: 'active', analysisProvider: 'custom', analysisModel: '', analysisUrl: '', analysisSecretId: '', analysisReasoningMode: 'auto', analysisTemperature: 1, directSettingsMigrated: false, directCustomModel: '', directCustomUrl: '', directCustomSecretId: '', directOpenRouterModel: '', directOpenRouterUrl: '', directOpenRouterSecretId: '', injectionPosition: 'at-depth', injectionDepth: 1, injectionRole: DEFAULT_INJECTION_ROLE, includeWorldInfo: false, showDirectorNotes: false, recentContextTokens: 6000, messageTokenLimit: 700, maxPromptTokens: 16000, continuityIntegration: true, summaryContextTokens: 4000, fullReviewInterval: DEFAULT_REFRESH_INTERVAL, contextSettingsVersion: 12 };
+const DEFAULT_SETTINGS = { enabled: true, mode: 'balanced', analysisProfileId: '', analysisSource: 'active', analysisProvider: 'custom', analysisModel: '', analysisUrl: '', analysisSecretId: '', analysisReasoningMode: 'auto', analysisTemperature: 1, directSettingsMigrated: false, directCustomModel: '', directCustomUrl: '', directCustomSecretId: '', directOpenRouterModel: '', directOpenRouterUrl: '', directOpenRouterSecretId: '', injectionPosition: 'at-depth', injectionDepth: 1, injectionRole: DEFAULT_INJECTION_ROLE, includeWorldInfo: false, showDirectorNotes: false, recentContextTokens: 6000, messageTokenLimit: 700, maxPromptTokens: 8000, continuityIntegration: true, summaryContextTokens: 1000, fullReviewInterval: DEFAULT_REFRESH_INTERVAL, contextSettingsVersion: 13 };
 let settings = null;
 let analysisPromise = null;
 let campaignSession = null;
@@ -228,7 +228,8 @@ function getSettings() {
     settings.analysisReasoningMode = normalizeReasoningMode(settings.analysisReasoningMode);
     if (settings.analysisReasoningMode === 'default') settings.analysisReasoningMode = 'auto';
     settings.analysisTemperature = normalizePlannerTemperature(settings.analysisTemperature);
-    settings.maxPromptTokens = Math.max(9000, Math.min(30000, Number(settings.maxPromptTokens) || DEFAULT_SETTINGS.maxPromptTokens));
+    settings.maxPromptTokens = Math.max(3000, Math.min(DEFAULT_SETTINGS.maxPromptTokens, Number(settings.maxPromptTokens) || DEFAULT_SETTINGS.maxPromptTokens));
+    settings.summaryContextTokens = Math.max(0, Math.min(1000, Number(settings.summaryContextTokens) || 0));
     settings.routineInputTokens = normalizeInputBudget(settings.routineInputTokens, DEFAULT_ROUTINE_INPUT);
     settings.reviewInputTokens = normalizeInputBudget(settings.reviewInputTokens, DEFAULT_REVIEW_INPUT);
     return settings;
@@ -826,30 +827,24 @@ function readCampaignSnapshot() {
         reference,
         continuity, evidence,
         evidenceKey: evidenceRevisionKey(evidence),
-        continuityTokens: s.summaryContextTokens ?? 4000,
-        inputBudget: Number(s.maxPromptTokens) || 14000,
+        continuityTokens: s.summaryContextTokens ?? 1000,
+        inputBudget: plannerInputLimit(Number(s.maxPromptTokens) || 8000),
     };
 }
 
 function buildCampaignHostInput(snapshot) {
     if (snapshot.state.revision && !validCampaignState(snapshot.state)) throw Error('Saved campaign is invalid; inspect or rebuild it before planning.');
-    const historical = { ...buildStoryEvidence(snapshot.messages), opening: undefined };
     const messages = snapshot.messages.map((m, index) => ({ index, role: m.is_user ? 'user' : 'assistant', name: m.name || '', content: m.mes || '' }));
-    const reviewedCount = !needsEventReframe(snapshot.state) && campaignUsable(snapshot.state, { ...snapshot, fingerprint: campaignFingerprint })
-        ? snapshot.state.source.messageCount : 0;
-    const verifiedRetiredIds = snapshot.state.archive.filter(a => a.retirement
-        && campaignUsable({ source: a.source || snapshot.state.source }, { ...snapshot, fingerprint: campaignFingerprint })).map(a => a.development?.id);
-    const verifiedProgress = Object.fromEntries(Object.entries(snapshot.state.realization || {}).filter(([, entry]) =>
-        Object.values(entry.episodes).every(episode => campaignUsable({ source: episode.source }, { ...snapshot, fingerprint: campaignFingerprint }))));
+    const previousUsable = campaignUsable(snapshot.state, { ...snapshot, fingerprint: campaignFingerprint });
+    const reviewedCount = previousUsable ? snapshot.state.source.messageCount : 0;
+    const verifiedPlanEvidence = Object.fromEntries(Object.entries(snapshot.state.planEvidence || {}).filter(([, entry]) =>
+        campaignUsable({ source: entry.source }, { ...snapshot, fingerprint: campaignFingerprint })));
     let failure;
     for (const count of [32, 24, 20, 16, 12, 8, 4, 2]) {
         const selected = campaignReviewWindow(messages, count, reviewedCount);
         try {
             return ownedInput({ reference: snapshot.reference, state: snapshot.state, playerNames: snapshot.playerNames, reviewedMessageCount: reviewedCount,
-                messages: campaignEvidenceMessages(selected, { narrative: true }), historical, verifiedProgress, verifiedRetiredIds,
-                // Preserve wider historical coverage while shrinking old prose.
-                // Only the smallest window may shed whole optional excerpts.
-                fitHistorical: count === 2,
+                messages: campaignEvidenceMessages(selected, { narrative: true }), previousUsable, verifiedPlanEvidence,
                 continuity: snapshot.continuity, evidence: snapshot.evidence, continuityTokens: snapshot.continuityTokens }, snapshot.inputBudget);
         } catch (error) { if (!error.message.includes('exceeds')) throw error; failure = error; }
     }
@@ -939,7 +934,7 @@ async function runCampaignAnalysis(work) {
         onProgress: showCampaignPhase,
         generate: (prompt, systemPrompt, schema, { signal }) => requestAnalysisOnce(prompt, signal, null, {
             onProgress: showCampaignPhase,
-            singleShot: true, systemPrompt, schema, responseTokens: 6000, parseResponse: campaignCompletion,
+            singleShot: true, systemPrompt, schema, responseTokens: PLANNER_OUTPUT_LIMIT, parseResponse: campaignCompletion,
             label: 'campaign preparation', cacheNamespace: `campaign-v15:${OWNED_SCHEMA.name}`,
         }),
     });
@@ -2394,7 +2389,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
             // model or connection profile. Those routes use the local reserve.
             const counter = model.active && typeof context.getTokenCountAsync === 'function'
                 ? context.getTokenCountAsync.bind(context) : null;
-            const fitted = await waitForAbortable(fitStoryInputBudget(prompt, systemPrompt, schema, Number(getSettings().maxPromptTokens) || 16000, counter), controller.signal);
+            const fitted = await waitForAbortable(fitStoryInputBudget(prompt, systemPrompt, schema, plannerInputLimit(Number(getSettings().maxPromptTokens) || 8000), counter), controller.signal);
             prompt = fitted.prompt;
             controller.signal.throwIfAborted();
         }
@@ -2897,12 +2892,25 @@ function campaignSelectionSummary(preparation) {
     return `SELECTED STORY HORIZONS\n${preparation.selectedMaterial.map(entry =>
         [`Available circumstances: ${entry.available}`, entry.developing && `Mid-term possibilities: ${entry.developing}`,
             entry.lasting && `Long-term possibilities: ${entry.lasting}`].filter(Boolean).join('\n')
-    ).join('\n\n') || 'No additional development selected; enduring aims remain private.'}`;
+    ).join('\n\n') || 'No additional development selected; the working plan remains private.'}`;
 }
 
 function campaignBackgroundSummary(entry) {
     if (!entry) return '';
     return `Private background (provisional): ${entry.unfolding}\nGrounding / time: ${entry.basis}\nAccess · ${entry.access.route}: ${entry.access.basis}`;
+}
+
+function workingPlanSummary(preparation) {
+    const plan = preparation.workingPlan;
+    if (!plan) return '';
+    return [
+        `LONG-RUNNING THREADS (private)\n${plan.threads}`,
+        ...plan.consequences.map(fact => `Cited consequence: ${fact.text}`),
+        ...plan.developments.map(d => `[${d.kind} · ${d.id}] ${d.question}\n${d.owner}: ${d.initiative}\nCan settle when: ${d.resolution}\nBeyond: ${d.beyond}\nAccess · ${d.access.route}: ${d.access.basis}`),
+        'LIMITS · 8,000 input / 1,200 working plan / 600 selected packet. Archived history is not resent.',
+        ...preparation.archive.filter(entry => entry.migration?.omittedDrafts).map(entry =>
+            `Migration retained ${entry.migration.omittedDrafts} oversized old drafts only in the local archive; they were not sent or declared completed.`),
+    ].join('\n\n');
 }
 
 function campaignBudgetSummary(preparation, instructions) {
@@ -2960,11 +2968,12 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         scratchpadText(board, 'scratchpad-prepared', validCampaignState(preparation) ? [
             `CAMPAIGN PREPARATION · revision ${preparation.revision} · ${preparedReady(state, messagesFromChat(currentContext().chat || [])) ? 'compatible with current play' : 'source changed; not injected'}`,
             preparation.campaign,
-            preparation.rpBrief && `RP OPERATING BRIEF (private)\n${preparation.rpBrief}`,
-            `EPISODE · ${preparation.episode.status}: ${preparation.episode.subject}\n${preparation.episode.boundary}`,
+            workingPlanSummary(preparation),
+            !preparation.workingPlan && preparation.rpBrief && `RP OPERATING BRIEF (private)\n${preparation.rpBrief}`,
+            !preparation.workingPlan && `EPISODE · ${preparation.episode.status}: ${preparation.episode.subject}\n${preparation.episode.boundary}`,
             campaignSelectionSummary(preparation),
             campaignBudgetSummary(preparation, campaignAuthorInstructions(state)),
-            ...preparation.developments.map(item => [
+            ...(preparation.workingPlan ? [] : preparation.developments).map(item => [
                 `[${item.id}] ${preparation.realization?.[item.id] ? '' : preparation.preparationFormat === EVENT_POINTS_FORMAT
                     ? eventPointWire(item).plot_points.map(point => `Event opportunity: ${point.event}\nOpens: ${point.opens}`).join('\n\n') : item.premise}`,
                 preparation.realization?.[item.id] && `Accepted progress (cited interpretation): ${Object.entries(preparation.realization[item.id].episodes).map(([id, e]) => `${id}: ${e.status}`).join('; ') || 'No witnessed enactment yet'}`,
@@ -3319,7 +3328,7 @@ async function mountUI() {
     uiMountPromise = (async () => {
     // Load the template relative to this module so the extension works from
     // third-party/Tale-Fairy as well as any legacy installation directory.
-    const response = await fetch(new URL(`./settings.html?v=${RUNTIME_VERSION}&progress=1`, import.meta.url));
+    const response = await fetch(new URL(`./settings.html?v=${RUNTIME_VERSION}&progress=1&working-plan=1`, import.meta.url));
     if (!response.ok) {
         throw new Error(`Could not load Tale Fairy settings: ${response.status} ${response.statusText}`);
     }
@@ -3404,8 +3413,8 @@ async function mountUI() {
         ? Math.min(4, Math.max(3, Math.floor(Number(e.target.value) || 4)))
         : normalizePlannerSchedule({ refreshInterval: e.target.value }).refreshInterval; e.target.value = s.fullReviewInterval; save(); });
     root.querySelector('[data-setting="recent-budget"]').addEventListener('change', e => { invalidatePlanner(); s.recentContextTokens = Math.max(1000, Math.min(12000, Number(e.target.value) || DEFAULT_SETTINGS.recentContextTokens)); e.target.value = s.recentContextTokens; save(); });
-    root.querySelector('[data-setting="summary-budget"]').addEventListener('change', e => { invalidatePlanner(); s.summaryContextTokens = Math.max(1000, Math.min(8000, Number(e.target.value) || 4000)); e.target.value = s.summaryContextTokens; save(); });
-    root.querySelector('[data-setting="budget"]').addEventListener('change', e => { invalidatePlanner(); s.maxPromptTokens = Math.max(9000, Math.min(30000, Number(e.target.value) || DEFAULT_SETTINGS.maxPromptTokens)); e.target.value = s.maxPromptTokens; save(); });
+    root.querySelector('[data-setting="summary-budget"]').addEventListener('change', e => { invalidatePlanner(); s.summaryContextTokens = Math.max(0, Math.min(1000, Number(e.target.value) || 0)); e.target.value = s.summaryContextTokens; save(); });
+    root.querySelector('[data-setting="budget"]').addEventListener('change', e => { invalidatePlanner(); s.maxPromptTokens = Math.max(3000, Math.min(DEFAULT_SETTINGS.maxPromptTokens, Number(e.target.value) || DEFAULT_SETTINGS.maxPromptTokens)); e.target.value = s.maxPromptTokens; save(); });
     for (const [key, setting, fallback] of [['routine-budget', 'routineInputTokens', DEFAULT_ROUTINE_INPUT], ['review-budget', 'reviewInputTokens', DEFAULT_REVIEW_INPUT]]) {
         root.querySelector(`[data-setting="${key}"]`).addEventListener('change', e => { invalidatePlanner(); s[setting] = normalizeInputBudget(e.target.value, fallback); e.target.value = s[setting]; save(); });
     }
