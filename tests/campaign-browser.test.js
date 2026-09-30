@@ -239,9 +239,28 @@ for (const reset of [false, true]) test(`rewound long chat reuses only verified 
     for (let index = 397; index < 407; index += 2) assert.ok(built.evidenceMessages.some(m => m.index === index
         && m.content === h.context.chat[index].mes), `new/edited contribution ${index} stays whole`);
     assert.deepEqual(structuredClone(h.context.chatMetadata), before);
+    await h.scope.analyzeCampaignNow({ manual: true });
+    assert.equal(h.requests.length, 2, 'recovery sends one planner request');
+    assert.equal(h.state().campaignPreparation.revision, 51, 'recovered revision reaches the host commit');
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
+    assert.match(h.statuses.at(-1), /Campaign preparation ready/);
+    h.scope.generationGuideSelection = null;
+    assert.ok(h.prepare().payload.includes(design.selected_material[0].available));
     h.context.chat[1].mes = 'An edit before every saved checkpoint.';
     assert.equal(h.scope.campaignReviewedCount(snapshot.state, { ...h.scope.readCampaignSnapshot(), fingerprint: h.scope.campaignFingerprint }), 0);
     assert.throws(() => h.scope.buildCampaignHostInput(h.scope.readCampaignSnapshot()), /exceeds 8000/);
+});
+
+test('a rejected host commit is reported as unsaved work, not an unnecessary planning pass', async () => {
+    const h = browser();
+    h.scope.commitCampaignPreparation = () => false;
+    await h.scope.analyzeCampaignNow({ manual: true });
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.state().campaignPreparation?.revision || 0, 0);
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'failed');
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.skipped, 'commit-conflict');
+    assert.match(h.statuses.at(-1), /Planning result not saved.*commit-conflict/);
+    assert.doesNotMatch(h.statuses.at(-1), /No new planning pass needed/);
 });
 
 test('rebuild preserves the original plan on preflight and provider failure; only success archives/replaces it', async () => {

@@ -206,3 +206,13 @@ The full deterministic suite passes 968 tests, including long-chat rewind/edit
 recovery, invalid checkpoint rejection, nested old rebuilds, revision preservation,
 transactional rebuild failures, exact new-player-text retention and truthful
 persisted preflight attempts.
+
+The follow-up commit regression exposed a missing host boundary check: planning
+recovered revision 51 from an archived revision 50, but the host still required
+revision 1 from the reset active state. Planning and the host commit now share
+the exact next-revision calculation. Fingerprint, source and competing-save
+guards remain in force; arbitrary revision jumps and replays remain rejected.
+The long-chat regression now runs through host commit, completed-attempt recording
+and writer-packet availability instead of stopping at input admission. Commit
+rejections are displayed as unsaved results, not unnecessary planning passes.
+The extended suite passes 970 tests; no live provider request was made for this fix.

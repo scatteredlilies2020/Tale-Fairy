@@ -77,7 +77,7 @@ function legacyDraft(state) {
 
 // Older rebuilds reset revision to zero before sending. Keep their archived id
 // namespace reserved when recovering; new transactional rebuilds never reset it.
-function nextPlanRevision(state) {
+export function nextPlanRevision(state) {
     let revision = state.revision;
     const pending = revision === 0 ? [state] : [], seen = new Set();
     while (pending.length) {

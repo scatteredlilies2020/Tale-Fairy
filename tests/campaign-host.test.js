@@ -315,6 +315,27 @@ test('host commit independently rejects stale source, changed reference and comp
     }
 });
 
+test('host commit accepts only the exact recovered revision after an old failed rebuild', () => {
+    const h = generationHarness(messages());
+    const state = attach(h);
+    const archived = { ...state.campaignPreparation, revision: 50 };
+    const reset = { ...emptyCampaign(), archive: [{ preparation: archived, rebuild: true }] };
+    h.context.chatMetadata = saveState(h.context.chatMetadata, { ...state, campaignPreparation: reset });
+    const guard = { stateFingerprint: h.scope.campaignFingerprint(h.state().campaignPreparation) };
+    const incoming = { ...archived, revision: 51, archive: reset.archive };
+    assert.equal(validCampaignState(incoming), true);
+    const before = JSON.stringify(h.context.chatMetadata);
+    for (const revision of [1, 50, 52]) {
+        assert.equal(h.scope.commitCampaignPreparation({ ...incoming, revision }, guard), false, `reject revision ${revision}`);
+        assert.equal(JSON.stringify(h.context.chatMetadata), before);
+    }
+    assert.equal(h.scope.commitCampaignPreparation(incoming, guard), true);
+    assert.equal(h.state().campaignPreparation.revision, 51);
+    assert.equal(h.scope.commitCampaignPreparation(incoming, {
+        stateFingerprint: h.scope.campaignFingerprint(h.state().campaignPreparation),
+    }), false, 'same-revision replay remains rejected');
+});
+
 test('ready revisions replace older retry packets without changing a frozen in-flight selection', () => {
     const h = generationHarness(messages());
     const state = attach(h), old = state.campaignPreparation;

@@ -1,6 +1,6 @@
 import { sha256 } from '/lib.js';
 import { campaignAuthorInstructions, campaignPayloadBudget, campaignUsable, campaignMaterialUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1';
-import { storyInput as ownedInput, storyPassWithRecovery as ownedPass, STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1';
+import { storyInput as ownedInput, storyPassWithRecovery as ownedPass, nextPlanRevision, STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1';
 import { fitStoryInputBudget } from './story-budget.js?follow-through=1&compaction=1';
 import { readCampaignContinuity } from './campaign-continuity.js';
 // Keep the public registration URL stable so external adapters share this registry.
@@ -972,7 +972,9 @@ async function runCampaignAnalysis(work) {
         }
         else if (result.error) renderAnalysisActivity(`${loadState(currentContext().chatMetadata).campaignPreparation?.revision
             ? 'Previous preparation retained' : 'No preparation available'} · ${result.error}`, false);
-        else renderAnalysisActivity(`No new planning pass needed${result.skipped ? ` · ${result.skipped}` : ''}`, false);
+        else if (['not-due', 'already-attempted', 'inactive-or-replacement', 'cancelled-before-lock'].includes(result.skipped)) {
+            renderAnalysisActivity(`No new planning pass needed · ${result.skipped}`, false);
+        } else renderAnalysisActivity(`Planning result not saved · ${result.skipped || 'unknown result'} · saved preparation unchanged`, false);
     }
     return loadState(currentContext().chatMetadata);
 }
@@ -1621,7 +1623,7 @@ function commitCampaignPreparation(preparation, { stateFingerprint, evidenceKey 
     const messages = messagesFromChat(context.chat || []);
     const chatId = String(context.getCurrentChatId?.() || '');
     if (!getSettings().enabled || !validCampaignState(preparation)
-        || preparation.revision !== (previous.campaignPreparation?.revision || 0) + 1
+        || preparation.revision !== nextPlanRevision(previous.campaignPreparation || emptyCampaign())
         || campaignFingerprint(previous.campaignPreparation || emptyCampaign()) !== stateFingerprint
         || !campaignUsable(preparation, { chatId, messages, fingerprint: campaignFingerprint,
             referenceHash: plotInputKey(chatId, [], generationInputs(context, previous)) })) return false;
