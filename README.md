@@ -4,6 +4,14 @@ Tale Fairy is a standalone SillyTavern extension that acts as a **background cre
 
 ## Bounded working plan (current development update)
 
+Rewinds and failed rebuilds now recover **verified review checkpoints** from the
+local archive instead of treating the whole chat as unreviewed. Only an exact
+unchanged prefix with matching chat/source references qualifies; newer player
+contributions remain whole. Rebuild retains existing preparation until success,
+and preflight failures replace stale success labels with a no-request attempt.
+The 8,000-token cap is unchanged. Refresh ST, then use **Guide now**; no reset is
+needed for an older failed rebuild.
+
 Invalid planner output now gets **one automatic correction request** within the
 same planning pass. Oversized plans/packets, malformed or truncated JSON, and
 validation failures receive specific feedback and tighter drafting allowances.

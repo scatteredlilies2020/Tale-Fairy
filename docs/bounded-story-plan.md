@@ -93,8 +93,24 @@ Routine requests contain the working plan, complete enabled source references,
 recent accepted spans and optional evidence, not the archive or episode ledger.
 The host reduces the recent window when necessary, retaining opening context and
 all unreviewed player contributions. Source-compatible reviewed contributions may
-leave that window. Source edits invalidate the accepted prefix and consequence
+leave that window. Source edits invalidate affected checkpoints and consequence
 carry. Omission is explicitly not evidence of absence or completion.
+
+### Review checkpoints after rewind or rebuild
+
+If the active preparation is no longer source-compatible, the host checks complete
+archived preparations for an earlier exact prefix with the same chat and reference
+hash. That prefix may establish prior review coverage, not restore old proposals,
+consequences or writer material. Invalid/incomplete checkpoints, changed references
+and edits before the checkpoint cannot establish coverage. All subsequent player
+contributions remain required and whole; the archive itself is not sent.
+
+Rebuild is now request intent rather than an immediate reset. Only a successful
+validated pass archives and replaces the current preparation; preflight, provider
+and validation failures preserve it. Recovery also understands older failed resets
+whose complete preparation was nested in a rebuild archive, reserving their id
+revision space. Attempt recording precedes input construction, so a local budget
+failure displays zero requests rather than a previous successful request.
 
 There is no way to fit arbitrarily large required source text or unreviewed input
 losslessly into a fixed ceiling. Such requests fail locally before provider spend,
@@ -175,3 +191,18 @@ An isolated real-provider correction check injected an oversized first draft;
 the correction request failed with a closed provider socket. No live correction
 success is claimed for that check; its result is `recovery-result.json` in the
 same temporary artifact directory. No live chat was written.
+
+### September 30 rewind/rebuild regression check
+
+The saved chat had an older failed rebuild wrapping a revision-50 preparation
+whose 413-message source no longer matched. An archived legacy checkpoint still
+matched through message 397. A read-only replay at 409 messages required over
+19,000 tokens without checkpoint recovery; with recovery it admitted 7,538/8,000
+estimated tokens, preserving every player contribution after that checkpoint.
+This was local input admission, not a provider or live UI success. No chat, preset
+or provider request was changed or sent for this check.
+
+The full deterministic suite passes 968 tests, including long-chat rewind/edit
+recovery, invalid checkpoint rejection, nested old rebuilds, revision preservation,
+transactional rebuild failures, exact new-player-text retention and truthful
+persisted preflight attempts.

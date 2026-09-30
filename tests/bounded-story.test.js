@@ -51,6 +51,23 @@ test('routine prompt is independent of archive size and never replays the eviden
     assert.doesNotMatch(after.prompt, /OLD HISTORY|HISTORICAL EVIDENCE|accepted_progress|closed_subject_ids/);
 });
 
+test('recovery of an old failed rebuild reserves archived revision ids without reviving the plan', async () => {
+    const prior = (await pass()).state;
+    prior.revision = 50;
+    const state = { ...emptyCampaign(), archive: [{ preparation: prior, rebuild: true }] };
+    const built = input(state);
+    assert.equal(built.newIdPrefix, 'r51-');
+    assert.deepEqual(built.previousPlan.developments, []);
+    const raw = response();
+    raw.plan.developments[0].id = 'r51-new';
+    raw.selected_material[0].subjectIds = ['r51-new'];
+    const result = await pass(raw, state);
+    assert.equal(result.accepted, true, result.error);
+    assert.equal(result.state.revision, 51);
+    assert.equal(validCampaignState(result.state), true);
+    assert.deepEqual(result.state.archive, structuredClone(state.archive));
+});
+
 test('finite arc ends with evidence while a long thread survives and an independent arc begins', async () => {
     const first = await pass();
     const raw = response();

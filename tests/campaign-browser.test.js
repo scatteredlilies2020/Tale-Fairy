@@ -64,7 +64,17 @@ function legacyPreparation(preparation) {
     return result;
 }
 
-function browser(send = async () => ({ choices: [{ message: { content: JSON.stringify(design) }, finish_reason: 'stop' }] }), initialState = defaultState()) {
+function plannedResponse({ prompt }) {
+    const input = JSON.parse(prompt), value = structuredClone(design);
+    // Rebuilds discard drafts, not the monotonically increasing revision/id space.
+    if (!input.previous_plan.developments.length) {
+        value.plan.developments[0].id = `${input.new_id_prefix}music`;
+        value.selected_material[0].subjectIds = [value.plan.developments[0].id];
+    }
+    return { choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] };
+}
+
+function browser(send = async args => plannedResponse(args), initialState = defaultState()) {
     const h = generationHarness([{ is_user: false, name: 'Mara', mes: 'The show ended.' }, { is_user: true, name: 'Neri', mes: 'I help pack.' }],
         initialState);
     const requests = [], shared = new Map();
@@ -190,11 +200,75 @@ test('initial budget failure reports no plan and generation does not retain a pr
     h.context.chat.push({ is_user: true, name: 'Neri', mes: 'Protected player contribution. '.repeat(10000) });
     await h.scope.analyzeCampaignNow({ manual: true });
     assert.equal(h.requests.length, 0);
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'failed');
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.requestCount, 0);
     assert.match(h.statuses.at(-1), /^No preparation available · Planner input .* exceeds/);
     assert.doesNotMatch(h.statuses.at(-1), /Previous preparation retained/);
     h.prepare();
     assert.match(h.statuses.at(-1), /No plot preparation available|Scene context ready/);
     assert.doesNotMatch(h.statuses.at(-1), /Preparing/);
+});
+
+for (const reset of [false, true]) test(`rewound long chat reuses only verified archived review coverage (old rebuild=${reset})`, async () => {
+    const h = browser();
+    await h.scope.analyzeCampaignNow();
+    const checkpoint = legacyPreparation(h.state().campaignPreparation);
+    for (let index = 2; index < 413; index++) h.context.chat.push({ is_user: index % 2 === 1, name: index % 2 ? 'Neri' : 'Mara',
+        mes: index % 2 ? `Choice ${index}. ` + 'An accepted player contribution. '.repeat(30) : `Accepted scene ${index}.` });
+    checkpoint.source = { ...checkpoint.source, messageCount: 397,
+        fingerprint: h.scope.campaignFingerprint(h.context.chat.slice(0, 397)) };
+    const state = h.state(), future = structuredClone(state.campaignPreparation);
+    future.revision = 50;
+    future.source = { ...future.source, messageCount: 413, fingerprint: h.scope.campaignFingerprint(h.context.chat) };
+    future.archive = [{ revision: checkpoint.revision, source: checkpoint.source, legacyPreparation: checkpoint, replaced: true }];
+    state.campaignPreparation = reset ? { ...h.scope.emptyCampaign(), archive: [{ preparation: future, rebuild: true }] } : future;
+    h.context.chatMetadata = saveState(h.context.chatMetadata, state);
+    h.context.chat.length = 407;
+    h.context.chat[401].mes = 'I change my mind: no investigation, and no permission requirement.';
+    const before = structuredClone(h.context.chatMetadata);
+    const snapshot = h.scope.readCampaignSnapshot();
+    assert.throws(() => storyInput({ reference: snapshot.reference, state: snapshot.state,
+        messages: campaignEvidenceMessages(campaignReviewWindow(snapshot.messages.map((m, index) => ({ index,
+            role: m.is_user ? 'user' : 'assistant', name: m.name, content: m.mes })), 2), { narrative: true }) }), /exceeds 8000/);
+    const built = h.scope.buildCampaignHostInput(snapshot), payload = JSON.parse(built.prompt);
+    assert.ok(built.inputTokens <= 8000);
+    assert.equal(payload.coverage.reviewed_before, 397);
+    assert.equal(payload.new_id_prefix, 'r51-');
+    assert.equal(payload.rebuild, true);
+    assert.match(payload.coverage.review_boundary, /not restored/);
+    for (let index = 397; index < 407; index += 2) assert.ok(built.evidenceMessages.some(m => m.index === index
+        && m.content === h.context.chat[index].mes), `new/edited contribution ${index} stays whole`);
+    assert.deepEqual(structuredClone(h.context.chatMetadata), before);
+    h.context.chat[1].mes = 'An edit before every saved checkpoint.';
+    assert.equal(h.scope.campaignReviewedCount(snapshot.state, { ...h.scope.readCampaignSnapshot(), fingerprint: h.scope.campaignFingerprint }), 0);
+    assert.throws(() => h.scope.buildCampaignHostInput(h.scope.readCampaignSnapshot()), /exceeds 8000/);
+});
+
+test('rebuild preserves the original plan on preflight and provider failure; only success archives/replaces it', async () => {
+    let fail = false;
+    const h = browser(async args => { if (fail) throw Error('Provider offline'); return plannedResponse(args); });
+    await h.scope.analyzeCampaignNow();
+    const before = structuredClone(h.state().campaignPreparation);
+    fail = true;
+    await h.scope.rebuildGuideState();
+    assert.deepEqual(h.state().campaignPreparation, before);
+    assert.equal(h.requests.length, 2);
+    assert.deepEqual(JSON.parse(h.requests[1].prompt).previous_plan.developments, []);
+    assert.equal(JSON.parse(h.requests[1].prompt).coverage.reviewed_before, 2);
+    h.context.chat.push({ is_user: true, name: 'Neri', mes: 'Required new contribution. '.repeat(10000) });
+    await h.scope.rebuildGuideState();
+    assert.deepEqual(h.state().campaignPreparation, before);
+    assert.equal(h.requests.length, 2);
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.requestCount, 0);
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'failed');
+    assert.match(h.statuses.at(-1), /Previous preparation retained/);
+    h.context.chat.pop(); fail = false;
+    await h.scope.rebuildGuideState();
+    assert.equal(h.requests.length, 3);
+    assert.equal(h.state().campaignPreparation.revision, before.revision + 1);
+    assert.deepEqual(h.state().campaignPreparation.archive[0].preparation, before);
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 3, 'successful rebuild does not schedule an immediate ordinary duplicate');
 });
 
 test('host requires a complete bounded snapshot and preserves unfinished initiative on failure', async () => {
@@ -1096,7 +1170,7 @@ test('normal startup migrates legacy data automatically and Rebuild stays single
     await h.scope.rebuildGuideState();
     assert.equal(h.requests.length, 2);
     assert.equal(h.state().plannerContract, 15);
-    assert.equal(h.state().campaignPreparation.revision, 1);
+    assert.equal(h.state().campaignPreparation.revision, before.revision + 1);
     assert.deepEqual(h.state().campaignPreparation.archive[0].preparation, before);
     assert.equal(JSON.parse(h.requests[1].prompt).previous_plan.developments.length, 0);
     assert.equal(h.state().userNotes[0].text, 'No forced public solo.');

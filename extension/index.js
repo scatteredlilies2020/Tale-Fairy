@@ -1,13 +1,14 @@
 import { sha256 } from '/lib.js';
 import { campaignAuthorInstructions, campaignPayloadBudget, campaignUsable, campaignMaterialUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1';
-import { storyInput as ownedInput, storyPassWithRecovery as ownedPass, STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1';
+import { storyInput as ownedInput, storyPassWithRecovery as ownedPass, STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1';
 import { fitStoryInputBudget } from './story-budget.js?follow-through=1&compaction=1';
 import { readCampaignContinuity } from './campaign-continuity.js';
 // Keep the public registration URL stable so external adapters share this registry.
 import { readEvidenceProviders, evidenceRevisionKey } from './evidence-providers.js';
 import { campaignEvidenceMessages, campaignReviewWindow } from './campaign-evidence.js';
-import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.36&token-budget=1&rp-plot=1&progress=1&follow-through=1&working-plan=1&recovery=1';
-import { campaignAttemptSummary } from './planner-progress.js?v=1&recovery=1';
+import { campaignReviewedCount } from './campaign-review.js';
+import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.36&token-budget=1&rp-plot=1&progress=1&follow-through=1&working-plan=1&recovery=1&review-checkpoint=1';
+import { campaignAttemptSummary } from './planner-progress.js?v=1&recovery=1&review-checkpoint=1';
 import { finalizeNotebookCompactions, writeNotebookArchive } from './notebook-compaction.js?v=0.14.22';
 import { eventSource, event_types, extension_prompt_roles, extension_prompt_types, generateRaw, Generate, setExtensionPrompt, getRequestHeaders, getCharacterCardFields, saveSettingsDebounced } from '/script.js';
 import { getContext } from '/scripts/st-context.js';
@@ -785,6 +786,7 @@ function readCampaignSnapshot() {
     const context = currentContext(), state = loadState(context.chatMetadata), s = getSettings();
     const chatId = String(context.getCurrentChatId?.() || '');
     const replacement = replacementPlanningDeferred(context);
+    const rebuild = campaignHostWork?.chatId === chatId && campaignHostWork.rebuild === true;
     const messages = messagesFromChat(context.chat || []);
     const accepted = replacement ? messages.slice(0, context.chatMetadata[REPLACEMENT_PENDING_KEY].messageCount) : messages;
     const evidence = readEvidenceProviders(context, { continuityBridge: globalThis.continuityMemoryBridge,
@@ -816,12 +818,12 @@ function readCampaignSnapshot() {
     if (attempt?.chatId === chatId && attempt.referenceHash === legacyPlotInputKey(chatId, [], inputs)) {
         attempt = { ...attempt, referenceHash };
     }
-    return { state: state.campaignPreparation || emptyCampaign(), messages: accepted, chatId, replacement,
+    return { state: state.campaignPreparation || emptyCampaign(), messages: accepted, chatId, replacement, rebuild,
         enabled: s.enabled, attempt,
         playerNames: [...new Set([context.name1, ...accepted.filter(m => m.is_user).map(m => m.name)]
             .filter(name => typeof name === 'string' && name.trim()))],
         referenceHash,
-        requestSignature: campaignFingerprint({ recovery: 1, contract: OWNED_SCHEMA, prompt: OWNED_SYSTEM, settings: Object.fromEntries(['analysisSource', 'analysisProvider', 'analysisProfileId',
+        requestSignature: campaignFingerprint({ recovery: 1, reviewCheckpoint: 1, contract: OWNED_SCHEMA, prompt: OWNED_SYSTEM, settings: Object.fromEntries(['analysisSource', 'analysisProvider', 'analysisProfileId',
             'analysisModel', 'analysisUrl', 'analysisSecretId', 'analysisReasoningMode', 'analysisTemperature', 'maxPromptTokens', 'continuityIntegration', 'summaryContextTokens']
             .map(key => [key, s[key]])) }),
         reference,
@@ -836,7 +838,7 @@ function buildCampaignHostInput(snapshot) {
     if (snapshot.state.revision && !validCampaignState(snapshot.state)) throw Error('Saved campaign is invalid; inspect or rebuild it before planning.');
     const messages = snapshot.messages.map((m, index) => ({ index, role: m.is_user ? 'user' : 'assistant', name: m.name || '', content: m.mes || '' }));
     const previousUsable = campaignUsable(snapshot.state, { ...snapshot, fingerprint: campaignFingerprint });
-    const reviewedCount = previousUsable ? snapshot.state.source.messageCount : 0;
+    const reviewedCount = campaignReviewedCount(snapshot.state, { ...snapshot, fingerprint: campaignFingerprint });
     const verifiedPlanEvidence = Object.fromEntries(Object.entries(snapshot.state.planEvidence || {}).filter(([, entry]) =>
         campaignUsable({ source: entry.source }, { ...snapshot, fingerprint: campaignFingerprint })));
     let failure;
@@ -844,7 +846,7 @@ function buildCampaignHostInput(snapshot) {
         const selected = campaignReviewWindow(messages, count, reviewedCount);
         try {
             return ownedInput({ reference: snapshot.reference, state: snapshot.state, playerNames: snapshot.playerNames, reviewedMessageCount: reviewedCount,
-                messages: campaignEvidenceMessages(selected, { narrative: true }), previousUsable, verifiedPlanEvidence,
+                messages: campaignEvidenceMessages(selected, { narrative: true }), previousUsable, verifiedPlanEvidence, resetPlan: snapshot.rebuild,
                 continuity: snapshot.continuity, evidence: snapshot.evidence, continuityTokens: snapshot.continuityTokens }, snapshot.inputBudget);
         } catch (error) { if (!error.message.includes('exceeds')) throw error; failure = error; }
     }
@@ -880,7 +882,7 @@ function campaignCompletion(response) {
     return { text: completionText(response), finishReason: 'stop' };
 }
 
-function analyzeCampaignNow({ manual = false } = {}) {
+function analyzeCampaignNow({ manual = false, rebuild = false } = {}) {
     const context = currentContext();
     const chatId = String(context.getCurrentChatId?.() || '');
     if (!chatId || !getSettings().enabled) return Promise.resolve(loadState(context.chatMetadata));
@@ -892,7 +894,7 @@ function analyzeCampaignNow({ manual = false } = {}) {
         previous.manual ||= manual;
         return previous.promise;
     }
-    const work = { chatId, stopSequence, manual, promise: null, startedAt: Date.now(), runId: ++analysisRunId };
+    const work = { chatId, stopSequence, manual, rebuild, promise: null, startedAt: Date.now(), runId: ++analysisRunId };
     work.promise = Promise.resolve(previous?.promise).catch(() => {}).then(() => {
         if (stopSequence !== analysisStopSequence || chatId !== String(currentContext().getCurrentChatId?.() || '')
             || !getSettings().enabled) return loadState(currentContext().chatMetadata);
@@ -986,9 +988,9 @@ async function startCampaignPlanning({ rebuild = false } = {}) {
     const context = currentContext();
     if (switchSequence !== analysisStopSequence || String(context.getCurrentChatId?.() || '') !== chatId) return loadState(context.chatMetadata);
     const previous = loadState(context.chatMetadata);
-    const preparation = rebuild ? { ...emptyCampaign(), archive: previous.campaignPreparation
-        ? [{ preparation: previous.campaignPreparation, rebuild: true }] : [] } : previous.campaignPreparation;
-    const next = { ...previous, plannerContract: 15, campaignPreparation: preparation,
+    // Rebuild is request intent, not a destructive preflight state change.
+    // The successful pass archives/replaces preparation under the normal CAS.
+    const next = { ...previous, plannerContract: 15,
         legacyPreparedWorld: previous.legacyPreparedWorld || previous.preparedWorld,
         canonBootstrapPending: false };
     context.updateChatMetadata(saveState(context.chatMetadata, next));
@@ -997,7 +999,7 @@ async function startCampaignPlanning({ rebuild = false } = {}) {
     generationGuideSelection = null;
     updatePrompt(next);
     renderBoard(next);
-    return analyzeCampaignNow({ manual: true });
+    return analyzeCampaignNow({ manual: true, rebuild });
 }
 
 async function applyCampaignInstruction(note) {

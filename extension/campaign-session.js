@@ -1,6 +1,6 @@
-import { CampaignRuntime } from './campaign-runtime.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1';
+import { CampaignRuntime } from './campaign-runtime.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&review-checkpoint=1';
 import { campaignReviewInterval } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&working-plan=1';
-import { boundedPlannerResponse, PLANNER_RESPONSE_TIMEOUT_MS } from './planner-progress.js?v=1';
+import { boundedPlannerResponse, PLANNER_RESPONSE_TIMEOUT_MS } from './planner-progress.js?v=1&review-checkpoint=1';
 
 export const CAMPAIGN_ATTEMPT_KEY = 'taleFairyCampaignAttempt';
 const turns = messages => messages.filter(message => !message.is_user).length;
@@ -21,7 +21,7 @@ export class CampaignSession {
                 return input;
             },
             onAttempt: async (snapshot, key) => {
-                onProgress('Recording planner request');
+                onProgress('Recording planner attempt');
                 const runKey = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
                 this.attempt = { key, runKey, chatId: snapshot.chatId, referenceHash: snapshot.referenceHash,
                     fingerprint: fingerprint(snapshot.messages), messageCount: snapshot.messages.length,

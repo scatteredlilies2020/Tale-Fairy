@@ -7,6 +7,10 @@ export function plannerElapsed(milliseconds) {
 
 export function campaignAttemptSummary(attempt, active = false) {
     if (!attempt) return 'No recorded planner request';
+    if (attempt.requestCount === 0) {
+        const reason = attempt.error || attempt.skipped;
+        return `${active && attempt.status === 'started' ? 'Building planner context' : 'Last attempt: no provider request sent'}${reason ? ` · ${reason}` : ''}`;
+    }
     if (attempt.status === 'started') return active
         ? 'Request in progress · completion not yet confirmed'
         : 'Previous request has no completion record · it may still be running in another page; Guide now can retry';

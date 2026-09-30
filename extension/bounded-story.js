@@ -75,23 +75,43 @@ function legacyDraft(state) {
     return result;
 }
 
+// Older rebuilds reset revision to zero before sending. Keep their archived id
+// namespace reserved when recovering; new transactional rebuilds never reset it.
+function nextPlanRevision(state) {
+    let revision = state.revision;
+    const pending = revision === 0 ? [state] : [], seen = new Set();
+    while (pending.length) {
+        const item = pending.pop();
+        if (!item || seen.has(item)) continue;
+        seen.add(item);
+        if (Number.isSafeInteger(item.revision)) revision = Math.max(revision, item.revision);
+        for (const entry of item.archive || []) {
+            if (entry?.rebuild === true && entry.preparation) pending.push(entry.preparation);
+        }
+    }
+    if (!Number.isSafeInteger(revision + 1)) throw Error('Working-plan revision is out of range; saved preparation is intact.');
+    return revision + 1;
+}
+
 export function storyInput({ reference, state, messages, playerNames = [], previousUsable = false,
-    verifiedPlanEvidence = {}, evidence, continuity, continuityTokens = 1000, reviewedMessageCount = 0 }, maxTokens = PLANNER_INPUT_LIMIT) {
+    verifiedPlanEvidence = {}, evidence, continuity, continuityTokens = 1000, reviewedMessageCount = 0, resetPlan = false }, maxTokens = PLANNER_INPUT_LIMIT) {
     const limit = plannerInputLimit(maxTokens);
-    const migration = needsEventReframe(state);
-    const trustedEvidence = previousUsable ? verifiedPlanEvidence : {};
-    let previous = migration ? legacyDraft(state) : structuredClone(state.workingPlan);
+    const migration = resetPlan || needsEventReframe(state);
+    const trustedEvidence = previousUsable && !resetPlan ? verifiedPlanEvidence : {};
+    let previous = resetPlan ? legacyDraft({}) : migration ? legacyDraft(state) : structuredClone(state.workingPlan);
     if (!migration) {
         validateWorkingPlan(previous, check);
         previous.consequences = previous.consequences.filter(fact => Object.hasOwn(trustedEvidence, fact.id) && trustedEvidence[fact.id]?.text === fact.text);
     }
     const speakers = compactCampaignSpeakers(messages);
     const names = [...new Set(playerNames.filter(name => typeof name === 'string' && name.trim()))];
-    const newIdPrefix = `r${state.revision + 1}-`;
+    const nextRevision = nextPlanRevision(state), newIdPrefix = `r${nextRevision}-`;
     let payload = { source_reference: compactPlannerReference(reference),
         previous_plan: previous, rebuild: !previousUsable || migration, new_id_prefix: newIdPrefix,
         player_names: names,
         coverage: { reviewed_before: reviewedMessageCount, supplied_messages: messages.length,
+            ...(reviewedMessageCount && (!previousUsable || resetPlan)
+                ? { review_boundary: 'Verified prior review of this unchanged source prefix; old plans and outcomes are not restored by this coverage.' } : {}),
             omitted_context: 'Only supplied accepted spans prove new outcomes. Earlier history stays local; absence from this request is not resolution.' },
         ...(Object.keys(speakers.defaults).length ? { default_speaker_name_by_role: speakers.defaults } : {}),
         accepted_messages: witnessMessages(speakers.messages) };
@@ -102,7 +122,7 @@ export function storyInput({ reference, state, messages, playerNames = [], previ
     if (external.length) payload.external_evidence = external;
     const prompt = JSON.stringify(payload), inputTokens = measure(payload);
     if (inputTokens > limit) throw Error(`Planner input ${inputTokens} exceeds ${limit} tokens (including instructions/schema). Required source or unreviewed messages cannot fit whole; reduce the supplied source or backlog explicitly. No provider request sent; saved preparation is intact.`);
-    return { prompt, inputTokens, inputLimit: limit, indices: messages.map(m => m.index), evidenceMessages: structuredClone(messages),
+    return { prompt, inputTokens, inputLimit: limit, resetPlan, nextRevision, indices: messages.map(m => m.index), evidenceMessages: structuredClone(messages),
         previousPlan: previous, rebuild: payload.rebuild, newIdPrefix, playerNames: names,
         verifiedPlanEvidence: structuredClone(trustedEvidence),
         evidence: { status: external.length ? 'included' : 'omitted-or-unavailable', providers: external.map(e => e.provider) },
@@ -154,14 +174,15 @@ export async function storyPass({ state, input, source, generate }) {
         const projection = workingPlanProjection(raw.plan);
         validateSelectedMaterial(raw.selected_material, projection.developments, check, projection.background);
         if (state.revision !== basisRevision) throw Error('Preparation changed during planning');
-        const archive = structuredClone(state.archive || []);
+        const archive = input.resetPlan ? [] : structuredClone(state.archive || []);
         const { archive: _archive, ...old } = state;
-        if (state.revision) archive.push({ revision: state.revision, source: structuredClone(state.source),
+        if (input.resetPlan) archive.push({ preparation: structuredClone(state), rebuild: true });
+        else if (state.revision) archive.push({ revision: state.revision, source: structuredClone(state.source),
             ...(needsEventReframe(state) ? { legacyPreparation: structuredClone(old), migration: structuredClone(input.migration) }
                 : { workingPlan: structuredClone(state.workingPlan), planEvidence: structuredClone(state.planEvidence),
                     selectedMaterial: structuredClone(state.selectedMaterial) }),
             transitions, replaced: true });
-        const next = { revision: basisRevision + 1, ...projection, archive, source: structuredClone(source),
+        const next = { revision: input.nextRevision, ...projection, archive, source: structuredClone(source),
             preparationFormat: EVENT_POINTS_FORMAT, workingPlanVersion: WORKING_PLAN_VERSION,
             workingPlan: structuredClone(raw.plan), planEvidence, selectedMaterial: structuredClone(raw.selected_material) };
         return { accepted: true, state: next, result, warnings: [], migration: input.migration,

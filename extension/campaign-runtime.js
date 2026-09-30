@@ -35,12 +35,12 @@ export class CampaignRuntime {
         const stateFingerprint = this.fingerprint(snapshot.state);
         const work = async () => {
             try {
-                const input = await this.prepare(snapshot);
-                if (this.key(this.read()) !== key) return { accepted: false, state: this.read().state, skipped: 'source-changed-before-request' };
                 const recording = this.onAttempt(snapshot, key);
                 if (recording?.then) await recording;
                 if (this.key(this.read()) !== key) return { accepted: false, state: this.read().state, skipped: 'source-changed-before-request' };
                 this.lastAttemptKey = key;
+                const input = await this.prepare(snapshot);
+                if (this.key(this.read()) !== key) return { accepted: false, state: this.read().state, skipped: 'source-changed-before-request' };
                 const source = { chatId: snapshot.chatId, referenceHash: snapshot.referenceHash,
                     messageCount: snapshot.messages.length, fingerprint: this.fingerprint(snapshot.messages) };
                 const result = await this.runPass({ state: snapshot.state, input, source, generate: this.generate });

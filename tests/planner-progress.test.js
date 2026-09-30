@@ -5,6 +5,12 @@ import { readFileSync } from 'node:fs';
 import { campaignAttemptSummary } from '../extension/planner-progress.js';
 
 const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
+test('tracker distinguishes local preparation failure from provider requests and old successes', () => {
+    assert.equal(campaignAttemptSummary({ status: 'started', requestCount: 0 }, true), 'Building planner context');
+    assert.equal(campaignAttemptSummary({ status: 'failed', requestCount: 0, error: 'Input exceeds limit' }),
+        'Last attempt: no provider request sent · Input exceeds limit');
+    assert.doesNotMatch(campaignAttemptSummary({ status: 'started', requestCount: 0 }), /still be running/);
+});
 function install(scope, names) {
     for (const name of names) vm.runInContext(source.match(new RegExp(`function ${name}\\([^]*?^}`, 'm'))[0], scope);
 }

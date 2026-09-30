@@ -48,6 +48,22 @@ test('failed source is not rerun after reload; explicit manual review is a disti
     assert.equal(f.commits(), 0);
 });
 
+test('preflight failure replaces an old success record without sending and is deduplicated across reload', async () => {
+    const f = fixture();
+    await f.session.request();
+    const before = structuredClone(f.current.state);
+    f.options.prepare = () => { throw Error('Planner input cannot fit whole'); };
+    f.session = new CampaignSession(f.options);
+    const result = await f.session.request({ manual: true });
+    assert.equal(result.accepted, false);
+    assert.equal(f.current.attempt.status, 'failed');
+    assert.equal(f.current.attempt.requestCount, 0);
+    assert.match(f.current.attempt.error, /cannot fit/);
+    assert.deepEqual(f.current.state, before);
+    assert.equal(f.calls(), 1);
+    assert.equal((await new CampaignSession(f.options).request()).skipped, 'not-due');
+});
+
 test('failure recovers on new accepted assistant play, not user-only appends or reloads', async () => {
     let fail = true;
     const f = fixture(async () => { if (fail) throw Error('provider failure'); return reply; });
@@ -135,7 +151,7 @@ test('tracker records ordered stages, completion time and provider failure reaso
     const stages = [];
     f.session = new CampaignSession({ ...f.options, onProgress: stage => stages.push(stage) });
     assert.equal((await f.session.request()).accepted, true);
-    assert.deepEqual(stages, ['Building planner context', 'Recording planner request',
+    assert.deepEqual(stages, ['Recording planner attempt', 'Building planner context',
         'Preparing planner request', 'Validating planner response', 'Saving planner preparation']);
     assert.ok(f.current.attempt.finishedAt >= f.current.attempt.at);
     assert.ok(f.current.attempt.durationMs >= 0);
