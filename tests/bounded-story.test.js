@@ -15,6 +15,7 @@ const development = (id = 'r1-bridge') => ({ id, kind: 'arc', owner: 'Village co
     resolution: 'The crossing is usable or the repair attempt is abandoned.', beyond: 'A working crossing restores trade.',
     access: { route: 'local', basis: 'The village is here; repairs are visible.' } });
 const response = () => ({ plan: { rpUnderstanding: originalUnderstanding(), direction: 'A wandering life across distinct communities.', threads: 'Ren hopes to become a trusted guide.',
+    goal: [{ subjectId: 'r1-bridge', aim: 'Bring the village together over its reopened crossing.', reachedWhen: 'The council holds the first shared crossing.' }],
     consequences: [], developments: [development()] }, exits: [], observations: [],
     selected_material: [{ subjectIds: ['r1-bridge'], available: 'The council brings repaired planks to the crossing.' }] });
 
@@ -39,12 +40,97 @@ test('active contract tailors opportunities without adding a memory store or a c
     assert.ok(storyInputTokens('', STORY_SYSTEM, STORY_SCHEMA) <= 3500,
         'The fixed contract must leave most of the 10k target for source and state.');
     assert.deepEqual(Object.keys(STORY_SCHEMA.value.properties.plan.properties),
-        ['rpUnderstanding', 'direction', 'threads', 'consequences', 'developments']);
+        ['rpUnderstanding', 'direction', 'threads', 'consequences', 'developments', 'goal']);
 });
 function input(state = emptyCampaign(), extra = {}) {
     return storyInput({ reference: { premise: 'Travel with freely chosen stops.' }, state, messages, playerNames: ['Ren'],
         previousUsable: Boolean(state.revision), verifiedPlanEvidence: state.planEvidence || {}, ...extra });
 }
+
+test('automatic goal contract supplies direction without assigning player choices or perpetual escalation', () => {
+    assert.ok(STORY_SCHEMA.value.properties.plan.required.includes('goal'));
+    assert.equal(STORY_SCHEMA.value.properties.plan.properties.goal.maxItems, 1);
+    assert.match(STORY_SYSTEM, /Choose automatically from RP scope, relevant past and user interests/);
+    assert.match(STORY_SYSTEM, /WRITER's NPC\/world activity, never assigns player objectives/);
+    assert.match(STORY_SYSTEM, /Retain an unfinished goal across reviews and scene changes/);
+    assert.match(STORY_SYSTEM, /fulfillment, refusal, incompatibility or changed user direction, not mere delay/);
+    assert.match(STORY_SYSTEM, /an offer alone is not fulfillment/);
+    assert.match(STORY_SYSTEM, /completion need not spawn a successor/);
+});
+
+test('goal is persisted, returned to the planner and sent to the writer without private plan internals', async () => {
+    const first = await pass();
+    assert.equal(first.accepted, true, first.error);
+    const saved = loadPlannerState(JSON.parse(JSON.stringify(saveState({}, {
+        ...defaultPlannerState(), campaignPreparation: first.state,
+    })))).campaignPreparation;
+    assert.deepEqual(JSON.parse(input(saved).prompt).previous_plan.goal, response().plan.goal);
+    const wire = JSON.parse(campaignPayload(saved).replace(/<\/?tale-fairy-context>/g, ''));
+    assert.deepEqual(wire.possible_developments[0].story_goal, {
+        aim: response().plan.goal[0].aim, reached_when: response().plan.goal[0].reachedWhen,
+    });
+    assert.match(wire.story_goal_contract, /not the player's obligation/);
+    assert.match(wire.story_goal_contract, /if reached, declined or contradicted, stop pursuing it/);
+    assert.doesNotMatch(campaignPayload(saved), /r1-bridge|rpUnderstanding|trusted guide|control|subjectId/);
+    const next = await pass(response(), saved);
+    assert.equal(next.accepted, true, next.error);
+    assert.deepEqual(next.state.workingPlan.goal, saved.workingPlan.goal);
+    assert.deepEqual(next.state.archive.at(-1).workingPlan.goal, saved.workingPlan.goal);
+});
+
+test('older goal-less preparation stays usable until the next normal pass chooses a goal', async () => {
+    const old = structuredClone((await pass()).state);
+    delete old.workingPlan.goal;
+    assert.equal(validCampaignState(old), true);
+    assert.doesNotMatch(campaignPayload(old), /story_goal/);
+    assert.equal(input(old).rebuild, false);
+    const missing = response(); delete missing.plan.goal;
+    const rejected = await pass(missing, old);
+    assert.equal(rejected.accepted, false);
+    assert.match(rejected.error, /missing goal/);
+    assert.equal(rejected.state, old);
+    const next = await pass(response(), old);
+    assert.equal(next.accepted, true, next.error);
+    assert.equal(next.state.revision, old.revision + 1);
+    assert.deepEqual(next.state.workingPlan.developments, old.workingPlan.developments);
+});
+
+for (const [name, mutate, error] of [
+    ['dangling goal', r => { r.plan.goal[0].subjectId = 'unknown'; }, /retained development/],
+    ['multiple goals', r => { r.plan.goal.push(structuredClone(r.plan.goal[0])); }, /array bounds/],
+    ['missing completion point', r => { delete r.plan.goal[0].reachedWhen; }, /missing reachedWhen/],
+    ['goal with no handoff', r => { r.selected_material = []; }, /needs selected material/],
+    ['material without a goal', r => { r.plan.goal = []; }, /chosen story goal/],
+    ['unrelated handoff', r => {
+        r.plan.developments.push(development('r2-other'));
+        r.selected_material[0].subjectIds = ['r2-other'];
+    }, /chosen story goal/],
+]) test(`${name} cannot replace valid preparation`, async () => {
+    const state = (await pass()).state, before = structuredClone(state), raw = response();
+    mutate(raw);
+    const result = await pass(raw, state);
+    assert.equal(result.accepted, false);
+    assert.match(result.error, error);
+    assert.equal(result.state, state);
+    assert.deepEqual(structuredClone(state), before);
+});
+
+test('unreachable goal stays private until a plausible route exists; deliberate rest needs no successor', async () => {
+    const raw = response(); raw.plan.developments[0].access.route = 'none'; raw.selected_material = [];
+    const waiting = await pass(raw);
+    assert.equal(waiting.accepted, true, waiting.error);
+    assert.equal(validCampaignState(waiting.state), true);
+    assert.equal(campaignPayload(waiting.state), '');
+    assert.deepEqual(JSON.parse(input(waiting.state).prompt).previous_plan.goal, raw.plan.goal);
+    const reachable = await pass(response(), waiting.state);
+    assert.equal(reachable.accepted, true, reachable.error);
+    assert.match(campaignPayload(reachable.state), /story_goal/);
+    raw.plan.goal = [];
+    const resting = await pass(raw, reachable.state);
+    assert.equal(resting.accepted, true, resting.error);
+    assert.equal(validCampaignState(resting.state), true);
+    assert.equal(campaignPayload(resting.state), '');
+});
 async function pass(raw = response(), state = emptyCampaign(), extra = {}) {
     let calls = 0;
     const result = await storyPass({ state, source, input: input(state, extra), generate: async () => {
@@ -211,6 +297,7 @@ test('recovery of an old failed rebuild reserves archived revision ids without r
         prior.workingPlan.rpUnderstanding.storyScope);
     const raw = response();
     raw.plan.developments[0].id = 'r51-new';
+    raw.plan.goal[0].subjectId = 'r51-new';
     raw.selected_material[0].subjectIds = ['r51-new'];
     const result = await pass(raw, state);
     assert.equal(result.accepted, true, result.error);
@@ -224,6 +311,7 @@ test('finite arc ends with evidence while a long thread survives and an independ
     const raw = response();
     raw.plan.developments = [{ ...development('r2-festival'), question: 'Which work will the troupe share?', initiative: 'The troupe rehearses its new comedy.',
         resolution: 'The troupe presents or shelves this production.', beyond: 'Other communities develop their own art.' }];
+    raw.plan.goal = [{ subjectId: 'r2-festival', aim: 'Share the troupe\'s new comedy.', reachedWhen: 'The comedy is performed or shelved.' }];
     raw.exits = [{ id: 'r1-bridge', disposition: 'closed', reason: 'The crossing is repaired.', evidence: [{ index: 0, span: 0 }] }];
     raw.plan.consequences = [{ id: 'crossing', text: 'The bridge is repaired.' }];
     raw.observations = [{ id: 'crossing', evidence: [{ index: 0, span: 0 }] }];
@@ -251,7 +339,7 @@ test('unfinished initiatives persist verbatim across an unchanged full snapshot'
 
 for (const disposition of ['paused', 'dropped', 'closed', 'changed']) test(`${disposition} distinguishes withdrawn drafts from witnessed endings`, async () => {
     const { state } = await pass();
-    const raw = response(); raw.plan.developments = []; raw.selected_material = [];
+    const raw = response(); raw.plan.developments = []; raw.plan.goal = []; raw.selected_material = [];
     raw.exits = [{ id: 'r1-bridge', disposition, reason: 'Set aside.', evidence: [] }];
     const result = await pass(raw, state);
     assert.equal(result.accepted, ['paused', 'dropped'].includes(disposition), result.error);
@@ -260,7 +348,7 @@ for (const disposition of ['paused', 'dropped', 'closed', 'changed']) test(`${di
 
 test('omission cannot silently erase an active initiative; no automatic retry', async () => {
     const { state } = await pass();
-    const raw = response(); raw.plan.developments = []; raw.selected_material = [];
+    const raw = response(); raw.plan.developments = []; raw.plan.goal = []; raw.selected_material = [];
     const rejected = await pass(raw, state);
     assert.equal(rejected.state, state);
     assert.match(rejected.error, /explicit exit/);
@@ -268,7 +356,7 @@ test('omission cannot silently erase an active initiative; no automatic retry', 
 
 for (const [name, change, error] of [
     ['duplicate ids', r => r.plan.developments.push(structuredClone(r.plan.developments[0])), /Duplicate/],
-    ['unprefixed new id', r => r.plan.developments[0].id = 'old', /id prefix/],
+    ['unprefixed new id', r => { r.plan.developments[0].id = 'old'; r.plan.goal[0].subjectId = 'old'; }, /id prefix/],
     ['player owner', r => r.plan.developments[0].owner = ' Ren ', /Player/],
     ['inaccessible writer material', r => r.plan.developments[0].access.route = 'none', /discovery route/],
     ['unknown selection id', r => r.selected_material[0].subjectIds = ['unknown'], /unknown/],
@@ -301,6 +389,7 @@ test('structural plan bounds remain mandatory but token estimates are soft targe
     raw.plan.developments = Array.from({ length: 5 }, (_, i) => development(`r1-${i}`));
     assert.throws(() => validateWorkingPlan(raw.plan, check), /array bounds/);
     raw.plan.developments.pop();
+    raw.plan.goal[0].subjectId = raw.plan.developments[0].id;
     for (const d of raw.plan.developments) d.initiative = '音'.repeat(400);
     assert.ok(planTokens(raw.plan) > 1200);
     assert.doesNotThrow(() => validateWorkingPlan(raw.plan, check));
@@ -318,7 +407,7 @@ test('complete request target includes schema and instructions without rejecting
     assert.deepEqual(JSON.parse(large.prompt).source_reference, reference);
     assert.ok(storyInput({ reference: {}, state: emptyCampaign(), messages }, 1).inputOverTarget > 0);
     assert.ok(STORY_SYSTEM.includes('No turn timers'));
-    assert.equal(STORY_SCHEMA.name, 'tale_fairy_working_plan_rp_v2');
+    assert.equal(STORY_SCHEMA.name, 'tale_fairy_working_plan_goal_v3');
 });
 
 test('legacy migration archives whole preparation and fails transactionally', async () => {
@@ -333,6 +422,7 @@ test('legacy migration archives whole preparation and fails transactionally', as
     assert.equal(failed.state, legacy);
     assert.deepEqual(legacy, before);
     const raw = response(); raw.plan.developments[0].id = 'r5-new'; raw.selected_material[0].subjectIds = ['r5-new'];
+    raw.plan.goal[0].subjectId = 'r5-new';
     const migrated = await pass(raw, legacy);
     assert.equal(migrated.accepted, true, migrated.error);
     const { archive, ...old } = before;
@@ -422,8 +512,8 @@ test('generation asks for compact fields while admission preserves valid existin
     } });
     assert.equal(result.accepted, true, result.error);
     assert.equal(result.state.workingPlan.developments[0].initiative, raw.plan.developments[0].initiative);
-    assert.match(sent.system, /800 tokens for the ENTIRE serialized plan/);
-    assert.match(sent.system, /1200 characters of prose across the whole plan/);
+    assert.match(sent.system, /800 tokens including JSON/);
+    assert.match(sent.system, /1200 prose characters/);
     assert.match(sent.system, /300 tokens including JSON/);
     assert.equal(sent.schema.value.properties.plan.properties.developments.maxItems, 4);
     assert.ok(result.budget.plan <= 1200);
@@ -432,6 +522,7 @@ test('generation asks for compact fields while admission preserves valid existin
 test('four compact developments and witnessed consequences fit together without dropping ongoing work', async () => {
     const raw = response();
     raw.plan.developments = Array.from({ length: 4 }, (_, i) => development(`r1-task${i}`));
+    raw.plan.goal[0].subjectId = raw.plan.developments[0].id;
     raw.plan.consequences = [{ id: 'repaired', text: 'The bridge is repaired.' }];
     raw.observations = [{ id: 'repaired', evidence: [{ index: 0, span: 0 }] }];
     raw.selected_material[0].subjectIds = raw.plan.developments.map(d => d.id);

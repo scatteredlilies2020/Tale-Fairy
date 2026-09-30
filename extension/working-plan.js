@@ -50,6 +50,11 @@ export const WORKING_PLAN_SCHEMA = object({
 // Older saved plans remain valid without analysis. New provider responses require
 // it explicitly; no fabricated default or destructive state migration is needed.
 WORKING_PLAN_SCHEMA.properties = { rpUnderstanding: RP_UNDERSTANDING_SCHEMA, ...WORKING_PLAN_SCHEMA.properties };
+// Optional on disk for older preparations; every new planner response chooses
+// one writer-owned goal, or explicitly leaves room for unsteered play.
+WORKING_PLAN_SCHEMA.properties.goal = list(object({
+    subjectId: text(80), aim: text(240), reachedWhen: text(180),
+}), 1);
 
 export function validateWorkingPlan(plan, check, playerNames = []) {
     check(plan, WORKING_PLAN_SCHEMA, '$.plan');
@@ -64,6 +69,9 @@ export function validateWorkingPlan(plan, check, playerNames = []) {
     }
     for (const rows of [plan.developments, plan.consequences]) {
         if (new Set(rows.map(row => row.id)).size !== rows.length) throw Error('Duplicate working-plan id');
+    }
+    if (plan.goal?.some(goal => !plan.developments.some(d => d.id === goal.subjectId))) {
+        throw Error('Story goal requires a retained development');
     }
     const players = new Set(playerNames.map(name => name.trim().toLocaleLowerCase()));
     if (plan.developments.some(row => players.has(row.owner.trim().toLocaleLowerCase()))) throw Error('Player cannot own a planned initiative');
@@ -89,6 +97,7 @@ export function workingPlanProjection(plan) {
 export function validateWorkingState(state, check) {
     if (state.workingPlanVersion !== WORKING_PLAN_VERSION) throw Error('Unknown working-plan version');
     validateWorkingPlan(state.workingPlan, check);
+    validateGoalSelection(state.workingPlan, state.selectedMaterial);
     for (const [key, value] of Object.entries(workingPlanProjection(state.workingPlan))) {
         if (JSON.stringify(state[key]) !== JSON.stringify(value)) throw Error(`Working-plan projection mismatch: ${key}`);
     }
@@ -104,5 +113,16 @@ export function validateWorkingState(state, check) {
             || record.witnesses.some(w => !Number.isSafeInteger(w.index) || w.index < 0 || typeof w.quote !== 'string' || !w.quote.trim())) {
             throw Error('Working consequence needs saved witnesses');
         }
+    }
+}
+
+export function validateGoalSelection(plan, material) {
+    if (plan.goal === undefined) return; // Historical preparation, not a new response.
+    const goal = plan.goal[0];
+    if (material?.length && (!goal || !material[0].subjectIds.includes(goal.subjectId))) {
+        throw Error('Selected material must advance the chosen story goal');
+    }
+    if (goal && plan.developments.some(d => d.id === goal.subjectId && d.access.route !== 'none') && !material?.length) {
+        throw Error('An accessible story goal needs selected material for the writer');
     }
 }

@@ -7,6 +7,7 @@ import { originalUnderstanding } from './helpers/rp-fixtures.js';
 
 const source = { chatId: 'story', referenceHash: 'reference', fingerprint: 'accepted', messageCount: 1 };
 const draft = () => ({ plan: { rpUnderstanding: originalUnderstanding(), direction: 'Travel between villages.', threads: 'Find a place to belong.', consequences: [],
+    goal: [{ subjectId: 'r1-bridge', aim: 'Reopen the village crossing.', reachedWhen: 'Workers finish the crossing or abandon repairs.' }],
     developments: [{ id: 'r1-bridge', kind: 'arc', owner: 'Council', control: 'npc', question: 'Repair the crossing?',
         initiative: 'Workers fit new planks.', resolution: 'The bridge reopens or repairs cease.', beyond: 'Trade can resume.',
         access: { route: 'local', basis: 'The workers are here.' } }] }, exits: [], observations: [],
@@ -23,6 +24,8 @@ for (const [name, invalid] of [
     ['truncated JSON', () => ({ ...response(draft()), finishReason: 'length' })],
     ['schema failure', () => { const value = draft(); delete value.plan.direction; return response(value); }],
     ['missing RP analysis', () => { const value = draft(); delete value.plan.rpUnderstanding; return response(value); }],
+    ['missing story goal', () => { const value = draft(); delete value.plan.goal; return response(value); }],
+    ['goal handoff mismatch', () => { const value = draft(); value.selected_material = []; return response(value); }],
     ['oversized RP analysis', () => { const value = draft(); value.plan.rpUnderstanding.anchors = '界'.repeat(200); return response(value); }],
     ['player ownership', () => { const value = draft(); value.plan.developments[0].owner = 'Ren'; return response(value); }],
     ['unwitnessed outcome', () => { const value = draft(); value.plan.consequences = [{ id: 'done', text: 'The bridge reopened.' }]; return response(value); }],

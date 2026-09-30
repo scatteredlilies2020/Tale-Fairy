@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEVELOPMENT_CONTRACT } from '../extension/story-budget.js';
+import { DEVELOPMENT_CONTRACT, STORY_GOAL_CONTRACT } from '../extension/story-budget.js';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { generationHarness } from './helpers/generation-harness.js';
@@ -47,6 +47,7 @@ const memorySnapshot = () => ({ chatId: 'story', status: 'current', revision: 1,
         text: 'Jo is still composing; no new engagement was accepted.', category: 'states', canonicalStatus: 'current',
         sourceRange: { chatKey: 'character:0:chat:story', from: 0, to: 0 } }] });
 const design = { plan: { rpUnderstanding: originalUnderstanding({ setting: 'Original ensemble RP', experiences: 'Music and shared authorship.' }), direction: 'A changing body of original work.',
+    goal: [{ subjectId: 'r1-music', aim: 'Give the ensemble a new piece to try together.', reachedWhen: 'The contrasting arrangements have been played and compared.' }],
     threads: 'PRIVATE an ensemble explores music and life between engagements. No established franchise.',
     consequences: [], developments: [{ id: 'r1-music', kind: 'arc', owner: 'Jo', control: 'npc',
         question: 'Compose a piece worth keeping.', initiative: 'Jo works on contrasting arrangements.',
@@ -56,6 +57,9 @@ const design = { plan: { rpUnderstanding: originalUnderstanding({ setting: 'Orig
     selected_material: [{ subjectIds: ['r1-music'], available: 'An original tune has potential for contrasting arrangements.',
         developing: 'Different arrangements could change whose contribution the group values across later sessions.',
         lasting: 'The repertoire could support shared authorship and distinct musical identities.' }] };
+const writerDesign = () => design.selected_material.map(entry => ({
+    story_goal: { aim: design.plan.goal[0].aim, reached_when: design.plan.goal[0].reachedWhen }, ...materialHorizons(entry),
+}));
 
 // Construct authentic legacy metadata for compatibility tests, not a malformed
 // new state with its required mirrors removed.
@@ -71,6 +75,7 @@ function plannedResponse({ prompt }) {
     // Rebuilds discard drafts, not the monotonically increasing revision/id space.
     if (!input.previous_plan.developments.length) {
         value.plan.developments[0].id = `${input.new_id_prefix}music`;
+        value.plan.goal[0].subjectId = value.plan.developments[0].id;
         value.selected_material[0].subjectIds = [value.plan.developments[0].id];
     }
     return { choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] };
@@ -218,6 +223,7 @@ const opportunityCases = [
 for (const example of opportunityCases)
 for (const correction of [false, true]) test(`${example.name}: ${correction ? 'corrected' : 'normal'} host pass keeps RP basis and commits an optional experience`, async () => {
     const value = { plan: { rpUnderstanding: example.understanding || originalUnderstanding({ setting: example.name, experiences: example.direction }), direction: example.direction, threads: example.threads, consequences: [],
+        goal: [{ subjectId: 'r1-opportunity', aim: example.initiative, reachedWhen: example.resolution }],
         developments: [{ id: 'r1-opportunity', kind: 'side', owner: example.owner, control: 'npc',
             question: example.question, initiative: example.initiative, resolution: example.resolution,
             beyond: example.beyond, access: { route: 'local', basis: example.basis } }] },
@@ -233,7 +239,7 @@ for (const correction of [false, true]) test(`${example.name}: ${correction ? 'c
         assert.match(spec.systemPrompt, /Invitations are valid when backed by something to experience/);
         assert.match(spec.systemPrompt, /do not invent past enactment/);
         assert.match(spec.systemPrompt, /canonIntent reflects the user's stated preference/);
-        assert.match(spec.systemPrompt, /Local changes affect what depends on them/);
+        assert.match(spec.systemPrompt, /Local changes affect dependent possibilities/);
         assert.ok(spec.schema.value.properties.plan.required.includes('rpUnderstanding'));
         assert.ok(storyInputTokens(prompt, spec.systemPrompt, spec.schema) <= 8000);
         if (correction && calls === 1) return { choices: [{ message: { content: '{"plan":' }, finish_reason: 'stop' }] };
@@ -260,6 +266,9 @@ for (const correction of [false, true]) test(`${example.name}: ${correction ? 'c
     assert.equal(JSON.parse(nextInput.prompt).previous_plan.direction, example.direction,
         'The broader experience scope, not just current activity, carries to subsequent planning.');
     assert.deepEqual(JSON.parse(nextInput.prompt).previous_plan.rpUnderstanding, value.plan.rpUnderstanding);
+    assert.deepEqual(JSON.parse(nextInput.prompt).previous_plan.goal, value.plan.goal);
+    assert.ok(h.prepare().payload.includes(value.plan.goal[0].aim));
+    assert.ok(h.prepare().payload.includes(value.plan.goal[0].reachedWhen));
 });
 
 test('notebook exposes RP understanding and uncertainty without claiming verified canon', () => {
@@ -268,10 +277,15 @@ test('notebook exposes RP understanding and uncertainty without claiming verifie
     for (const example of opportunityCases.filter(e => e.understanding)) {
         const summary = scope.workingPlanSummary({ workingPlan: { ...design.plan, rpUnderstanding: example.understanding }, archive: [] });
         assert.match(summary, /private · provisional, not verified canon/);
+        assert.match(summary, /STORY GOAL \(for the writer, not the player\)/);
+        assert.ok(summary.includes(design.plan.goal[0].aim));
+        assert.ok(summary.includes(design.plan.goal[0].reachedWhen));
         for (const value of Object.values(example.understanding)) assert.ok(summary.includes(value));
     }
     const old = structuredClone(design.plan); delete old.rpUnderstanding;
     assert.match(scope.workingPlanSummary({ workingPlan: old, archive: [] }), /Not yet analyzed; added on the next planning pass/);
+    delete old.goal;
+    assert.match(scope.workingPlanSummary({ workingPlan: old, archive: [] }), /STORY GOAL · Chosen on the next planning pass/);
     assert.match(source, /workingPlanSummary\(preparation\),/);
     assert.match(source, /element\.textContent = content/);
 });
@@ -305,7 +319,7 @@ test('empty writer preview explains expired guidance and the rejected refresh', 
 });
 
 test('empty writer preview distinguishes quiet selection, missing preparation and active campaign planning', async () => {
-    const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify({ ...design, selected_material: [] }) }, finish_reason: 'stop' }] }));
+    const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify({ ...design, plan: { ...design.plan, goal: [] }, selected_material: [] }) }, finish_reason: 'stop' }] }));
     assert.match(emptyPreview(h), /No completed preparation is available/);
     h.scope.campaignHostWork = { chatId: 'story' };
     assert.equal(emptyPreview(h), 'Preparing context in the background.');
@@ -623,6 +637,7 @@ test('host keeps multiple arcs then closes finite work with witnessed events', a
     wider.plan.developments.push({ ...structuredClone(wider.plan.developments[0]), id: 'r2-travel', kind: 'emerging',
         question: 'Which regional exchanges can form?', initiative: 'Carriers establish a route between neighboring communities.' });
     wider.selected_material[0] = { subjectIds: ['r2-travel'], available: 'Open regional routes.' };
+    wider.plan.goal = [{ subjectId: 'r2-travel', aim: 'Open regional exchanges.', reachedWhen: 'The carriers establish their first exchange.' }];
     const closing = structuredClone(wider);
     closing.plan.developments.shift();
     closing.exits = [{ id: 'r1-music', disposition: 'closed', reason: 'The finite production ended.', evidence: [{ index: 3, span: 0 }] }];
@@ -1028,7 +1043,7 @@ test('actual campaign entry builds evidence, uses single-shot transport and comm
     assert.equal(h.requests.length, 1);
     const request = h.requests[0];
     assert.equal(request.spec.singleShot, true);
-    assert.equal(request.spec.schema.name, 'tale_fairy_working_plan_rp_v2');
+    assert.equal(request.spec.schema.name, 'tale_fairy_working_plan_goal_v3');
     assert.equal(request.spec.responseTokens, 3000);
     assert.equal(request.spec.reasoningMode, undefined, 'honor saved reasoning instead of legacy forced Off');
     assert.equal(request.meta, null, 'no legacy detached recovery contract');
@@ -1040,7 +1055,7 @@ test('actual campaign entry builds evidence, uses single-shot transport and comm
     assert.equal(h.state().campaignPreparation.developments[0].initiative.owner, 'Jo');
     assert.match(h.prepare().payload, /An original tune has potential/);
     assert.deepEqual(JSON.parse(h.prepare().payload.replace(/<\/?tale-fairy-context>/g, '').trim()),
-        { development_contract: DEVELOPMENT_CONTRACT, possible_developments: design.selected_material.map(materialHorizons) }, 'actual host injects discoverable material, not private ownership or a whole future plan');
+        { development_contract: DEVELOPMENT_CONTRACT, story_goal_contract: STORY_GOAL_CONTRACT, possible_developments: writerDesign() }, 'actual host injects a writer goal and discoverable material, not private ownership or a whole future plan');
     assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
 });
 
@@ -1248,7 +1263,7 @@ test('real received/end events share persisted cadence and never invoke reply re
 test('ordinary received events automatically commit a quiet snapshot and later restore reviewed material without repair calls', async () => {
     const revised = structuredClone(design);
     revised.selected_material[0].available = 'A different musical collaboration is available.';
-    const responses = [design, { ...design, selected_material: [] }, revised];
+    const responses = [design, { ...design, plan: { ...design.plan, goal: [] }, selected_material: [] }, revised];
     const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(responses.shift()) }, finish_reason: 'stop' }] }));
     await h.scope.analyzeCampaignNow();
     const first = structuredClone(h.state().campaignPreparation);
@@ -1480,7 +1495,7 @@ test('author instruction is retained verbatim and reaches writer and the single 
     const selected = h.prepare();
     assert.ok(selected.payload.includes(note));
     assert.deepEqual(JSON.parse(selected.payload.replace(/<\/?tale-fairy-context>/g, '').trim()),
-        { development_contract: DEVELOPMENT_CONTRACT, possible_developments: design.selected_material.map(materialHorizons), author_instructions: [note] });
+        { development_contract: DEVELOPMENT_CONTRACT, story_goal_contract: STORY_GOAL_CONTRACT, possible_developments: writerDesign(), author_instructions: [note] });
     h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata));
     h.scope.generationGuideSelection = null;
     assert.equal(h.prepare().payload, selected.payload, 'retry cache includes the exact author instructions');

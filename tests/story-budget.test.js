@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { conservativeTokenCount, estimateTokenCount } from '../extension/token-budget.js';
-import { fitStoryContext, storyContextPayload, storyInputTokens, verifyStoryInputBudget, WRITER_CONTEXT_TOKEN_LIMIT, DEVELOPMENT_CONTRACT } from '../extension/story-budget.js';
+import { fitStoryContext, storyContextPayload, storyInputTokens, verifyStoryInputBudget, WRITER_CONTEXT_TOKEN_LIMIT, DEVELOPMENT_CONTRACT, STORY_GOAL_CONTRACT } from '../extension/story-budget.js';
 import { storyInput, STORY_SYSTEM, STORY_SCHEMA } from '../extension/story-selection.js';
 import { emptyCampaign } from '../extension/campaign-planner.js';
 import { plannerMessages, PLANNER_OUTPUT_MODE } from '../extension/output-negotiation.js';
@@ -75,6 +75,24 @@ test('oversized integrated packets are omitted whole, not separated from their p
     assert.doesNotMatch(report.payload, /invitation|collaborate/);
     assert.ok(report.tokens <= report.limit);
     assert.deepEqual(material, before);
+});
+
+test('goal, completion point, access and writer instructions fit as one indivisible packet', () => {
+    const entry = { story_goal: { aim: 'Share the new tune.', reached_when: 'Both arrangements have been heard.' },
+        available_circumstances: 'At rehearsal, Jo brings contrasting arrangements.' };
+    const notes = ['My writing style stays unchanged.'];
+    const fitted = fitStoryContext([entry], notes);
+    const decoded = JSON.parse(fitted.payload.replace(/<\/?tale-fairy-context>/g, ''));
+    assert.equal(decoded.story_goal_contract, STORY_GOAL_CONTRACT);
+    assert.deepEqual(decoded.possible_developments, [entry]);
+    assert.deepEqual(decoded.author_instructions, notes);
+    assert.ok(fitted.tokens <= fitted.limit);
+    const large = { ...entry, available_circumstances: '界'.repeat(900) };
+    const withheld = fitStoryContext([large], notes);
+    assert.equal(withheld.omitted, 1);
+    assert.doesNotMatch(withheld.payload, /story_goal|Share the new tune|At rehearsal/);
+    assert.deepEqual(JSON.parse(withheld.payload.replace(/<\/?tale-fairy-context>/g, '')), { author_instructions: notes });
+    assert.equal(fitStoryContext([], []).payload, '');
 });
 
 test('aggregate writer budget includes JSON framing, unicode and author instructions', () => {

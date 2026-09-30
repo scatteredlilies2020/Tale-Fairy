@@ -36,6 +36,11 @@ export function selectedMaterialPacket(state) {
     // discoverable surface and its open possibilities cross this boundary.
     const accessible = state.background === undefined ? null
         : new Set(state.background.filter(entry => entry.access.route !== 'none').map(entry => entry.subjectId));
+    const goal = state.workingPlan?.goal?.[0];
     return state.selectedMaterial.filter(entry => !accessible || entry.subjectIds.every(id => accessible.has(id)))
-        .map(materialHorizons);
+        .map(entry => ({
+            ...(goal && entry.subjectIds.includes(goal.subjectId)
+                ? { story_goal: { aim: goal.aim, reached_when: goal.reachedWhen } } : {}),
+            ...materialHorizons(entry),
+        }));
 }

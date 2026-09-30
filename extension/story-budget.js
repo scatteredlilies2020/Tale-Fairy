@@ -1,7 +1,7 @@
 import { conservativeTokenCount } from './token-budget.js?story-budget=1';
 import { plannerMessages, PLANNER_OUTPUT_MODE } from './output-negotiation.js?v=0.14.22';
 import { compactProgressPayload, compactMessagePayload } from './planner-compaction.js';
-import { optionalPlannerContexts } from './planner-context.js?soft-targets=1&story-map=1';
+import { optionalPlannerContexts } from './planner-context.js?soft-targets=1&story-map=1&story-goal=1';
 
 export const WRITER_CONTEXT_TOKEN_LIMIT = 1000;
 const envelopes = new WeakMap();
@@ -89,10 +89,15 @@ export function storyContextJson(value) {
 
 export const DEVELOPMENT_CONTRACT = 'Selected material is intended story development, not a menu of chance-triggered hooks. Bring NPC/world activity into observable play when its stated circumstances fit; do not wait for the player to request activation. Until then, carry it forward without forced travel, time skips or unrelated interruptions. Could/might wording does not add a random activation gate. Player participation and outcomes remain open. Preparation is not already-accepted history; current play and explicit user choices take precedence.';
 
+// Added only for goal-bearing preparations. Keep the old contract/serialization
+// intact so historical swipe snapshots still authenticate without a reset.
+export const STORY_GOAL_CONTRACT = 'Work toward story_goal through NPC/world activity, not merely the latest reaction. It is your narrative aim, not the player\'s obligation or a guaranteed ending. Let steps produce observable progress instead of repeated offers or new prerequisites. Quiet interaction may serve the goal; do not interrupt every reply or change the user\'s prose, tone or pacing. Check newer play first: if reached, declined or contradicted, stop pursuing it rather than replaying or forcing it. Otherwise carry it across replies while respecting access and player choice.';
+
 export function storyContextPayload(material, authored, { followThrough = true } = {}) {
     if (!material.length && !authored.length) return '';
     return `<tale-fairy-context>\n${storyContextJson({
         ...(material.length ? { ...(followThrough ? { development_contract: DEVELOPMENT_CONTRACT } : {}), possible_developments: material } : {}),
+        ...(material.some(entry => entry.story_goal) ? { story_goal_contract: STORY_GOAL_CONTRACT } : {}),
         ...(authored.length ? { author_instructions: authored } : {}),
     })}\n</tale-fairy-context>`;
 }
