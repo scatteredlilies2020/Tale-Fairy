@@ -51,10 +51,13 @@ export const WORKING_PLAN_SCHEMA = object({
 // it explicitly; no fabricated default or destructive state migration is needed.
 WORKING_PLAN_SCHEMA.properties = { rpUnderstanding: RP_UNDERSTANDING_SCHEMA, ...WORKING_PLAN_SCHEMA.properties };
 // Optional on disk for older preparations; every new planner response chooses
-// one writer-owned goal, or explicitly leaves room for unsteered play.
+// writer-owned goals, or explicitly leaves room for unsteered play.
 WORKING_PLAN_SCHEMA.properties.goal = list(object({
     subjectId: text(80), aim: text(240), reachedWhen: text(180),
-}), 1);
+}), 4);
+// Scope is optional only for historical single-goal preparation. New responses
+// distinguish longer direction, nearer goals and independent side threads.
+WORKING_PLAN_SCHEMA.properties.goal.items.properties.scope = choice(['long-term', 'near-term', 'side-thread']);
 
 export function validateWorkingPlan(plan, check, playerNames = []) {
     check(plan, WORKING_PLAN_SCHEMA, '$.plan');
@@ -72,6 +75,11 @@ export function validateWorkingPlan(plan, check, playerNames = []) {
     }
     if (plan.goal?.some(goal => !plan.developments.some(d => d.id === goal.subjectId))) {
         throw Error('Story goal requires a retained development');
+    }
+    if (plan.goal?.length > 1 && plan.goal.some(goal => !goal.scope)) throw Error('Multiple story goals require scope');
+    const goals = plan.goal || [];
+    if (new Set(goals.map(goal => JSON.stringify([goal.subjectId, goal.scope]))).size !== goals.length) {
+        throw Error('Duplicate story goal for the same development and scope');
     }
     const players = new Set(playerNames.map(name => name.trim().toLocaleLowerCase()));
     if (plan.developments.some(row => players.has(row.owner.trim().toLocaleLowerCase()))) throw Error('Player cannot own a planned initiative');
@@ -118,11 +126,13 @@ export function validateWorkingState(state, check) {
 
 export function validateGoalSelection(plan, material) {
     if (plan.goal === undefined) return; // Historical preparation, not a new response.
-    const goal = plan.goal[0];
-    if (material?.length && (!goal || !material[0].subjectIds.includes(goal.subjectId))) {
-        throw Error('Selected material must advance the chosen story goal');
+    if (material?.length && !plan.goal.some(goal => material[0].subjectIds.includes(goal.subjectId))) {
+        throw Error('Selected material must advance at least one chosen story goal');
     }
-    if (goal && plan.developments.some(d => d.id === goal.subjectId && d.access.route !== 'none') && !material?.length) {
+    // Historical single-goal states used a mandatory handoff. Scoped goals may
+    // remain saved during deliberate rest even when a discovery route exists.
+    if (!material?.length && plan.goal.some(goal => !goal.scope
+        && plan.developments.some(d => d.id === goal.subjectId && d.access.route !== 'none'))) {
         throw Error('An accessible story goal needs selected material for the writer');
     }
 }

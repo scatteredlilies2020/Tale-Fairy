@@ -15,7 +15,7 @@ const development = (id = 'r1-bridge') => ({ id, kind: 'arc', owner: 'Village co
     resolution: 'The crossing is usable or the repair attempt is abandoned.', beyond: 'A working crossing restores trade.',
     access: { route: 'local', basis: 'The village is here; repairs are visible.' } });
 const response = () => ({ plan: { rpUnderstanding: originalUnderstanding(), direction: 'A wandering life across distinct communities.', threads: 'Ren hopes to become a trusted guide.',
-    goal: [{ subjectId: 'r1-bridge', aim: 'Bring the village together over its reopened crossing.', reachedWhen: 'The council holds the first shared crossing.' }],
+    goal: [{ subjectId: 'r1-bridge', scope: 'near-term', aim: 'Bring the village together over its reopened crossing.', reachedWhen: 'The council holds the first shared crossing.' }],
     consequences: [], developments: [development()] }, exits: [], observations: [],
     selected_material: [{ subjectIds: ['r1-bridge'], available: 'The council brings repaired planks to the crossing.' }] });
 
@@ -49,10 +49,11 @@ function input(state = emptyCampaign(), extra = {}) {
 
 test('automatic goal contract supplies direction without assigning player choices or perpetual escalation', () => {
     assert.ok(STORY_SCHEMA.value.properties.plan.required.includes('goal'));
-    assert.equal(STORY_SCHEMA.value.properties.plan.properties.goal.maxItems, 1);
+    assert.equal(STORY_SCHEMA.value.properties.plan.properties.goal.maxItems, 4);
+    assert.ok(STORY_SCHEMA.value.properties.plan.properties.goal.items.required.includes('scope'));
     assert.match(STORY_SYSTEM, /Choose automatically from RP scope, relevant past and user interests/);
     assert.match(STORY_SYSTEM, /WRITER's NPC\/world activity, never assigns player objectives/);
-    assert.match(STORY_SYSTEM, /Retain an unfinished goal across reviews and scene changes/);
+    assert.match(STORY_SYSTEM, /Retain unfinished goals across reviews, scene changes and unselected turns/);
     assert.match(STORY_SYSTEM, /fulfillment, refusal, incompatibility or changed user direction, not mere delay/);
     assert.match(STORY_SYSTEM, /an offer alone is not fulfillment/);
     assert.match(STORY_SYSTEM, /completion need not spawn a successor/);
@@ -66,11 +67,11 @@ test('goal is persisted, returned to the planner and sent to the writer without 
     })))).campaignPreparation;
     assert.deepEqual(JSON.parse(input(saved).prompt).previous_plan.goal, response().plan.goal);
     const wire = JSON.parse(campaignPayload(saved).replace(/<\/?tale-fairy-context>/g, ''));
-    assert.deepEqual(wire.possible_developments[0].story_goal, {
-        aim: response().plan.goal[0].aim, reached_when: response().plan.goal[0].reachedWhen,
-    });
-    assert.match(wire.story_goal_contract, /not the player's obligation/);
-    assert.match(wire.story_goal_contract, /if reached, declined or contradicted, stop pursuing it/);
+    assert.deepEqual(wire.possible_developments[0].story_goals, [{
+        scope: 'near-term', aim: response().plan.goal[0].aim, reached_when: response().plan.goal[0].reachedWhen,
+    }]);
+    assert.match(wire.story_goals_contract, /not the player's obligations/);
+    assert.match(wire.story_goals_contract, /stop pursuing any goal reached, declined or contradicted/);
     assert.doesNotMatch(campaignPayload(saved), /r1-bridge|rpUnderstanding|trusted guide|control|subjectId/);
     const next = await pass(response(), saved);
     assert.equal(next.accepted, true, next.error);
@@ -95,11 +96,108 @@ test('older goal-less preparation stays usable until the next normal pass choose
     assert.deepEqual(next.state.workingPlan.developments, old.workingPlan.developments);
 });
 
+function multiResponse() {
+    const raw = response();
+    raw.plan.goal.push(
+        { subjectId: 'r1-bridge', scope: 'long-term', aim: 'Reconnect the riverside communities.', reachedWhen: 'Regular exchanges link both banks.' },
+        { subjectId: 'r1-tea', scope: 'side-thread', aim: 'Share the gardener\'s new tea.', reachedWhen: 'The tasting ends or is declined.' },
+        { subjectId: 'r1-festival', scope: 'long-term', aim: 'Experience the distant lantern festival.', reachedWhen: 'The lantern festivities conclude.' },
+    );
+    raw.plan.developments.push(
+        { ...development('r1-tea'), kind: 'side', owner: 'Gardener', question: 'Which tea tastes best?',
+            initiative: 'The gardener sets out teas in the village.', resolution: 'The tasting ends.', beyond: 'Garden friendships.',
+            access: { route: 'local', basis: 'The garden is beside the crossing.' } },
+        { ...development('r1-festival'), kind: 'emerging', owner: 'Distant town', question: 'How will the town celebrate?',
+            initiative: 'Artisans prepare lanterns.', resolution: 'The festival ends.', beyond: 'Other town traditions.',
+            access: { route: 'none', basis: 'No current contact or route to that town.' } },
+    );
+    return raw;
+}
+
+test('coexisting goals persist while only relevant accessible goals reach the writer', async () => {
+    const raw = multiResponse(), result = await pass(raw);
+    assert.equal(result.accepted, true, result.error);
+    const saved = loadPlannerState(JSON.parse(JSON.stringify(saveState({}, {
+        ...defaultPlannerState(), campaignPreparation: result.state,
+    })))).campaignPreparation;
+    assert.equal(validCampaignState(saved), true);
+    assert.deepEqual(JSON.parse(input(saved).prompt).previous_plan.goal, raw.plan.goal);
+    const wire = JSON.parse(campaignPayload(saved).replace(/<\/?tale-fairy-context>/g, ''));
+    assert.deepEqual(wire.possible_developments[0].story_goals.map(g => g.scope), ['near-term', 'long-term']);
+    assert.doesNotMatch(campaignPayload(saved), /gardener|lantern|r1-bridge|subjectId|rpUnderstanding/);
+    assert.equal(result.budget.selected, planTokens(raw.selected_material) + planTokens(raw.plan.goal.slice(0, 2)),
+        'Private and unselected goals do not consume the writer selection target.');
+    assert.ok(result.budget.plan < 1200, 'Several goals still fit the unchanged plan target.');
+
+    raw.selected_material = [{ subjectIds: ['r1-tea'], available: 'In the village garden, the gardener pours two new teas.' }];
+    const side = await pass(raw, saved);
+    assert.equal(side.accepted, true, side.error);
+    assert.deepEqual(side.state.workingPlan.goal, saved.workingPlan.goal, 'Changing focus is not dropping other goals.');
+    assert.deepEqual(side.state.archive.at(-1).workingPlan.goal, saved.workingPlan.goal);
+    assert.match(campaignPayload(side.state), /Share the gardener/);
+    assert.doesNotMatch(campaignPayload(side.state), /Reconnect|crossing|lantern/);
+});
+
+test('a completed near goal can leave its wider direction and independent goals intact', async () => {
+    const raw = multiResponse(), first = await pass(raw);
+    raw.plan.goal = raw.plan.goal.filter(goal => goal.scope !== 'near-term');
+    raw.plan.consequences = [{ id: 'crossing', text: 'The bridge is repaired.' }];
+    raw.observations = [{ id: 'crossing', evidence: [{ index: 0, span: 0 }] }];
+    raw.selected_material = [{ subjectIds: ['r1-bridge'], available: 'The council posts river trading days at the repaired crossing.' }];
+    const next = await pass(raw, first.state);
+    assert.equal(next.accepted, true, next.error);
+    assert.equal(next.state.workingPlan.goal.length, 3);
+    assert.deepEqual(next.state.workingPlan.goal, first.state.workingPlan.goal.slice(1));
+    assert.equal(next.state.workingPlan.developments.length, 3, 'Finishing a step does not retire the wider undertaking.');
+    const wire = JSON.parse(campaignPayload(next.state).replace(/<\/?tale-fairy-context>/g, ''));
+    assert.deepEqual(wire.possible_developments[0].story_goals.map(g => g.scope), ['long-term']);
+    assert.equal(next.state.planEvidence.crossing.witnesses[0].quote, messages[0].content);
+});
+
+test('multiple private goals need no writer packet and cannot bypass discovery access', async () => {
+    const raw = multiResponse();
+    for (const d of raw.plan.developments) d.access.route = 'none';
+    raw.selected_material = [];
+    const first = await pass(raw);
+    assert.equal(first.accepted, true, first.error);
+    assert.equal(campaignPayload(first.state), '');
+    raw.selected_material = [{ subjectIds: ['r1-festival'], available: 'The distant festival suddenly intrudes.' }];
+    const rejected = await pass(raw, first.state);
+    assert.equal(rejected.accepted, false);
+    assert.match(rejected.error, /discovery route/);
+    assert.equal(rejected.state, first.state);
+});
+
+test('scopes are not mandatory slots and multi-goal instructions do not demand round-robin progress', () => {
+    assert.match(STORY_SYSTEM, /no quota per scope or required main quest/);
+    assert.match(STORY_SYSTEM, /side threads need not serve either/);
+    assert.match(STORY_SYSTEM, /Others stay saved, not resolved/);
+    assert.match(STORY_SYSTEM, /Never force every goal into a reply or rotate on a timer/);
+    assert.match(STORY_SYSTEM, /Completing one need not end others/);
+    assert.doesNotMatch(STORY_SYSTEM, /ONE concrete experience|must include the goal's subjectId/);
+});
+
+test('deliberate rest can withhold all goals without deleting otherwise accessible unfinished work', async () => {
+    const raw = multiResponse(), first = await pass(raw);
+    raw.selected_material = [];
+    const quiet = await pass(raw, first.state);
+    assert.equal(quiet.accepted, true, quiet.error);
+    assert.equal(validCampaignState(quiet.state), true);
+    assert.equal(campaignPayload(quiet.state), '');
+    assert.deepEqual(quiet.state.workingPlan.goal, first.state.workingPlan.goal);
+    assert.deepEqual(JSON.parse(input(quiet.state).prompt).previous_plan.goal, raw.plan.goal);
+    const resumed = await pass(multiResponse(), quiet.state);
+    assert.equal(resumed.accepted, true, resumed.error);
+    assert.match(campaignPayload(resumed.state), /Reconnect the riverside/);
+    assert.deepEqual(resumed.state.workingPlan.goal, raw.plan.goal);
+});
+
 for (const [name, mutate, error] of [
     ['dangling goal', r => { r.plan.goal[0].subjectId = 'unknown'; }, /retained development/],
-    ['multiple goals', r => { r.plan.goal.push(structuredClone(r.plan.goal[0])); }, /array bounds/],
+    ['duplicate goals', r => { r.plan.goal.push(structuredClone(r.plan.goal[0])); }, /Duplicate story goal/],
+    ['missing goal scope', r => { delete r.plan.goal[0].scope; }, /missing scope/],
+    ['invalid goal scope', r => { r.plan.goal[0].scope = 'mandatory'; }, /invalid enum/],
     ['missing completion point', r => { delete r.plan.goal[0].reachedWhen; }, /missing reachedWhen/],
-    ['goal with no handoff', r => { r.selected_material = []; }, /needs selected material/],
     ['material without a goal', r => { r.plan.goal = []; }, /chosen story goal/],
     ['unrelated handoff', r => {
         r.plan.developments.push(development('r2-other'));
@@ -311,7 +409,7 @@ test('finite arc ends with evidence while a long thread survives and an independ
     const raw = response();
     raw.plan.developments = [{ ...development('r2-festival'), question: 'Which work will the troupe share?', initiative: 'The troupe rehearses its new comedy.',
         resolution: 'The troupe presents or shelves this production.', beyond: 'Other communities develop their own art.' }];
-    raw.plan.goal = [{ subjectId: 'r2-festival', aim: 'Share the troupe\'s new comedy.', reachedWhen: 'The comedy is performed or shelved.' }];
+    raw.plan.goal = [{ subjectId: 'r2-festival', scope: 'side-thread', aim: 'Share the troupe\'s new comedy.', reachedWhen: 'The comedy is performed or shelved.' }];
     raw.exits = [{ id: 'r1-bridge', disposition: 'closed', reason: 'The crossing is repaired.', evidence: [{ index: 0, span: 0 }] }];
     raw.plan.consequences = [{ id: 'crossing', text: 'The bridge is repaired.' }];
     raw.observations = [{ id: 'crossing', evidence: [{ index: 0, span: 0 }] }];
@@ -407,7 +505,7 @@ test('complete request target includes schema and instructions without rejecting
     assert.deepEqual(JSON.parse(large.prompt).source_reference, reference);
     assert.ok(storyInput({ reference: {}, state: emptyCampaign(), messages }, 1).inputOverTarget > 0);
     assert.ok(STORY_SYSTEM.includes('No turn timers'));
-    assert.equal(STORY_SCHEMA.name, 'tale_fairy_working_plan_goal_v3');
+    assert.equal(STORY_SCHEMA.name, 'tale_fairy_working_plan_goals_v4');
 });
 
 test('legacy migration archives whole preparation and fails transactionally', async () => {

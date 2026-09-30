@@ -6,7 +6,7 @@ Tale Fairy is a SillyTavern extension that gives the writing AI something to wor
 
 - Make opportunities fit the RP: everyday life, relationships, travel, discoveries, conflict, or quiet moments when appropriate, not a generic quest loop.
 - Keep meaningful past events and plausible NPC or world activity in view without forcing old threads to continue forever.
-- Carry a meaningful direction beyond the current exchange, without scripted scenes or predetermined outcomes. Goals guide the writer, never control the player; the user's preset owns writing style and pacing.
+- Let long-term direction, near-term goals, and independent side threads coexist without scripted scenes or predetermined outcomes. Goals guide the writer, never control the player; the user's preset owns writing style and pacing.
 - Stay lightweight and optional. Tale Fairy is not a historical memory system and does not write story replies on its own.
 
 ## Install

@@ -25,28 +25,28 @@ test('settings explanations stay concise', () => {
 });
 
 test('manifest, browser runtime, and detached plugin share the release version', () => {
-    assert.equal(manifest.version, '0.14.37');
-    assert.equal(manifest.js, 'extension/index.js?v=0.14.37&planner-input=1&episode-fields=1&token-budget=1&rp-plot=1&progress=1&response=2&history-budget=1&partial-updates=1&partial-evidence=1&creative=1&follow-through=1&compaction=1&working-plan=1&guidance-preview=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=1');
-    assert.equal(manifest.css, 'extension/style.css?v=0.14.37');
+    assert.equal(manifest.version, '0.14.38');
+    assert.equal(manifest.js, 'extension/index.js?v=0.14.38&planner-input=1&episode-fields=1&token-budget=1&rp-plot=1&progress=1&response=2&history-budget=1&partial-updates=1&partial-evidence=1&creative=1&follow-through=1&compaction=1&working-plan=1&guidance-preview=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2');
+    assert.equal(manifest.css, 'extension/style.css?v=0.14.38');
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.14\.37'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.14\.37'/);
+    assert.match(pluginSource, /const VERSION = '0\.14\.38'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.14\.38'/);
 });
 
 test('creative contract updates invalidate the browser entry and schema imports', async () => {
     const story = await readFile(new URL('../extension/story-selection.js', import.meta.url), 'utf8');
     const bounded = await readFile(new URL('../extension/bounded-story.js', import.meta.url), 'utf8');
-    assert.match(source, /from '\.\/bounded-story\.js\?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=1'/);
-    assert.match(bounded, /from '\.\/campaign-planner\.js\?[^']*&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=1'/);
-    assert.match(source, /from '\.\/campaign-session\.js\?[^']*&recovery=1&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=1'/);
+    assert.match(source, /from '\.\/bounded-story\.js\?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2'/);
+    assert.match(bounded, /from '\.\/campaign-planner\.js\?[^']*&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2'/);
+    assert.match(source, /from '\.\/campaign-session\.js\?[^']*&recovery=1&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2'/);
     assert.match(source, /from '\.\/planner-progress\.js\?[^']*&review-checkpoint=1'/);
     const session = await readFile(new URL('../extension/campaign-session.js', import.meta.url), 'utf8');
-    assert.match(session, /from '\.\/campaign-runtime\.js\?[^']*&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=1'/);
+    assert.match(session, /from '\.\/campaign-runtime\.js\?[^']*&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2'/);
     for (const module of ['campaign-planner', 'state', 'generation-context']) {
-        assert.match(source, new RegExp(`from '\\./${module}\\.js\\?[^']*&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=1'`));
+        assert.match(source, new RegExp(`from '\\./${module}\\.js\\?[^']*&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2'`));
     }
     for (const module of ['selected-material', 'background-progress']) {
-        assert.match(story, new RegExp(`from '\\./${module}\\.js\\?[^']*&creative=1&follow-through=1(?:&story-goal=1)?'`));
+        assert.match(story, new RegExp(`from '\\./${module}\\.js\\?[^']*&creative=1&follow-through=1(?:&story-goal=2)?'`));
     }
 });
 
@@ -64,9 +64,9 @@ test('Story-goal cache invalidation reaches every transitive browser importer', 
         for (const edge of edges) if (changed.has(edge.target)) changed.add(edge.file);
     }
     for (const edge of edges.filter(edge => changed.has(edge.target))) {
-        assert.match(edge.query, /[?&]story-goal=1(?:&|$)/, `${edge.file} must reload ${edge.target}`);
+        assert.match(edge.query, /[?&]story-goal=2(?:&|$)/, `${edge.file} must reload ${edge.target}`);
     }
-    assert.match(manifest.js, /&rp-understanding=1&soft-targets=1&story-map=1&story-goal=1$/);
+    assert.match(manifest.js, /&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2$/);
 });
 
 test('planner input proof travels through normal saves and detached recovery', () => {

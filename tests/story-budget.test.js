@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { conservativeTokenCount, estimateTokenCount } from '../extension/token-budget.js';
-import { fitStoryContext, storyContextPayload, storyInputTokens, verifyStoryInputBudget, WRITER_CONTEXT_TOKEN_LIMIT, DEVELOPMENT_CONTRACT, STORY_GOAL_CONTRACT } from '../extension/story-budget.js';
+import { fitStoryContext, storyContextPayload, storyInputTokens, verifyStoryInputBudget, WRITER_CONTEXT_TOKEN_LIMIT, DEVELOPMENT_CONTRACT, STORY_GOAL_CONTRACT, STORY_GOALS_CONTRACT } from '../extension/story-budget.js';
 import { storyInput, STORY_SYSTEM, STORY_SCHEMA } from '../extension/story-selection.js';
 import { emptyCampaign } from '../extension/campaign-planner.js';
 import { plannerMessages, PLANNER_OUTPUT_MODE } from '../extension/output-negotiation.js';
@@ -93,6 +93,30 @@ test('goal, completion point, access and writer instructions fit as one indivisi
     assert.doesNotMatch(withheld.payload, /story_goal|Share the new tune|At rehearsal/);
     assert.deepEqual(JSON.parse(withheld.payload.replace(/<\/?tale-fairy-context>/g, '')), { author_instructions: notes });
     assert.equal(fitStoryContext([], []).payload, '');
+});
+
+test('multiple goals and their access stay atomic within the unchanged writer budget', () => {
+    const entry = { story_goals: [
+        { scope: 'long-term', aim: 'Build a shared repertoire.', reached_when: 'The group presents an original set.' },
+        { scope: 'near-term', aim: 'Try two arrangements.', reached_when: 'Both have been played.' },
+        { scope: 'side-thread', aim: 'Share new cakes.', reached_when: 'The tea break finishes.' },
+    ], available_circumstances: 'At the club, Jo brings arrangements and the baker brings cakes for the break.' };
+    const before = structuredClone(entry), notes = ['Use my preferred writing style.'];
+    const report = fitStoryContext([entry], notes);
+    assert.equal(report.omitted, 0);
+    assert.ok(report.tokens <= WRITER_CONTEXT_TOKEN_LIMIT);
+    const wire = JSON.parse(report.payload.replace(/<\/?tale-fairy-context>/g, ''));
+    assert.deepEqual(wire.possible_developments, [entry]);
+    assert.equal(wire.story_goals_contract, STORY_GOALS_CONTRACT);
+    assert.equal(wire.story_goal_contract, undefined, 'Only the applicable contract consumes the budget.');
+    assert.match(wire.story_goals_contract, /need not converge/);
+    assert.match(wire.story_goals_contract, /Do not service every goal each reply/);
+    assert.match(wire.story_goals_contract, /other unfinished goals may continue/);
+    assert.match(wire.story_goals_contract, /Unselected threads are not resolved/);
+    const oversized = fitStoryContext([{ ...entry, available_circumstances: '界'.repeat(900) }], notes);
+    assert.equal(oversized.omitted, 1);
+    assert.deepEqual(JSON.parse(oversized.payload.replace(/<\/?tale-fairy-context>/g, '')), { author_instructions: notes });
+    assert.deepEqual(entry, before);
 });
 
 test('aggregate writer budget includes JSON framing, unicode and author instructions', () => {
