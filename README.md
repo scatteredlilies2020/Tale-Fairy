@@ -4,6 +4,17 @@ Tale Fairy is a standalone SillyTavern extension that acts as a **background cre
 
 ## Bounded working plan (current development update)
 
+The active planner now explicitly prepares **opportunities tailored to the RP**:
+setting, characters, player premise and relevant past events shape what is worth
+experiencing. A music club can offer cake and shared music; a journey can offer
+towns, discoveries and fitting interruptions. These are examples, not fixed genre
+presets. Combat, complications and interruptions are not required. The existing
+`direction` field carries that broader scope instead of becoming today's agenda;
+ordinary opportunities and substantive invitations need not become quests.
+This is a planning-instruction change, not an expanded memory store or a claim
+of proven live storytelling quality. Refresh ST; the next planning pass uses it
+without resetting your saved preparation.
+
 Rewinds and failed rebuilds now recover **verified review checkpoints** from the
 local archive instead of treating the whole chat as unreviewed. Only an exact
 unchanged prefix with matching chat/source references qualifies; newer player

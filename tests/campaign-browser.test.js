@@ -12,6 +12,7 @@ import { completionText } from '../extension/completion-response.js';
 import { readEvidenceProviders, evidenceRevisionKey, registerEvidenceProvider } from '../extension/evidence-providers.js';
 import { readCampaignContinuity } from '../extension/campaign-continuity.js';
 import { materialHorizons } from '../extension/selected-material.js';
+import { storyInputTokens } from '../extension/story-budget.js';
 import { extractTaleFairyContext } from '../extension/request-injection.js';
 import { legacyPlotInputKey, GENERATION_CONTEXT_KEY, generationContextEntries } from '../extension/generation-context.js';
 import { campaignPayload, campaignPayloadBudget, objectiveGuidancePayload, legacyCampaignPayload } from '../extension/campaign-planner.js';
@@ -93,6 +94,107 @@ function browser(send = async args => plannedResponse(args), initialState = defa
     }
     return { ...h, requests, shared };
 }
+
+// Handwritten output fixtures test the actual host input/commit/writer path,
+// not a claim that a live model generated or understood these opportunities.
+const opportunityCases = [
+    {
+        name: 'combat opportunity in a martial RP',
+        scenario: 'A martial-arts adventure with rival schools, duels, training and freely chosen challenges.',
+        past: 'The tournament ended; the visiting school stayed for friendly exhibitions.',
+        current: 'I watch from the practice-yard gate.',
+        direction: 'Explore rival schools, martial skill and relationships through chosen encounters.',
+        threads: 'Develop skill and connections beyond the finished tournament.',
+        owner: 'Visiting school captain', question: 'What does the visiting style offer?',
+        initiative: 'The captain demonstrates a staff form and offers a friendly spar.',
+        resolution: 'The exhibition ends, whether or not anyone accepts a spar.',
+        beyond: 'Other schools offer contrasting techniques and friendships.',
+        basis: 'The school is holding a public exhibition in this yard.',
+        available: 'The visiting captain demonstrates a staff form in the yard and offers a friendly spar; acceptance stays open.',
+    },
+    {
+        name: 'music-club invitation',
+        scenario: 'An ordinary school music club: friendship, music and everyday pleasures. No battles.',
+        past: 'The club finished its concert; Hana learned a new cake recipe.',
+        current: 'I put my guitar case beside the practice chair.',
+        direction: 'Friendship through music, school life and shared pleasures.',
+        threads: 'Develop the club sound and enjoy time together.',
+        owner: 'Hana', question: 'What can the club enjoy between songs?',
+        initiative: 'Hana brings her new cake to practice and offers slices.',
+        resolution: 'The break ends or the cake is put aside.',
+        beyond: 'Members can exchange recipes on another day.',
+        basis: 'The club is together in the practice room.',
+        available: 'Hana opens a cake box on the practice-room table and offers slices between songs.',
+    },
+    {
+        name: 'journey opportunity beyond the current rest',
+        scenario: 'A freely paced journey through towns and countryside, with discoveries and local encounters.',
+        past: 'The river crossing reopened; the party chose the northern road.',
+        current: 'I sit under the tree and rest my feet.',
+        direction: 'Travel among distinct communities, encounters and discoveries.',
+        threads: 'Learn how the northern towns live.',
+        owner: 'Map seller', question: 'What stories do the northern road maps preserve?',
+        initiative: 'A map seller displays older routes in the next town.',
+        resolution: 'The stall closes; no visit is required.',
+        beyond: 'Map annotations offer optional routes to other settlements.',
+        basis: 'A town on the chosen road; available if they later enter its market.',
+        available: 'If they later enter the next town market, a seller displays hand-annotated maps of old northern routes.',
+    },
+    {
+        name: 'city opportunity respects a departure from canon',
+        scenario: 'A city RP with civic life, sport and friendships. In this version the factions negotiated a truce.',
+        past: 'The council ratified the truce; the neighborhood reopened its community hall.',
+        current: 'I finish my noodles by the window.',
+        direction: 'Explore city life and relationships after the negotiated truce.',
+        threads: 'Neighbors rebuild shared civic and social life.',
+        owner: 'Community hall volunteers', question: 'What can neighbors create together?',
+        initiative: 'Volunteers display an open music-workshop notice in the cafe.',
+        resolution: 'The workshop takes place or is cancelled.',
+        beyond: 'Future shared projects remain voluntary.',
+        basis: 'A public notice in this cafe, not knowledge of private plans.',
+        available: 'Volunteers pin a notice for a music workshop at the reopened community hall beside the cafe window.',
+    },
+];
+
+for (const example of opportunityCases)
+for (const correction of [false, true]) test(`${example.name}: ${correction ? 'corrected' : 'normal'} host pass keeps RP basis and commits an optional experience`, async () => {
+    const value = { plan: { direction: example.direction, threads: example.threads, consequences: [],
+        developments: [{ id: 'r1-opportunity', kind: 'side', owner: example.owner, control: 'npc',
+            question: example.question, initiative: example.initiative, resolution: example.resolution,
+            beyond: example.beyond, access: { route: 'local', basis: example.basis } }] },
+        exits: [], observations: [], selected_material: [{ subjectIds: ['r1-opportunity'], available: example.available }] };
+    let calls = 0;
+    const h = browser(async ({ prompt, spec }) => {
+        calls++;
+        const input = JSON.parse(prompt);
+        assert.equal(input.source_reference.scenario, example.scenario);
+        assert.ok(prompt.includes(example.past), 'Relevant supplied past is not replaced by generic genre advice.');
+        assert.ok(prompt.includes(example.current));
+        assert.match(spec.systemPrompt, /Infer expected experiences from the supplied setting/);
+        assert.match(spec.systemPrompt, /Invitations are valid when backed by something to experience/);
+        assert.match(spec.systemPrompt, /do not invent past enactment/);
+        assert.ok(storyInputTokens(prompt, spec.systemPrompt, spec.schema) <= 8000);
+        if (correction && calls === 1) return { choices: [{ message: { content: '{"plan":' }, finish_reason: 'stop' }] };
+        return { choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] };
+    });
+    h.context.card = { scenario: example.scenario };
+    h.context.chat.splice(0, h.context.chat.length,
+        { is_user: false, name: 'Narrator', mes: example.past },
+        { is_user: true, name: 'Neri', mes: example.current });
+    const untouched = structuredClone(h.context.chat);
+    await h.scope.analyzeCampaignNow({ manual: true });
+    assert.equal(calls, correction ? 2 : 1);
+    const saved = h.state().campaignPreparation;
+    assert.equal(saved?.revision, 1, h.statuses.join('\n'));
+    assert.deepEqual(saved.workingPlan, value.plan);
+    assert.deepEqual(saved.workingPlan.consequences, [], 'A proposed opportunity is not promoted to accepted history.');
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
+    assert.ok(h.prepare().payload.includes(example.available), 'Opportunity survives the real host commit and writer selection.');
+    assert.deepEqual(h.context.chat, untouched, 'Planning does not enact participation, travel or time passage.');
+    const nextInput = h.scope.buildCampaignHostInput(h.scope.readCampaignSnapshot());
+    assert.equal(JSON.parse(nextInput.prompt).previous_plan.direction, example.direction,
+        'The broader experience scope, not just current activity, carries to subsequent planning.');
+});
 
 function emptyPreview(h) {
     const state = h.state();

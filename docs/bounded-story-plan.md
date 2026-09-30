@@ -13,8 +13,12 @@ or determine when an arc ends.
 
 ### State and progression
 
-- `direction` and `threads`: compact larger direction and long-running ambitions
-  or relationships. These do not require keeping one finite undertaking open.
+- `direction`: a compact range of experiences fitting this RP's setting,
+  characters and player premise, including established departures. It is not
+  today's agenda; a change of scene should not erase the wider scope. An already
+  scene-bound direction is reframed from the RP basis on the next pass.
+- `threads`: relevant long-running interests or relationships, not obligations
+  to keep one finite undertaking open.
 - `developments`: up to four arcs, side activities or emerging directions. Each
   has a stable id, NPC/world owner, concrete unfinished initiative, a question,
   a possible resolution condition, substantive follow-through and an access route.
@@ -37,6 +41,43 @@ ownership names, access references, evidence addresses, transitions and budgets;
 cannot determine whether a proposed arc is genuinely different or a cited sentence
 actually entails the model's interpretation. Renaming a repeated plot is not
 semantically prevented by an id check.
+
+### RP-tailored opportunities
+
+The active contract starts from the kinds of experiences this particular RP
+supports, with relevant past events shaping plausibility and meaning. It does not
+ask for comprehensive recollection, compulsory old-plot revival, or a fixed genre
+checklist. Previously unmentioned opportunities may be invented; prior enactment
+and player agreement may not be invented as historical facts. Source references,
+current corrections and established departures take precedence over genre or
+canon assumptions.
+
+An ordinary music-club RP can offer cake during practice, shared music or social
+experiences without battles. A travelling RP can offer towns, discoveries and
+appropriate interruptions without forcing travel or an interruption each reply.
+Battles remain appropriate where the RP supports them, such as a martial-arts
+adventure; this is not a universal slice-of-life preset.
+The examples demonstrate scale and fit, not hard-coded franchise behavior. Quiet
+play remains valid without restricting every future possibility to the current
+activity. Invitations are legitimate when they offer something substantive rather
+than repeatedly asking permission to start.
+
+The existing development fields also describe non-problem experiences: `question`
+can be what to explore; `resolution` can be when an opportunity concludes or passes.
+Neither requires an obstacle, victory, reward or player commitment. The same id
+must retain its specific meaning, not silently become an unrelated activity.
+These are model instructions, not semantic checks that code can guarantee.
+
+Normal and corrective requests share this contract. Offline tests exercise its
+delivery and fixture passage through the host commit and writer packet; they do
+not establish that a live model invents good opportunities. For live evaluation,
+compare several matched runs in a music club, a travelling RP, a martial-arts RP
+and a city RP with an established departure from canon. Inspect successive plans
+and writer replies for RP fit, meaningful use of the past, broader scope beyond the current activity,
+and preserved player choice. A peaceful opportunity can score fully. A forced
+battle, fabricated past agreement, automatic travel, or recycled current chore
+is a failure, even if JSON and budgets pass. No live-model evaluation was run for
+this instruction update.
 
 ## Token admission
 

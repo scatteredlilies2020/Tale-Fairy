@@ -4,6 +4,7 @@ import { storyInput, storyPass, STORY_SYSTEM, STORY_SCHEMA } from '../extension/
 import { emptyCampaign, validCampaignState, campaignPayload, check } from '../extension/campaign-planner.js';
 import { planTokens, validateWorkingPlan, plannerInputLimit } from '../extension/working-plan.js';
 import { defaultPlannerState, saveState, loadPlannerState } from '../extension/state.js';
+import { storyInputTokens } from '../extension/story-budget.js';
 
 const messages = [{ index: 0, role: 'assistant', content: 'The bridge is repaired. The village celebrates.' },
     { index: 1, role: 'user', name: 'Ren', content: 'I stay for dinner.' }];
@@ -15,6 +16,27 @@ const development = (id = 'r1-bridge') => ({ id, kind: 'arc', owner: 'Village co
 const response = () => ({ plan: { direction: 'A wandering life across distinct communities.', threads: 'Ren hopes to become a trusted guide.',
     consequences: [], developments: [development()] }, exits: [], observations: [],
     selected_material: [{ subjectIds: ['r1-bridge'], available: 'The council brings repaired planks to the crossing.' }] });
+
+test('active contract tailors opportunities without adding a memory store or a conflict quota', () => {
+    assert.match(STORY_SYSTEM, /Infer expected experiences from the supplied setting, characters, player premise and established departures/);
+    assert.match(STORY_SYSTEM, /examples, not required events or genre presets/);
+    assert.match(STORY_SYSTEM, /Ordinary pleasures count; conflict, combat and escalation are not defaults/);
+    assert.match(STORY_SYSTEM, /Battles belong where this RP supports them/);
+    assert.match(STORY_SYSTEM, /relevant past events.*not to resurrect every old lead/);
+    assert.match(STORY_SYSTEM, /Invent compatible opportunities without requiring prior mention/);
+    assert.match(STORY_SYSTEM, /current scene governs access, not the limits/);
+    assert.match(STORY_SYSTEM, /not today's agenda; retain that scope across scene changes/);
+    assert.match(STORY_SYSTEM, /Reframe a scene-bound previous direction from the RP basis/);
+    assert.match(STORY_SYSTEM, /without requiring a challenge, reward or player participation/);
+    assert.match(STORY_SYSTEM, /Invitations are valid when backed by something to experience/);
+    assert.match(STORY_SYSTEM, /unrelated opportunities need new ids/);
+    assert.match(STORY_SYSTEM, /participation and outcomes stay open/);
+    assert.doesNotMatch(STORY_SYSTEM, /not another invitation/);
+    assert.ok(storyInputTokens('', STORY_SYSTEM, STORY_SCHEMA) <= 2410,
+        'Tailoring must not consume more of the 8k input than the preceding contract.');
+    assert.deepEqual(Object.keys(STORY_SCHEMA.value.properties.plan.properties),
+        ['direction', 'threads', 'consequences', 'developments']);
+});
 function input(state = emptyCampaign(), extra = {}) {
     return storyInput({ reference: { premise: 'Travel with freely chosen stops.' }, state, messages, playerNames: ['Ren'],
         previousUsable: Boolean(state.revision), verifiedPlanEvidence: state.planEvidence || {}, ...extra });
