@@ -4,6 +4,16 @@ Tale Fairy is a standalone SillyTavern extension that acts as a **background cre
 
 ## Bounded working plan (current development update)
 
+The planner now saves an explicit **RP understanding** in the private notebook:
+original/franchise/mixed setting, canon preference, established divergence,
+remaining anchors, changes and effects, fitting experiences, and uncertainties.
+Canon preference and divergence are separate: wanting to follow canon does not
+erase a major change made in play. Local changes affect dependent possibilities,
+not the entire setting; larger changes can invalidate later canon prerequisites.
+Original worlds need no franchise. This analysis is provisional, not verified
+canon research, and stays within the same request and existing token ceilings.
+Refresh ST and use **Guide now** to see it; older plans remain usable without reset.
+
 The active planner now explicitly prepares **opportunities tailored to the RP**:
 setting, characters, player premise and relevant past events shape what is worth
 experiencing. A music club can offer cake and shared music; a journey can offer
@@ -11,9 +21,8 @@ towns, discoveries and fitting interruptions. These are examples, not fixed genr
 presets. Combat, complications and interruptions are not required. The existing
 `direction` field carries that broader scope instead of becoming today's agenda;
 ordinary opportunities and substantive invitations need not become quests.
-This is a planning-instruction change, not an expanded memory store or a claim
-of proven live storytelling quality. Refresh ST; the next planning pass uses it
-without resetting your saved preparation.
+This is not an expanded memory store or a claim of proven live storytelling
+quality. Both analysis and opportunities remain subject to model interpretation.
 
 Rewinds and failed rebuilds now recover **verified review checkpoints** from the
 local archive instead of treating the whole chat as unreviewed. Only an exact

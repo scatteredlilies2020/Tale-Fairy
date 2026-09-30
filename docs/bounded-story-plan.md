@@ -13,6 +13,8 @@ or determine when an arc ends.
 
 ### State and progression
 
+- `rpUnderstanding`: bounded, provisional RP analysis, displayed in the private
+  notebook and carried to the next planning pass. It is not witnessed history.
 - `direction`: a compact range of experiences fitting this RP's setting,
   characters and player premise, including established departures. It is not
   today's agenda; a change of scene should not erase the wider scope. An already
@@ -41,6 +43,51 @@ ownership names, access references, evidence addresses, transitions and budgets;
 cannot determine whether a proposed arc is genuinely different or a cited sentence
 actually entails the model's interpretation. Renaming a repeated plot is not
 semantically prevented by an id check.
+
+### Explicit RP understanding and canon divergence
+
+New responses require `plan.rpUnderstanding` before opportunity planning. It has
+eight fields: `basis` (original/franchise/mixed/unclear), `setting` (including era
+when known), `canonIntent` (follow/flexible/alternate/unspecified/not-applicable),
+`divergence` (none-established/local/major/unclear/not-applicable), `anchors`,
+`departures`, `experiences`, and `uncertainty`. Canon intent describes the player's
+stated preference; divergence describes established causal impact, not the number
+of edits. Both canon fields are not-applicable for original worlds. Familiar names
+alone do not assign a franchise. Unknown identity, chronology or preference stays
+explicitly uncertain instead of becoming invented canon.
+
+Following canon permits compatible expectations, not fixed player actions or a
+guaranteed sequence of events. Local changes alter dependent opportunities while
+unaffected anchors remain. Major changes invalidate incompatible prerequisites;
+the planner must derive fitting alternatives rather than undo play to restore a
+canon timetable. Supplied references, corrections and accepted play override
+provisional model knowledge. This adds no automatic web/lorebook research and
+does not verify the model's franchise knowledge. Absence of established departures
+does not prove complete canon fidelity.
+
+Analysis is part of the same provider response, not an additional analysis call.
+It is limited to 300 serialized tokens **within**, not in addition to, the existing
+1,200-token working plan. The complete input still fits at most 8,000 tokens;
+schema and analysis instructions are counted. `direction`, developments and
+selected material must reflect the analysis. Only the selected opportunities go
+to the writer; the provisional profile remains private and is not promoted to
+accepted consequences. The notebook shows the interpretation and its uncertainty
+as text, so it can be inspected and corrected through existing author instructions.
+
+Working-plan storage remains version 1: old plans and archive checkpoints without
+this optional saved field are valid. New outputs must include it. The next normal
+pass adds it without resetting revision, ids, preparations or review coverage.
+Invalid/missing/oversized analysis rejects the response transactionally and uses
+the existing single correction allowance. Schema cache invalidation propagates
+through all browser importers, including save/load and review validation.
+
+Offline tests cover authored Naruto RP fixtures with no established departure,
+a local mentor change, and a major alliance change despite canon-following intent;
+also an original world with a familiar name, mixed/unclear analysis, normal and
+corrective host commits, notebook display, persistence, and old review checkpoints.
+These establish data flow and structural validation, not live-model canon accuracy
+or causal interpretation. Live evaluation should use matched scenarios across
+those divergence levels and inspect both analysis and generated opportunities.
 
 ### RP-tailored opportunities
 
@@ -73,8 +120,8 @@ delivery and fixture passage through the host commit and writer packet; they do
 not establish that a live model invents good opportunities. For live evaluation,
 compare several matched runs in a music club, a travelling RP, a martial-arts RP
 and a city RP with an established departure from canon. Inspect successive plans
-and writer replies for RP fit, meaningful use of the past, broader scope beyond the current activity,
-and preserved player choice. A peaceful opportunity can score fully. A forced
+and writer replies for RP fit, meaningful use of the past, broader scope beyond
+the current activity, and preserved player choice. A peaceful opportunity can score fully. A forced
 battle, fabricated past agreement, automatic travel, or recycled current chore
 is a failure, even if JSON and budgets pass. No live-model evaluation was run for
 this instruction update.

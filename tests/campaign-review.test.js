@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { campaignReviewedCount } from '../extension/campaign-review.js';
 import { emptyCampaign, EVENT_POINTS_FORMAT, validCampaignState } from '../extension/campaign-planner.js';
 import { workingPlanProjection, WORKING_PLAN_VERSION } from '../extension/working-plan.js';
+import { originalUnderstanding } from './helpers/rp-fixtures.js';
 
 const messages = Array.from({ length: 20 }, (_, index) => ({ is_user: index % 2 === 1, mes: `Accepted ${index}` }));
 const context = { chatId: 'chat', referenceHash: 'reference', messages, fingerprint: JSON.stringify };
@@ -31,6 +32,18 @@ test('complete archived checkpoints survive rewinds and nested rebuilds without 
     edited[4].mes = 'An earlier change.';
     assert.equal(campaignReviewedCount(state, { ...context, messages: edited }), 0);
     assert.deepEqual(state, before);
+});
+
+test('RP analysis upgrades retain old and new review checkpoints without replaying the backlog', () => {
+    const old = preparation(8), current = preparation(16, 2);
+    current.workingPlan.rpUnderstanding = originalUnderstanding();
+    current.archive.push(archived(old));
+    assert.equal(validCampaignState(current), true);
+    assert.equal(campaignReviewedCount(current, context), 16);
+    assert.equal(campaignReviewedCount(current, { ...context, messages: messages.slice(0, 12) }), 8);
+    const rebuilt = { ...emptyCampaign(), archive: [{ preparation: current, rebuild: true }] };
+    assert.equal(campaignReviewedCount(rebuilt, context), 16);
+    assert.equal(campaignReviewedCount(rebuilt, { ...context, messages: messages.slice(0, 12) }), 8);
 });
 
 test('coverage requires a complete valid preparation and matching chat, reference and exact prefix', () => {

@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { storyInput, storyPassWithRecovery } from '../extension/bounded-story.js';
 import { emptyCampaign, validCampaignState } from '../extension/campaign-planner.js';
 import { storyInputTokens } from '../extension/story-budget.js';
+import { originalUnderstanding } from './helpers/rp-fixtures.js';
 
 const source = { chatId: 'story', referenceHash: 'reference', fingerprint: 'accepted', messageCount: 1 };
-const draft = () => ({ plan: { direction: 'Travel between villages.', threads: 'Find a place to belong.', consequences: [],
+const draft = () => ({ plan: { rpUnderstanding: originalUnderstanding(), direction: 'Travel between villages.', threads: 'Find a place to belong.', consequences: [],
     developments: [{ id: 'r1-bridge', kind: 'arc', owner: 'Council', control: 'npc', question: 'Repair the crossing?',
         initiative: 'Workers fit new planks.', resolution: 'The bridge reopens or repairs cease.', beyond: 'Trade can resume.',
         access: { route: 'local', basis: 'The workers are here.' } }] }, exits: [], observations: [],
@@ -21,6 +22,8 @@ for (const [name, invalid] of [
     ['empty response', () => null],
     ['truncated JSON', () => ({ ...response(draft()), finishReason: 'length' })],
     ['schema failure', () => { const value = draft(); delete value.plan.direction; return response(value); }],
+    ['missing RP analysis', () => { const value = draft(); delete value.plan.rpUnderstanding; return response(value); }],
+    ['oversized RP analysis', () => { const value = draft(); value.plan.rpUnderstanding.anchors = '界'.repeat(200); return response(value); }],
     ['player ownership', () => { const value = draft(); value.plan.developments[0].owner = 'Ren'; return response(value); }],
     ['unwitnessed outcome', () => { const value = draft(); value.plan.consequences = [{ id: 'done', text: 'The bridge reopened.' }]; return response(value); }],
 ]) test(`${name} receives one validated correction within the same input limit`, async () => {
@@ -33,6 +36,8 @@ for (const [name, invalid] of [
         assert.ok(correction.recoveryReason);
         const payload = JSON.parse(prompt);
         assert.match(system, /corrected complete JSON/);
+        assert.ok(schema.value.properties.plan.required.includes('rpUnderstanding'));
+        assert.equal(schema.value.properties.plan.properties.rpUnderstanding.properties.departures.maxLength, 70);
         assert.ok(payload.response_correction.error);
         assert.deepEqual(payload.source_reference, JSON.parse(prepared.prompt).source_reference);
         assert.deepEqual(payload.accepted_messages, JSON.parse(prepared.prompt).accepted_messages);

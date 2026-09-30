@@ -5,6 +5,7 @@ import { emptyCampaign, validCampaignState, campaignPayload, check } from '../ex
 import { planTokens, validateWorkingPlan, plannerInputLimit } from '../extension/working-plan.js';
 import { defaultPlannerState, saveState, loadPlannerState } from '../extension/state.js';
 import { storyInputTokens } from '../extension/story-budget.js';
+import { originalUnderstanding } from './helpers/rp-fixtures.js';
 
 const messages = [{ index: 0, role: 'assistant', content: 'The bridge is repaired. The village celebrates.' },
     { index: 1, role: 'user', name: 'Ren', content: 'I stay for dinner.' }];
@@ -13,7 +14,7 @@ const development = (id = 'r1-bridge') => ({ id, kind: 'arc', owner: 'Village co
     question: 'Can the damaged bridge reopen?', initiative: 'The council organizes the repairs.',
     resolution: 'The crossing is usable or the repair attempt is abandoned.', beyond: 'A working crossing restores trade.',
     access: { route: 'local', basis: 'The village is here; repairs are visible.' } });
-const response = () => ({ plan: { direction: 'A wandering life across distinct communities.', threads: 'Ren hopes to become a trusted guide.',
+const response = () => ({ plan: { rpUnderstanding: originalUnderstanding(), direction: 'A wandering life across distinct communities.', threads: 'Ren hopes to become a trusted guide.',
     consequences: [], developments: [development()] }, exits: [], observations: [],
     selected_material: [{ subjectIds: ['r1-bridge'], available: 'The council brings repaired planks to the crossing.' }] });
 
@@ -32,10 +33,10 @@ test('active contract tailors opportunities without adding a memory store or a c
     assert.match(STORY_SYSTEM, /unrelated opportunities need new ids/);
     assert.match(STORY_SYSTEM, /participation and outcomes stay open/);
     assert.doesNotMatch(STORY_SYSTEM, /not another invitation/);
-    assert.ok(storyInputTokens('', STORY_SYSTEM, STORY_SCHEMA) <= 2410,
-        'Tailoring must not consume more of the 8k input than the preceding contract.');
+    assert.ok(storyInputTokens('', STORY_SYSTEM, STORY_SCHEMA) <= 3200,
+        'Explicit RP analysis must leave at least 4800 of the 8k envelope for source and state.');
     assert.deepEqual(Object.keys(STORY_SCHEMA.value.properties.plan.properties),
-        ['direction', 'threads', 'consequences', 'developments']);
+        ['rpUnderstanding', 'direction', 'threads', 'consequences', 'developments']);
 });
 function input(state = emptyCampaign(), extra = {}) {
     return storyInput({ reference: { premise: 'Travel with freely chosen stops.' }, state, messages, playerNames: ['Ren'],
@@ -49,6 +50,101 @@ async function pass(raw = response(), state = emptyCampaign(), extra = {}) {
     assert.equal(calls, 1);
     return result;
 }
+
+test('RP analysis distinguishes canon intent from causal divergence and stays provisional', () => {
+    assert.match(STORY_SYSTEM, /Analyze before planning: rpUnderstanding/);
+    assert.match(STORY_SYSTEM, /canonIntent reflects the user's stated preference.*otherwise unspecified/);
+    assert.match(STORY_SYSTEM, /divergence separately describes established causal impact/);
+    assert.match(STORY_SYSTEM, /names alone do not prove a franchise/);
+    assert.match(STORY_SYSTEM, /not a count of edits/);
+    assert.match(STORY_SYSTEM, /supplied references, explicit corrections and accepted play override it/);
+    assert.match(STORY_SYSTEM, /not proof of complete canon fidelity/);
+    assert.match(STORY_SYSTEM, /Following canon permits compatible expectations, not predetermined player choices/);
+    assert.match(STORY_SYSTEM, /Major changes require new causal possibilities, not forced return to canon/);
+    assert.match(STORY_SYSTEM, /Check direction, developments and selected_material against this analysis/);
+    assert.match(STORY_SYSTEM, /earlier analysis is not evidence/);
+    assert.ok(STORY_SCHEMA.value.properties.plan.required.includes('rpUnderstanding'));
+});
+
+test('old bounded metadata upgrades without resetting revision, ids, review coverage or archives', async () => {
+    const first = await pass();
+    const old = structuredClone(first.state); delete old.workingPlan.rpUnderstanding;
+    const untouched = structuredClone(old);
+    assert.equal(validCampaignState(old), true);
+    assert.ok(campaignPayload(old));
+    const prepared = input(old);
+    assert.equal(prepared.rebuild, false);
+    assert.equal(prepared.nextRevision, old.revision + 1);
+    assert.equal(JSON.parse(prepared.prompt).previous_plan.rpUnderstanding, undefined);
+    const next = await pass(response(), old);
+    assert.equal(next.accepted, true, next.error);
+    assert.equal(next.state.revision, old.revision + 1);
+    assert.deepEqual(next.state.workingPlan.developments, old.workingPlan.developments);
+    assert.deepEqual(next.state.archive.at(-1).workingPlan, old.workingPlan);
+    assert.deepEqual(old, untouched);
+    assert.deepEqual(JSON.parse(input(next.state).prompt).previous_plan.rpUnderstanding, originalUnderstanding());
+});
+
+test('missing analysis fails transactionally instead of inferring a default franchise', async () => {
+    const { state } = await pass();
+    const untouched = structuredClone(state), raw = response(); delete raw.plan.rpUnderstanding;
+    const failed = await pass(raw, state);
+    assert.equal(failed.accepted, false);
+    assert.match(failed.error, /missing rpUnderstanding/);
+    assert.equal(failed.state, state);
+    assert.deepEqual(structuredClone(state), untouched);
+});
+
+test('RP analysis validates structure, original-world semantics and its own bounded allowance', async () => {
+    const { state } = await pass();
+    for (const [mutate, error] of [
+        [rp => { rp.canonIntent = 'follow'; }, /Original RP/],
+        [rp => { rp.divergence = 'major'; }, /Original RP/],
+        [rp => { rp.basis = 'franchise'; }, /Non-original/],
+        [rp => { rp.basis = 'anime'; }, /invalid enum/],
+        [rp => { delete rp.uncertainty; }, /missing uncertainty/],
+        [rp => { rp.anchors = '界'.repeat(200); }, /RP understanding exceeds 300/],
+    ]) {
+        const raw = response(); mutate(raw.plan.rpUnderstanding);
+        const failed = await pass(raw, state);
+        assert.equal(failed.state, state);
+        assert.match(failed.error, error);
+        const damaged = structuredClone(state); damaged.workingPlan.rpUnderstanding = raw.plan.rpUnderstanding;
+        assert.equal(validCampaignState(damaged), false);
+    }
+});
+
+test('unclear and mixed RPs need no invented franchise identity or canon preference', async () => {
+    for (const basis of ['unclear', 'mixed']) {
+        const raw = response();
+        raw.plan.rpUnderstanding = { ...originalUnderstanding(), basis, setting: 'Setting not yet established',
+            canonIntent: 'unspecified', divergence: 'unclear', anchors: 'Only the supplied village and people are known.',
+            departures: 'No reliable external baseline.', uncertainty: 'Franchise identity and chronology are uncertain.' };
+        const result = await pass(raw);
+        assert.equal(result.accepted, true, result.error);
+        assert.deepEqual(JSON.parse(input(result.state).prompt).previous_plan.rpUnderstanding, raw.plan.rpUnderstanding);
+        assert.deepEqual(result.state.workingPlan.consequences, []);
+    }
+});
+
+test('new play can revise divergence while preserving canon preference and archiving the previous interpretation', async () => {
+    const raw = response(); raw.plan.rpUnderstanding = { ...originalUnderstanding(), basis: 'franchise',
+        setting: 'A supplied franchise village', canonIntent: 'follow', divergence: 'none-established',
+        anchors: 'The village trades across the crossing.', departures: 'None established.', uncertainty: 'Later canon is not assumed.' };
+    const first = await pass(raw);
+    raw.plan.rpUnderstanding.divergence = 'major';
+    raw.plan.rpUnderstanding.departures = 'The player-established alliance replaces the old trade blockade.';
+    raw.plan.rpUnderstanding.experiences = 'Joint expeditions and trade with allied villages.';
+    const second = await pass(raw, first.state, {
+        reference: { premise: 'Follow canon unless play changes it.', authorInstructions: ['Our alliance has permanently ended the blockade.'] },
+        messages: [...messages, { index: 2, role: 'assistant', content: 'The villages ratified the alliance and ended the blockade.' }],
+    });
+    assert.equal(second.accepted, true, second.error);
+    assert.equal(second.state.workingPlan.rpUnderstanding.canonIntent, 'follow');
+    assert.equal(second.state.workingPlan.rpUnderstanding.divergence, 'major');
+    assert.equal(second.state.archive.at(-1).workingPlan.rpUnderstanding.divergence, 'none-established');
+    assert.deepEqual(second.state.workingPlan.consequences, [], 'Interpretation is not automatically witnessed history.');
+});
 
 test('one bounded pass commits and round-trips through real saved metadata', async () => {
     const result = await pass();
@@ -184,7 +280,7 @@ test('complete request ceiling includes schema and instructions and cannot be ra
     assert.throws(() => storyInput({ reference: { rules: 'Required rule. '.repeat(6000) }, state: emptyCampaign(), messages }, 100000), /exceeds 8000/);
     assert.throws(() => storyInput({ reference: {}, state: emptyCampaign(), messages }, 1), /including instructions\/schema/);
     assert.ok(STORY_SYSTEM.includes('No turn timers'));
-    assert.equal(STORY_SCHEMA.name, 'tale_fairy_working_plan_v1');
+    assert.equal(STORY_SCHEMA.name, 'tale_fairy_working_plan_rp_v1');
 });
 
 test('legacy migration archives whole preparation and fails transactionally', async () => {

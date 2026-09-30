@@ -13,6 +13,7 @@ import { readEvidenceProviders, evidenceRevisionKey, registerEvidenceProvider } 
 import { readCampaignContinuity } from '../extension/campaign-continuity.js';
 import { materialHorizons } from '../extension/selected-material.js';
 import { storyInputTokens } from '../extension/story-budget.js';
+import { originalUnderstanding } from './helpers/rp-fixtures.js';
 import { extractTaleFairyContext } from '../extension/request-injection.js';
 import { legacyPlotInputKey, GENERATION_CONTEXT_KEY, generationContextEntries } from '../extension/generation-context.js';
 import { campaignPayload, campaignPayloadBudget, objectiveGuidancePayload, legacyCampaignPayload } from '../extension/campaign-planner.js';
@@ -45,7 +46,7 @@ const memorySnapshot = () => ({ chatId: 'story', status: 'current', revision: 1,
     prompt: 'Private Chronicle: the prior engagement ended.', planningEvidence: [{ id: 'memory-music',
         text: 'Jo is still composing; no new engagement was accepted.', category: 'states', canonicalStatus: 'current',
         sourceRange: { chatKey: 'character:0:chat:story', from: 0, to: 0 } }] });
-const design = { plan: { direction: 'A changing body of original work.',
+const design = { plan: { rpUnderstanding: originalUnderstanding({ setting: 'Original ensemble RP', experiences: 'Music and shared authorship.' }), direction: 'A changing body of original work.',
     threads: 'PRIVATE an ensemble explores music and life between engagements. No established franchise.',
     consequences: [], developments: [{ id: 'r1-music', kind: 'arc', owner: 'Jo', control: 'npc',
         question: 'Compose a piece worth keeping.', initiative: 'Jo works on contrasting arrangements.',
@@ -142,6 +143,9 @@ const opportunityCases = [
     },
     {
         name: 'city opportunity respects a departure from canon',
+        understanding: { basis: 'franchise', setting: 'City RP after a negotiated truce', canonIntent: 'unspecified', divergence: 'major',
+            anchors: 'City life, sport and friendships.', departures: 'The truce replaces faction conflict; the hall reopened.',
+            experiences: 'Shared civic projects and relationships.', uncertainty: 'Future canon events are not established.' },
         scenario: 'A city RP with civic life, sport and friendships. In this version the factions negotiated a truce.',
         past: 'The council ratified the truce; the neighborhood reopened its community hall.',
         current: 'I finish my noodles by the window.',
@@ -154,11 +158,61 @@ const opportunityCases = [
         basis: 'A public notice in this cafe, not knowledge of private plans.',
         available: 'Volunteers pin a notice for a music workshop at the reopened community hall beside the cafe window.',
     },
+    // All Naruto details here are supplied RP premises, not claims of verified
+    // franchise lore. The expected outputs are authored, not model-generated.
+    {
+        name: 'Naruto following canon with no established departure',
+        scenario: 'Naruto RP. Follow canon where compatible with player choice. Card baseline: village training and team missions; current era has an open mission board.',
+        past: 'The instructor opened the training yard. No departure from the supplied baseline is established.',
+        current: 'I arrive at the yard.',
+        understanding: { basis: 'franchise', setting: 'Naruto; village training era supplied by card', canonIntent: 'follow', divergence: 'none-established',
+            anchors: 'The village trains teams and posts missions.', departures: 'None established; this does not verify all canon.',
+            experiences: 'Training, missions and team relationships.', uncertainty: 'Exact canon chronology remains unspecified.' },
+        direction: 'Village training, missions and relationships with open participation.', threads: 'Develop team skills.',
+        owner: 'Instructor', question: 'What can the team practice?', initiative: 'The instructor lays out a team exercise.',
+        resolution: 'The practice concludes or is passed over.', beyond: 'Mission work remains available.',
+        basis: 'An open exercise in this yard.', available: 'The instructor lays out a team exercise in the open yard; participation is optional.',
+    },
+    {
+        name: 'Naruto small local change while still following canon',
+        scenario: 'Naruto RP. Follow canon where possible. Card baseline: village training and team missions. Our established departure is a different mentor for this team, not a different village system.',
+        past: 'The team accepted a different mentor, who teaches through tracking exercises.', current: 'I arrive at our training yard.',
+        understanding: { basis: 'franchise', setting: 'Naruto; village training era supplied by card', canonIntent: 'follow', divergence: 'local',
+            anchors: 'Village institutions and missions still apply.', departures: 'Changed mentor affects team training, not unrelated village premises.',
+            experiences: 'Tracking practice, team bonds and missions.', uncertainty: 'Other canon details remain provisional.' },
+        direction: 'Village missions and team growth under the changed mentor.', threads: 'Learn the new mentor approach.',
+        owner: 'New mentor', question: 'How does this team follow a trail?', initiative: 'The new mentor sets a tracking course.',
+        resolution: 'The course concludes or is declined.', beyond: 'Tracking can matter on later missions.',
+        basis: 'The new mentor is in this yard.', available: 'The new mentor lays a tracking course in the yard instead of restoring the former training arrangement.',
+    },
+    {
+        name: 'Naruto major causal change despite canon-following preference',
+        scenario: 'Naruto RP. Initially follow canon. Our RP now established a lasting alliance replacing the hostile village relationship in our baseline; account for it rather than undoing it.',
+        past: 'The villages ratified the alliance and opened joint training to their teams.', current: 'I stop beside the training noticeboard.',
+        understanding: { basis: 'franchise', setting: 'Naruto; alliance continuity established in this RP', canonIntent: 'follow', divergence: 'major',
+            anchors: 'Team training and village identities remain.', departures: 'Alliance removes hostile prerequisites; future inter-village events must adapt.',
+            experiences: 'Joint training, cultural exchange and new missions.', uncertainty: 'Do not assume later canon conflicts still occur.' },
+        direction: 'Explore team life and inter-village opportunities after the alliance.', threads: 'Build relationships across villages.',
+        owner: 'Joint instructors', question: 'What can allied teams learn together?', initiative: 'Instructors post a joint training session.',
+        resolution: 'The session ends or passes without attendance.', beyond: 'Shared missions may grow from the alliance.',
+        basis: 'Public notice here after the alliance.', available: 'Joint instructors post an open training session for allied teams; no former hostility is reinstated.',
+    },
+    {
+        name: 'original world with familiar names is not assigned a franchise',
+        scenario: 'Entirely original floating-island RP. A gardener named Naruto grows musical plants. No ninja setting or borrowed franchise rules.',
+        past: 'The garden reopened for a seed exchange.', current: 'I approach the greenhouse.',
+        understanding: originalUnderstanding({ setting: 'Original floating islands and musical gardens', anchors: 'Plants make music; familiar names do not imply borrowed lore.',
+            experiences: 'Seed exchanges, garden music and island visits.', uncertainty: 'Unspecified island customs remain open.' }),
+        direction: 'Explore musical gardens and island communities.', threads: 'Exchange growing techniques.',
+        owner: 'Greenhouse volunteers', question: 'What sounds can new plants make?', initiative: 'Volunteers arrange a seed exchange.',
+        resolution: 'The exchange closes.', beyond: 'Other islands grow different musical plants.',
+        basis: 'The greenhouse is open here.', available: 'Volunteers display musical seed varieties in the greenhouse for the open exchange.',
+    },
 ];
 
 for (const example of opportunityCases)
 for (const correction of [false, true]) test(`${example.name}: ${correction ? 'corrected' : 'normal'} host pass keeps RP basis and commits an optional experience`, async () => {
-    const value = { plan: { direction: example.direction, threads: example.threads, consequences: [],
+    const value = { plan: { rpUnderstanding: example.understanding || originalUnderstanding({ setting: example.name, experiences: example.direction }), direction: example.direction, threads: example.threads, consequences: [],
         developments: [{ id: 'r1-opportunity', kind: 'side', owner: example.owner, control: 'npc',
             question: example.question, initiative: example.initiative, resolution: example.resolution,
             beyond: example.beyond, access: { route: 'local', basis: example.basis } }] },
@@ -173,6 +227,9 @@ for (const correction of [false, true]) test(`${example.name}: ${correction ? 'c
         assert.match(spec.systemPrompt, /Infer expected experiences from the supplied setting/);
         assert.match(spec.systemPrompt, /Invitations are valid when backed by something to experience/);
         assert.match(spec.systemPrompt, /do not invent past enactment/);
+        assert.match(spec.systemPrompt, /canonIntent reflects the user's stated preference/);
+        assert.match(spec.systemPrompt, /Local changes affect what depends on them/);
+        assert.ok(spec.schema.value.properties.plan.required.includes('rpUnderstanding'));
         assert.ok(storyInputTokens(prompt, spec.systemPrompt, spec.schema) <= 8000);
         if (correction && calls === 1) return { choices: [{ message: { content: '{"plan":' }, finish_reason: 'stop' }] };
         return { choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] };
@@ -190,10 +247,26 @@ for (const correction of [false, true]) test(`${example.name}: ${correction ? 'c
     assert.deepEqual(saved.workingPlan.consequences, [], 'A proposed opportunity is not promoted to accepted history.');
     assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
     assert.ok(h.prepare().payload.includes(example.available), 'Opportunity survives the real host commit and writer selection.');
+    assert.ok(!h.prepare().payload.includes(value.plan.rpUnderstanding.uncertainty), 'Private provisional analysis is not injected as a fact.');
     assert.deepEqual(h.context.chat, untouched, 'Planning does not enact participation, travel or time passage.');
     const nextInput = h.scope.buildCampaignHostInput(h.scope.readCampaignSnapshot());
     assert.equal(JSON.parse(nextInput.prompt).previous_plan.direction, example.direction,
         'The broader experience scope, not just current activity, carries to subsequent planning.');
+    assert.deepEqual(JSON.parse(nextInput.prompt).previous_plan.rpUnderstanding, value.plan.rpUnderstanding);
+});
+
+test('notebook exposes RP understanding and uncertainty without claiming verified canon', () => {
+    const scope = vm.createContext({});
+    vm.runInContext(source.match(/function workingPlanSummary\([^]*?^}/m)[0], scope);
+    for (const example of opportunityCases.filter(e => e.understanding)) {
+        const summary = scope.workingPlanSummary({ workingPlan: { ...design.plan, rpUnderstanding: example.understanding }, archive: [] });
+        assert.match(summary, /private · provisional, not verified canon/);
+        for (const value of Object.values(example.understanding)) assert.ok(summary.includes(value));
+    }
+    const old = structuredClone(design.plan); delete old.rpUnderstanding;
+    assert.match(scope.workingPlanSummary({ workingPlan: old, archive: [] }), /Not yet analyzed; added on the next planning pass/);
+    assert.match(source, /workingPlanSummary\(preparation\),/);
+    assert.match(source, /element\.textContent = content/);
 });
 
 function emptyPreview(h) {
@@ -945,7 +1018,7 @@ test('actual campaign entry builds evidence, uses single-shot transport and comm
     assert.equal(h.requests.length, 1);
     const request = h.requests[0];
     assert.equal(request.spec.singleShot, true);
-    assert.equal(request.spec.schema.name, 'tale_fairy_working_plan_v1');
+    assert.equal(request.spec.schema.name, 'tale_fairy_working_plan_rp_v1');
     assert.equal(request.spec.responseTokens, 3000);
     assert.equal(request.spec.reasoningMode, undefined, 'honor saved reasoning instead of legacy forced Off');
     assert.equal(request.meta, null, 'no legacy detached recovery contract');

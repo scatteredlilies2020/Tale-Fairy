@@ -7,6 +7,7 @@ export const PLANNER_INPUT_LIMIT = 8000;
 export const WORKING_PLAN_LIMIT = 1200;
 export const SELECTED_PACKET_LIMIT = 600;
 export const PLANNER_OUTPUT_LIMIT = 3000;
+export const RP_UNDERSTANDING_LIMIT = 300;
 export const planTokens = value => conservativeTokenCount(JSON.stringify(value));
 export function plannerInputLimit(value = PLANNER_INPUT_LIMIT) {
     if (!Number.isFinite(value) || value <= 0) throw Error('Planner input budget must be a finite positive token count.');
@@ -16,6 +17,17 @@ export function plannerInputLimit(value = PLANNER_INPUT_LIMIT) {
 const text = maxLength => ({ type: 'string', minLength: 1, maxLength });
 const object = properties => ({ type: 'object', additionalProperties: false, required: Object.keys(properties), properties });
 const list = (items, maxItems) => ({ type: 'array', maxItems, items });
+const choice = values => ({ type: 'string', enum: values });
+export const RP_UNDERSTANDING_SCHEMA = object({
+    basis: choice(['original', 'franchise', 'mixed', 'unclear']),
+    setting: text(120),
+    canonIntent: choice(['follow', 'flexible', 'alternate', 'unspecified', 'not-applicable']),
+    divergence: choice(['none-established', 'local', 'major', 'unclear', 'not-applicable']),
+    anchors: text(200),
+    departures: text(200),
+    experiences: text(180),
+    uncertainty: text(160),
+});
 export const WORKING_PLAN_SCHEMA = object({
     direction: text(600),
     threads: text(600),
@@ -27,9 +39,22 @@ export const WORKING_PLAN_SCHEMA = object({
         access: object({ route: { type: 'string', enum: ['none', 'direct', 'local', 'contact', 'information', 'investigation'] }, basis: text(300) }),
     }), 4),
 });
+// Older saved plans remain valid without analysis. New provider responses require
+// it explicitly; no fabricated default or destructive state migration is needed.
+WORKING_PLAN_SCHEMA.properties = { rpUnderstanding: RP_UNDERSTANDING_SCHEMA, ...WORKING_PLAN_SCHEMA.properties };
 
 export function validateWorkingPlan(plan, check, playerNames = []) {
     check(plan, WORKING_PLAN_SCHEMA, '$.plan');
+    if (plan.rpUnderstanding) {
+        const rp = plan.rpUnderstanding;
+        if (rp.basis === 'original' && (rp.canonIntent !== 'not-applicable' || rp.divergence !== 'not-applicable')) {
+            throw Error('Original RP has no external canon policy or divergence');
+        }
+        if (rp.basis !== 'original' && (rp.canonIntent === 'not-applicable' || rp.divergence === 'not-applicable')) {
+            throw Error('Non-original or unclear RP must state canon uncertainty rather than not-applicable');
+        }
+        if (planTokens(rp) > RP_UNDERSTANDING_LIMIT) throw Error(`RP understanding exceeds ${RP_UNDERSTANDING_LIMIT} tokens`);
+    }
     for (const rows of [plan.developments, plan.consequences]) {
         if (new Set(rows.map(row => row.id)).size !== rows.length) throw Error('Duplicate working-plan id');
     }

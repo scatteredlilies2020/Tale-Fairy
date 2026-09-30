@@ -1,4 +1,4 @@
-import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check } from './campaign-planner.js?v=0.14.36&working-plan=1';
+import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1';
 import { compactPlannerReference } from './planner-reference.js?history-budget=1';
 import { compactCampaignSpeakers } from './campaign-evidence.js';
 import { witnessMessages, resolveSpanWitnesses, SPAN_WITNESS_SCHEMA } from './accepted-witnesses.js?v=0.14.34&partial-evidence=1';
@@ -6,9 +6,9 @@ import { fitEvidenceProviders } from './evidence-providers.js';
 import { SELECTED_MATERIAL_SCHEMA, validateSelectedMaterial } from './selected-material.js?v=0.14.36&rp-plot=1';
 import { storyInputTokens } from './story-budget.js?follow-through=1';
 import { compactPlannerPayload } from './planner-compaction.js';
-import { WORKING_PLAN_SCHEMA, WORKING_PLAN_VERSION, WORKING_PLAN_LIMIT, SELECTED_PACKET_LIMIT,
-    PLANNER_INPUT_LIMIT, planTokens, plannerInputLimit, validateWorkingPlan, workingPlanProjection } from './working-plan.js';
-export { PLANNER_INPUT_LIMIT, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './working-plan.js';
+import { WORKING_PLAN_SCHEMA, WORKING_PLAN_VERSION, WORKING_PLAN_LIMIT, SELECTED_PACKET_LIMIT, RP_UNDERSTANDING_LIMIT,
+    PLANNER_INPUT_LIMIT, planTokens, plannerInputLimit, validateWorkingPlan, workingPlanProjection } from './working-plan.js?rp-understanding=1';
+export { PLANNER_INPUT_LIMIT, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './working-plan.js?rp-understanding=1';
 
 const text = maxLength => ({ type: 'string', minLength: 1, maxLength });
 const object = properties => ({ type: 'object', additionalProperties: false, required: Object.keys(properties), properties });
@@ -28,10 +28,11 @@ const responseShape = withoutDescriptions(object({
     observations: { type: 'array', maxItems: 4, items: object({ id: text(64), evidence: { ...witnesses, minItems: 1 } }) },
     selected_material: selection,
 }));
+responseShape.properties.plan.required.push('rpUnderstanding');
 // Admission and saved-state compatibility keep the original field ceilings.
 // Drafting needs much smaller allowances: those ceilings are not a budget to
 // fill independently, and JSON keys/ids consume part of the shared token cap.
-export const STORY_SCHEMA = { name: 'tale_fairy_working_plan_v1', value: structuredClone(responseShape) };
+export const STORY_SCHEMA = { name: 'tale_fairy_working_plan_rp_v1', value: structuredClone(responseShape) };
 const draftPlan = STORY_SCHEMA.value.properties.plan.properties;
 draftPlan.direction.maxLength = 140;
 draftPlan.threads.maxLength = 140;
@@ -48,6 +49,10 @@ export const STORY_SYSTEM = `${CAMPAIGN_MARKER}
 Create opportunities tailored to this RP, not a recap, generic quest generator or next-paragraph script. Infer expected experiences from the supplied setting, characters, player premise and established departures, not just the current activity. A music-club RP can offer cake during practice or shared music; a travelling RP can offer towns, discoveries or fitting interruptions. These are examples, not required events or genre presets. Ordinary pleasures count; conflict, combat and escalation are not defaults. Battles belong where this RP supports them. The writing preset owns prose, tone and pacing. Respect abilities, player choices and deliberate endings; no forced canon trajectory.
 
 Use relevant past events to shape what is plausible, changed or meaningful, not to resurrect every old lead. Invent compatible opportunities without requiring prior mention; do not invent past enactment. The current scene governs access, not the limits of the RP's possibilities. Quiet play permits opportunity without requiring interruption.
+
+Analyze before planning: rpUnderstanding is a compact, revisable interpretation, not verified history. Identify original/franchise/mixed/unclear basis, setting and relevant era; names alone do not prove a franchise. canonIntent reflects the user's stated preference (follow/flexible/alternate), otherwise unspecified. divergence separately describes established causal impact: none-established, local, major or unclear, not a count of edits. For original RP both are not-applicable; derive its rules and possibilities from the supplied world, not a borrowed canon.
+
+anchors records still-applicable rules, relationships and premises; departures records established changes and affected future prerequisites. experiences records fitting opportunities; uncertainty flags missing era, canon knowledge or intent without inventing answers. Familiar franchise knowledge is provisional, not researched fact; supplied references, explicit corrections and accepted play override it. No established change is not proof of complete canon fidelity. Following canon permits compatible expectations, not predetermined player choices. Local changes affect what depends on them; unrelated anchors can remain. Major changes require new causal possibilities, not forced return to canon. Check direction, developments and selected_material against this analysis. Update it when play changes the basis; earlier analysis is not evidence. Aim for 180 tokens including JSON, never above ${RP_UNDERSTANDING_LIMIT}, within the existing plan budget; do not make a lore encyclopedia.
 
 Return a complete replacement plan, at most four developments and ${WORKING_PLAN_LIMIT} tokens total. direction holds the RP's broader range of fitting experiences, not today's agenda; retain that scope across scene changes, revising it for actual premise changes. Reframe a scene-bound previous direction from the RP basis. threads holds relevant long-running interests/relationships, not obligations. consequences holds at most four relevant witnessed results, not a lifetime ledger. Earlier history stays local.
 
@@ -210,6 +215,9 @@ function correctionInput(input, failure) {
     const schema = structuredClone(STORY_SCHEMA);
     const plan = schema.value.properties.plan.properties;
     for (const key of ['direction', 'threads']) plan[key].maxLength = 100;
+    for (const key of ['setting', 'anchors', 'departures', 'experiences', 'uncertainty']) {
+        plan.rpUnderstanding.properties[key].maxLength = 70;
+    }
     const development = plan.developments.items.properties;
     for (const key of ['question', 'initiative', 'resolution', 'beyond']) development[key].maxLength = 70;
     development.access.properties.basis.maxLength = 60;
