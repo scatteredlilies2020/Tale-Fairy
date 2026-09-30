@@ -4,8 +4,9 @@
 
 `extension/index.js` now calls `bounded-story.js`. The former `story-selection.js`
 pipeline remains for legacy regression coverage and comparison, not routine host
-planning. There is still one background request, no critic/repair call, and no
-new scheduling mode. Existing source/transaction checks, cancellation, retry
+planning. A successful first response uses one background request. Invalid output
+gets at most one automatic correction in the same reserved pass, with no new
+scheduling mode. Existing source/transaction checks, cancellation, retry
 reservation, four-reply maximum material freshness, presets and author controls
 are retained. Reply counts schedule reviews; they do not advance fictional time
 or determine when an arc ends.
@@ -39,6 +40,41 @@ semantically prevented by an id check.
 
 ## Token admission
 
+Drafting now targets 800 tokens for the complete plan and 300 for the selected
+packet, leaving headroom under the existing admission limits. The requested schema
+uses short field allowances, and the planner shares 1,200 prose characters across
+the whole plan rather than filling every field independently. Existing wording
+still uses the original compatibility bounds when validating saved or returned
+state: a valid plan is not rejected merely for exceeding a drafting target.
+Oversized or malformed responses still cannot be committed.
+
+Before input admission fails, the bounded planner now uses the existing lossless
+span-table encoding. It removes repeated JSON labels while preserving exact text,
+speaker identity and citation addresses; validation uses the untouched messages.
+No limit increase or clipping is introduced. An invalid output can now trigger
+the one bounded correction described below.
+
+### Automatic output correction
+
+The live host uses `storyPassWithRecovery`. Invalid JSON, truncated output, schema,
+ownership, citation, lifecycle and token-budget errors get one new response with
+specific validation feedback and shorter drafting fields. It uses the same source
+and validates the complete replacement. Rejected text is not clipped or partly
+committed. Short correction instructions replace verbose drafting advice to make
+room for feedback at the original input boundary. Diagnostic text has a bounded
+token allowance. Correction input is measured with its actual schema and feedback;
+optional external evidence can be omitted whole to fit, while required source and
+accepted spans stay intact. If they cannot fit, no correction request is sent.
+
+The session persists request counts under the original reservation, checks Stop,
+source/reference/settings/state identity before each send (including after the
+asynchronous reservation save), and retains the existing atomic commit guards.
+Concurrent clicks join the active pass; reloads do not start it again. A second
+invalid response ends the pass with the previous preparation intact. Provider
+authentication, rate-limit, connection and timeout failures are not treated as
+invalid output and do not spend a corrective request. The UI records recovery
+success/failure and refreshes the preview after background work settles.
+
 | Component | Ceiling | Enforcement |
 | --- | ---: | --- |
 | Total planner input | 8,000 | Complete system/schema/payload estimate; host tokenizer preflight can increase the count, never lower it |
@@ -63,7 +99,7 @@ carry. Omission is explicitly not evidence of absence or completion.
 There is no way to fit arbitrarily large required source text or unreviewed input
 losslessly into a fixed ceiling. Such requests fail locally before provider spend,
 with an actionable error and saved preparation intact. There is no silent clipping,
-larger fallback budget, automatic paid summarization or retry. Archive growth no
+larger fallback budget or automatic paid summarization. Archive growth no
 longer raises normal prompt size; local archive storage itself is not bounded.
 
 ## Migration and compatibility
@@ -87,7 +123,7 @@ read-only and unable to establish enactment merely through recall.
 Deterministic tests cover bounded growth, migration preservation, full-snapshot
 validation, witnessed closure, multiple arcs, consequence source invalidation,
 unreachable selection, metadata round-trips, output overflow, cancellation and
-one-call host behavior. Old pipeline regression tests remain in place.
+one-call success and bounded correction behavior. Old pipeline regression tests remain in place.
 
 Before claiming an advantage over the writer alone, run a matched comparison:
 
@@ -117,3 +153,25 @@ Before claiming an advantage over the writer alone, run a matched comparison:
 No live-model creative comparison was run as part of this implementation. Passing
 the engineering suite is not evidence that an AI will consistently advance arcs
 well, nor is it a live SillyTavern UI smoke test.
+
+### September 30 budget regression check
+
+Three isolated calls reproduced the latest failed source boundary (404 messages)
+from the current Korra chat, using the saved `gpt-6.1-sol`, Low reasoning and 0.9
+temperature settings. Every call passed validation on its first response, retained
+four developments and one witnessed consequence, and produced a usable writer
+packet. Conservative input was 7,454/8,000 tokens; plan counts were 824, 754 and
+806/1,200; selected packets were 108, 140 and 113/600. Complete writer contexts
+were 328, 360 and 333/1,000. No live chat file was changed. External recall was not
+included in this isolated reconstruction. Artifacts are in the local temporary
+directory `tf-budget-20260930`. These checks verify budget behavior on this case,
+not universal model compliance or narrative quality.
+
+Automatic-correction regressions cover oversize plan/selection, malformed, empty
+and truncated responses, schema/evidence/ownership rejection, a valid second
+response, two invalid responses, exact input-budget boundaries, source changes,
+Stop, disabling, chat switches, joined manual clicks and reload deduplication.
+An isolated real-provider correction check injected an oversized first draft;
+the correction request failed with a closed provider socket. No live correction
+success is claimed for that check; its result is `recovery-result.json` in the
+same temporary artifact directory. No live chat was written.

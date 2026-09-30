@@ -9,7 +9,7 @@ import * as coalescerApi from '../../extension/planner-coalescer.js';
 import * as compactionApi from '../../extension/notebook-compaction.js';
 import * as preparedApi from '../../extension/prepared-world.js';
 import * as campaignApi from '../../extension/campaign-planner.js';
-import { storyInput as ownedInput, storyPass as ownedPass, needsEventReframe,
+import { storyInput as ownedInput, storyPassWithRecovery as ownedPass, needsEventReframe,
     STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from '../../extension/bounded-story.js';
 import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from '../../extension/campaign-session.js';
 import { isStoryGeneration, refreshGameMasterContract } from '../../extension/game-master.js';

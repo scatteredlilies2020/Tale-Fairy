@@ -26,14 +26,33 @@ export class CampaignSession {
                 this.attempt = { key, runKey, chatId: snapshot.chatId, referenceHash: snapshot.referenceHash,
                     fingerprint: fingerprint(snapshot.messages), messageCount: snapshot.messages.length,
                     assistantCount: turns(snapshot.messages), requestSignature: snapshot.requestSignature || '',
-                    at: Date.now(), status: 'started' };
+                    at: Date.now(), status: 'started', requestCount: 0 };
                 this.attemptSnapshot = snapshot;
+                this.attemptStateFingerprint = fingerprint(snapshot.state);
                 await saveAttempt(this.attempt);
                 this.controller.signal.throwIfAborted();
             },
-            generate: async (prompt, system, schema) => {
-                this.controller.signal.throwIfAborted();
-                onProgress('Preparing planner request');
+            generate: async (prompt, system, schema, correction = {}) => {
+                const guard = () => {
+                    this.controller.signal.throwIfAborted();
+                    const latest = read(), original = this.attemptSnapshot;
+                    if (!latest.enabled || latest.chatId !== original.chatId || latest.referenceHash !== original.referenceHash
+                        || latest.requestSignature !== original.requestSignature
+                        || latest.attempt?.runKey !== this.attempt.runKey
+                        || fingerprint(latest.state) !== this.attemptStateFingerprint
+                        || latest.messages.length < original.messages.length
+                        || fingerprint(latest.messages.slice(0, original.messages.length)) !== fingerprint(original.messages)
+                        || latest.messages.length === original.messages.length && latest.evidenceKey !== original.evidenceKey) {
+                        throw Error('Story context changed before planner request; saved preparation is intact.');
+                    }
+                };
+                guard();
+                if (this.attempt.requestCount >= 2) throw Error('Automatic planner correction limit reached.');
+                this.attempt = { ...this.attempt, requestCount: this.attempt.requestCount + 1,
+                    ...(correction.recoveryReason ? { recoveryReason: String(correction.recoveryReason).slice(0, 1000) } : {}) };
+                await saveAttempt(this.attempt);
+                guard();
+                onProgress(correction.recoveryReason ? 'Correcting planner response automatically · request 2 of 2' : 'Preparing planner request');
                 const result = await boundedPlannerResponse(() => generate(prompt, system, schema,
                     { signal: this.controller.signal, snapshot: this.attemptSnapshot, attempt: this.attempt }), this.controller, timeoutMs);
                 onProgress('Validating planner response');
@@ -72,7 +91,7 @@ export class CampaignSession {
         this.attempt = null;
         const controller = this.controller;
         // Session policy above owns persisted deduplication. This invocation is
-        // a distinct approved pass, never a fallback for a failed model response.
+        // a distinct pass; its bounded runPass may correct one invalid response.
         this.pending = this.runtime.request({ manual: true }).then(async result => {
             const latest = this.read();
             if (this.attempt && latest.attempt?.runKey === this.attempt.runKey && latest.chatId === snapshot.chatId) {

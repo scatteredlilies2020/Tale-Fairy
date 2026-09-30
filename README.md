@@ -4,12 +4,22 @@ Tale Fairy is a standalone SillyTavern extension that acts as a **background cre
 
 ## Bounded working plan (current development update)
 
+Invalid planner output now gets **one automatic correction request** within the
+same planning pass. Oversized plans/packets, malformed or truncated JSON, and
+validation failures receive specific feedback and tighter drafting allowances.
+The correction obeys the same input/output limits and must pass all validation
+before saving. Stop, changed sources, disabled planning and chat switches prevent
+the correction from sending. The attempt tracker reports when it was used.
+Two invalid responses preserve the saved plan and stop; reloads do not reset the
+attempt. Connection, authentication and timeout failures do not trigger this
+output-correction request. Successful first responses still use one call.
+
 The active planner now keeps **at most four finite developments in a 1,200-token
 working plan**, separate from long-running ambitions and relationships. Arcs can
 overlap, resolve, fail or give way to independent directions; no turn deadline or
 predetermined ending. Specific unfinished NPC/world initiatives carry forward.
 
-One planner call supplies at most **600 tokens of generated writer material**.
+A successful planner pass supplies at most **600 tokens of generated writer material**.
 Its entire input, including instructions and schema, is capped at **8,000 tokens**;
 the old growing episode/evidence ledger is no longer resent. Original preparation
 and witnessed outcomes remain in the local archive. Optional external recall is

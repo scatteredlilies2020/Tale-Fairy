@@ -78,11 +78,54 @@ function browser(send = async () => ({ choices: [{ message: { content: JSON.stri
             return spec.parseResponse(await send({ prompt, signal, meta, spec }));
         },
     });
-    for (const name of ['showCampaignPhase', 'readCampaignSnapshot', 'buildCampaignHostInput', 'saveCampaignAttempt', 'campaignCompletion', 'runCampaignAnalysis', 'analyzeCampaignNow', 'startCampaignPlanning', 'applyCampaignInstruction', 'rebuildGuideState', 'analyzeNow']) {
+    for (const name of ['emptyGuidancePreview', 'showCampaignPhase', 'readCampaignSnapshot', 'buildCampaignHostInput', 'saveCampaignAttempt', 'campaignCompletion', 'runCampaignAnalysis', 'analyzeCampaignNow', 'startCampaignPlanning', 'applyCampaignInstruction', 'rebuildGuideState', 'analyzeNow']) {
         vm.runInContext(source.match(new RegExp(`(?:export )?(?:async )?function ${name}\\([^]*?^}`, 'm'))[0].replace(/^export /u, ''), h.scope);
     }
     return { ...h, requests, shared };
 }
+
+function emptyPreview(h) {
+    const state = h.state();
+    const options = h.scope.guideSelectionOptions(state, h.context);
+    assert.equal(h.scope.buildPromptPayload(state, { ...options, enabled: h.settings.enabled, generationType: h.scope.activeGenerationType }), '');
+    return h.scope.emptyGuidancePreview(state, options, h.context);
+}
+
+test('empty writer preview explains expired guidance and the rejected refresh', async () => {
+    let response = structuredClone(design);
+    const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(response) }, finish_reason: 'stop' }] }));
+    h.settings.fullReviewInterval = 12;
+    await h.scope.analyzeCampaignNow({ manual: true });
+    for (let i = 0; i < 4; i++) h.context.chat.push({ is_user: false, name: 'Mara', mes: `Later exchange ${i}.` });
+    response.plan.developments[0].initiative = '音'.repeat(400);
+    await h.scope.analyzeCampaignNow({ manual: true });
+    assert.equal(h.state().campaignPreparation.revision, 1);
+    const preview = emptyPreview(h);
+    assert.match(preview, /refresh after 4 assistant replies/);
+    assert.match(preview, /Latest planning attempt failed: Working plan exceeds 1200 tokens/);
+    assert.doesNotMatch(preview, /Awaiting current context|Preparing context/);
+    assert.match(preview, /Use Guide now/);
+
+    h.context.chat[0].mes = 'The original scene was edited.';
+    assert.match(emptyPreview(h), /does not match the current story context/);
+    h.context.chatMetadata.taleFairyCampaignAttempt.chatId = 'another-chat';
+    assert.doesNotMatch(emptyPreview(h), /Latest planning attempt failed/);
+});
+
+test('empty writer preview distinguishes quiet selection, missing preparation and active campaign planning', async () => {
+    const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify({ ...design, selected_material: [] }) }, finish_reason: 'stop' }] }));
+    assert.match(emptyPreview(h), /No completed preparation is available/);
+    h.scope.campaignHostWork = { chatId: 'story' };
+    assert.equal(emptyPreview(h), 'Preparing context in the background.');
+    h.scope.campaignHostWork = null;
+    h.scope.campaignSession = { pending: Promise.resolve() };
+    assert.equal(emptyPreview(h), 'Preparing context in the background.');
+    h.scope.campaignSession = null;
+    await h.scope.analyzeCampaignNow({ manual: true });
+    assert.equal(emptyPreview(h), 'Planning complete. No additional story development selected for this request.');
+    h.settings.enabled = false;
+    assert.equal(emptyPreview(h), 'Injection inactive for this request.');
+});
 
 test('notebook distinguishes estimated writer cap from preserved author-only overflow', () => {
     const scope = vm.createContext({ campaignPayloadBudget });
@@ -92,12 +135,12 @@ test('notebook distinguishes estimated writer cap from preserved author-only ove
     assert.match(scope.campaignBudgetSummary(null, [note]), /Author instructions alone exceed.*remain verbatim/);
 });
 
-test('oversized new writer material rejects the transaction without another model call', async () => {
+test('oversized writer material stays rejected after one automatic correction', async () => {
     const value = structuredClone(design);
     for (const key of ['available', 'developing', 'lasting']) value.selected_material[0][key] = '音'.repeat(800);
     const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] }));
     await h.scope.analyzeCampaignNow();
-    assert.equal(h.requests.length, 1);
+    assert.equal(h.requests.length, 2);
     assert.equal(h.state().campaignPreparation, null);
     assert.match(h.statuses.at(-1), /600 tokens/);
     assert.equal(h.prepare().payload, '');
@@ -162,7 +205,7 @@ test('host requires a complete bounded snapshot and preserves unfinished initiat
     delete value.plan.developments[0].initiative;
     value.selected_material[0].available = 'A revised tune is available for shared practice.';
     await h.scope.analyzeCampaignNow({ manual: true });
-    assert.equal(h.requests.length, 2);
+    assert.equal(h.requests.length, 3);
     assert.deepEqual(h.state().campaignPreparation, previous);
     assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'failed');
     assert.doesNotMatch(h.prepare().payload, /revised tune/);
@@ -175,7 +218,7 @@ test('host rejects an incomplete new development atomically', async () => {
     value.plan.developments.push(incomplete);
     const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] }));
     await h.scope.analyzeCampaignNow();
-    assert.equal(h.requests.length, 1);
+    assert.equal(h.requests.length, 2);
     assert.equal(h.state().campaignPreparation, null);
     assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'failed');
     assert.match(h.statuses.at(-1), /missing initiative/);
@@ -190,7 +233,7 @@ test('host rejects unavailable consequence witnesses and leaves prior preparatio
         value.plan.consequences = [{ id: 'show', text: 'The show ended.' }];
         value.observations = [{ id: 'show', evidence: [{ index: 0, span: 999 }] }];
         await h.scope.analyzeCampaignNow({ manual: true });
-        assert.equal(h.requests.length, hasPrevious ? 2 : 1);
+        assert.equal(h.requests.length, hasPrevious ? 3 : 2);
         assert.deepEqual(h.state().campaignPreparation, before);
         assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'failed');
     }
@@ -201,7 +244,7 @@ test('player ownership is rejected at the host boundary', async () => {
     value.plan.developments[0].owner = 'Neri';
     const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] }));
     await h.scope.analyzeCampaignNow();
-    assert.equal(h.requests.length, 1);
+    assert.equal(h.requests.length, 2);
     assert.equal(h.state().campaignPreparation, null);
     assert.match(h.statuses.at(-1), /Player cannot own/);
 });
@@ -292,7 +335,7 @@ test('host rejects unknown snapshot fields without silently reinterpreting them'
     response.plan.ending = 'A prescribed ending.';
     const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(response) }, finish_reason: 'stop' }] }));
     await h.scope.analyzeCampaignNow({ manual: true });
-    assert.equal(h.requests.length, 1);
+    assert.equal(h.requests.length, 2);
     assert.equal(h.state().campaignPreparation, null);
     assert.match(h.statuses.at(-1), /unexpected ending/);
 });
@@ -355,17 +398,17 @@ test('shared selection survives actual metadata, cache authentication and retrie
     assert.equal(generationContextEntries(tampered).length, 0, 'changed selected content cannot authenticate the original packet');
 });
 
-test('a malformed whole-story snapshot never partially replaces host preparation or starts a repair request', async () => {
+test('two malformed snapshots preserve the prior preparation atomically', async () => {
     const invalid = structuredClone(design); delete invalid.selected_material;
     invalid.plan.developments[0].initiative = 'A private update that must not commit.';
-    const replies = [design, invalid];
+    const replies = [design, invalid, invalid];
     const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(replies.shift()) }, finish_reason: 'stop' }] }));
     await h.scope.analyzeCampaignNow({ manual: true });
     const before = structuredClone(h.state().campaignPreparation);
     const payload = h.prepare().payload;
     h.context.chat.push({ is_user: true, mes: 'I ask about the wider season.' });
     await h.scope.analyzeCampaignNow({ manual: true });
-    assert.equal(h.requests.length, 2);
+    assert.equal(h.requests.length, 3);
     assert.deepEqual(h.state().campaignPreparation, before);
     assert.equal(h.prepare().payload, payload);
     assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'failed');
@@ -882,16 +925,16 @@ test('host archives old plot essays without replaying their prose', async () => 
     assert.match(h.prepare().payload, /possible_developments/);
 });
 
-test('actual owned host rejects planned player ownership in one call without repair or commit', async () => {
+test('invalid player ownership exhausts one correction without committing or looping', async () => {
     const invalid = structuredClone(design);
     invalid.plan.developments[0].owner = 'Neri';
     const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(invalid) }, finish_reason: 'stop' }] }));
     await h.scope.analyzeCampaignNow();
-    assert.equal(h.requests.length, 1);
+    assert.equal(h.requests.length, 2);
     assert.equal(h.state().campaignPreparation, null);
     assert.match(h.statuses.join('\n'), /Player cannot own/);
     await h.scope.analyzeCampaignNow();
-    assert.equal(h.requests.length, 1, 'failed unchanged source is not retried automatically');
+    assert.equal(h.requests.length, 2, 'failed unchanged source is not retried automatically');
 });
 
 test('actual host factors repeated speaker labels while preserving every initial player contribution', () => {
@@ -1021,7 +1064,7 @@ test('truncated provider envelopes cannot be accepted even when their JSON looks
         { response: { result: { finish_reason: 'max_output_tokens', output_text: JSON.stringify(design) } } }]) {
         const h = browser(async () => response);
         await h.scope.analyzeCampaignNow();
-        assert.equal(h.requests.length, 1);
+        assert.equal(h.requests.length, 2);
         assert.equal(h.state().campaignPreparation, null);
         assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'failed');
     }
@@ -1239,4 +1282,57 @@ test('retirement archives remain local on both original and edited sources', asy
     assert.equal(input.closed_subject_ids, undefined);
     assert.equal(input.rebuild, true);
     assert.equal(h.state().campaignPreparation.archive.at(-1).development.id, 'old-subject');
+});
+
+for (const kind of ['oversized', 'malformed', 'truncated']) test(`${kind} host response automatically recovers, persists once and does not rerun on reload`, async () => {
+    const oversized = structuredClone(design);
+    oversized.plan.developments[0].initiative = '音'.repeat(400);
+    let calls = 0;
+    const h = browser(async () => ({ choices: [{ message: { content: ++calls === 1
+        ? kind === 'malformed' ? '{"plan":' : JSON.stringify(kind === 'oversized' ? oversized : design)
+        : JSON.stringify(design) }, finish_reason: calls === 1 && kind === 'truncated' ? 'length' : 'stop' }] }));
+    let renders = 0;
+    h.scope.renderBoard = () => { renders++; };
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 2);
+    assert.equal(h.state().campaignPreparation.revision, 1);
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.requestCount, 2);
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
+    assert.ok(h.context.chatMetadata.taleFairyCampaignAttempt.recoveryReason);
+    assert.match(h.statuses.join('\n'), /Correcting planner response automatically/);
+    assert.match(h.statuses.at(-1), /corrected automatically/);
+    assert.ok(renders > 0, 'preview refreshes after the host work clears');
+    assert.match(h.prepare().payload, /An original tune/);
+    h.scope.campaignSession = null;
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 2, 'reloaded attempt reservation covers both requests');
+});
+
+for (const mutation of ['edit', 'stop', 'switch', 'disable']) test(`automatic correction cancels before sending after ${mutation}`, async () => {
+    const h = browser(async () => {
+        if (mutation === 'edit') h.context.chat[0].mes = 'Edited accepted story.';
+        if (mutation === 'stop') h.scope.campaignSession.stop();
+        if (mutation === 'switch') h.context.getCurrentChatId = () => 'different-story';
+        if (mutation === 'disable') h.settings.enabled = false;
+        return { choices: [{ message: { content: '{"plan":' }, finish_reason: 'stop' }] };
+    });
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.state().campaignPreparation, null);
+});
+
+test('concurrent Guide clicks join an in-flight automatic correction', async () => {
+    let release, calls = 0;
+    const h = browser(async () => {
+        if (++calls === 1) return { choices: [{ message: { content: 'invalid JSON' }, finish_reason: 'stop' }] };
+        return new Promise(resolve => { release = () => resolve({ choices: [{ message: { content: JSON.stringify(design) }, finish_reason: 'stop' }] }); });
+    });
+    const pending = h.scope.analyzeCampaignNow();
+    await settle();
+    assert.equal(h.requests.length, 2);
+    assert.equal(h.scope.analyzeCampaignNow({ manual: true }), pending);
+    release();
+    await pending;
+    assert.equal(h.state().campaignPreparation.revision, 1);
+    assert.equal(h.requests.length, 2);
 });

@@ -5,6 +5,7 @@ import { witnessMessages, resolveSpanWitnesses, SPAN_WITNESS_SCHEMA } from './ac
 import { fitEvidenceProviders } from './evidence-providers.js';
 import { SELECTED_MATERIAL_SCHEMA, validateSelectedMaterial } from './selected-material.js?v=0.14.36&rp-plot=1';
 import { storyInputTokens } from './story-budget.js?follow-through=1';
+import { compactPlannerPayload } from './planner-compaction.js';
 import { WORKING_PLAN_SCHEMA, WORKING_PLAN_VERSION, WORKING_PLAN_LIMIT, SELECTED_PACKET_LIMIT,
     PLANNER_INPUT_LIMIT, planTokens, plannerInputLimit, validateWorkingPlan, workingPlanProjection } from './working-plan.js';
 export { PLANNER_INPUT_LIMIT, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './working-plan.js';
@@ -20,18 +21,35 @@ function withoutDescriptions(value) {
         .filter(([key]) => key !== 'description').map(([key, child]) => [key, withoutDescriptions(child)]));
     return value;
 }
-export const STORY_SCHEMA = { name: 'tale_fairy_working_plan_v1', value: withoutDescriptions(object({
+const responseShape = withoutDescriptions(object({
     plan: WORKING_PLAN_SCHEMA,
     exits: { type: 'array', maxItems: 4, items: object({ id: text(80),
         disposition: { type: 'string', enum: ['closed', 'paused', 'dropped', 'changed'] }, reason: text(300), evidence: witnesses }) },
     observations: { type: 'array', maxItems: 4, items: object({ id: text(64), evidence: { ...witnesses, minItems: 1 } }) },
     selected_material: selection,
-})) };
+}));
+// Admission and saved-state compatibility keep the original field ceilings.
+// Drafting needs much smaller allowances: those ceilings are not a budget to
+// fill independently, and JSON keys/ids consume part of the shared token cap.
+export const STORY_SCHEMA = { name: 'tale_fairy_working_plan_v1', value: structuredClone(responseShape) };
+const draftPlan = STORY_SCHEMA.value.properties.plan.properties;
+draftPlan.direction.maxLength = 140;
+draftPlan.threads.maxLength = 140;
+draftPlan.consequences.items.properties.text.maxLength = 120;
+const draftDevelopment = draftPlan.developments.items.properties;
+for (const [key, limit] of Object.entries({ owner: 48, question: 80, initiative: 120, resolution: 90, beyond: 90 })) {
+    draftDevelopment[key].maxLength = limit;
+}
+draftDevelopment.access.properties.basis.maxLength = 80;
+const draftMaterial = STORY_SCHEMA.value.properties.selected_material.items.properties;
+for (const [key, limit] of Object.entries({ available: 400, developing: 220, lasting: 220 })) draftMaterial[key].maxLength = limit;
 
 export const STORY_SYSTEM = `${CAMPAIGN_MARKER}
 Invent worthwhile story development across experiences and arcs, not a recap or a next-paragraph script. One response only. The writing preset owns prose, tone and pacing. Respect source scope, abilities, canon departures and explicit player choices. No forced canon trajectory or mandatory sequel to a deliberately closed RP.
 
 Return a complete replacement plan, at most four developments and ${WORKING_PLAN_LIMIT} tokens total. direction is the RP's broader reach; threads are long-running ambitions/relationships, not obligations to keep one arc active. consequences holds at most four relevant witnessed results, not a lifetime ledger. These results may outlive the arc that produced them. Old evidence remains archived locally.
+
+Draft below the ceiling: aim for 800 tokens for the ENTIRE serialized plan, including keys, ids, punctuation and all developments together. Spend at most 1200 characters of prose across the whole plan, fewer for non-Latin text. Use short clauses, not paragraphs; field maxima are individual safety bounds, not allocations to fill. Share this prose allowance across retained developments and consequences. Preserve distinct unfinished initiatives, prerequisites and exact ids while rephrasing concisely; do not drop an active undertaking just to save space. Do not repeat scene recaps or the same facts across fields. The schema's compact lengths apply to new wording, not permission to rename saved ids. Before returning, shorten your draft within this same response; no oversized draft or explanation.
 
 Each development is finite arc work, a side thread, or an emerging direction. Keep stable ids and the specific unfinished initiative, not just its topic. question states what is at issue; initiative chooses concrete NPC/world activity that creates something to experience; resolution describes what could settle this particular undertaking, without prescribing success, player decisions or when it ends. beyond gives substantive follow-through or a different experience, not another prerequisite for the same reward. access states a plausible current bridge and any real prerequisites; none means private and unreachable. Do not reveal private causes in the writer packet.
 
@@ -41,7 +59,7 @@ For every removed previous development return one exit: closed means this finite
 
 consequences are accepted facts, unlike the rest of the plan which is creative preparation. Every new or changed consequence needs observations with its id and exact supplied index/span citations. An unchanged verified consequence can carry without new citations. Do not manufacture player agreement, achievements or unseen actions. Source references supply premises; optional external recall and previous drafts are not proof of enactment. Current play/corrections override them. Omitted context does not establish absence or resolution.
 
-selected_material is [] or one integrated packet under ${SELECTED_PACKET_LIMIT} tokens, referencing only retained, accessible developments. available supplies definite NPC/world initiative and its observable surface, not another invitation or maybe-hook. developing/lasting are optional useful horizons. Condition only genuine prerequisites, not NPC initiative on player interest. Player participation and contested outcomes stay open. No dialogue, ordered scene beats, assigned feelings, travel or commitments. Carry unplayed substance while useful; revise rather than reroll it. Empty is better than repetition or filler. Check that invention adds actual experiences beyond the writer merely continuing the current exchange. Concise JSON only.
+selected_material is [] or one integrated packet under ${SELECTED_PACKET_LIMIT} tokens, referencing only retained, accessible developments. Aim for 300 tokens including JSON; all horizons share this allowance. available supplies definite NPC/world initiative and its observable surface, not another invitation or maybe-hook. developing/lasting are optional useful horizons. Condition only genuine prerequisites, not NPC initiative on player interest. Player participation and contested outcomes stay open. No dialogue, ordered scene beats, assigned feelings, travel or commitments. Carry unplayed substance while useful; revise rather than reroll it. Empty is better than repetition or filler. Check that invention adds actual experiences beyond the writer merely continuing the current exchange. Concise JSON only.
 `;
 
 export const needsEventReframe = state => state?.workingPlanVersion !== WORKING_PLAN_VERSION;
@@ -70,7 +88,7 @@ export function storyInput({ reference, state, messages, playerNames = [], previ
     const speakers = compactCampaignSpeakers(messages);
     const names = [...new Set(playerNames.filter(name => typeof name === 'string' && name.trim()))];
     const newIdPrefix = `r${state.revision + 1}-`;
-    const payload = { source_reference: compactPlannerReference(reference),
+    let payload = { source_reference: compactPlannerReference(reference),
         previous_plan: previous, rebuild: !previousUsable || migration, new_id_prefix: newIdPrefix,
         player_names: names,
         coverage: { reviewed_before: reviewedMessageCount, supplied_messages: messages.length,
@@ -78,12 +96,13 @@ export function storyInput({ reference, state, messages, playerNames = [], previ
         ...(Object.keys(speakers.defaults).length ? { default_speaker_name_by_role: speakers.defaults } : {}),
         accepted_messages: witnessMessages(speakers.messages) };
     const measure = value => storyInputTokens(JSON.stringify(value), STORY_SYSTEM, STORY_SCHEMA);
+    payload = compactPlannerPayload(payload, measure, limit);
     const external = fitEvidenceProviders(evidence ?? (continuity ? [{ ...continuity, provider: 'continuity-memory' }] : []),
         Math.min(1000, Math.max(0, Number(continuityTokens) || 0)), value => measure({ ...payload, external_evidence: value }) <= limit);
     if (external.length) payload.external_evidence = external;
     const prompt = JSON.stringify(payload), inputTokens = measure(payload);
     if (inputTokens > limit) throw Error(`Planner input ${inputTokens} exceeds ${limit} tokens (including instructions/schema). Required source or unreviewed messages cannot fit whole; reduce the supplied source or backlog explicitly. No provider request sent; saved preparation is intact.`);
-    return { prompt, inputTokens, indices: messages.map(m => m.index), evidenceMessages: structuredClone(messages),
+    return { prompt, inputTokens, inputLimit: limit, indices: messages.map(m => m.index), evidenceMessages: structuredClone(messages),
         previousPlan: previous, rebuild: payload.rebuild, newIdPrefix, playerNames: names,
         verifiedPlanEvidence: structuredClone(trustedEvidence),
         evidence: { status: external.length ? 'included' : 'omitted-or-unavailable', providers: external.map(e => e.provider) },
@@ -93,12 +112,14 @@ export function storyInput({ reference, state, messages, playerNames = [], previ
 
 export async function storyPass({ state, input, source, generate }) {
     let result;
+    let received = false;
     const basisRevision = state.revision;
     try {
         result = await generate(input.prompt, STORY_SYSTEM, STORY_SCHEMA);
+        received = true;
         if (['length', 'max_tokens', 'max_output_tokens'].includes(String(result.finishReason).toLowerCase())) throw Error('Truncated working-plan response');
         const raw = JSON.parse(result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
-        check(raw, STORY_SCHEMA.value);
+        check(raw, responseShape);
         validateWorkingPlan(raw.plan, check, input.playerNames);
         if (planTokens(raw.selected_material) > SELECTED_PACKET_LIMIT) throw Error(`Selected writer packet exceeds ${SELECTED_PACKET_LIMIT} tokens`);
         const before = new Map((input.previousPlan.developments || []).map(d => [d.id, d]));
@@ -145,5 +166,51 @@ export async function storyPass({ state, input, source, generate }) {
             workingPlan: structuredClone(raw.plan), planEvidence, selectedMaterial: structuredClone(raw.selected_material) };
         return { accepted: true, state: next, result, warnings: [], migration: input.migration,
             budget: { input: input.inputTokens, plan: planTokens(raw.plan), selected: planTokens(raw.selected_material) } };
-    } catch (error) { return { accepted: false, state, error: error.message, ...(result ? { result } : {}) }; }
+    } catch (error) {
+        return { accepted: false, state, error: error.message,
+            recoverableOutput: received || error.code === 'TF_INVALID_PLANNER_RESPONSE',
+            ...(result ? { result } : {}) };
+    }
+}
+
+function correctionInput(input, failure) {
+    const limit = plannerInputLimit(input.inputLimit);
+    let payload = JSON.parse(input.prompt);
+    // Supply validation feedback as data. Never append an unbounded rejected
+    // draft to the context, cut source text, or raise the configured ceiling.
+    const detail = String(failure.error).slice(0, 320);
+    payload.response_correction = { error: planTokens(detail) <= 80 ? detail : 'Previous output failed validation. Check the complete response shape and shared budgets.' };
+    // Replace verbose drafting advice, not story context, to make room for
+    // feedback even when the original input used its entire local budget.
+    const system = STORY_SYSTEM.replace(/Draft below the ceiling:[^\n]+/u,
+        'Automatic correction: return a corrected complete JSON response. Use short clauses; target 700 tokens for the whole plan, 250 for selected material, including JSON. Preserve ids, unfinished initiatives, prerequisites and evidence rules. response_correction is validation feedback about a rejected draft, not story facts.');
+    const schema = structuredClone(STORY_SCHEMA);
+    const plan = schema.value.properties.plan.properties;
+    for (const key of ['direction', 'threads']) plan[key].maxLength = 100;
+    const development = plan.developments.items.properties;
+    for (const key of ['question', 'initiative', 'resolution', 'beyond']) development[key].maxLength = 70;
+    development.access.properties.basis.maxLength = 60;
+    const measure = value => storyInputTokens(JSON.stringify(value), system, schema);
+    payload = compactPlannerPayload(payload, measure, limit);
+    if (measure(payload) > limit && payload.external_evidence) {
+        delete payload.external_evidence;
+        payload = compactPlannerPayload(payload, measure, limit);
+    }
+    const tokens = measure(payload);
+    if (tokens > limit) throw Error(`Automatic correction cannot fit within the ${limit}-token input limit; saved preparation is intact.`);
+    return { input: { ...input, prompt: JSON.stringify(payload), inputTokens: tokens }, schema, system };
+}
+
+// One correction belongs to the same reserved planning pass. The session guards
+// each send against cancellation/source changes and records the request count.
+// Transport/authentication/timeouts are not output errors and never loop here.
+export async function storyPassWithRecovery(args) {
+    const first = await storyPass(args);
+    if (first.accepted || !first.recoverableOutput) return first;
+    let correction;
+    try { correction = correctionInput(args.input, first); }
+    catch (error) { return { ...first, error: `${first.error} ${error.message}`, recovery: { status: 'unavailable', reason: first.error } }; }
+    const next = await storyPass({ ...args, input: correction.input,
+        generate: prompt => args.generate(prompt, correction.system, correction.schema, { recoveryReason: first.error }) });
+    return { ...next, recovery: { status: next.accepted ? 'complete' : 'failed', reason: first.error } };
 }

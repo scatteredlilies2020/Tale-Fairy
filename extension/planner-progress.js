@@ -13,7 +13,9 @@ export function campaignAttemptSummary(attempt, active = false) {
     const duration = Number.isFinite(attempt.durationMs) ? ` · ${plannerElapsed(attempt.durationMs)}` : '';
     const labels = { complete: 'Last request: preparation saved', failed: 'Last request failed', stopped: 'Last request stopped' };
     const reason = attempt.error || attempt.skipped;
-    return `${labels[attempt.status] || 'Last request: unknown status'}${duration}${reason ? ` · ${reason}` : ''}`;
+    const recovery = attempt.requestCount > 1
+        ? attempt.status === 'complete' ? ' · automatic correction succeeded (2 requests)' : ' · automatic correction attempted (2 requests)' : '';
+    return `${labels[attempt.status] || 'Last request: unknown status'}${duration}${recovery}${reason ? ` · ${reason}` : ''}`;
 }
 
 // Race cancellation as well as forwarding it: some host adapters ignore an

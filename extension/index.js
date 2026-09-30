@@ -1,13 +1,13 @@
 import { sha256 } from '/lib.js';
 import { campaignAuthorInstructions, campaignPayloadBudget, campaignUsable, campaignMaterialUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1';
-import { storyInput as ownedInput, storyPass as ownedPass, STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './bounded-story.js?working-plan=1';
+import { storyInput as ownedInput, storyPassWithRecovery as ownedPass, STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1';
 import { fitStoryInputBudget } from './story-budget.js?follow-through=1&compaction=1';
 import { readCampaignContinuity } from './campaign-continuity.js';
 // Keep the public registration URL stable so external adapters share this registry.
 import { readEvidenceProviders, evidenceRevisionKey } from './evidence-providers.js';
 import { campaignEvidenceMessages, campaignReviewWindow } from './campaign-evidence.js';
-import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.36&token-budget=1&rp-plot=1&progress=1&follow-through=1&working-plan=1';
-import { campaignAttemptSummary } from './planner-progress.js?v=1';
+import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.36&token-budget=1&rp-plot=1&progress=1&follow-through=1&working-plan=1&recovery=1';
+import { campaignAttemptSummary } from './planner-progress.js?v=1&recovery=1';
 import { finalizeNotebookCompactions, writeNotebookArchive } from './notebook-compaction.js?v=0.14.22';
 import { eventSource, event_types, extension_prompt_roles, extension_prompt_types, generateRaw, Generate, setExtensionPrompt, getRequestHeaders, getCharacterCardFields, saveSettingsDebounced } from '/script.js';
 import { getContext } from '/scripts/st-context.js';
@@ -821,7 +821,7 @@ function readCampaignSnapshot() {
         playerNames: [...new Set([context.name1, ...accepted.filter(m => m.is_user).map(m => m.name)]
             .filter(name => typeof name === 'string' && name.trim()))],
         referenceHash,
-        requestSignature: campaignFingerprint({ contract: OWNED_SCHEMA, prompt: OWNED_SYSTEM, settings: Object.fromEntries(['analysisSource', 'analysisProvider', 'analysisProfileId',
+        requestSignature: campaignFingerprint({ recovery: 1, contract: OWNED_SCHEMA, prompt: OWNED_SYSTEM, settings: Object.fromEntries(['analysisSource', 'analysisProvider', 'analysisProfileId',
             'analysisModel', 'analysisUrl', 'analysisSecretId', 'analysisReasoningMode', 'analysisTemperature', 'maxPromptTokens', 'continuityIntegration', 'summaryContextTokens']
             .map(key => [key, s[key]])) }),
         reference,
@@ -863,7 +863,8 @@ async function saveCampaignAttempt(attempt) {
 
 function campaignCompletion(response) {
     // The browser provider envelope can carry a complete-looking JSON string
-    // even when generation was truncated; reject that signal, never repair it.
+    // even when generation was truncated. Reject that draft; the bounded
+    // recovery path may request a complete replacement. Never salvage fragments.
     const queue = [response], seen = new Set();
     for (let n = 0; queue.length && n < 16; n++) {
         const item = queue.shift();
@@ -871,7 +872,7 @@ function campaignCompletion(response) {
         seen.add(item);
         const reason = String(item.finish_reason || item.finishReason || item.stop_reason || '').toLowerCase();
         if (['length', 'max_tokens', 'max_output_tokens'].includes(reason)
-            || item.status === 'incomplete' || item.incomplete_details) throw Error('Truncated campaign response.');
+            || item.status === 'incomplete' || item.incomplete_details) throw Object.assign(Error('Truncated campaign response.'), { code: 'TF_INVALID_PLANNER_RESPONSE' });
         for (const key of ['data', 'response', 'result', 'choices', 'candidates']) {
             if (Array.isArray(item[key])) queue.push(...item[key]); else if (item[key]) queue.push(item[key]);
         }
@@ -905,7 +906,13 @@ function analyzeCampaignNow({ manual = false } = {}) {
         }
         return loadState(currentContext().chatMetadata);
     }).finally(() => {
-        if (campaignHostWork === work) campaignHostWork = null;
+        if (campaignHostWork === work) {
+            campaignHostWork = null;
+            if (stopSequence === analysisStopSequence && chatId === String(currentContext().getCurrentChatId?.() || '')) {
+                updatePrompt(loadState(currentContext().chatMetadata));
+                renderBoard();
+            }
+        }
     });
     // Publish before any async preflight or lock acquisition can re-enter.
     campaignHostWork = work;
@@ -947,6 +954,7 @@ async function runCampaignAnalysis(work) {
     if (stopSequence === analysisStopSequence && chatId === String(currentContext().getCurrentChatId?.() || '')) {
         if (result.accepted) {
             const notices = [];
+            if (result.recovery?.status === 'complete') notices.push('invalid response corrected automatically');
             if (result.warnings?.length) notices.push(`ignored ${result.warnings.length} unsupported citation(s)`);
             if (result.skippedProgress) notices.push(`skipped ${result.skippedProgress} unsupported progress update(s)`);
             if (result.skippedRetirements) notices.push(`retained ${result.skippedRetirements} subject(s) without verified retirement`);
@@ -2375,7 +2383,8 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
         const requestedReasoningMode = requestSpec.reasoningMode || '';
         const requestLabel = requestSpec.label || 'planner';
         const cacheNamespace = requestSpec.cacheNamespace || 'analysis';
-        // Campaign passes must never negotiate by spending a second request.
+        // Each send uses one transport request. The bounded campaign recovery
+        // may explicitly correct invalid output, but never negotiates transports.
         // Prompt-only JSON works without provider schema support. Unsupported
         // sampling/reasoning controls fail this pass; the caller retains its
         // previous preparation and exposes the error instead of repairing it.
@@ -2920,6 +2929,28 @@ function campaignBudgetSummary(preparation, instructions) {
         + (budget.authorOverflow ? ' Author instructions alone exceed the limit; they remain verbatim. Shorten them explicitly or adjust the host context budget.' : '');
 }
 
+function emptyGuidancePreview(state, options, context = currentContext()) {
+    if (!getSettings().enabled || !isStoryGeneration(activeGenerationType)) return 'Injection inactive for this request.';
+    if (analysisPromise || campaignHostWork || campaignSession?.pending) return 'Preparing context in the background.';
+    const chatId = String(context.getCurrentChatId?.() || '');
+    if (state.plannerContract === 15) {
+        if (options.preparedUsable) return 'Planning complete. No additional story development selected for this request.';
+        const messages = generationRetrySource(messagesFromChat(context.chat || []), activeGenerationType === 'swipe' || activeGenerationType === 'regenerate');
+        const preparation = state.campaignPreparation;
+        const reason = validCampaignState(preparation)
+            ? preparedReady(state, messages, context, true)
+                ? `Saved writer guidance needs a refresh after ${messages.slice(preparation.source.messageCount).filter(message => !message.is_user).length} assistant replies.`
+                : 'Saved preparation does not match the current story context.'
+            : 'No completed preparation is available.';
+        const attempt = context.chatMetadata?.[CAMPAIGN_ATTEMPT_KEY];
+        const failure = attempt?.chatId === chatId && attempt.status === 'failed' && attempt.at >= (state.lastAnalyzedAt || 0)
+            ? `Latest planning attempt failed: ${attempt.error || 'No valid preparation was returned.'}` : '';
+        return ['No writer guidance selected for this request.', reason, failure, 'Use Guide now to refresh planning.'].filter(Boolean).join('\n');
+    }
+    return isDirectionCurrent(state, messagesFromChat(context.chat || []), chatId) && !state.lastInject
+        ? 'Context awaiting refresh.' : 'Awaiting current context.';
+}
+
 function renderBoard(state = loadState(currentContext().chatMetadata)) {
     renderCampaignAttempt();
     const board = document.querySelector(`#${EXTENSION_ID}-board`);
@@ -3102,13 +3133,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         ? `${previewKind} — ${generationPreviewDescription({ reused: preparedSelection?.reused, dynamic: previewDynamic, future: guidanceSnapshot(state, previewOptions).preparedContextIncluded,
             prepared: Boolean(preparedSelection), nextReady: Boolean(nextPacket?.selection.preparedUsable || nextPacket?.selection.usable && hasPlannerConditions(nextPacket.selection.causalContext)),
             deferred: !preparedSelection && replacementPlanningDeferred(previewContext), planning: Boolean(analysisPromise || campaignHostWork || campaignSession?.pending) })}.\nPlacement: ${previewPlacement}\n\n${previewPayload}`
-        : !getSettings().enabled || !isStoryGeneration(activeGenerationType)
-            ? 'Injection inactive for this request.'
-        : isDirectionCurrent(state, messagesFromChat(previewContext.chat || []), chatId) && !state.lastInject
-            ? 'Context awaiting refresh.'
-            : analysisPromise
-                ? 'Preparing context in the background.'
-                : 'Awaiting current context.';
+        : emptyGuidancePreview(state, previewOptions, previewContext);
     scratchpadText(board, 'scratchpad-request-verification', previewText, 'No fresh Tale Fairy causal context is ready.');
 
     scratchpadOptionalText(board, 'scratchpad-continuity-section', 'scratchpad-continuity-processes', analyzed ? scratchpadList(state.continuityThreads, item => item?.thread ? `${item.thread} — ${item.state}` : '', '') : '');

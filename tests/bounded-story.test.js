@@ -208,3 +208,53 @@ test('changing a consequence under its existing id still requires new evidence',
     assert.equal(rejected.state, first.state);
     assert.match(rejected.error, /requires accepted-message witnesses/);
 });
+
+test('generation asks for compact fields while admission preserves valid existing wording', async () => {
+    const raw = response();
+    raw.plan.developments[0].initiative = 'The council organizes repairs, retaining the east-bank access condition and the unfinished task of fitting the remaining support beams before reopening.';
+    assert.ok(raw.plan.developments[0].initiative.length > STORY_SCHEMA.value.properties.plan.properties.developments.items.properties.initiative.maxLength);
+    let sent;
+    const result = await storyPass({ state: emptyCampaign(), input: input(), source, generate: async (_prompt, system, schema) => {
+        sent = { system, schema };
+        return { text: JSON.stringify(raw), finishReason: 'stop' };
+    } });
+    assert.equal(result.accepted, true, result.error);
+    assert.equal(result.state.workingPlan.developments[0].initiative, raw.plan.developments[0].initiative);
+    assert.match(sent.system, /800 tokens for the ENTIRE serialized plan/);
+    assert.match(sent.system, /1200 characters of prose across the whole plan/);
+    assert.match(sent.system, /300 tokens including JSON/);
+    assert.equal(sent.schema.value.properties.plan.properties.developments.maxItems, 4);
+    assert.ok(result.budget.plan <= 1200);
+});
+
+test('four compact developments and witnessed consequences fit together without dropping ongoing work', async () => {
+    const raw = response();
+    raw.plan.developments = Array.from({ length: 4 }, (_, i) => development(`r1-task${i}`));
+    raw.plan.consequences = [{ id: 'repaired', text: 'The bridge is repaired.' }];
+    raw.observations = [{ id: 'repaired', evidence: [{ index: 0, span: 0 }] }];
+    raw.selected_material[0].subjectIds = raw.plan.developments.map(d => d.id);
+    const result = await pass(raw);
+    assert.equal(result.accepted, true, result.error);
+    assert.deepEqual(result.state.workingPlan, raw.plan);
+    assert.ok(result.budget.plan <= 1200);
+    assert.ok(result.budget.selected <= 600);
+    const next = await pass(raw, result.state);
+    assert.equal(next.accepted, true, next.error);
+    assert.equal(next.state.workingPlan.developments.length, 4);
+});
+
+test('bounded input fits repeated span labels before rejecting while preserving every witness', () => {
+    const args = { state: emptyCampaign(), reference: {}, messages: Array.from({ length: 12 }, (_, index) => ({
+        index, role: index % 2 ? 'user' : 'assistant', content: 'First condition holds. Second condition remains. Third condition is unresolved. Fourth action is optional.',
+    })) };
+    const full = storyInput(args);
+    const limit = full.inputTokens - 50;
+    const fitted = storyInput(args, limit);
+    assert.ok(fitted.inputTokens <= limit);
+    const decoded = JSON.parse(fitted.prompt);
+    assert.match(decoded.accepted_message_encoding, /exact text/);
+    delete decoded.accepted_message_encoding;
+    for (const message of decoded.accepted_messages) message.spans = message.spans.map(([span, text]) => ({ span, text }));
+    assert.deepEqual(decoded, JSON.parse(full.prompt));
+    assert.deepEqual(fitted.evidenceMessages, args.messages);
+});
