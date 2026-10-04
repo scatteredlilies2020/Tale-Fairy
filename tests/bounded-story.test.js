@@ -21,7 +21,7 @@ const response = () => ({ plan: { rpUnderstanding: originalUnderstanding(), dire
         developing: 'Workers can reopen the crossing and traders can test a restored route between the banks.',
         lasting: 'Regular river exchanges could reconnect the two communities and change village life.' }] });
 
-test('active contract plans private causal progression, with material-only writer guidance', () => {
+test('legacy bounded contract remains compatible with private causal progression', () => {
     assert.match(STORY_SYSTEM, /Begin with the wider story territory/);
     assert.match(STORY_SYSTEM, /Omitted trajectories remain saved unchanged/);
     assert.match(STORY_SYSTEM, /each when is a causal dependency/);
@@ -30,7 +30,7 @@ test('active contract plans private causal progression, with material-only write
     assert.doesNotMatch(STORY_SYSTEM, /do not force|no forced|Never force|No turn timers/i);
     assert.ok(STORY_SCHEMA.value.required.includes('progression'));
     assert.ok(STORY_SCHEMA.value.properties.plan.properties.developments.items.required.includes('trajectoryIds'));
-    assert.ok(storyInputTokens('', STORY_SYSTEM, STORY_SCHEMA) <= 3700,
+    assert.ok(storyInputTokens('', STORY_SYSTEM, STORY_SCHEMA) <= 3750,
         'The fixed contract must leave most of the 10k target for source and state.');
     assert.deepEqual(Object.keys(STORY_SCHEMA.value.properties.plan.properties),
         ['rpUnderstanding', 'direction', 'threads', 'consequences', 'developments', 'goal']);

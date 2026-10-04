@@ -1,6 +1,6 @@
-import { CampaignRuntime } from './campaign-runtime.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1';
-import { campaignReviewInterval } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1';
-import { boundedPlannerResponse, PLANNER_RESPONSE_TIMEOUT_MS } from './planner-progress.js?v=1&review-checkpoint=1';
+import { CampaignRuntime } from './campaign-runtime.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1';
+import { campaignReviewInterval } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1';
+import { boundedPlannerResponse, PLANNER_RESPONSE_TIMEOUT_MS } from './planner-progress.js?v=1&review-checkpoint=1&story-workshop=1';
 
 export const CAMPAIGN_ATTEMPT_KEY = 'taleFairyCampaignAttempt';
 const turns = messages => messages.filter(message => !message.is_user).length;
@@ -9,7 +9,8 @@ const turns = messages => messages.filter(message => !message.is_user).length;
 // reserves one source before sending, including across reloads and failures.
 export class CampaignSession {
     constructor({ read, prepare, generate, commit, fingerprint, saveAttempt, interval = () => 8, runPass,
-        onProgress = () => {}, timeoutMs = PLANNER_RESPONSE_TIMEOUT_MS }) {
+        onProgress = () => {}, timeoutMs = PLANNER_RESPONSE_TIMEOUT_MS, requestLimit = 2 }) {
+        if (![2, 3].includes(requestLimit)) throw Error('Unsupported planner request limit');
         Object.assign(this, { read, fingerprint, saveAttempt, interval });
         this.controller = null;
         this.pending = null;
@@ -47,12 +48,15 @@ export class CampaignSession {
                     }
                 };
                 guard();
-                if (this.attempt.requestCount >= 2) throw Error('Automatic planner correction limit reached.');
+                if (this.attempt.requestCount >= requestLimit) throw Error('Planner request limit reached.');
                 this.attempt = { ...this.attempt, requestCount: this.attempt.requestCount + 1,
+                    ...(correction.stage ? { stage: correction.stage, stages: [...(this.attempt.stages || []), correction.stage] } : {}),
                     ...(correction.recoveryReason ? { recoveryReason: String(correction.recoveryReason).slice(0, 1000) } : {}) };
                 await saveAttempt(this.attempt);
                 guard();
-                onProgress(correction.recoveryReason ? 'Correcting planner response automatically · request 2 of 2' : 'Preparing planner request');
+                onProgress(correction.recoveryReason ? `Correcting planner response automatically · request ${this.attempt.requestCount} of ${requestLimit}`
+                    : correction.stage === 'horizon' ? 'Preparing wider story possibilities · stage 1 of 2'
+                    : correction.stage === 'scene' ? 'Preparing current scene and selecting material · stage 2 of 2' : 'Preparing planner request');
                 const result = await boundedPlannerResponse(() => generate(prompt, system, schema,
                     { signal: this.controller.signal, snapshot: this.attemptSnapshot, attempt: this.attempt }), this.controller, timeoutMs);
                 onProgress('Validating planner response');

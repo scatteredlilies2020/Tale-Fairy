@@ -6,7 +6,8 @@ import vm from 'node:vm';
 import { generationHarness } from './helpers/generation-harness.js';
 import { defaultState, defaultPlannerState, loadPlannerState, saveState, STATE_KEY } from '../extension/state.js';
 import { buildStoryEvidence } from '../extension/analysis.js';
-import { storyInput } from '../extension/bounded-story.js';
+import { storyInput, storyPassWithRecovery, STORY_SCHEMA, STORY_SYSTEM } from '../extension/bounded-story.js';
+import { HORIZON_SCHEMA, SCENE_SCHEMA } from '../extension/story-preparation.js';
 import { campaignEvidenceMessages, campaignReviewWindow } from '../extension/campaign-evidence.js';
 import { completionText } from '../extension/completion-response.js';
 import { readEvidenceProviders, evidenceRevisionKey, registerEvidenceProvider } from '../extension/evidence-providers.js';
@@ -59,6 +60,69 @@ const design = { plan: { rpUnderstanding: originalUnderstanding({ setting: 'Orig
         lasting: 'The repertoire could support shared authorship and distinct musical identities.' }] };
 const writerDesign = () => design.selected_material.map(materialHorizons);
 
+const workshopReply = () => ({ rpUnderstanding: structuredClone(design.plan.rpUnderstanding), progression: { upsert: [{
+    id: 'r1-kitchen', focus: 'A neighborhood supper book', owner: 'Community cooks', basis: 'Proposed neighborhood activity.',
+    drive: 'Share family recipes.', experience: 'At the back-street kitchen, cooks test a supper menu and swap handwritten recipe cards.',
+    next: { when: 'Cooks compare their trials', change: 'A shared supper menu takes shape.' },
+    later: { when: 'Neighbors contribute their own recipes', change: 'A locally illustrated recipe book connects different households.' },
+}], retire: [] } });
+const sceneReply = () => {
+    const value = structuredClone(design); delete value.progression; delete value.plan.rpUnderstanding; return value;
+};
+const envelope = value => ({ choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] });
+
+test('active browser runs the workshop then scene selection and commits both only once', async () => {
+    let finish;
+    const h = browser(async ({ prompt, spec }) => {
+        if (spec.schema.name === HORIZON_SCHEMA.name) {
+            assert.equal(JSON.parse(prompt).previous_plan, undefined);
+            return envelope(workshopReply());
+        }
+        assert.equal(spec.schema.name, SCENE_SCHEMA.name);
+        assert.equal(spec.schema.value.properties.progression, undefined);
+        assert.equal(spec.schema.value.properties.plan.properties.rpUnderstanding, undefined);
+        assert.equal(JSON.parse(prompt).prepared_horizon.trajectories[0].id, 'r1-kitchen');
+        return new Promise(resolve => { finish = resolve; });
+    }, defaultState(), { split: true });
+    const work = h.scope.analyzeCampaignNow(); await settle();
+    assert.equal(h.requests.length, 2);
+    assert.equal(h.state().campaignPreparation?.revision || 0, 0);
+    assert.equal(h.prepare().payload, '');
+    finish(envelope(sceneReply())); await work;
+    assert.equal(h.state().campaignPreparation.revision, 1);
+    assert.deepEqual(h.state().campaignPreparation.workingPlan.trajectories, workshopReply().progression.upsert);
+    assert.deepEqual(Array.from(h.context.chatMetadata.taleFairyCampaignAttempt.stages), ['horizon', 'scene']);
+    assert.match(h.statuses.join('\n'), /wider story possibilities/);
+    assert.match(h.statuses.join('\n'), /selecting material/);
+    assert.doesNotMatch(h.prepare().payload, /recipe|rpUnderstanding|progression|r1-kitchen/);
+    h.scope.campaignSession = null;
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 2, 'one reservation survives reload for the whole pipeline');
+});
+
+test('active browser source change between workshop and scene prevents the second send', async () => {
+    const h = browser(async () => {
+        h.context.chat[0].mes = 'An edited branch of the story.';
+        return envelope(workshopReply());
+    }, defaultState(), { split: true });
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.state().campaignPreparation?.revision || 0, 0);
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'failed');
+});
+
+test('active browser repairs the scene without regenerating the wider preparation', async () => {
+    let scenes = 0;
+    const h = browser(async ({ spec }) => spec.schema.name === HORIZON_SCHEMA.name ? envelope(workshopReply())
+        : ++scenes === 1 ? { choices: [{ message: { content: '{bad' }, finish_reason: 'stop' }] } : envelope(sceneReply()), defaultState(), { split: true });
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 3);
+    assert.equal(h.state().campaignPreparation.revision, 1);
+    assert.deepEqual(Array.from(h.context.chatMetadata.taleFairyCampaignAttempt.stages), ['horizon', 'scene', 'scene']);
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
+    assert.deepEqual(h.state().campaignPreparation.workingPlan.trajectories, workshopReply().progression.upsert);
+});
+
 function multiDesign() {
     const value = structuredClone(design);
     value.plan.goal.push(
@@ -94,11 +158,15 @@ function plannedResponse({ prompt }) {
     return { choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] };
 }
 
-function browser(send = async args => plannedResponse(args), initialState = defaultState()) {
+function browser(send = async args => plannedResponse(args), initialState = defaultState(), { split = false } = {}) {
     const h = generationHarness([{ is_user: false, name: 'Mara', mes: 'The show ended.' }, { is_user: true, name: 'Neri', mes: 'I help pack.' }],
         initialState);
     const requests = [], shared = new Map();
     Object.assign(h.settings, { maxPromptTokens: 14000, fullReviewInterval: 3, analysisSource: 'direct', analysisModel: 'test', analysisReasoningMode: 'low' });
+    // Historical wire fixtures still exercise the shared host lifecycle and
+    // validator. Split-pipeline host tests below use the actual active imports.
+    if (!split) Object.assign(h.scope, { ownedInput: storyInput, ownedPass: storyPassWithRecovery,
+        OWNED_SCHEMA: STORY_SCHEMA, OWNED_SYSTEM: STORY_SYSTEM });
     Object.assign(h.scope, { buildStoryEvidence, campaignEvidenceMessages, campaignReviewWindow, completionText, readCampaignContinuity, readEvidenceProviders, evidenceRevisionKey,
         loadState: loadPlannerState, defaultState: defaultPlannerState,
         plannerStorage: () => ({ getItem: key => shared.get(key), setItem: (key, value) => shared.set(key, value) }),

@@ -10,6 +10,12 @@ Tale Fairy is a SillyTavern extension that prepares fitting story possibilities 
 - Keep private progression across scene changes: NPC/world interests, intermediate changes, longer-range possibilities, and the conditions connecting them. Local plans can change without erasing this preparation; trajectories change or retire explicitly. Only accessible story material reaches the writer.
 - Stay lightweight and optional. Tale Fairy is not a historical memory system and does not write story replies on its own.
 
+## How preparation works
+
+Two separate passes do different jobs. A **story workshop** prepares concrete future episodes from the RP's premise, with places, people, activities and conditional developments. A **scene selector** maintains current work and brings in only material that has a plausible route into play. It cannot shrink or overwrite the workshop's wider preparation.
+
+Both stages save together. A review normally uses two planner requests, with at most one shared correction for invalid output. Wider preparation, local work and writer material have separate sizing targets. The writer receives selected story substance, not the private planning instructions. See [the architecture and evaluation notes](docs/story-workshop-0.15.0.md).
+
 ## Install
 
 In SillyTavern, install `https://github.com/scatteredlilies2020/Tale-Fairy` from **Extensions > Install Extension**, then reload SillyTavern.

@@ -1,6 +1,16 @@
 # Bounded working plan
 
-## Active implementation
+## Current implementation
+
+As of 0.15.0, the host calls `story-preparation.js`: a wider story workshop
+followed by local selection, committed atomically. See
+[the active architecture and evaluation notes](story-workshop-0.15.0.md).
+The sections below record the evolution of the earlier bounded single-pass
+implementation. Its one-request policy and shared 1,200-token plan target are
+historical, not the current workflow. The common validator, witnesses and state
+format remain in use.
+
+## Historical single-pass implementation (through 0.14.41)
 
 `extension/index.js` now calls `bounded-story.js`. The former `story-selection.js`
 pipeline remains for legacy regression coverage and comparison, not routine host

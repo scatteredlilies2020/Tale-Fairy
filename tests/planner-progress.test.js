@@ -11,6 +11,16 @@ test('tracker distinguishes local preparation failure from provider requests and
         'Last attempt: no provider request sent · Input exceeds limit');
     assert.doesNotMatch(campaignAttemptSummary({ status: 'started', requestCount: 0 }), /still be running/);
 });
+
+test('tracker distinguishes two normal stages from a correction and a partial failure', () => {
+    const complete = campaignAttemptSummary({ status: 'complete', requestCount: 2, stages: ['horizon', 'scene'] });
+    assert.match(complete, /2 requests · wider preparation \+ scene selection/);
+    assert.doesNotMatch(complete, /correction/);
+    const failure = campaignAttemptSummary({ status: 'failed', requestCount: 1, stages: ['horizon'], error: 'offline' });
+    assert.match(failure, /1 request · wider preparation/);
+    assert.doesNotMatch(failure, /scene selection/);
+    assert.match(campaignAttemptSummary({ status: 'complete', requestCount: 3, stages: ['horizon', 'scene', 'scene'], recoveryReason: 'JSON' }), /automatic correction attempted/);
+});
 function install(scope, names) {
     for (const name of names) vm.runInContext(source.match(new RegExp(`function ${name}\\([^]*?^}`, 'm'))[0], scope);
 }

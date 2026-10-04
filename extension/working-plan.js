@@ -1,7 +1,7 @@
 // Bounded creative state, not a second continuity database. Historical evidence
 // and replaced plans belong in local archives, never in this request snapshot.
 import { conservativeTokenCount } from './token-budget.js';
-import { TRAJECTORIES_SCHEMA, validateTrajectories } from './story-progression.js?story-progression=1';
+import { TRAJECTORIES_SCHEMA, validateTrajectories } from './story-progression.js?story-progression=1&story-workshop=1';
 
 export const WORKING_PLAN_VERSION = 1;
 // Historical export names are retained for callers; these are sizing targets,

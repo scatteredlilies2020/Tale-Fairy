@@ -1,4 +1,4 @@
-import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1';
+import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1';
 import { compactPlannerReference } from './planner-reference.js?history-budget=1';
 import { compactCampaignSpeakers } from './campaign-evidence.js';
 import { witnessMessages, resolveSpanWitnesses, SPAN_WITNESS_SCHEMA } from './accepted-witnesses.js?v=0.14.34&partial-evidence=1';
@@ -6,10 +6,10 @@ import { fitEvidenceProviders } from './evidence-providers.js';
 import { SELECTED_MATERIAL_SCHEMA, validateSelectedMaterial } from './selected-material.js?v=0.14.36&rp-plot=1&story-goal=2&story-horizons=1';
 import { storyInputTokens } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1';
 import { fitPlannerContext } from './planner-context.js?soft-targets=1&story-map=1&story-goal=2';
-import { PROGRESSION_PATCH_SCHEMA, mergeProgression } from './story-progression.js?story-progression=1';
+import { PROGRESSION_PATCH_SCHEMA, mergeProgression } from './story-progression.js?story-progression=1&story-workshop=1';
 import { WORKING_PLAN_SCHEMA, WORKING_PLAN_VERSION, WORKING_PLAN_LIMIT, SELECTED_PACKET_LIMIT, RP_UNDERSTANDING_LIMIT,
-    PLANNER_INPUT_LIMIT, planTokens, plannerInputLimit, validateWorkingPlan, validateGoalSelection, workingPlanProjection } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1';
-export { PLANNER_INPUT_LIMIT, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1';
+    PLANNER_INPUT_LIMIT, planTokens, plannerInputLimit, validateWorkingPlan, validateGoalSelection, workingPlanProjection } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1';
+export { PLANNER_INPUT_LIMIT, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1';
 
 const text = maxLength => ({ type: 'string', minLength: 1, maxLength });
 const object = properties => ({ type: 'object', additionalProperties: false, required: Object.keys(properties), properties });
@@ -42,6 +42,7 @@ responseShape.properties.plan.properties.rpUnderstanding.required.push('storySco
 // Admission and saved-state compatibility keep the original field ceilings.
 // Drafting needs much smaller allowances: those ceilings are not a budget to
 // fill independently, and JSON keys/ids consume part of the shared token cap.
+export const STORY_RESPONSE_SCHEMA = { name: 'tale_fairy_story_response', value: responseShape };
 export const STORY_SCHEMA = { name: 'tale_fairy_story_progression_v6', value: structuredClone(responseShape) };
 const draftPlan = STORY_SCHEMA.value.properties.plan.properties;
 draftPlan.rpUnderstanding.properties.storyScope.maxLength = 110;
@@ -137,7 +138,8 @@ export function nextPlanRevision(state) {
 }
 
 export function storyInput({ reference, state, messages, playerNames = [], previousUsable = false,
-    verifiedPlanEvidence = {}, evidence, continuity, continuityTokens = 1000, reviewedMessageCount = 0, resetPlan = false }, maxTokens = PLANNER_INPUT_LIMIT) {
+    verifiedPlanEvidence = {}, evidence, continuity, continuityTokens = 1000, reviewedMessageCount = 0, resetPlan = false }, maxTokens = PLANNER_INPUT_LIMIT,
+    { system = STORY_SYSTEM, schema = STORY_SCHEMA, project = value => value } = {}) {
     const limit = plannerInputLimit(maxTokens);
     const migration = resetPlan || needsEventReframe(state);
     const trustedEvidence = previousUsable && !resetPlan ? verifiedPlanEvidence : {};
@@ -161,7 +163,8 @@ export function storyInput({ reference, state, messages, playerNames = [], previ
             omitted_context: 'Only supplied accepted spans prove new outcomes. Earlier history stays local; absence from this request is not resolution.' },
         ...(Object.keys(speakers.defaults).length ? { default_speaker_name_by_role: speakers.defaults } : {}),
         accepted_messages: witnessMessages(speakers.messages) };
-    const measure = value => storyInputTokens(JSON.stringify(value), STORY_SYSTEM, STORY_SCHEMA);
+    payload = project(payload);
+    const measure = value => storyInputTokens(JSON.stringify(value), system, schema);
     payload = fitPlannerContext(payload, measure, limit);
     const external = fitEvidenceProviders(evidence ?? (continuity ? [{ ...continuity, provider: 'continuity-memory' }] : []),
         Math.min(1000, Math.max(0, Number(continuityTokens) || 0)), value => measure({ ...payload, external_evidence: value }) <= limit);
@@ -178,15 +181,18 @@ export function storyInput({ reference, state, messages, playerNames = [], previ
         migration: { required: migration, omittedDrafts: previous.omittedDrafts || 0 } };
 }
 
-export async function storyPass({ state, input, source, generate }) {
+export async function storyPass({ state, input, source, generate,
+    system = STORY_SYSTEM, schema = STORY_SCHEMA, completeResponse = value => value }) {
     let result;
     let received = false;
     const basisRevision = state.revision;
     try {
-        result = await generate(input.prompt, STORY_SYSTEM, STORY_SCHEMA);
+        result = await generate(input.prompt, system, schema);
         received = true;
         if (['length', 'max_tokens', 'max_output_tokens'].includes(String(result.finishReason).toLowerCase())) throw Error('Truncated working-plan response');
-        const raw = JSON.parse(result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
+        let raw = JSON.parse(result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
+        check(raw, schema === STORY_SCHEMA ? responseShape : schema.value);
+        raw = completeResponse(raw);
         check(raw, responseShape);
         raw.plan.trajectories = mergeProgression(input.previousPlan.trajectories || [], raw.progression,
             input.newIdPrefix, check, input.playerNames);

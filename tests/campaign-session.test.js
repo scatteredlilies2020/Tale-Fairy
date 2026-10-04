@@ -18,6 +18,20 @@ function fixture(generate = async () => reply) {
     return { current, options, session: new CampaignSession(options), calls: () => calls, commits: () => commits };
 }
 
+test('two-stage planning has a hard three-request ceiling including all repairs', async () => {
+    const f = fixture();
+    const session = new CampaignSession({ ...f.options, requestLimit: 3, runPass: async ({ generate }) => {
+        for (const stage of ['horizon', 'horizon', 'scene', 'scene']) await generate('{}', 'system', {}, { stage });
+        throw Error('Fourth request must never reach the provider');
+    } });
+    const result = await session.request();
+    assert.equal(result.accepted, false);
+    assert.match(result.error, /request limit/);
+    assert.equal(f.calls(), 3);
+    assert.equal(f.commits(), 0);
+    assert.deepEqual(f.current.attempt.stages, ['horizon', 'horizon', 'scene']);
+});
+
 test('persisted cadence survives reload and does not plan every reply or replacement', async () => {
     const f = fixture();
     assert.equal((await f.session.request()).accepted, true);
