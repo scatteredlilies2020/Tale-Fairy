@@ -12,13 +12,19 @@ export const OUTLOOK_REVIEW_SCHEMA = object({
 
 export function outlookRoute(plan, outlook) {
     const opening = plan.openings?.find(row => row.trajectoryId === outlook.trajectoryId && row.access.route !== 'none');
+    if (plan.futureEntryVersion === 1) {
+        return opening?.futureEntry ? { id: opening.trajectoryId, futureEntry: opening.futureEntry, access: opening.access } : null;
+    }
     if (opening) return { id: opening.trajectoryId, circumstance: opening.circumstance, access: opening.access };
     const local = plan.developments.find(row => row.trajectoryIds?.includes(outlook.trajectoryId) && row.access.route !== 'none');
     return local ? { id: local.id, access: local.access } : null;
 }
 
 export function validateOutlook(plan, check) {
-    if (plan.outlook === undefined) return; // Historical saved plans.
+    if (plan.outlook === undefined) {
+        if (plan.futureEntryVersion === 1) throw Error('Versioned future entries require an explicit outlook');
+        return; // Historical saved plans.
+    }
     check(plan.outlook, OUTLOOK_SCHEMA, '$.plan.outlook');
     if (new Set(plan.outlook.map(row => row.trajectoryId)).size !== plan.outlook.length) throw Error('Duplicate selected outlook');
     for (const outlook of plan.outlook) {
@@ -54,9 +60,15 @@ export function reviewOutlook(previous, plan, review, check) {
 }
 
 export function composeOutlookMaterial(current, plan) {
+    if (plan.futureEntryVersion === 1 && current.length) throw Error('Current scene material must remain private');
     if (!plan.outlook?.length) return structuredClone(current);
     const routes = plan.outlook.map(outlook => outlookRoute(plan, outlook));
     if (routes.some(route => !route)) throw Error('Selected outlook has no accessible route');
+    if (plan.futureEntryVersion === 1) {
+        return [{ subjectIds: routes.map(route => route.id),
+            available: routes.map(route => `${route.futureEntry.prerequisite}\n${route.futureEntry.possibility}`).join('\n\n'),
+            ...outlookHorizons(plan) }];
+    }
     const entry = current[0];
     if (routes.some(route => !route.circumstance && !entry?.subjectIds.includes(route.id))) {
         throw Error('A locally tracked outlook needs its entry and prerequisites in selected current material');
@@ -77,6 +89,13 @@ export const outlookHorizons = plan => ({
 export function validateOutlookSelection(plan, material) {
     if (plan.outlook === undefined) return;
     const entry = material?.[0];
+    if (plan.futureEntryVersion === 1) {
+        const composed = composeOutlookMaterial([], plan);
+        if (material?.length !== composed.length || entry && (JSON.stringify(entry.subjectIds) !== JSON.stringify(composed[0].subjectIds)
+            || entry.available !== composed[0].available)) {
+            throw Error('Writer entry must match only the selected public future entries');
+        }
+    }
     if (plan.outlook.length) {
         const horizons = outlookHorizons(plan);
         if (plan.outlook.some(outlook => !entry?.subjectIds.includes(outlookRoute(plan, outlook)?.id))

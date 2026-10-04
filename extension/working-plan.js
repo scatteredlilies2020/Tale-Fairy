@@ -2,7 +2,7 @@
 // and replaced plans belong in local archives, never in this request snapshot.
 import { conservativeTokenCount } from './token-budget.js';
 import { TRAJECTORIES_SCHEMA, validateTrajectories, THROUGHLINE_SCHEMA, validateThroughline, STORY_LIFE_SCHEMA, validateStoryLife } from './story-progression.js?story-progression=1&story-workshop=1&story-throughline=1&story-life=1';
-import { OUTLOOK_SCHEMA, validateOutlook, validateOutlookSelection } from './story-outlook.js?story-outlook=1&story-throughline=1&story-life=1';
+import { OUTLOOK_SCHEMA, validateOutlook, validateOutlookSelection } from './story-outlook.js?story-outlook=1&story-throughline=1&story-life=1&future-entry=1';
 
 export const WORKING_PLAN_VERSION = 1;
 // Historical export names are retained for callers; these are sizing targets,
@@ -74,6 +74,13 @@ WORKING_PLAN_SCHEMA.properties.openings = list(object({
     circumstance: text(700),
     access: structuredClone(WORKING_PLAN_SCHEMA.properties.developments.items.properties.access),
 }), 2);
+// Additive versioning keeps historical plans and regeneration packets readable.
+// Current scene grounding and access reasoning never supply the new surface.
+WORKING_PLAN_SCHEMA.properties.futureEntryVersion = { type: 'integer', enum: [1] };
+WORKING_PLAN_SCHEMA.properties.openings.items.properties.futureEntry = object({
+    prerequisite: { ...text(300), description: 'Only the fictional time, place or participation condition needed to encounter this future. Eventual access does not mean it happens now.' },
+    possibility: { ...text(700), description: 'Concrete forthcoming encounter, undertaking or changed circumstance added beyond accepted play. Not current status, unfinished immediate work, access reasoning or writer instructions.' },
+});
 WORKING_PLAN_SCHEMA.properties.outlook = OUTLOOK_SCHEMA;
 
 export function playableDevelopments(plan) {
@@ -101,6 +108,10 @@ export function validateWorkingPlan(plan, check, playerNames = []) {
         if (new Set(rows.map(row => row.id)).size !== rows.length) throw Error('Duplicate working-plan id');
     }
     const openings = plan.openings || [];
+    if (plan.futureEntryVersion === 1 && openings.some(row => !row.futureEntry
+        || !row.futureEntry.prerequisite.trim() || !row.futureEntry.possibility.trim())) {
+        throw Error('Versioned openings require a separate, nonempty future entry');
+    }
     const openingIds = openings.map(row => row.trajectoryId);
     if (new Set(openingIds).size !== openings.length
         || plan.developments.some(row => openingIds.includes(row.id))) throw Error('Duplicate playable subject id');

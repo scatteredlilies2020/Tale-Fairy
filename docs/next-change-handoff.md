@@ -1,6 +1,8 @@
 # Tale Fairy: next-change handoff
 
-**Status: proposal for review — not implemented.**
+**Status: implemented locally in v0.16.1 — see [verification and remaining limitations](future-entries-0.16.1.md).**
+
+The proposal and baseline evidence below are retained as the original handoff.
 
 This file is self-contained and safe to transfer without chat logs, settings, or credentials.
 
@@ -125,4 +127,4 @@ After review and authorization to implement:
 5. If publishing is authorized, synchronize the intended main/testing branches and update the installed ST extension through Git. Make manual code edits only in the main repository, not the installed extension checkout.
 6. Verify the loaded browser runtime after refresh. Report **prepared**, **included in an outgoing request**, and **confirmed against a returned reply** as different evidence levels.
 
-**Documentation only:** publishing this handoff does not implement the proposal, change presets, or generate a story reply. Review the proposal before implementation.
+**Historical handoff:** the original handoff commit was documentation only. The v0.16.1 implementation and its checks are recorded separately above; no actual story reply has been generated to prove pacing.

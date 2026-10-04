@@ -70,7 +70,7 @@ const sceneReply = () => {
     const value = structuredClone(design); delete value.progression; delete value.plan.rpUnderstanding;
     value.selected_material = [];
     value.outlook = { action: 'clear', reason: 'No selected future in this host-lifecycle fixture.', material: [] };
-    value.plan.openings = []; return value;
+    value.plan.openings = []; value.plan.futureEntryVersion = 1; return value;
 };
 const envelope = value => ({ choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] });
 
@@ -229,7 +229,7 @@ function outlookResponse(args) {
         if (args.spec.schema.name === HORIZON_SCHEMA.name) return response;
         const input = JSON.parse(args.prompt), value = JSON.parse(response.choices[0].message.content);
         const id = input.prepared_horizon.trajectories[0].id;
-        value.plan.openings = [{ trajectoryId: id, circumstance: 'If the ensemble visits the neighborhood kitchen, the cooks have handwritten supper cards to compare.',
+        value.plan.openings = [{ trajectoryId: id, futureEntry: { prerequisite: 'If the ensemble later visits the neighborhood kitchen,', possibility: 'the cooks have handwritten supper cards to compare.' }, circumstance: 'If the ensemble visits the neighborhood kitchen, the cooks have handwritten supper cards to compare.',
             access: { route: 'local', basis: 'PRIVATE route reasoning: a later visit to the nearby kitchen.' } }];
         value.plan.goal.push({ subjectId: id, scope: 'long-term', aim: 'Share the neighborhood recipes.', reachedWhen: 'The neighbors exchange their illustrated supper book.' });
         value.outlook = input.previous_outlook.length ? { action: 'keep', reason: 'Quiet packing does not change the supper-book possibility.', material: [] }
@@ -300,7 +300,11 @@ for (const change of ['edit', 'reference', 'clear', 'legacy']) test(`expired fut
         if (change === 'clear') {
             state.campaignPreparation.workingPlan.outlook = [];
             state.campaignPreparation.selectedMaterial = [];
-        } else delete state.campaignPreparation.workingPlan.outlook;
+        } else {
+            delete state.campaignPreparation.workingPlan.outlook;
+            delete state.campaignPreparation.workingPlan.futureEntryVersion;
+            for (const opening of state.campaignPreparation.workingPlan.openings) delete opening.futureEntry;
+        }
         assert.equal(validCampaignState(state.campaignPreparation), true);
         h.context.chatMetadata = saveState(h.context.chatMetadata, state);
     }

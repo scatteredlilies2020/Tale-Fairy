@@ -7,6 +7,7 @@ import { emptyCampaign, campaignPayload, campaignPayloadBudget, validCampaignSta
 import { defaultPlannerState, saveState, loadPlannerState } from '../extension/state.js';
 import { storyInputTokens } from '../extension/story-budget.js';
 import { originalUnderstanding } from './helpers/rp-fixtures.js';
+import { composeOutlookMaterial } from '../extension/story-outlook.js';
 import { workingPlanProjection } from '../extension/working-plan.js';
 
 const messages = [{ index: 0, role: 'assistant', content: 'The council is repairing the village bridge.' },
@@ -38,7 +39,7 @@ async function stuck() {
 }
 const horizon = () => ({ rpUnderstanding: understanding(), storyLife: storyLife(), throughline: [], progression: { upsert: [structuredClone(opportunity)], retire: [{ id: 'r1-repair', reason: 'Local repair remains local work.' }] } });
 const clearOutlook = () => ({ action: 'clear', reason: 'No future selected for this bounded test.', material: [] });
-const scene = () => ({ plan: { ...local(), openings: [] }, exits: [], observations: [], selected_material: [], outlook: clearOutlook() });
+const scene = () => ({ plan: { ...local(), openings: [], futureEntryVersion: 1 }, exits: [], observations: [], selected_material: [], outlook: clearOutlook() });
 const inputFor = (state, extra = {}) => preparationInput({ reference, state, messages, playerNames: ['Ren'], previousUsable: true, ...extra });
 async function run(state, responses = [horizon(), scene()], extra = {}) {
     const calls = [], input = inputFor(state, extra);
@@ -220,6 +221,8 @@ function openedScene() {
     const value = scene();
     value.plan.openings = [{ trajectoryId: opportunity.id,
         circumstance: 'At tea, a visiting orchard cook offers warm smoked pears and describes Cinderwick’s communal oven.',
+        futureEntry: { prerequisite: 'At a later voluntary visit to the northern tea stall,',
+            possibility: 'a visiting orchard cook shares smoked pears and a map to Cinderwick’s communal oven.' },
         access: { route: 'contact', basis: 'A proposed traveler sharing the village tea table; a visit north remains optional.' } }];
     value.plan.goal.push({ subjectId: opportunity.id, scope: 'near-term', aim: 'Share the orchard kitchen’s preservation craft.',
         reachedWhen: 'Visitors have compared preserves and tried the pebble charm, or left it aside.' });
@@ -238,7 +241,7 @@ test('two openings fit beside four unfinished local slots and reach the writer w
     const value = openedScene(); value.plan.developments = structuredClone(state.workingPlan.developments);
     const wider = horizon();
     wider.progression.upsert.push({ ...structuredClone(opportunity), id: 'r2-upland', focus: 'Upland winter kitchens' });
-    value.plan.openings.push({ trajectoryId: 'r2-upland', circumstance: 'The orchard cook describes a later road toward the upland kitchens.',
+    value.plan.openings.push({ trajectoryId: 'r2-upland', futureEntry: { prerequisite: 'If they later reach the upland village,', possibility: 'the winter cooks have different local fruit to preserve.' }, circumstance: 'The orchard cook describes a later road toward the upland kitchens.',
         access: { route: 'information', basis: 'He has traveled that road; reaching the kitchens would take another journey.' } });
     const result = await run(state, [wider, value]);
     assert.equal(result.accepted, true, result.error);
@@ -288,6 +291,7 @@ test('five routine reviews update the present without shrinking, rerolling or en
     for (let n = 0; n < 5; n++) {
         const value = keepScene(); value.plan.developments[0].initiative = `The cook sets out cup ${n + 1}.`;
         value.plan.openings[0].circumstance = `If the travelers later visit the northbound tea stall, the orchard cook has smoked pears and a map to Cinderwick. Visit ${n + 1} remains only a possibility.`;
+        value.plan.openings[0].futureEntry.possibility = value.plan.openings[0].circumstance;
         const result = await run(state, [unchangedHorizon(), value]);
         assert.equal(result.accepted, true, result.error);
         assert.equal(result.calls.length, 2);
@@ -314,7 +318,7 @@ for (const invalid of ['missing-route', 'private-route', 'retired', 'revised', '
         if (invalid === 'private-route') value.plan.openings[0].access.route = 'none';
         if (invalid === 'retired') wider.progression.retire = [{ id: opportunity.id, reason: 'The player declined the trip.' }];
         if (invalid === 'revised') wider.progression.upsert = [{ ...opportunity, experience: 'A newly changed premise.' }];
-        if (invalid === 'missing-prior') { delete state.workingPlan.outlook; }
+        if (invalid === 'missing-prior') { delete state.workingPlan.outlook; delete state.workingPlan.futureEntryVersion; }
         if (invalid === 'keep-with-material') value.outlook.material = openedScene().outlook.material;
         const result = await run(state, [wider, value, value]);
         assert.equal(result.accepted, false);
@@ -385,7 +389,7 @@ test('local outlook access cannot silently copy an unselected private initiative
     value.selected_material = [];
     const result = await run(state, [unchangedHorizon(), value, value]);
     assert.equal(result.accepted, false);
-    assert.match(result.error, /entry and prerequisites/);
+    assert.match(result.error, /renewed accessible opening/);
 });
 
 test('untrusted and rebuilt context never inherits a previous selected future', async () => {
@@ -437,7 +441,7 @@ for (const mainAccess of ['local', 'none']) test(`independent future selection r
     wider.progression.upsert.push({ ...structuredClone(opportunity), id: 'r2-supper', focus: 'A separate neighborhood supper' });
     const side = openedScene();
     side.plan.openings[0].access.route = mainAccess;
-    side.plan.openings.push({ trajectoryId: 'r2-supper', circumstance: 'The neighboring inn is sharing supper recipes.',
+    side.plan.openings.push({ trajectoryId: 'r2-supper', futureEntry: { prerequisite: 'At a later visit to the neighboring inn,', possibility: 'the inn cooks compare their supper recipes.' }, circumstance: 'The neighboring inn is sharing supper recipes.',
         access: { route: 'local', basis: 'An independent evening offer.' } });
     side.plan.goal.push({ subjectId: 'r2-supper', scope: 'side-thread', aim: 'Compare recipes.', reachedWhen: 'The supper finishes.' });
     side.outlook.material[0].trajectoryId = 'r2-supper';
@@ -460,7 +464,7 @@ function twoFutures() {
     wider.throughline = throughline();
     wider.progression.upsert.push({ ...structuredClone(opportunity), id: 'r2-music', focus: 'A traveling songbook',
         experience: 'Two inn musicians collect different verses along the road.' });
-    value.plan.openings.push({ trajectoryId: 'r2-music', circumstance: 'At the next inn, two musicians are trading verses from their travels.',
+    value.plan.openings.push({ trajectoryId: 'r2-music', futureEntry: { prerequisite: 'At the next inn,', possibility: 'two musicians are trading verses from their travels.' }, circumstance: 'At the next inn, two musicians are trading verses from their travels.',
         access: { route: 'contact', basis: 'A possible later stop, not travel already taken.' } });
     value.outlook.material.push({ trajectoryId: 'r2-music', developing: 'If they share songs at the inn, different regional verses can become a shared songbook.',
         lasting: 'If the collection travels, the musicians can discover the same song transformed by communities along the road.' });
@@ -598,4 +602,80 @@ test('changed-reference ideas go only to the workshop, without restoring local f
         const excluded = inputFor(old, { previousUsable: false, reconsiderHorizon: old.workingPlan, ...extra });
         assert.equal(JSON.parse(excluded.horizonInput.prompt).reconsider_horizon, undefined);
     }
+});
+
+
+test('a private opening recap cannot cross the actual preparation and writer composition boundary', async () => {
+    const value = openedScene();
+    value.plan.openings[0].circumstance = 'PRIVATE-RECAP: everyone remains at the bridge, checking planks and discussing the next repair.';
+    value.plan.openings[0].access.basis = 'PRIVATE-ACCESS: the bridge and tea table are nearby.';
+    value.plan.developments[0].initiative = 'PRIVATE-TASK: fit the remaining planks.';
+    const result = await run(await stuck(), [horizon(), value]);
+    assert.equal(result.accepted, true, result.error);
+    const packet = campaignPayload(result.state);
+    assert.doesNotMatch(packet, /PRIVATE-|checking planks|next repair|remaining planks/);
+    assert.match(packet, /later voluntary visit/);
+    assert.match(packet, /map to Cinderwick/);
+    assert.equal(result.state.workingPlan.openings[0].circumstance, value.plan.openings[0].circumstance);
+    assert.equal(result.state.workingPlan.developments[0].initiative, value.plan.developments[0].initiative);
+    assert.deepEqual(result.state.workingPlan.consequences, []);
+    assert.equal(result.calls.length, 2);
+});
+
+for (const missing of ['version', 'entry', 'prerequisite', 'possibility']) test(`new preparation cannot fall back to private prose when ${missing} is missing`, async () => {
+    const invalid = openedScene();
+    if (missing === 'version') delete invalid.plan.futureEntryVersion;
+    else if (missing === 'entry') delete invalid.plan.openings[0].futureEntry;
+    else delete invalid.plan.openings[0].futureEntry[missing];
+    invalid.plan.openings[0].circumstance = 'PRIVATE-RECAP: inspect the current scene.';
+    const state = await stuck(), before = structuredClone(state);
+    const rejected = await run(state, [horizon(), invalid, invalid]);
+    assert.equal(rejected.accepted, false);
+    assert.equal(rejected.calls.length, 3);
+    assert.equal(JSON.stringify(state), JSON.stringify(before));
+    const repaired = await run(state, [horizon(), invalid, openedScene()]);
+    assert.equal(repaired.accepted, true, repaired.error);
+    assert.equal(repaired.calls.length, 3);
+    assert.equal(repaired.recovery.status, 'complete');
+    assert.doesNotMatch(campaignPayload(repaired.state), /PRIVATE-RECAP/);
+});
+
+test('versioned saved guidance must match its public entries and cannot reopen a private local route', async () => {
+    const initial = await run(await stuck(), [horizon(), openedScene()]);
+    assert.equal(initial.accepted, true, initial.error);
+    for (const damage of ['recap', 'private-route', 'missing-entry', 'missing-opening', 'missing-outlook', 'empty-entry']) {
+        const copy = structuredClone(initial.state);
+        if (damage === 'recap') copy.selectedMaterial[0].available = copy.workingPlan.openings[0].circumstance;
+        if (damage === 'private-route') copy.workingPlan.openings[0].access.route = 'none';
+        if (damage === 'missing-entry') delete copy.workingPlan.openings[0].futureEntry;
+        if (damage === 'missing-outlook') delete copy.workingPlan.outlook;
+        if (damage === 'empty-entry') copy.workingPlan.openings[0].futureEntry.possibility = ' ';
+        if (damage === 'missing-opening') {
+            copy.workingPlan.openings = [];
+            copy.workingPlan.developments[0].trajectoryIds = [opportunity.id];
+        }
+        assert.equal(validCampaignState(copy), false, damage);
+    }
+    assert.throws(() => composeOutlookMaterial([{ subjectIds: [opportunity.id], available: 'Immediate task' }], initial.state.workingPlan), /remain private/);
+});
+
+test('historical saved plans and their exact writer packets remain readable until a successful review', async () => {
+    const result = await run(await stuck(), [horizon(), openedScene()]);
+    const legacy = structuredClone(result.state);
+    delete legacy.workingPlan.futureEntryVersion;
+    for (const opening of legacy.workingPlan.openings) delete opening.futureEntry;
+    legacy.selectedMaterial = composeOutlookMaterial([], legacy.workingPlan);
+    assert.equal(validCampaignState(legacy), true);
+    const packet = campaignPayload(legacy);
+    const saved = saveState({}, { ...defaultPlannerState(), campaignPreparation: legacy });
+    const restored = loadPlannerState(JSON.parse(JSON.stringify(saved))).campaignPreparation;
+    assert.deepEqual(restored, legacy);
+    assert.equal(campaignPayload(restored), packet);
+    const updated = await run(restored, [unchangedHorizon(), keepScene()]);
+    assert.equal(updated.accepted, true, updated.error);
+    assert.equal(updated.state.workingPlan.futureEntryVersion, 1);
+    assert.deepEqual(updated.state.workingPlan.outlook, legacy.workingPlan.outlook);
+    assert.deepEqual(updated.state.archive.at(-1).selectedMaterial, legacy.selectedMaterial);
+    assert.deepEqual(updated.state.archive.at(-1).workingPlan, legacy.workingPlan);
+    assert.match(campaignPayload(updated.state), /later voluntary visit/);
 });
