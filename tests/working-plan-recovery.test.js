@@ -8,9 +8,9 @@ import { originalUnderstanding } from './helpers/rp-fixtures.js';
 const source = { chatId: 'story', referenceHash: 'reference', fingerprint: 'accepted', messageCount: 1 };
 const draft = () => ({ plan: { rpUnderstanding: originalUnderstanding(), direction: 'Travel between villages.', threads: 'Find a place to belong.', consequences: [],
     goal: [{ subjectId: 'r1-bridge', scope: 'near-term', aim: 'Reopen the village crossing.', reachedWhen: 'Workers finish the crossing or abandon repairs.' }],
-    developments: [{ id: 'r1-bridge', kind: 'arc', owner: 'Council', control: 'npc', question: 'Repair the crossing?',
+    developments: [{ id: 'r1-bridge', kind: 'arc', owner: 'Council', control: 'npc', trajectoryIds: [], question: 'Repair the crossing?',
         initiative: 'Workers fit new planks.', resolution: 'The bridge reopens or repairs cease.', beyond: 'Trade can resume.',
-        access: { route: 'local', basis: 'The workers are here.' } }] }, exits: [], observations: [],
+        access: { route: 'local', basis: 'The workers are here.' } }] }, progression: { upsert: [], retire: [] }, exits: [], observations: [],
     selected_material: [{ subjectIds: ['r1-bridge'], available: 'Workers bring planks to the crossing.',
         developing: 'The crew can test the repaired span and traders can resume their route.',
         lasting: 'A dependable crossing could restore regular exchange between the villages.' }] });

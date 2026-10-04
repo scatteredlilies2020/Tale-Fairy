@@ -1,13 +1,13 @@
 import { sha256 } from '/lib.js';
-import { campaignAuthorInstructions, campaignPayloadBudget, campaignUsable, campaignMaterialUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1';
-import { storyInput as ownedInput, storyPassWithRecovery as ownedPass, nextPlanRevision, STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1';
+import { campaignAuthorInstructions, campaignPayloadBudget, campaignUsable, campaignMaterialUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1';
+import { storyInput as ownedInput, storyPassWithRecovery as ownedPass, nextPlanRevision, STORY_SCHEMA as OWNED_SCHEMA, STORY_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1';
 import { fitStoryInputBudget } from './story-budget.js?follow-through=1&compaction=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1';
 import { readCampaignContinuity } from './campaign-continuity.js';
 // Keep the public registration URL stable so external adapters share this registry.
 import { readEvidenceProviders, evidenceRevisionKey } from './evidence-providers.js';
 import { campaignEvidenceMessages, campaignReviewWindow } from './campaign-evidence.js';
-import { campaignReviewedCount } from './campaign-review.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1';
-import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.36&token-budget=1&rp-plot=1&progress=1&follow-through=1&working-plan=1&recovery=1&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1';
+import { campaignReviewedCount } from './campaign-review.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1';
+import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.36&token-budget=1&rp-plot=1&progress=1&follow-through=1&working-plan=1&recovery=1&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1';
 import { campaignAttemptSummary } from './planner-progress.js?v=1&recovery=1&review-checkpoint=1';
 import { finalizeNotebookCompactions, writeNotebookArchive } from './notebook-compaction.js?v=0.14.22';
 import { eventSource, event_types, extension_prompt_roles, extension_prompt_types, generateRaw, Generate, setExtensionPrompt, getRequestHeaders, getCharacterCardFields, saveSettingsDebounced } from '/script.js';
@@ -16,8 +16,8 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, buildStoryEvidence, storyEvidenceQuery, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.22&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultPlannerState as defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadPlannerState as loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.23&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1';
+import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, buildStoryEvidence, storyEvidenceQuery, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.22&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultPlannerState as defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadPlannerState as loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.23&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1';
 import { isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.22';
 import { selectSituationalOpenings } from './situations.js?v=0.13.9';
 import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.14.22';
@@ -42,19 +42,19 @@ import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } f
 import { hasUsableCausalContext } from './causal-context.js?v=0.14.22';
 import { formatHiddenMotives } from './scratchpad-format.js?v=0.13.9';
 import { WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA } from './world-planner.js?v=0.14.22';
-import { buildWorldPlannerPrompt } from './analysis.js?v=0.14.22&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1';
+import { buildWorldPlannerPrompt } from './analysis.js?v=0.14.22&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1';
 import { defaultPreparedWorld, preparedWorldUsable, unchangedSourcePrefix, stampPreparedWorld } from './prepared-world.js?v=0.14.22';
 import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.9';
-import { canRetainSuccessfulPlan, createSafetyFallbackState } from './fallback-direction.js?v=0.14.22&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1';
+import { canRetainSuccessfulPlan, createSafetyFallbackState } from './fallback-direction.js?v=0.14.22&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1';
 import { classifyAssistantReply } from './response-usability.js?v=0.13.9';
-import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, legacyPlotInputKey, migrateCampaignBudgetKeys, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.34&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1';
+import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, legacyPlotInputKey, migrateCampaignBudgetKeys, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.34&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1';
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 import { ActivatedStoryContext, readHostStoryEvidence } from './rp-context.js';
 
 const activatedStoryContext = new ActivatedStoryContext();
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.14.39';
+const RUNTIME_VERSION = '0.14.40';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -2941,6 +2941,9 @@ function workingPlanSummary(preparation) {
             ...(plan.rpUnderstanding.independentSource ? [`Independent activity: ${plan.rpUnderstanding.independentSource}`] : []),
             `Uncertainty: ${plan.rpUnderstanding.uncertainty}`,
         ].join('\n') : 'RP UNDERSTANDING · Not yet analyzed; added on the next planning pass.',
+        plan.trajectories?.length ? `PRIVATE PROGRESSION (not sent to the writer)\n${plan.trajectories.map(t =>
+            `[${t.id}] ${t.focus}\n${t.owner}: ${t.drive}\nBasis: ${t.basis}\nIntermediate: ${t.next.change}\nDepends on: ${t.next.when}\nLonger range: ${t.later.change}\nDepends on: ${t.later.when}`).join('\n\n')}`
+            : plan.trajectories ? 'PRIVATE PROGRESSION · No continuing trajectory prepared.' : 'PRIVATE PROGRESSION · Added on the next planning pass.',
         plan.goal?.length ? `PRIVATE STORY GOALS (not sent to the writer)\n${plan.goal.map(goal =>
             `[${goal.scope || 'legacy goal'} · ${preparation.selectedMaterial?.some(entry => entry.subjectIds.includes(goal.subjectId)) ? 'selected' : 'held for later'}] ${goal.aim}\nReached when: ${goal.reachedWhen}`).join('\n\n')}`
             : plan.goal ? 'STORY GOALS · Unsteered play; no goals selected.' : 'STORY GOALS · Chosen on the next planning pass.',

@@ -10,35 +10,26 @@ import { originalUnderstanding } from './helpers/rp-fixtures.js';
 const messages = [{ index: 0, role: 'assistant', content: 'The bridge is repaired. The village celebrates.' },
     { index: 1, role: 'user', name: 'Ren', content: 'I stay for dinner.' }];
 const source = { chatId: 'story', referenceHash: 'reference', fingerprint: 'accepted', messageCount: 2 };
-const development = (id = 'r1-bridge') => ({ id, kind: 'arc', owner: 'Village council', control: 'npc',
+const development = (id = 'r1-bridge') => ({ id, kind: 'arc', owner: 'Village council', control: 'npc', trajectoryIds: [],
     question: 'Can the damaged bridge reopen?', initiative: 'The council organizes the repairs.',
     resolution: 'The crossing is usable or the repair attempt is abandoned.', beyond: 'A working crossing restores trade.',
     access: { route: 'local', basis: 'The village is here; repairs are visible.' } });
 const response = () => ({ plan: { rpUnderstanding: originalUnderstanding(), direction: 'A wandering life across distinct communities.', threads: 'Ren hopes to become a trusted guide.',
     goal: [{ subjectId: 'r1-bridge', scope: 'near-term', aim: 'Bring the village together over its reopened crossing.', reachedWhen: 'The council holds the first shared crossing.' }],
-    consequences: [], developments: [development()] }, exits: [], observations: [],
+    consequences: [], developments: [development()] }, progression: { upsert: [], retire: [] }, exits: [], observations: [],
     selected_material: [{ subjectIds: ['r1-bridge'], available: 'The council brings repaired planks to the crossing.',
         developing: 'Workers can reopen the crossing and traders can test a restored route between the banks.',
         lasting: 'Regular river exchanges could reconnect the two communities and change village life.' }] });
 
-test('active contract tailors opportunities without adding a memory store or a conflict quota', () => {
-    assert.match(STORY_SYSTEM, /Infer expected experiences from the supplied setting, characters, player premise and established departures/);
-    assert.match(STORY_SYSTEM, /examples, not required events or genre presets/);
-    assert.match(STORY_SYSTEM, /Ordinary pleasures count; conflict, combat and escalation are not defaults/);
-    assert.match(STORY_SYSTEM, /Battles belong where this RP supports them/);
-    assert.match(STORY_SYSTEM, /relevant past events.*not to resurrect every old lead/);
-    assert.match(STORY_SYSTEM, /Invent compatible opportunities without requiring prior mention/);
-    assert.match(STORY_SYSTEM, /current scene governs access, not the limits/);
-    assert.match(STORY_SYSTEM, /not today's agenda; retain that scope across scene changes/);
-    assert.match(STORY_SYSTEM, /Reframe a scene-bound previous direction from the RP basis/);
-    assert.match(STORY_SYSTEM, /without requiring a challenge, reward or player participation/);
-    assert.match(STORY_SYSTEM, /Invitations are valid when backed by something to experience/);
-    assert.match(STORY_SYSTEM, /storyScope names the particular setting\/era\/premise's wider story territory/);
-    assert.match(STORY_SYSTEM, /independentSource names one plausible NPC, routine, institution or world force/);
-    assert.match(STORY_SYSTEM, /keep one concrete off-scene possibility in private developments/);
-    assert.match(STORY_SYSTEM, /unrelated opportunities need new ids/);
-    assert.match(STORY_SYSTEM, /participation and outcomes stay open/);
-    assert.doesNotMatch(STORY_SYSTEM, /not another invitation/);
+test('active contract plans private causal progression, with material-only writer guidance', () => {
+    assert.match(STORY_SYSTEM, /Begin with the wider story territory/);
+    assert.match(STORY_SYSTEM, /Omitted trajectories remain saved unchanged/);
+    assert.match(STORY_SYSTEM, /each when is a causal dependency/);
+    assert.match(STORY_SYSTEM, /Local scene focus and passage of message turns are not progression events/);
+    assert.match(STORY_SYSTEM, /All three fields are story material/);
+    assert.doesNotMatch(STORY_SYSTEM, /do not force|no forced|Never force|No turn timers/i);
+    assert.ok(STORY_SCHEMA.value.required.includes('progression'));
+    assert.ok(STORY_SCHEMA.value.properties.plan.properties.developments.items.required.includes('trajectoryIds'));
     assert.ok(storyInputTokens('', STORY_SYSTEM, STORY_SCHEMA) <= 3700,
         'The fixed contract must leave most of the 10k target for source and state.');
     assert.deepEqual(Object.keys(STORY_SCHEMA.value.properties.plan.properties),
@@ -49,16 +40,10 @@ function input(state = emptyCampaign(), extra = {}) {
         previousUsable: Boolean(state.revision), verifiedPlanEvidence: state.planEvidence || {}, ...extra });
 }
 
-test('automatic goal contract supplies direction without assigning player choices or perpetual escalation', () => {
+test('new local goals require explicit references and scopes', () => {
     assert.ok(STORY_SCHEMA.value.properties.plan.required.includes('goal'));
     assert.equal(STORY_SCHEMA.value.properties.plan.properties.goal.maxItems, 4);
     assert.ok(STORY_SCHEMA.value.properties.plan.properties.goal.items.required.includes('scope'));
-    assert.match(STORY_SYSTEM, /Choose automatically from RP scope, relevant past and user interests/);
-    assert.match(STORY_SYSTEM, /NPC\/world's possible activity, never assigns player objectives/);
-    assert.match(STORY_SYSTEM, /Retain unfinished goals across reviews, scene changes and unselected turns/);
-    assert.match(STORY_SYSTEM, /fulfillment, refusal, incompatibility or changed user direction, not mere delay/);
-    assert.match(STORY_SYSTEM, /an offer alone is not fulfillment/);
-    assert.match(STORY_SYSTEM, /completion need not spawn a successor/);
 });
 
 test('goal stays private while its selected story horizons reach the writer', async () => {
@@ -195,13 +180,13 @@ test('multiple private goals need no writer packet and cannot bypass discovery a
     assert.equal(rejected.state, first.state);
 });
 
-test('scopes are not mandatory slots and multi-goal instructions do not demand round-robin progress', () => {
-    assert.match(STORY_SYSTEM, /no quota per scope or required main quest/);
-    assert.match(STORY_SYSTEM, /side threads need not serve either/);
-    assert.match(STORY_SYSTEM, /Others stay saved, not resolved/);
-    assert.match(STORY_SYSTEM, /Never force every goal into a reply or rotate on a timer/);
-    assert.match(STORY_SYSTEM, /Completing one need not end others/);
-    assert.doesNotMatch(STORY_SYSTEM, /ONE concrete experience|must include the goal's subjectId/);
+test('each goal scope can stand alone without filling other scope slots', async () => {
+    for (const scope of ['long-term', 'near-term', 'side-thread']) {
+        const raw = response(); raw.plan.goal[0].scope = scope;
+        const result = await pass(raw);
+        assert.equal(result.accepted, true, result.error);
+        assert.deepEqual(result.state.workingPlan.goal, raw.plan.goal);
+    }
 });
 
 test('deliberate rest can withhold all goals without deleting otherwise accessible unfinished work', async () => {
@@ -267,17 +252,9 @@ async function pass(raw = response(), state = emptyCampaign(), extra = {}) {
 }
 
 test('RP analysis distinguishes canon intent from causal divergence and stays provisional', () => {
-    assert.match(STORY_SYSTEM, /Analyze before planning: rpUnderstanding/);
-    assert.match(STORY_SYSTEM, /canonIntent reflects the user's stated preference.*otherwise unspecified/);
-    assert.match(STORY_SYSTEM, /divergence separately describes established causal impact/);
-    assert.match(STORY_SYSTEM, /names alone do not prove a franchise/);
-    assert.match(STORY_SYSTEM, /not a count of edits/);
-    assert.match(STORY_SYSTEM, /supplied references, explicit corrections and accepted play override it/);
-    assert.match(STORY_SYSTEM, /not proof of complete canon fidelity/);
-    assert.match(STORY_SYSTEM, /Following canon permits compatible expectations, not predetermined player choices/);
-    assert.match(STORY_SYSTEM, /Major changes require new causal possibilities, not forced return to canon/);
-    assert.match(STORY_SYSTEM, /Check direction, developments and selected_material against this analysis/);
-    assert.match(STORY_SYSTEM, /earlier analysis is not evidence/);
+    assert.match(STORY_SYSTEM, /canonIntent reflects the user's stated preference/);
+    assert.match(STORY_SYSTEM, /divergence describes established causal impact/);
+    assert.match(STORY_SYSTEM, /Franchise knowledge and prior_story_map are provisional/);
     assert.ok(STORY_SCHEMA.value.properties.plan.required.includes('rpUnderstanding'));
     assert.ok(STORY_SCHEMA.value.properties.plan.properties.rpUnderstanding.required.includes('storyScope'));
     assert.ok(STORY_SCHEMA.value.properties.plan.properties.rpUnderstanding.required.includes('independentSource'));
@@ -326,7 +303,6 @@ test('rebuild keeps only a provisional story map, not old plans or outcomes', as
     assert.deepEqual(sent.prior_story_map, Object.fromEntries(Object.entries(prior.workingPlan.rpUnderstanding)
         .filter(([key]) => key !== 'uncertainty')));
     assert.doesNotMatch(JSON.stringify(sent.prior_story_map), /bridge|Ren hopes/i);
-    assert.match(STORY_SYSTEM, /prior_story_map is only a hypothesis/);
 });
 
 test('missing analysis fails transactionally instead of inferring a default franchise', async () => {
@@ -534,8 +510,7 @@ test('complete request target includes schema and instructions without rejecting
     assert.equal(large.inputLimit, 10000);
     assert.deepEqual(JSON.parse(large.prompt).source_reference, reference);
     assert.ok(storyInput({ reference: {}, state: emptyCampaign(), messages }, 1).inputOverTarget > 0);
-    assert.ok(STORY_SYSTEM.includes('No turn timers'));
-    assert.equal(STORY_SCHEMA.name, 'tale_fairy_working_plan_horizons_v5');
+    assert.equal(STORY_SCHEMA.name, 'tale_fairy_story_progression_v6');
 });
 
 test('legacy migration archives whole preparation and fails transactionally', async () => {
@@ -608,7 +583,7 @@ test('token targets do not invalidate structurally valid multilingual output or 
     const result = await pass(raw);
     assert.equal(result.accepted, true, result.error);
     assert.equal(validCampaignState(result.state), true);
-    assert.deepEqual(result.state.workingPlan, raw.plan);
+    assert.deepEqual(result.state.workingPlan, { ...raw.plan, trajectories: [] });
     assert.deepEqual(result.state.selectedMaterial, raw.selected_material);
     assert.ok(result.budget.plan > 1200 && result.budget.selected > 600 && result.budget.understanding > 300);
     assert.equal(result.budgetNotices.length, 3);
@@ -640,9 +615,9 @@ test('generation asks for compact fields while admission preserves valid existin
     } });
     assert.equal(result.accepted, true, result.error);
     assert.equal(result.state.workingPlan.developments[0].initiative, raw.plan.developments[0].initiative);
-    assert.match(sent.system, /800 tokens including JSON/);
-    assert.match(sent.system, /1200 prose characters/);
-    assert.match(sent.system, /300 tokens including JSON/);
+    assert.match(sent.system, /merged plan including retained trajectories below 1200 tokens/);
+    assert.match(sent.system, /aiming for 900/);
+    assert.match(sent.system, /aim for 300/);
     assert.equal(sent.schema.value.properties.plan.properties.developments.maxItems, 4);
     assert.ok(result.budget.plan <= 1200);
 });
@@ -656,7 +631,7 @@ test('four compact developments and witnessed consequences fit together without 
     raw.selected_material[0].subjectIds = raw.plan.developments.map(d => d.id);
     const result = await pass(raw);
     assert.equal(result.accepted, true, result.error);
-    assert.deepEqual(result.state.workingPlan, raw.plan);
+    assert.deepEqual(result.state.workingPlan, { ...raw.plan, trajectories: [] });
     assert.ok(result.budget.plan <= 1200);
     assert.ok(result.budget.selected <= 600);
     const next = await pass(raw, result.state);

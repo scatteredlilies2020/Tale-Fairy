@@ -1,4 +1,4 @@
-import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1';
+import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1';
 import { compactPlannerReference } from './planner-reference.js?history-budget=1';
 import { compactCampaignSpeakers } from './campaign-evidence.js';
 import { witnessMessages, resolveSpanWitnesses, SPAN_WITNESS_SCHEMA } from './accepted-witnesses.js?v=0.14.34&partial-evidence=1';
@@ -6,9 +6,10 @@ import { fitEvidenceProviders } from './evidence-providers.js';
 import { SELECTED_MATERIAL_SCHEMA, validateSelectedMaterial } from './selected-material.js?v=0.14.36&rp-plot=1&story-goal=2&story-horizons=1';
 import { storyInputTokens } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1';
 import { fitPlannerContext } from './planner-context.js?soft-targets=1&story-map=1&story-goal=2';
+import { PROGRESSION_PATCH_SCHEMA, mergeProgression } from './story-progression.js?story-progression=1';
 import { WORKING_PLAN_SCHEMA, WORKING_PLAN_VERSION, WORKING_PLAN_LIMIT, SELECTED_PACKET_LIMIT, RP_UNDERSTANDING_LIMIT,
-    PLANNER_INPUT_LIMIT, planTokens, plannerInputLimit, validateWorkingPlan, validateGoalSelection, workingPlanProjection } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2';
-export { PLANNER_INPUT_LIMIT, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2';
+    PLANNER_INPUT_LIMIT, planTokens, plannerInputLimit, validateWorkingPlan, validateGoalSelection, workingPlanProjection } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1';
+export { PLANNER_INPUT_LIMIT, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1';
 
 const text = maxLength => ({ type: 'string', minLength: 1, maxLength });
 const object = properties => ({ type: 'object', additionalProperties: false, required: Object.keys(properties), properties });
@@ -26,18 +27,22 @@ function withoutDescriptions(value) {
 }
 const responseShape = withoutDescriptions(object({
     plan: WORKING_PLAN_SCHEMA,
+    progression: PROGRESSION_PATCH_SCHEMA,
     exits: { type: 'array', maxItems: 4, items: object({ id: text(80),
         disposition: { type: 'string', enum: ['closed', 'paused', 'dropped', 'changed'] }, reason: text(300), evidence: witnesses }) },
     observations: { type: 'array', maxItems: 4, items: object({ id: text(64), evidence: { ...witnesses, minItems: 1 } }) },
     selected_material: selection,
 }));
 responseShape.properties.plan.required.push('rpUnderstanding', 'goal');
+// The provider sends changes, never a replacement of the durable progression.
+delete responseShape.properties.plan.properties.trajectories;
+responseShape.properties.plan.properties.developments.items.required.push('trajectoryIds');
 responseShape.properties.plan.properties.goal.items.required.push('scope');
 responseShape.properties.plan.properties.rpUnderstanding.required.push('storyScope', 'independentSource');
 // Admission and saved-state compatibility keep the original field ceilings.
 // Drafting needs much smaller allowances: those ceilings are not a budget to
 // fill independently, and JSON keys/ids consume part of the shared token cap.
-export const STORY_SCHEMA = { name: 'tale_fairy_working_plan_horizons_v5', value: structuredClone(responseShape) };
+export const STORY_SCHEMA = { name: 'tale_fairy_story_progression_v6', value: structuredClone(responseShape) };
 const draftPlan = STORY_SCHEMA.value.properties.plan.properties;
 draftPlan.rpUnderstanding.properties.storyScope.maxLength = 110;
 draftPlan.rpUnderstanding.properties.independentSource.maxLength = 110;
@@ -53,31 +58,34 @@ for (const [key, limit] of Object.entries({ owner: 48, question: 80, initiative:
 draftDevelopment.access.properties.basis.maxLength = 80;
 const draftMaterial = STORY_SCHEMA.value.properties.selected_material.items.properties;
 for (const [key, limit] of Object.entries({ available: 400, developing: 220, lasting: 220 })) draftMaterial[key].maxLength = limit;
+const draftTrajectory = STORY_SCHEMA.value.properties.progression.properties.upsert.items.properties;
+for (const [key, limit] of Object.entries({ focus: 80, owner: 48, basis: 90, drive: 70 })) draftTrajectory[key].maxLength = limit;
+for (const stage of ['next', 'later']) {
+    draftTrajectory[stage].properties.when.maxLength = 80;
+    draftTrajectory[stage].properties.change.maxLength = 100;
+}
 
 export const STORY_SYSTEM = `${CAMPAIGN_MARKER}
-Choose coexisting story goals and prepare opportunities tailored to this RP, not a recap, generic quest generator or next-paragraph script. Infer expected experiences from the supplied setting, characters, player premise and established departures, not just the current activity. A music-club RP can offer cake or shared music; a travelling RP can offer towns or discoveries. These are examples, not required events or genre presets. Ordinary pleasures count; conflict, combat and escalation are not defaults. Battles belong where this RP supports them. The writing preset owns prose, tone and pacing. Respect abilities, player choices and deliberate endings; no forced canon trajectory.
 
-Use relevant past events to shape what is plausible, changed or meaningful, not to resurrect every old lead. Invent compatible opportunities without requiring prior mention; do not invent past enactment. The current scene governs access, not the limits of the RP's possibilities. Quiet play permits opportunity without requiring interruption.
+Prepare progression for this particular RP: concrete situations that can develop across scenes and alter its longer story. Infer expected experiences from the supplied setting, characters, player premise and established departures. Begin with the wider story territory, then consider today's scene. Relevant past events supply causes and changed relationships. Invent compatible opportunities without requiring prior mention; accepted messages alone establish their enactment. The writing preset owns prose, tone and pacing.
 
-Analyze before planning: rpUnderstanding is a compact, revisable interpretation, not verified history. Identify original/franchise/mixed/unclear basis, setting and relevant era; names alone do not prove a franchise. canonIntent reflects the user's stated preference (follow/flexible/alternate), otherwise unspecified. divergence separately describes established causal impact: none-established, local, major or unclear, not a count of edits. For original RP both are not-applicable; derive its rules and possibilities from the supplied world, not a borrowed canon.
+Analyze the RP in rpUnderstanding. Identify original/franchise/mixed/unclear basis, setting and era. canonIntent reflects the user's stated preference (follow/flexible/alternate), otherwise unspecified. divergence describes established causal impact: none-established, local, major or unclear. For original RP both are not-applicable. anchors records applicable rules/relationships; departures records changes and affected prerequisites. storyScope names the particular setting/era/premise's wider story territory; experiences names fitting experiences; independentSource names a relevant NPC, community, institution or world process beyond the latest scene. uncertainty flags unknowns. Franchise knowledge and prior_story_map are provisional; supplied references, corrections and accepted play take precedence. Reconsider dependent possibilities when their premises change. Keep this analysis below ${RP_UNDERSTANDING_LIMIT} tokens within the plan budget.
 
-anchors records applicable rules/relationships; departures records changes and affected prerequisites. storyScope names the particular setting/era/premise's wider story territory. experiences names fitting experiences. independentSource names one plausible NPC, routine, institution or world force beyond this scene; mundane or "None warranted" is valid. A prior_story_map is only a hypothesis, never evidence. uncertainty flags unknowns. Franchise knowledge is provisional; supplied references, explicit corrections and accepted play override it. No established change is not proof of complete canon fidelity. Following canon permits compatible expectations, not predetermined player choices. Local changes affect dependent possibilities. Major changes require new causal possibilities, not forced return to canon. Check direction, developments and selected_material against this analysis; earlier analysis is not evidence. Keep below ${RP_UNDERSTANDING_LIMIT} tokens within the plan budget.
+Private progression is stored in previous_plan.trajectories, separately from the local plan. Prepare up to three distinctive trajectories grounded in that broader territory, including its characteristic people, interests and developing circumstances. A trajectory spans meaningful changes across scenes, rather than extending today's activity with an eventual-friendship sentence. Its owner is an NPC or world process; basis states the supplied premise or a clearly proposed possibility; drive gives the owner's continuing interest. next describes an intermediate change and the condition that could bring it about. later describes a different, farther-reaching change made possible by that development, with its own condition. These are branches of possibility: each when is a causal dependency, and each change is specific story substance. Shared projects, discoveries, relationships and everyday ambitions can carry progression as readily as political or physical conflict. Use the particular RP's substance.
 
-Return a complete replacement plan, at most four developments; keep the whole plan below the ${WORKING_PLAN_LIMIT}-token target. direction holds the RP's broader range of fitting experiences, not today's agenda; retain that scope across scene changes, revising it for actual premise changes. Reframe a scene-bound previous direction from the RP basis. threads holds relevant long-running interests/relationships, not obligations. consequences holds at most four relevant witnessed results, not a lifetime ledger. Earlier history stays local.
+Return progression as a patch: upsert creates or revises whole trajectories; retire explicitly withdraws preparation with a reason. Omitted trajectories remain saved unchanged. Keep a trajectory's id and focus across local scene changes; update its conditions when relevant accepted events, refusal, discovery or premise changes alter its prospects. Retirement withdraws a possibility, not declares an event happened. A bounded vignette or a concluded story can have no trajectories. On ordinary reviews, empty upsert/retire retains the existing progression. Local scene focus and passage of message turns are not progression events.
 
-goal holds coexisting aims linked by subjectId to retained developments. scope is long-term (wider direction), near-term (concrete experience), or side-thread (independent interest). Choose automatically from RP scope, relevant past and user interests; no quota per scope or required main quest. Choose concrete experiences beyond the latest reaction, not generic "advance the story" goals. A long-term and near-term goal may share a subjectId; side threads need not serve either. aim guides the NPC/world's possible activity, never assigns player objectives or guarantees outcomes. reachedWhen gives observable fulfillment; an offer alone is not fulfillment. Retain unfinished goals across reviews, scene changes and unselected turns. Revise individually for fulfillment, refusal, incompatibility or changed user direction, not mere delay. Completing one need not end others; completion need not spawn a successor. goal=[] permits unsteered play. Goals remain private; selected story substance, not an objective checklist, reaches the writer.
+Return plan as a complete local replacement with at most four developments. direction preserves the broader range of experiences; threads holds continuing relationships/interests; consequences holds at most four relevant witnessed results. Developments contain concrete NPC/world activity: question gives the experience or uncertainty, initiative the activity, resolution its possible boundary, beyond useful follow-through. trajectoryIds links to retained private trajectories where there is a causal connection; [] is valid for unrelated local activity. A trajectory can remain entirely off-scene with no linked development. One shared situation can include several NPCs in a single development; separate rows represent distinct work. access identifies a present route and its prerequisites; none keeps that development private. The current scene governs access, not the limits of preparation.
 
-Draft below the target: aim for 800 tokens including JSON, at most 1200 prose characters, fewer for non-Latin text. Field maxima are not allocations. Preserve ids, distinct unfinished initiatives and prerequisites; shorten without dropping work. Avoid recaps and duplication.
+goal holds selected NPC/world aims linked by subjectId to local developments. scope distinguishes long-term, near-term and side-thread. Choose concrete aims from RP scope, relevant past and user interests; reachedWhen states observable fulfillment. For linked work, local goals describe intermediate experiences while the trajectory carries the farther-range direction. Retain useful unfinished goals through unselected turns and revise for actual fulfillment, refusal or changed circumstances. goal=[] is valid. Trajectories, goals and their links are private planner state, not writer guidance.
 
-Developments may be arcs, side activities or emerging opportunities. question is what can be explored or experienced, not necessarily a problem. initiative supplies concrete NPC/world activity. resolution says when this experience can conclude or pass, without requiring a challenge, reward or player participation. beyond offers fitting follow-through or a different experience, not another prerequisite. Keep an id's specific meaning; unrelated opportunities need new ids. access gives a plausible bridge and real prerequisites; none is private/unreachable. Do not expose private causes to the writer.
+Draft below the target: keep the merged plan including retained trajectories below ${WORKING_PLAN_LIMIT} tokens, aiming for 900; use one or two strong trajectories and only useful local developments. Patch only changed trajectories. Field maxima are not allocations. Preserve distinct unfinished work and prerequisites; compress repetitive prose first.
 
-Reconcile actual play: continue useful work, retire ended attempts, introduce wider possibilities. When fitting, keep one concrete off-scene possibility in private developments, not forced interruptions or fallout from every current problem. Let actions solve obstacles without moving goalposts. Allow rest, celebration and departure. No turn timers, forced time skips, compulsory escalation or novelty quota. Fictional time, causes and player choices govern transitions; NPCs need not await manual activation.
+For every removed local development return an exit: closed means ended in play; changed means actual events superseded it. Both require exact supplied message/span evidence. paused and dropped withdraw preparation and need no evidence. Retained ids cannot exit. Migration/rebuild may replace local drafts without exits. New development and trajectory ids start with new_id_prefix. Keep an id's specific meaning; different work gets a different id.
 
-For every removed development return one exit: closed means ended in play; changed means actual events superseded it. Both require exact supplied message/span evidence. paused and dropped withdraw preparation, not claim fictional completion; they require no evidence. Retained ids cannot exit. Omission is not closure. Migration/rebuild may replace old drafts without exits. New ids must start with new_id_prefix; never revive an ended attempt under a new id. Broader relationships may continue as different work.
+consequences are accepted facts; all other planning fields are preparation. New or changed facts require observations with ids and exact supplied index/span citations. Unchanged verified facts can carry. References supply premises; drafts are not enactment. Omitted context proves neither absence nor resolution.
 
-consequences are accepted facts; other fields are preparation. New/changed facts need observations with ids and exact supplied index/span citations. Unchanged verified facts can carry. No invented player agreement, achievements or unseen actions as history. References supply premises; recall/drafts are not enactment. Current play overrides them; omitted context proves neither absence nor resolution.
-
-selected_material is [] or one integrated packet below the ${SELECTED_PACKET_LIMIT}-token target; aim for 300 tokens including JSON. When goals fit now, supply a packet including at least one goal's subjectId. Others stay saved, not resolved. Deliberate rest or no fitting access permits [] without deleting goals. Never force every goal into a reply or rotate on a timer. Reference only retained, accessible developments. A nonempty packet always has three distinct horizons: available is an observable NPC/world circumstance; developing is concrete independent activity and possible consequences over later scenes; lasting is a specific wider relationship, discovery or consequence that could outlive this scene. Include substantive invention in the later horizons, not "remains an option" or a restated goal. These are possibilities, not already-accepted history, instructions to the writer or an ordered itinerary. Invitations are valid when backed by something to experience, not repeated permission-seeking. Condition only genuine prerequisites; participation and outcomes stay open. No dialogue scripts, assigned player feelings, travel or commitments. Preserve useful unplayed material rather than rerolling. Empty beats filler. Concise JSON only.
+selected_material is [] or one integrated packet below ${SELECTED_PACKET_LIMIT} tokens; aim for 300. Select useful story substance from currently accessible local developments, including at least one goal's subjectId. Unselected work stays private. available gives observable NPC/world circumstances; developing gives concrete activity and possible changes over later scenes; lasting gives a specific farther-reaching possibility. Draw on a linked trajectory when relevant, carrying only what its access and causal conditions support. Otherwise supply fitting local possibilities. All three fields are story material; planner rationale, behavioral instructions and player decisions belong outside the packet. Preserve useful unplayed material. [] is valid when nothing additional fits. Concise JSON only.
 `;
 
 export const needsEventReframe = state => state?.workingPlanVersion !== WORKING_PLAN_VERSION;
@@ -178,6 +186,8 @@ export async function storyPass({ state, input, source, generate }) {
         if (['length', 'max_tokens', 'max_output_tokens'].includes(String(result.finishReason).toLowerCase())) throw Error('Truncated working-plan response');
         const raw = JSON.parse(result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
         check(raw, responseShape);
+        raw.plan.trajectories = mergeProgression(input.previousPlan.trajectories || [], raw.progression,
+            input.newIdPrefix, check, input.playerNames);
         validateWorkingPlan(raw.plan, check, input.playerNames);
         const before = new Map((input.previousPlan.developments || []).map(d => [d.id, d]));
         const after = new Set(raw.plan.developments.map(d => d.id));
@@ -228,7 +238,7 @@ export async function storyPass({ state, input, source, generate }) {
             ...(needsEventReframe(state) ? { legacyPreparation: structuredClone(old), migration: structuredClone(input.migration) }
                 : { workingPlan: structuredClone(state.workingPlan), planEvidence: structuredClone(state.planEvidence),
                     selectedMaterial: structuredClone(state.selectedMaterial) }),
-            transitions, replaced: true });
+            transitions, progressionChanges: structuredClone(raw.progression), replaced: true });
         const next = { revision: input.nextRevision, ...projection, archive, source: structuredClone(source),
             preparationFormat: EVENT_POINTS_FORMAT, workingPlanVersion: WORKING_PLAN_VERSION,
             workingPlan: structuredClone(raw.plan), planEvidence, selectedMaterial: structuredClone(raw.selected_material) };
@@ -257,8 +267,7 @@ function correctionInput(input, failure) {
     // Replace verbose drafting advice, not story context, to make room for
     // feedback even when the original input used its entire local budget.
     const system = STORY_SYSTEM.replace(/Draft below the target:[^\n]+/u,
-        'Automatic correction: return corrected complete JSON; 700 plan / 250 selected tokens. Preserve ids and unfinished work. response_correction is validation feedback, not history.')
-        .replace(/A music-club RP can offer[^\n]+?genre presets\. /u, '');
+        'Automatic correction: return corrected complete JSON. Compress merged plan to 700 tokens using upsert; selection 250. Preserve ids, dependencies and unfinished work.');
     const schema = structuredClone(STORY_SCHEMA);
     const plan = schema.value.properties.plan.properties;
     for (const key of ['direction', 'threads']) plan[key].maxLength = 100;
@@ -270,6 +279,12 @@ function correctionInput(input, failure) {
     const development = plan.developments.items.properties;
     for (const key of ['question', 'initiative', 'resolution', 'beyond']) development[key].maxLength = 70;
     development.access.properties.basis.maxLength = 60;
+    const trajectory = schema.value.properties.progression.properties.upsert.items.properties;
+    for (const key of ['focus', 'basis', 'drive']) trajectory[key].maxLength = 60;
+    for (const stage of ['next', 'later']) {
+        trajectory[stage].properties.when.maxLength = 60;
+        trajectory[stage].properties.change.maxLength = 70;
+    }
     const measure = value => storyInputTokens(JSON.stringify(value), system, schema);
     payload = fitPlannerContext(payload, measure, limit);
     const tokens = measure(payload);

@@ -1,6 +1,7 @@
 // Bounded creative state, not a second continuity database. Historical evidence
 // and replaced plans belong in local archives, never in this request snapshot.
 import { conservativeTokenCount } from './token-budget.js';
+import { TRAJECTORIES_SCHEMA, validateTrajectories } from './story-progression.js?story-progression=1';
 
 export const WORKING_PLAN_VERSION = 1;
 // Historical export names are retained for callers; these are sizing targets,
@@ -58,6 +59,10 @@ WORKING_PLAN_SCHEMA.properties.goal = list(object({
 // Scope is optional only for historical single-goal preparation. New responses
 // distinguish longer direction, nearer goals and independent side threads.
 WORKING_PLAN_SCHEMA.properties.goal.items.properties.scope = choice(['long-term', 'near-term', 'side-thread']);
+// Optional only on historical preparations. The routine pass merges progression
+// patches before validating the complete saved plan.
+WORKING_PLAN_SCHEMA.properties.trajectories = TRAJECTORIES_SCHEMA;
+WORKING_PLAN_SCHEMA.properties.developments.items.properties.trajectoryIds = list(text(80), 3);
 
 export function validateWorkingPlan(plan, check, playerNames = []) {
     check(plan, WORKING_PLAN_SCHEMA, '$.plan');
@@ -83,6 +88,14 @@ export function validateWorkingPlan(plan, check, playerNames = []) {
     }
     const players = new Set(playerNames.map(name => name.trim().toLocaleLowerCase()));
     if (plan.developments.some(row => players.has(row.owner.trim().toLocaleLowerCase()))) throw Error('Player cannot own a planned initiative');
+    validateTrajectories(plan.trajectories || [], check, playerNames);
+    const trajectories = new Set((plan.trajectories || []).map(row => row.id));
+    for (const row of plan.developments) {
+        const ids = row.trajectoryIds || [];
+        if (new Set(ids).size !== ids.length || ids.some(id => !trajectories.has(id))) {
+            throw Error('Development links require distinct retained trajectories');
+        }
+    }
 }
 
 // Compatibility projection for the existing writer, inspector and persistence

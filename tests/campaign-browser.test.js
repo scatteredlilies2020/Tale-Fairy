@@ -49,11 +49,11 @@ const memorySnapshot = () => ({ chatId: 'story', status: 'current', revision: 1,
 const design = { plan: { rpUnderstanding: originalUnderstanding({ setting: 'Original ensemble RP', experiences: 'Music and shared authorship.' }), direction: 'A changing body of original work.',
     goal: [{ subjectId: 'r1-music', scope: 'near-term', aim: 'Give the ensemble a new piece to try together.', reachedWhen: 'The contrasting arrangements have been played and compared.' }],
     threads: 'PRIVATE an ensemble explores music and life between engagements. No established franchise.',
-    consequences: [], developments: [{ id: 'r1-music', kind: 'arc', owner: 'Jo', control: 'npc',
+    consequences: [], developments: [{ id: 'r1-music', kind: 'arc', owner: 'Jo', control: 'npc', trajectoryIds: [],
         question: 'Compose a piece worth keeping.', initiative: 'Jo works on contrasting arrangements.',
         resolution: 'The ensemble adopts or shelves this piece.', beyond: 'Other pieces and shared authorship remain possible.',
         access: { route: 'contact', basis: 'PRIVATE the ensemble is together after the show.' } }] },
-    exits: [], observations: [],
+    progression: { upsert: [], retire: [] }, exits: [], observations: [],
     selected_material: [{ subjectIds: ['r1-music'], available: 'An original tune has potential for contrasting arrangements.',
         developing: 'Different arrangements could change whose contribution the group values across later sessions.',
         lasting: 'The repertoire could support shared authorship and distinct musical identities.' }] };
@@ -65,7 +65,7 @@ function multiDesign() {
         { subjectId: 'r1-music', scope: 'long-term', aim: 'Build a repertoire reflecting everyone\'s music.', reachedWhen: 'The ensemble shares a full set of original pieces.' },
         { subjectId: 'r1-tea', scope: 'side-thread', aim: 'Share tea and the baker\'s new cake.', reachedWhen: 'The tea break ends or is declined.' },
     );
-    value.plan.developments.push({ id: 'r1-tea', kind: 'side', owner: 'Baker', control: 'npc',
+    value.plan.developments.push({ id: 'r1-tea', kind: 'side', owner: 'Baker', control: 'npc', trajectoryIds: [],
         question: 'Which new cake is worth keeping?', initiative: 'The baker brings cake to the club.',
         resolution: 'The tea break ends.', beyond: 'Seasonal baking and friendship.',
         access: { route: 'local', basis: 'The baker visits this rehearsal.' } });
@@ -237,10 +237,10 @@ for (const example of opportunityCases)
 for (const correction of [false, true]) test(`${example.name}: ${correction ? 'corrected' : 'normal'} host pass keeps RP basis and commits an optional experience`, async () => {
     const value = { plan: { rpUnderstanding: example.understanding || originalUnderstanding({ setting: example.name, experiences: example.direction }), direction: example.direction, threads: example.threads, consequences: [],
         goal: [{ subjectId: 'r1-opportunity', scope: 'near-term', aim: example.initiative, reachedWhen: example.resolution }],
-        developments: [{ id: 'r1-opportunity', kind: 'side', owner: example.owner, control: 'npc',
+        developments: [{ id: 'r1-opportunity', kind: 'side', owner: example.owner, control: 'npc', trajectoryIds: [],
             question: example.question, initiative: example.initiative, resolution: example.resolution,
             beyond: example.beyond, access: { route: 'local', basis: example.basis } }] },
-        exits: [], observations: [], selected_material: [{ subjectIds: ['r1-opportunity'], available: example.available,
+        progression: { upsert: [], retire: [] }, exits: [], observations: [], selected_material: [{ subjectIds: ['r1-opportunity'], available: example.available,
             developing: example.beyond, lasting: example.direction }] };
     let calls = 0;
     const h = browser(async ({ prompt, spec }) => {
@@ -250,10 +250,10 @@ for (const correction of [false, true]) test(`${example.name}: ${correction ? 'c
         assert.ok(prompt.includes(example.past), 'Relevant supplied past is not replaced by generic genre advice.');
         assert.ok(prompt.includes(example.current));
         assert.match(spec.systemPrompt, /Infer expected experiences from the supplied setting/);
-        assert.match(spec.systemPrompt, /Invitations are valid when backed by something to experience/);
-        assert.match(spec.systemPrompt, /do not invent past enactment/);
+        assert.match(spec.systemPrompt, /each when is a causal dependency/);
+        assert.match(spec.systemPrompt, /accepted messages alone establish their enactment/);
         assert.match(spec.systemPrompt, /canonIntent reflects the user's stated preference/);
-        assert.match(spec.systemPrompt, /Local changes affect dependent possibilities/);
+        assert.match(spec.systemPrompt, /Reconsider dependent possibilities when their premises change/);
         assert.ok(spec.schema.value.properties.plan.required.includes('rpUnderstanding'));
         assert.ok(storyInputTokens(prompt, spec.systemPrompt, spec.schema) <= 8000);
         if (correction && calls === 1) return { choices: [{ message: { content: '{"plan":' }, finish_reason: 'stop' }] };
@@ -268,7 +268,7 @@ for (const correction of [false, true]) test(`${example.name}: ${correction ? 'c
     assert.equal(calls, correction ? 2 : 1);
     const saved = h.state().campaignPreparation;
     assert.equal(saved?.revision, 1, h.statuses.join('\n'));
-    assert.deepEqual(saved.workingPlan, value.plan);
+    assert.deepEqual(saved.workingPlan, { ...value.plan, trajectories: [] });
     assert.deepEqual(saved.workingPlan.consequences, [], 'A proposed opportunity is not promoted to accepted history.');
     assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
     assert.ok(h.prepare().payload.includes(example.available), 'Opportunity survives the real host commit and writer selection.');
@@ -1102,7 +1102,7 @@ test('actual campaign entry builds evidence, uses single-shot transport and comm
     assert.equal(h.requests.length, 1);
     const request = h.requests[0];
     assert.equal(request.spec.singleShot, true);
-    assert.equal(request.spec.schema.name, 'tale_fairy_working_plan_horizons_v5');
+    assert.equal(request.spec.schema.name, 'tale_fairy_story_progression_v6');
     assert.equal(request.spec.responseTokens, 3000);
     assert.equal(request.spec.reasoningMode, undefined, 'honor saved reasoning instead of legacy forced Off');
     assert.equal(request.meta, null, 'no legacy detached recovery contract');
