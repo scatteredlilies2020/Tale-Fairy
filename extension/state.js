@@ -9,7 +9,7 @@ import { defaultSituationBoard, normalizeSituationBoard } from './situations.js?
 import { TALE_FAIRY_CONTEXT_GUIDE, isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.22';
 import { relevantActors } from './evidence-selection.js?v=0.13.9';
 import { defaultPreparedWorld, normalizePreparedWorld, preparedWorldForPrompt, formatPreparedWorld, formatPacingPreference } from './prepared-world.js?v=0.14.22';
-import { campaignAuthorInstructions, campaignPayload, validCampaignState } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1';
+import { campaignAuthorInstructions, campaignPayload, validCampaignState } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1';
 
 export const STATE_KEY = 'livingWorldGuide';
 export const STATE_VERSION = 59;
@@ -945,11 +945,11 @@ function writerBoard(state, board = null) {
     return state?.plannerContract === 14 ? { ...selected, writer: selected?.writer || [] } : selected;
 }
 
-export function buildPromptPayload(state, { enabled = true, generationType = '', guidanceUsable = false, preparedUsable = false, preparedWorld = null, campaignPreparation = null, causalContext = null, sceneProfile = null, directorSample = null, mode = null, plotAnchor = '', cachedPayload = '' } = {}) {
+export function buildPromptPayload(state, { enabled = true, generationType = '', guidanceUsable = false, preparedUsable = false, horizonsOnly = false, preparedWorld = null, campaignPreparation = null, causalContext = null, sceneProfile = null, directorSample = null, mode = null, plotAnchor = '', cachedPayload = '' } = {}) {
     if (!enabled || !isStoryGeneration(generationType)) return '';
     if (state?.plannerContract === 15) {
         const preparation = campaignPreparation || state.campaignPreparation;
-        return campaignPayload(preparedUsable && validCampaignState(preparation) ? preparation : null, campaignAuthorInstructions(state));
+        return campaignPayload(preparedUsable && validCampaignState(preparation) ? preparation : null, campaignAuthorInstructions(state), { horizonsOnly });
     }
     if (cachedPayload) return refreshGameMasterContract(cachedPayload);
     const s = normalizeState(state);

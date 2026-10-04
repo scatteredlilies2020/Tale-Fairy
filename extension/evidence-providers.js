@@ -1,16 +1,10 @@
 import { readCampaignContinuity, fitCampaignContinuity } from './campaign-continuity.js';
 import { conservativeTokenCount } from './token-budget.js?story-budget=1';
+import { registeredEvidenceProviders } from './evidence-registry.js';
+export { registerEvidenceProvider } from './evidence-registry.js';
 
 // Opt-in, synchronous cached reads only. No scraping, extraction, subscription,
 // network, model call, or write method is part of this interface.
-const providers = new Map();
-export function registerEvidenceProvider(provider) {
-    if (!provider || provider.version !== 1 || !/^[a-z][a-z0-9-]{0,79}$/.test(provider.id)
-        || provider.id === 'continuity-memory' || typeof provider.read !== 'function'
-        || providers.has(provider.id)) throw Error('Invalid or duplicate evidence provider');
-    providers.set(provider.id, provider);
-    return () => { if (providers.get(provider.id) === provider) providers.delete(provider.id); };
-}
 export function evidenceIdentity(context) {
     return { chatId: String(context.getCurrentChatId?.() || ''),
         owner: context.groupId ? `group:${context.groupId}` : `character:${context.characterId ?? 'unknown'}` };
@@ -41,7 +35,7 @@ function normalize(provider, raw, identity, messages) {
         summary: typeof raw.summary === 'string' ? raw.summary : '', records };
 }
 export function readEvidenceProviders(context, { continuityBridge, continuityEnabled = true, replacement = false,
-    enabled = true, adapters = [...providers.values()] } = {}) {
+    enabled = true, adapters = registeredEvidenceProviders() } = {}) {
     if (!enabled || replacement) return [];
     const identity = evidenceIdentity(context), messages = context.chat || [];
     const result = [];
@@ -93,5 +87,9 @@ export function fitEvidenceProviders(evidence, tokenLimit, fits) {
     return result;
 }
 export function evidenceRevisionKey(evidence) {
-    return JSON.stringify((evidence || []).filter(e => ['current', 'context'].includes(e.status)));
+    // Republishing identical recall is not a correction. Keep content, source
+    // coverage and authority in the guard; publication counters are incidental.
+    return JSON.stringify((evidence || []).filter(e => ['current', 'context'].includes(e.status))
+        .map(({ revision, freshness, records, ...entry }) => ({ ...entry,
+            ...(records ? { records: records.map(({ cmRevision, ...record }) => record) } : {}) })));
 }

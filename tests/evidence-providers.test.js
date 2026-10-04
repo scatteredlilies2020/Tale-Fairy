@@ -1,7 +1,7 @@
 import test from 'node:test';
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
-import { readEvidenceProviders, fitEvidenceProviders, registerEvidenceProvider, evidencePrefix } from '../extension/evidence-providers.js';
+import { readEvidenceProviders, fitEvidenceProviders, registerEvidenceProvider, evidencePrefix, evidenceRevisionKey } from '../extension/evidence-providers.js';
 import { ownedInput } from '../extension/event-planning.js';
 import { emptyCampaign } from '../extension/campaign-planner.js';
 const context = () => ({ getCurrentChatId: () => 'test', characterId: 3, chat: [{ mes: 'The booking was declined.', is_user: true }] });
@@ -10,6 +10,26 @@ const snapshot = c => ({ chatId: 'test', owner: 'character:3', status: 'current'
     coverage: { messageCount: c.chat.length, sourcePrefix: evidencePrefix(c.chat) },
     records: [{ id: 'booking', text: 'The booking was declined.', sourceRange: { from: 0, to: 0 }, canonicalStatus: 'closed' }] });
 const read = (c, value) => readEvidenceProviders(c, { continuityEnabled: false, adapters: [{ id: 'fixture-summary', version: 1, read: () => value }] });
+
+test('evidence identity ignores publication counters but preserves content, coverage and authority', () => {
+    const c = context(), original = read(c, snapshot(c));
+    const republished = structuredClone(original);
+    republished[0].revision = 99;
+    republished[0].freshness = 'just republished';
+    republished[0].records[0].cmRevision = 99;
+    assert.equal(evidenceRevisionKey(original), evidenceRevisionKey(republished));
+    for (const change of [
+        item => { item.summary = 'Corrected summary'; },
+        item => { item.records[0].text = 'Corrected record'; },
+        item => { item.records[0].canonicalStatus = 'open'; },
+        item => { item.coverage.messageCount++; },
+        item => { item.confidence = 'lower-confidence-context'; },
+        item => { item.status = 'stale'; },
+    ]) {
+        const changed = structuredClone(original); change(changed[0]);
+        assert.notEqual(evidenceRevisionKey(original), evidenceRevisionKey(changed));
+    }
+});
 
 test('browser reader uses the same registry as the documented public registration URL', async () => {
     const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');

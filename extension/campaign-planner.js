@@ -181,6 +181,27 @@ export function campaignMaterialUsable(state, context, interval = 4) {
         && context.messages.slice(state.source.messageCount).filter(message => !message.is_user).length < campaignReviewInterval(interval);
 }
 
+// Scene freshness and durable, explicitly selected possibilities have separate
+// lifetimes. Never promote private trajectories or legacy scene prose here.
+export function campaignWriterUsable(state, context, interval = 4) {
+    return campaignUsable(state, context) && (campaignMaterialUsable(state, context, interval)
+        || campaignHorizonMaterial(state).length > 0);
+}
+
+export function campaignRefreshInterval(value = 4) {
+    return Math.max(1, campaignReviewInterval(value) - 1);
+}
+
+function campaignHorizonMaterial(state) {
+    const outlook = state?.workingPlan?.outlook?.[0];
+    if (!outlook || !state.selectedMaterial?.length) return [];
+    return selectedMaterialPacket(state).filter(entry => entry.mid_term_possibilities === outlook.developing
+        && entry.long_term_possibilities === outlook.lasting).map(entry => ({
+        mid_term_possibilities: entry.mid_term_possibilities,
+        long_term_possibilities: entry.long_term_possibilities,
+    }));
+}
+
 export function campaignAuthorInstructions(state) {
     return [
         ...(Array.isArray(state?.userNotes) ? state.userNotes : []).map(note => ({
@@ -214,12 +235,12 @@ function campaignWriterMaterial(state, { legacyGoals = false } = {}) {
     return possible_developments;
 }
 
-export function campaignPayloadBudget(state, instructions = []) {
-    return fitStoryContext(campaignWriterMaterial(state), instructions.filter(text => typeof text === 'string' && text.trim()));
+export function campaignPayloadBudget(state, instructions = [], { horizonsOnly = false } = {}) {
+    return fitStoryContext(horizonsOnly ? campaignHorizonMaterial(state) : campaignWriterMaterial(state), instructions.filter(text => typeof text === 'string' && text.trim()));
 }
 
-export function campaignPayload(state, instructions = []) {
-    return campaignPayloadBudget(state, instructions).payload;
+export function campaignPayload(state, instructions = [], options) {
+    return campaignPayloadBudget(state, instructions, options).payload;
 }
 
 // Authenticate packets produced before the material-only handoff. Never use

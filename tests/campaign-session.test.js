@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { CampaignSession } from '../extension/campaign-session.js';
-import { emptyCampaign } from '../extension/campaign-planner.js';
+import { emptyCampaign, mergeCampaign } from '../extension/campaign-planner.js';
 
 const output = { campaign: 'Travel and shared work.', episode: { subject: 'Errand', status: 'finished', boundary: 'The errand is done.' }, developments: [] };
 const reply = { text: JSON.stringify(output), finishReason: 'stop' };
@@ -16,6 +16,79 @@ function fixture(generate = async () => reply) {
         generate: (...args) => { calls++; return generate(...args); },
         commit: state => { commits++; current.state = state; return true; } };
     return { current, options, session: new CampaignSession(options), calls: () => calls, commits: () => commits };
+}
+
+function twoStageFixture(onSend = () => {}, stages = ['horizon', 'scene']) {
+    const f = fixture(async () => { onSend(f); return reply; });
+    f.current.evidenceKey = 'original';
+    f.options.prepare = () => ({ prompt: '{}', indices: [0], evidence: { status: 'included' } });
+    f.session = new CampaignSession({ ...f.options, evidenceRestart: true, minimumPassRequests: 2, requestLimit: 3,
+        runPass: async ({ state, source, generate }) => {
+            for (const stage of stages) await generate('{}', 'system', {}, { stage });
+            return { accepted: true, state: mergeCampaign(state, output, { source, basisRevision: state.revision, evidenceIndices: [0] }) };
+        } });
+    return f;
+}
+
+test('memory rebase preserves one run key, aggregate request budget and the newest snapshot', async () => {
+    const keys = [], snapshots = [];
+    const f = twoStageFixture(f => {
+        keys.push(f.current.attempt.runKey);
+        if (f.calls() === 1) f.current.evidenceKey = 'corrected';
+    });
+    // Capture the provider's source snapshot through the runtime prepare boundary.
+    const prepare = f.session.runtime.prepare;
+    f.session.runtime.prepare = snapshot => { snapshots.push(snapshot.evidenceKey); return prepare(snapshot); };
+    const result = await f.session.request();
+    assert.equal(result.accepted, true);
+    assert.equal(result.evidenceRestart, true);
+    assert.equal(f.calls(), 3);
+    assert.equal(f.commits(), 1);
+    assert.deepEqual(snapshots, ['original', 'corrected']);
+    assert.equal(f.current.attempt.requestCount, 3);
+    assert.equal(f.current.attempt.evidenceRestarts, 1);
+    assert.equal(keys.length, 3);
+    assert.equal(new Set(keys).size, 1);
+});
+
+test('continuing memory churn is bounded to one rebase and never commits either stale draft', async () => {
+    const f = twoStageFixture(f => { f.current.evidenceKey = `changed-${f.calls()}`; });
+    assert.equal((await f.session.request()).accepted, false);
+    assert.equal(f.calls(), 2);
+    assert.equal(f.commits(), 0);
+    assert.equal(f.current.attempt.status, 'failed');
+    assert.equal(f.current.attempt.evidenceRestarts, 1);
+    assert.equal((await f.session.request()).skipped, 'not-due');
+});
+
+for (const stages of [['horizon', 'scene'], ['horizon', 'horizon', 'scene']]) {
+    test(`memory changes after two paid requests cannot restart ${stages.join('/')}`, async () => {
+        const f = twoStageFixture(f => { if (f.calls() === 2) f.current.evidenceKey = 'late-correction'; }, stages);
+        assert.equal((await f.session.request()).accepted, false);
+        assert.equal(f.calls(), 2);
+        assert.equal(f.commits(), 0);
+        assert.equal(f.current.attempt.evidenceRestarts, undefined);
+    });
+}
+
+for (const reason of ['transcript', 'references', 'settings', 'chat', 'disabled', 'newer-run', 'saved-plan', 'stop']) {
+    test(`memory rebase cannot bypass ${reason} safeguards`, async () => {
+        const f = twoStageFixture(f => {
+            f.current.evidenceKey = 'corrected';
+            if (reason === 'transcript') f.current.messages[0].mes = 'Edited source';
+            if (reason === 'references') f.current.referenceHash = 'different';
+            if (reason === 'settings') f.current.requestSignature = 'different';
+            if (reason === 'chat') f.current.chatId = 'different';
+            if (reason === 'disabled') f.current.enabled = false;
+            if (reason === 'newer-run') f.current.attempt = { ...f.current.attempt, runKey: 'newer' };
+            if (reason === 'saved-plan') f.current.state.revision++;
+            if (reason === 'stop') f.session.stop();
+        });
+        assert.equal((await f.session.request()).accepted, false);
+        assert.equal(f.calls(), 1);
+        assert.equal(f.commits(), 0);
+        assert.equal(f.current.attempt.evidenceRestarts, undefined);
+    });
 }
 
 test('two-stage planning has a hard three-request ceiling including all repairs', async () => {
@@ -38,7 +111,7 @@ test('persisted cadence survives reload and does not plan every reply or replace
     assert.equal(f.current.attempt.status, 'complete');
     f.session = new CampaignSession(f.options);
     assert.equal((await f.session.request()).skipped, 'not-due');
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < 1; i++) {
         f.current.messages.push({ is_user: true, mes: 'I listen.' }, { is_user: false, mes: 'Work continues.' });
         assert.equal((await f.session.request()).skipped, 'not-due');
     }
@@ -95,7 +168,7 @@ test('failure recovers on new accepted assistant play, not user-only appends or 
     assert.equal((await f.session.request()).skipped, 'not-due');
 });
 
-test('successful reviews bound scene-material age even with a long saved interval', async () => {
+test('successful reviews start one reply before scene expiry even with a long saved interval', async () => {
     const f = fixture();
     f.options.interval = () => 12;
     f.session = new CampaignSession(f.options);
@@ -103,7 +176,7 @@ test('successful reviews bound scene-material age even with a long saved interva
     for (let i = 1; i <= 4; i++) {
         f.current.messages.push({ is_user: false, mes: `Accepted reply ${i}` });
         const result = await f.session.request();
-        assert.equal(result.accepted, i === 4);
+        assert.equal(result.accepted, i === 3);
     }
     assert.equal(f.calls(), 2);
 });

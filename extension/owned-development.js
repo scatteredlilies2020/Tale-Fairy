@@ -1,6 +1,6 @@
 // Campaign-mode single pass. Legacy mode remains separate. This shares atomic
 // storage and source guards with the host, never an additional planning call.
-import { CAMPAIGN_MARKER, CAMPAIGN_SCHEMA, INITIATIVE_SCHEMA, PLOT_POINTS_FORMAT, plotPointWire, mergeCampaign, validateCampaign } from './campaign-planner.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1';
+import { CAMPAIGN_MARKER, CAMPAIGN_SCHEMA, INITIATIVE_SCHEMA, PLOT_POINTS_FORMAT, plotPointWire, mergeCampaign, validateCampaign } from './campaign-planner.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1';
 import { estimateTokenCount } from './token-budget.js';
 import { compactCampaignSpeakers } from './campaign-evidence.js';
 

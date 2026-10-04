@@ -225,8 +225,7 @@ test('active host reconsiders reference-invalidated futures without restoring fa
     assert.equal(validCampaignState(h.state().campaignPreparation), true);
 });
 
-test('active host keeps a selected outlook through quiet updates, reload and pre-reply recovery', async () => {
-    const send = args => {
+function outlookResponse(args) {
         const response = splitResponse(args);
         if (args.spec.schema.name === HORIZON_SCHEMA.name) return response;
         const input = JSON.parse(args.prompt), value = JSON.parse(response.choices[0].message.content);
@@ -239,8 +238,10 @@ test('active host keeps a selected outlook through quiet updates, reload and pre
                 developing: 'If they cook together, neighbors can compare the supper menu and trade handwritten recipes.',
                 lasting: 'If neighbors contribute recipes and drawings over later visits, a shared illustrated supper book connects the households.' }] };
         return envelope(value);
-    };
-    const h = browser(send, defaultState(), { split: true });
+}
+
+test('active host keeps a selected outlook through quiet updates, reload and pre-reply recovery', async () => {
+    const h = browser(outlookResponse, defaultState(), { split: true });
     await h.scope.analyzeCampaignNow();
     assert.equal(h.state().campaignPreparation.revision, 1);
     const outlook = structuredClone(h.state().campaignPreparation.workingPlan.outlook);
@@ -259,6 +260,74 @@ test('active host keeps a selected outlook through quiet updates, reload and pre
     assert.equal(h.prepare('regenerate').payload, beforeReply);
     await h.scope.repairDeferredReplacementPlan();
     assert.equal(h.requests.length, 6, 'matching future-bearing checkpoint needs no replacement repair');
+});
+
+test('expired local material retains only selected futures across failures, reload, preview and regenerate', async () => {
+    let fail = false;
+    const h = browser(args => { if (fail) throw Error('provider unavailable'); return outlookResponse(args); }, defaultState(), { split: true });
+    await h.scope.analyzeCampaignNow();
+    const saved = structuredClone(h.state().campaignPreparation);
+    assert.match(h.prepare().payload, /available_circumstances/);
+    for (let i = 0; i < 3; i++) h.context.chat.push({ is_user: false, name: 'Mara', mes: `Accepted later play ${i}.` });
+    fail = true;
+    await h.scope.analyzeCampaignNow();
+    const packet = h.prepare();
+    assert.equal(packet.preparedUsable, true);
+    assert.equal(packet.horizonsOnly, true);
+    assert.match(packet.payload, /mid_term_possibilities.*handwritten recipes/);
+    assert.match(packet.payload, /long_term_possibilities.*illustrated supper book/);
+    assert.doesNotMatch(packet.payload, /available_circumstances|contrasting arrangements|supper cards|PRIVATE|goal|trajectoryId/);
+    h.scope.generationGuideSelection = null;
+    assert.equal(h.scope.buildPromptPayload(h.state(), h.scope.guideSelectionOptions(h.state())), packet.payload,
+        'preview uses the same scoped material without a frozen generation');
+    assert.deepEqual(h.state().campaignPreparation, saved, 'projection never rewrites saved preparation');
+    h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata));
+    h.scope.campaignSession = null;
+    assert.equal(h.prepare().payload, packet.payload);
+    h.context.chat.push({ is_user: false, name: 'Mara', mes: 'Another accepted response.' });
+    h.scope.deferReplacementPlanning(h.context);
+    assert.equal(h.prepare('regenerate').payload, packet.payload);
+    assert.equal(h.requests.length, 3, 'fallback and cache replay spend no provider calls');
+});
+
+for (const change of ['edit', 'reference', 'clear', 'legacy']) test(`expired future fallback rejects ${change}`, async () => {
+    const h = browser(outlookResponse, defaultState(), { split: true });
+    await h.scope.analyzeCampaignNow();
+    for (let i = 0; i < 3; i++) h.context.chat.push({ is_user: false, name: 'Mara', mes: `Later play ${i}` });
+    if (change === 'edit') h.context.chat[0].mes = 'An edited branch.';
+    if (change === 'reference') h.context.card = { scenario: 'A different premise.' };
+    if (['clear', 'legacy'].includes(change)) {
+        const state = h.state();
+        if (change === 'clear') {
+            state.campaignPreparation.workingPlan.outlook = [];
+            state.campaignPreparation.selectedMaterial = [];
+        } else delete state.campaignPreparation.workingPlan.outlook;
+        assert.equal(validCampaignState(state.campaignPreparation), true);
+        h.context.chatMetadata = saveState(h.context.chatMetadata, state);
+    }
+    assert.equal(h.prepare().payload, '');
+});
+
+test('cached full material is re-scoped when the scene lifetime shortens, without reviving it on reload', async () => {
+    const h = browser(outlookResponse, defaultState(), { split: true });
+    h.settings.fullReviewInterval = 4;
+    await h.scope.analyzeCampaignNow();
+    for (let i = 0; i < 3; i++) h.context.chat.push({ is_user: false, name: 'Mara', mes: `Later play ${i}` });
+    assert.match(h.prepare().payload, /available_circumstances/);
+    h.settings.fullReviewInterval = 3;
+    const packet = h.prepare();
+    assert.equal(packet.horizonsOnly, true);
+    assert.doesNotMatch(packet.payload, /available_circumstances/);
+    assert.match(packet.payload, /illustrated supper book/);
+    h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata));
+    assert.equal(h.prepare().payload, packet.payload);
+    const cache = h.context.chatMetadata[GENERATION_CONTEXT_KEY];
+    const scoped = structuredClone(cache.entries.at(-1));
+    scoped.selection.horizonsOnly = true;
+    scoped.payload = packet.payload;
+    assert.equal(generationContextEntries({ entries: [scoped] }).length, 1);
+    scoped.payload = campaignPayload(scoped.plannerState.campaignPreparation);
+    assert.equal(generationContextEntries({ entries: [scoped] }).length, 0, 'a horizon-only flag cannot authenticate a full packet');
 });
 
 test('replacement recovers a source-valid archived packet without rolling back the live revision or spending calls', async () => {
@@ -1241,9 +1310,10 @@ test('campaign snapshot honors the CM toggle, stale identity and replacement iso
     assert.ok(!JSON.parse(h.scope.buildCampaignHostInput(replacement).prompt).external_evidence);
 });
 
-test('same-source memory corrections during a paid pass cannot commit outdated recall', async () => {
+test('same-source memory correction discards both drafts and rebases once inside three requests', async () => {
     let finish;
-    const h = browser(() => new Promise(resolve => { finish = resolve; }));
+    const h = browser(args => h.requests.length === 1 ? new Promise(resolve => { finish = resolve; })
+        : splitResponse(args), defaultState(), { split: true });
     const snapshot = memorySnapshot();
     h.scope.continuityMemoryBridge = { version: 2, getContextSnapshot: () => snapshot };
     const work = h.scope.analyzeCampaignNow();
@@ -1251,15 +1321,21 @@ test('same-source memory corrections during a paid pass cannot commit outdated r
     assert.equal(h.requests.length, 1);
     snapshot.prompt = 'Correction: the engagement was never accepted.';
     snapshot.revision++;
-    finish({ choices: [{ message: { content: JSON.stringify(design) }, finish_reason: 'stop' }] });
+    finish(envelope(workshopReply()));
     await work;
-    assert.equal(h.state().campaignPreparation?.revision || 0, 0);
+    assert.equal(h.state().campaignPreparation.revision, 1);
+    assert.equal(h.requests.length, 3);
+    assert.match(h.requests[1].prompt, /Correction: the engagement was never accepted/);
+    assert.match(h.requests[2].prompt, /Correction: the engagement was never accepted/);
+    assert.deepEqual(Array.from(h.context.chatMetadata.taleFairyCampaignAttempt.stages), ['horizon', 'horizon', 'scene']);
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.requestCount, 3);
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.evidenceRestarts, 1);
     await h.scope.analyzeCampaignNow();
-    assert.equal(h.requests.length, 1, 'no hidden corrective retry');
+    assert.equal(h.requests.length, 3, 'no same-source retry after the bounded rebase');
 });
 
-test('memory changes during input preparation spend no request', async () => {
-    const h = browser();
+test('memory changes during input preparation spend no stale request and rebuild once', async () => {
+    const h = browser(splitResponse, defaultState(), { split: true });
     const snapshot = memorySnapshot();
     h.scope.continuityMemoryBridge = { version: 2, getContextSnapshot: () => snapshot };
     const prepare = h.scope.buildCampaignHostInput;
@@ -1269,8 +1345,42 @@ test('memory changes during input preparation spend no request', async () => {
         return input;
     };
     await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 2);
+    assert.ok(h.requests.every(request => request.prompt.includes('Corrected before sending.')));
+    assert.equal(h.state().campaignPreparation.revision, 1);
+});
+
+test('identical memory republishing during each stage completes without a restart', async () => {
+    const snapshot = memorySnapshot();
+    const h = browser(args => {
+        snapshot.revision++;
+        return splitResponse(args);
+    }, defaultState(), { split: true });
+    h.scope.continuityMemoryBridge = { version: 2, getContextSnapshot: () => snapshot };
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 2);
+    assert.equal(h.state().campaignPreparation.revision, 1);
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.evidenceRestarts, undefined);
+});
+
+test('continuously changing memory during preflight rebuilds once, sends nothing, and preserves saved preparation', async () => {
+    const h = browser(splitResponse, defaultState(), { split: true });
+    const snapshot = memorySnapshot();
+    h.scope.continuityMemoryBridge = { version: 2, getContextSnapshot: () => snapshot };
+    const prepare = h.scope.buildCampaignHostInput;
+    let builds = 0;
+    h.scope.buildCampaignHostInput = source => {
+        const input = prepare(source);
+        snapshot.prompt = `Memory content changes during build ${++builds}.`;
+        return input;
+    };
+    await h.scope.analyzeCampaignNow();
+    assert.equal(builds, 2);
     assert.equal(h.requests.length, 0);
     assert.equal(h.state().campaignPreparation?.revision || 0, 0);
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'failed');
+    await h.scope.analyzeCampaignNow();
+    assert.equal(builds, 2, 'no automatic same-source loop');
 });
 
 test('accepted appends making CM stale do not discard already-paid-for planning', async () => {
@@ -1565,7 +1675,7 @@ test('actual host factors repeated speaker labels while preserving every initial
 test('real received/end events share persisted cadence and never invoke reply repair', async () => {
     const h = browser();
     await h.scope.analyzeCampaignNow();
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < 1; i++) {
         h.context.chat.push({ is_user: false, mes: `Accepted exchange ${i}.` });
         await h.emit('MESSAGE_RECEIVED'); await h.emit('GENERATION_ENDED'); await h.flush(); await settle();
     }
@@ -1586,7 +1696,7 @@ test('ordinary received events automatically commit a quiet snapshot and later r
     const first = structuredClone(h.state().campaignPreparation);
     assert.match(h.prepare().payload, /An original tune has potential/);
     async function acceptedReplies(label) {
-        for (let i = 0; i < 3; i++) {
+        for (let i = 0; i < 2; i++) {
             h.context.chat.push({ is_user: false, mes: `${label} ${i}.` });
             await h.emit('MESSAGE_RECEIVED'); await h.emit('GENERATION_ENDED'); await h.flush(); await settle();
             if (h.scope.campaignSession.pending) await h.scope.campaignSession.pending;
@@ -1862,9 +1972,10 @@ test('host withholds source-invalidated consequences while retaining local evide
 });
 
 
-test('generic evidence reaches the actual host and same-source correction rejects the single in-flight call', async () => {
+test('generic evidence correction rebuilds both stages instead of saving the in-flight draft', async () => {
     let finish;
-    const h = browser(() => new Promise(resolve => { finish = resolve; }));
+    const h = browser(args => h.requests.length === 1 ? new Promise(resolve => { finish = resolve; })
+        : splitResponse(args), defaultState(), { split: true });
     const raw = { chatId: 'story', owner: 'character:unknown', status: 'context', revision: 1,
         summary: 'The old booking was declined.', provenance: 'Explicit fixture adapter' };
     const unregister = registerEvidenceProvider({ id: 'host-fixture', version: 1, read: () => raw });
@@ -1875,10 +1986,11 @@ test('generic evidence reaches the actual host and same-source correction reject
         assert.equal(input.external_evidence[0].provider, 'host-fixture');
         assert.equal(input.external_evidence[0].confidence, 'lower-confidence-context');
         raw.summary = 'Corrected: only one proposed date was declined.'; raw.revision++;
-        finish({ choices: [{ message: { content: JSON.stringify(design) }, finish_reason: 'stop' }] });
+        finish(envelope(workshopReply()));
         await work;
-        assert.equal(h.requests.length, 1);
-        assert.equal(h.state().campaignPreparation?.revision || 0, 0);
+        assert.equal(h.requests.length, 3);
+        assert.match(h.requests[1].prompt, /Corrected: only one proposed date/);
+        assert.equal(h.state().campaignPreparation.revision, 1);
         assert.doesNotMatch(h.prepare().payload, /booking|host-fixture/);
     } finally { unregister(); }
 });

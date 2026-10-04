@@ -1,4 +1,4 @@
-import { evidenceIdentity, evidencePrefix } from './evidence-providers.js';
+import { evidenceIdentity, evidencePrefix } from './evidence-providers.js?story-lifecycle=1';
 
 const SOURCE_KEY = /summary|summari|synopsis|recap|chronicle|memory|world.?info|lore|story.?so.?far/i;
 const PRIVATE_KEY = /reasoning|scratch|logprob|token|secret|api.?key|password|continuity.?memory|tale.?fairy|living.?world.?guide|preset|style|mood|tone|pacing/i;
