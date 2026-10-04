@@ -63,6 +63,24 @@ WORKING_PLAN_SCHEMA.properties.goal.items.properties.scope = choice(['long-term'
 // patches before validating the complete saved plan.
 WORKING_PLAN_SCHEMA.properties.trajectories = TRAJECTORIES_SCHEMA;
 WORKING_PLAN_SCHEMA.properties.developments.items.properties.trajectoryIds = list(text(80), 3);
+// Present routes into wider preparation have their own capacity. They are
+// offers, not accepted undertakings, and are reconsidered rather than carried
+// as unfinished work. Optional on disk for pre-bridge preparations.
+WORKING_PLAN_SCHEMA.properties.openings = list(object({
+    trajectoryId: text(80),
+    circumstance: text(700),
+    access: structuredClone(WORKING_PLAN_SCHEMA.properties.developments.items.properties.access),
+}), 2);
+
+export function playableDevelopments(plan) {
+    return [...plan.developments, ...(plan.openings || []).map(opening => {
+        const trajectory = plan.trajectories?.find(row => row.id === opening.trajectoryId);
+        if (!trajectory) throw Error('Opening requires a retained trajectory');
+        return { id: trajectory.id, kind: 'emerging', owner: trajectory.owner, control: 'world',
+            question: trajectory.focus, initiative: opening.circumstance,
+            resolution: trajectory.next.when, beyond: trajectory.next.change, access: opening.access };
+    })];
+}
 
 export function validateWorkingPlan(plan, check, playerNames = []) {
     check(plan, WORKING_PLAN_SCHEMA, '$.plan');
@@ -78,7 +96,12 @@ export function validateWorkingPlan(plan, check, playerNames = []) {
     for (const rows of [plan.developments, plan.consequences]) {
         if (new Set(rows.map(row => row.id)).size !== rows.length) throw Error('Duplicate working-plan id');
     }
-    if (plan.goal?.some(goal => !plan.developments.some(d => d.id === goal.subjectId))) {
+    const openings = plan.openings || [];
+    const openingIds = openings.map(row => row.trajectoryId);
+    if (new Set(openingIds).size !== openings.length
+        || plan.developments.some(row => openingIds.includes(row.id))) throw Error('Duplicate playable subject id');
+    const playable = playableDevelopments(plan);
+    if (plan.goal?.some(goal => !playable.some(d => d.id === goal.subjectId))) {
         throw Error('Story goal requires a retained development');
     }
     if (plan.goal?.length > 1 && plan.goal.some(goal => !goal.scope)) throw Error('Multiple story goals require scope');
@@ -101,16 +124,17 @@ export function validateWorkingPlan(plan, check, playerNames = []) {
 // Compatibility projection for the existing writer, inspector and persistence
 // guards. This is not another prompt or another provider response.
 export function workingPlanProjection(plan) {
+    const playable = playableDevelopments(plan);
     return {
         campaign: plan.direction,
         episode: { subject: 'Current working plan', status: plan.developments.some(d => d.kind === 'arc') ? 'open' : 'finished',
             boundary: plan.developments.filter(d => d.kind === 'arc').map(d => d.question).join('; ') || 'No foreground undertaking; quiet play and other directions remain available.' },
         rpBrief: plan.threads,
-        developments: plan.developments.map(d => ({ id: d.id,
+        developments: playable.map(d => ({ id: d.id,
             initiative: { owner: d.owner, control: d.control, aim: d.question },
             premise: [{ event: d.initiative, opens: d.beyond }],
             progression: d.initiative, outcomes: d.resolution, access: d.access.basis })),
-        background: plan.developments.map(d => ({ subjectId: d.id, unfolding: d.initiative,
+        background: playable.map(d => ({ subjectId: d.id, unfolding: d.initiative,
             basis: 'Creative preparation, not accepted history. Actual circumstances govern enactment.', access: structuredClone(d.access) })),
     };
 }
@@ -145,7 +169,7 @@ export function validateGoalSelection(plan, material) {
     // Historical single-goal states used a mandatory handoff. Scoped goals may
     // remain saved during deliberate rest even when a discovery route exists.
     if (!material?.length && plan.goal.some(goal => !goal.scope
-        && plan.developments.some(d => d.id === goal.subjectId && d.access.route !== 'none'))) {
+        && playableDevelopments(plan).some(d => d.id === goal.subjectId && d.access.route !== 'none'))) {
         throw Error('An accessible story goal needs selected material for the writer');
     }
 }

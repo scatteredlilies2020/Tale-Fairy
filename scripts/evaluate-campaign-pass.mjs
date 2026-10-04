@@ -18,12 +18,14 @@ import { ensureGuidanceInChat } from '../extension/request-injection.js';
 import { campaignInput, campaignPayload, campaignUsable, emptyCampaign } from '../extension/campaign-planner.js';
 import { campaignEvidenceMessages, campaignReviewWindow } from '../extension/campaign-evidence.js';
 import { CampaignRuntime } from '../extension/campaign-runtime.js';
+import { campaignCheckpoint } from '../extension/campaign-review.js';
 import { STORY_SCHEMA as OWNED_SCHEMA, storyInput as ownedInput, storyPass as ownedPass, needsEventReframe } from '../extension/story-selection.js';
 
 const args = process.argv.slice(2), root = process.env.TF_ST_ROOT, output = path.resolve(process.env.TF_EVAL_OUTPUT || '');
 if (args.includes('--fixture-stage') && args.some(arg => ['--freeze', '--say', '--write', '--revalidate-plan'].includes(arg))) throw Error('Fixture progression cannot mix with freezing, writer play or revalidation');
 if (args.includes('--saved-plan') && (!args.includes('--freeze') || process.env.TF_CASE !== 'real'
     || process.env.TF_BRANCH || process.env.TF_FROZEN)) throw Error('--saved-plan requires a fresh real-chat freeze');
+if (args.includes('--pre-reply-checkpoint') && !args.includes('--saved-plan')) throw Error('--pre-reply-checkpoint requires --saved-plan');
 if (args.includes('--raw-source-names') && args.includes('--resolved-source-names')) throw Error('Choose raw or resolved source names, not both');
 if (args.includes('--revalidate-plan') && args.some(arg => ['--plan', '--write', '--say', '--live', '--freeze'].includes(arg))) throw Error('Offline validation cannot generate, freeze or append play');
 const repo = fileURLToPath(new URL('..', import.meta.url));
@@ -62,6 +64,7 @@ if (args.includes('--freeze')) {
         if (!sourceFile) throw Error('TF_CHAT required');
         const bytes = fs.readFileSync(sourceFile), rows = bytes.toString('utf8').trim().split('\n').map(JSON.parse);
         const metadata = rows.shift().chat_metadata, characterName = path.basename(path.dirname(sourceFile));
+        if (args.includes('--pre-reply-checkpoint') && rows.at(-1) && !rows.at(-1).is_user) rows.pop();
         const data = card(path.join(root, 'data/default-user/characters', characterName + '.png'));
         const reference = Object.fromEntries(['description', 'personality', 'scenario'].map(k => [k, data[k] || '']));
         reference.persona = settings.power_user.persona_description || '';
@@ -70,8 +73,11 @@ if (args.includes('--freeze')) {
             messages: rows.map((m, index) => ({ index, role: m.is_user ? 'user' : 'assistant', content: m.mes })),
             historical: buildStoryEvidence(rows), sourceFile, sourceHash: hash(bytes), legacyNotebook: metadata.livingWorldGuide?.preparedWorld };
         if (args.includes('--saved-plan')) {
-            const preparation = metadata.livingWorldGuide?.campaignPreparation;
+            let preparation = metadata.livingWorldGuide?.campaignPreparation;
             const hostMessages = rows.map(m => ({ mes: m.mes || '', is_user: Boolean(m.is_user), name: m.name || '' }));
+            if (args.includes('--pre-reply-checkpoint')) preparation = campaignCheckpoint(preparation, {
+                chatId: path.basename(sourceFile, '.jsonl'), referenceHash: preparation?.source?.referenceHash,
+                messages: hostMessages, fingerprint: hash });
             if (!campaignUsable(preparation, { chatId: path.basename(sourceFile, '.jsonl'),
                 referenceHash: preparation?.source?.referenceHash, messages: hostMessages, fingerprint: hash })) {
                 throw Error('Saved plan does not match the live accepted source prefix');

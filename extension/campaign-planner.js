@@ -3,10 +3,10 @@
 import { playableSituations, storyMaterial, validateStoredRealization } from './undertaking-lifecycle.js?v=0.14.34';
 import { validateSelectedMaterial, selectedMaterialPacket } from './selected-material.js?v=0.14.36&rp-plot=1&story-goal=2&story-horizons=1';
 import { RP_BRIEF_SCHEMA } from './rp-brief.js';
-import { validateBackground } from './background-progress.js?v=0.14.34';
+import { validateBackground } from './background-progress.js?v=0.14.34&story-bridge=1';
 import { estimateTokenCount } from './token-budget.js';
 import { fitStoryContext, storyContextPayload } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1';
-import { validateWorkingState } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1';
+import { validateWorkingState } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1';
 
 // Matches the existing host's planner-request marker so request interception
 // cannot mistake this internal pass for RP and inject the guide into itself.
@@ -107,7 +107,7 @@ export function validCampaignState(state) {
         if (state.rpBrief !== undefined) check(state.rpBrief, RP_BRIEF_SCHEMA, '$.rpBrief');
         if (state.realization !== undefined) validateStoredRealization(state.realization, check);
         if (state.background !== undefined) {
-            validateBackground(state.background, state.developments, check);
+            validateBackground(state.background, state.developments, check, state.workingPlan ? 6 : 4);
             if (state.selectedMaterial === undefined) return false;
         }
         if (state.selectedMaterial !== undefined) validateSelectedMaterial(state.selectedMaterial, state.developments, check, state.background);
@@ -115,7 +115,7 @@ export function validCampaignState(state) {
         if (!source || !Number.isSafeInteger(source.messageCount) || source.messageCount < 0
             || !['chatId', 'referenceHash', 'fingerprint'].every(key => typeof source[key] === 'string' && source[key])) return false;
         validateCampaign({ campaign: state.campaign, episode: state.episode, developments: state.developments },
-            { eventFormat: state.preparationFormat === EVENT_POINTS_FORMAT });
+            { eventFormat: state.preparationFormat === EVENT_POINTS_FORMAT, maxDevelopments: state.workingPlan ? 6 : 4 });
         if (state.preparationFormat === EVENT_POINTS_FORMAT) {
             if (state.developments.some(item => !item.initiative)) return false;
             state.developments.forEach(eventPointWire);
@@ -124,7 +124,7 @@ export function validCampaignState(state) {
     } catch { return false; }
 }
 
-export function validateCampaign(value, { eventFormat = false } = {}) {
+export function validateCampaign(value, { eventFormat = false, maxDevelopments = 4 } = {}) {
     // An omitted retirement list is unambiguously no destructive operation.
     // Normalize only absence, never null, malformed lists or missing designs.
     let normalized = value && typeof value === 'object' && !Array.isArray(value) && !Object.hasOwn(value, 'retire')
@@ -132,7 +132,9 @@ export function validateCampaign(value, { eventFormat = false } = {}) {
     if (eventFormat && Array.isArray(normalized?.developments)) normalized = { ...normalized,
         developments: normalized.developments.map(item => item && typeof item.premise === 'string'
             ? { ...item, premise: eventPoints(JSON.parse(item.premise)) } : item) };
-    check(normalized, eventFormat ? EVENT_STATE_SCHEMA : CAMPAIGN_STATE_SCHEMA);
+    const schema = eventFormat ? EVENT_STATE_SCHEMA : CAMPAIGN_STATE_SCHEMA;
+    check(normalized, { ...schema, properties: { ...schema.properties,
+        developments: { ...schema.properties.developments, maxItems: maxDevelopments } } });
     const ids = [...normalized.developments, ...normalized.retire].map(d => d.id);
     if (new Set(ids).size !== ids.length) throw Error('Duplicate campaign operation id');
     return structuredClone(normalized);

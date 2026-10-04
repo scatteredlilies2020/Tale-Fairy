@@ -1,13 +1,13 @@
 import { sha256 } from '/lib.js';
-import { campaignAuthorInstructions, campaignPayloadBudget, campaignUsable, campaignMaterialUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1';
-import { preparationInput as ownedInput, preparationPass as ownedPass, nextPlanRevision, PREPARATION_SCHEMA as OWNED_SCHEMA, PREPARATION_SYSTEM as OWNED_SYSTEM, PREPARATION_REQUEST_LIMIT, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './story-preparation.js?story-workshop=1&story-horizons=1&story-progression=1&rp-activities=1';
+import { campaignAuthorInstructions, campaignPayloadBudget, campaignUsable, campaignMaterialUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1';
+import { preparationInput as ownedInput, preparationPass as ownedPass, nextPlanRevision, PREPARATION_SCHEMA as OWNED_SCHEMA, PREPARATION_SYSTEM as OWNED_SYSTEM, PREPARATION_REQUEST_LIMIT, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './story-preparation.js?story-workshop=1&story-horizons=1&story-progression=1&rp-activities=1&story-bridge=1';
 import { fitStoryInputBudget } from './story-budget.js?follow-through=1&compaction=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1';
 import { readCampaignContinuity } from './campaign-continuity.js';
 // Keep the public registration URL stable so external adapters share this registry.
 import { readEvidenceProviders, evidenceRevisionKey } from './evidence-providers.js';
 import { campaignEvidenceMessages, campaignReviewWindow } from './campaign-evidence.js';
-import { campaignReviewedCount } from './campaign-review.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1';
-import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.36&token-budget=1&rp-plot=1&progress=1&follow-through=1&working-plan=1&recovery=1&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1';
+import { campaignReviewedCount, campaignCheckpoint, verifiedClosedSubjects } from './campaign-review.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1';
+import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.36&token-budget=1&rp-plot=1&progress=1&follow-through=1&working-plan=1&recovery=1&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1';
 import { campaignAttemptSummary } from './planner-progress.js?v=1&recovery=1&review-checkpoint=1&story-workshop=1';
 import { finalizeNotebookCompactions, writeNotebookArchive } from './notebook-compaction.js?v=0.14.22';
 import { eventSource, event_types, extension_prompt_roles, extension_prompt_types, generateRaw, Generate, setExtensionPrompt, getRequestHeaders, getCharacterCardFields, saveSettingsDebounced } from '/script.js';
@@ -16,8 +16,8 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, buildStoryEvidence, storyEvidenceQuery, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.22&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultPlannerState as defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadPlannerState as loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.23&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1';
+import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, buildStoryEvidence, storyEvidenceQuery, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.22&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultPlannerState as defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadPlannerState as loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.23&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1';
 import { isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.22';
 import { selectSituationalOpenings } from './situations.js?v=0.13.9';
 import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.14.22';
@@ -42,19 +42,19 @@ import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } f
 import { hasUsableCausalContext } from './causal-context.js?v=0.14.22';
 import { formatHiddenMotives } from './scratchpad-format.js?v=0.13.9';
 import { WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA } from './world-planner.js?v=0.14.22';
-import { buildWorldPlannerPrompt } from './analysis.js?v=0.14.22&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1';
+import { buildWorldPlannerPrompt } from './analysis.js?v=0.14.22&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1';
 import { defaultPreparedWorld, preparedWorldUsable, unchangedSourcePrefix, stampPreparedWorld } from './prepared-world.js?v=0.14.22';
 import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.9';
-import { canRetainSuccessfulPlan, createSafetyFallbackState } from './fallback-direction.js?v=0.14.22&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1';
+import { canRetainSuccessfulPlan, createSafetyFallbackState } from './fallback-direction.js?v=0.14.22&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1';
 import { classifyAssistantReply } from './response-usability.js?v=0.13.9';
-import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, legacyPlotInputKey, migrateCampaignBudgetKeys, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.34&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1';
+import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, legacyPlotInputKey, migrateCampaignBudgetKeys, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.34&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1';
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 import { ActivatedStoryContext, readHostStoryEvidence } from './rp-context.js';
 
 const activatedStoryContext = new ActivatedStoryContext();
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.15.0';
+const RUNTIME_VERSION = '0.15.1';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -840,15 +840,21 @@ function readCampaignSnapshot() {
 function buildCampaignHostInput(snapshot) {
     if (snapshot.state.revision && !validCampaignState(snapshot.state)) throw Error('Saved campaign is invalid; inspect or rebuild it before planning.');
     const messages = snapshot.messages.map((m, index) => ({ index, role: m.is_user ? 'user' : 'assistant', name: m.name || '', content: m.mes || '' }));
-    const previousUsable = campaignUsable(snapshot.state, { ...snapshot, fingerprint: campaignFingerprint });
+    const proof = { ...snapshot, fingerprint: campaignFingerprint };
+    const checkpoint = campaignCheckpoint(snapshot.state, proof);
+    // Keep the live revision/archive for CAS and unique ids, but never use
+    // discarded-response drafts as creative premises for this branch.
+    const planningState = { ...(checkpoint || emptyCampaign()), revision: snapshot.state.revision, archive: snapshot.state.archive };
+    const previousUsable = Boolean(checkpoint);
     const reviewedCount = campaignReviewedCount(snapshot.state, { ...snapshot, fingerprint: campaignFingerprint });
-    const verifiedPlanEvidence = Object.fromEntries(Object.entries(snapshot.state.planEvidence || {}).filter(([, entry]) =>
+    const verifiedPlanEvidence = Object.fromEntries(Object.entries(checkpoint?.planEvidence || {}).filter(([, entry]) =>
         campaignUsable({ source: entry.source }, { ...snapshot, fingerprint: campaignFingerprint })));
+    const verifiedClosedIds = verifiedClosedSubjects(snapshot.state, proof);
     let best;
     for (const count of [32, 24, 20, 16, 12, 8, 4, 2]) {
         const selected = campaignReviewWindow(messages, count, reviewedCount);
-        const input = ownedInput({ reference: snapshot.reference, state: snapshot.state, playerNames: snapshot.playerNames, reviewedMessageCount: reviewedCount,
-                messages: campaignEvidenceMessages(selected, { narrative: true }), previousUsable, verifiedPlanEvidence, resetPlan: snapshot.rebuild,
+        const input = ownedInput({ reference: snapshot.reference, state: planningState, playerNames: snapshot.playerNames, reviewedMessageCount: reviewedCount,
+                messages: campaignEvidenceMessages(selected, { narrative: true }), previousUsable, verifiedPlanEvidence, verifiedClosedIds, resetPlan: snapshot.rebuild,
                 continuity: snapshot.continuity, evidence: snapshot.evidence, continuityTokens: snapshot.continuityTokens }, snapshot.inputBudget);
         if (!best || input.inputTokens < best.inputTokens) best = input;
         if (input.inputTokens <= input.inputLimit) return input;
@@ -887,7 +893,7 @@ function campaignCompletion(response) {
     return { text: completionText(response), finishReason: 'stop' };
 }
 
-function analyzeCampaignNow({ manual = false, rebuild = false } = {}) {
+function analyzeCampaignNow({ manual = false, rebuild = false, replacementRepair = false } = {}) {
     const context = currentContext();
     const chatId = String(context.getCurrentChatId?.() || '');
     if (!chatId || !getSettings().enabled) return Promise.resolve(loadState(context.chatMetadata));
@@ -899,7 +905,7 @@ function analyzeCampaignNow({ manual = false, rebuild = false } = {}) {
         previous.manual ||= manual;
         return previous.promise;
     }
-    const work = { chatId, stopSequence, manual, rebuild, promise: null, startedAt: Date.now(), runId: ++analysisRunId };
+    const work = { chatId, stopSequence, manual, rebuild, replacementRepair, promise: null, startedAt: Date.now(), runId: ++analysisRunId };
     work.promise = Promise.resolve(previous?.promise).catch(() => {}).then(() => {
         if (stopSequence !== analysisStopSequence || chatId !== String(currentContext().getCurrentChatId?.() || '')
             || !getSettings().enabled) return loadState(currentContext().chatMetadata);
@@ -955,7 +961,7 @@ async function runCampaignAnalysis(work) {
     const result = await withPlannerTabLock(chatId, () => {
         if (stopSequence !== analysisStopSequence || chatId !== String(currentContext().getCurrentChatId?.() || '')
             || !getSettings().enabled) return { accepted: false, skipped: 'cancelled-before-lock' };
-        const result = campaignSession.request({ manual: work.manual });
+        const result = campaignSession.request({ manual: work.manual, replacementRepair: work.replacementRepair });
         return result;
     });
     if (stopSequence === analysisStopSequence && chatId === String(currentContext().getCurrentChatId?.() || '')) {
@@ -1044,6 +1050,15 @@ function preparedReady(state, messages, context = currentContext(), forReplannin
             referenceHash: plotInputKey(chatId, [], generationInputs(context, state)) }, getSettings().fullReviewInterval);
     return preparedWorldUsable(state.preparedWorld, { chatId, messages, fingerprint: fingerprintMessages, forReplanning,
         inputsKey: plotInputKey(chatId, [], generationInputs(context, state)) });
+}
+
+function campaignWriterState(state, messages, context = currentContext()) {
+    if (state.plannerContract !== 15 || preparedReady(state, messages, context)) return state;
+    const chatId = String(context.getCurrentChatId?.() || '');
+    const checkpoint = campaignCheckpoint(state.campaignPreparation, { chatId, messages, fingerprint: campaignFingerprint,
+        referenceHash: plotInputKey(chatId, [], generationInputs(context, state)) });
+    const candidate = checkpoint ? { ...state, campaignPreparation: checkpoint } : state;
+    return preparedReady(candidate, messages, context) ? candidate : state;
 }
 
 function runningSourceHasOnlyAppends(context = currentContext()) {
@@ -1153,12 +1168,13 @@ function deferReplacementPlanning(context = currentContext(), sourceMessages = n
     const previousSelection = generationGuideSelection;
     let metadata = archiveReadyPlannerContexts(context.chatMetadata, [current], context);
     const archived = cachedGenerationContext(metadata?.[GENERATION_CONTEXT_KEY], inputKey, chatId);
-    // Roll back planner memory as well as the visible injection. Otherwise a
-    // later routine pass could inherit entities/ledger facts from deleted prose.
-    const compatibleCampaign = current.plannerContract === 15 && preparedReady(current, messages, context);
-    if (!compatibleCampaign && (!isDirectionCurrent(current, messages, chatId) || !plannerInputsMatch(current, messages, context, metadata))) {
+    // Legacy notebooks roll back planner memory as well as visible injection.
+    // Campaign mode retains its monotonic revision and recovers only verified
+    // checkpoints when building planner input or selecting writer material.
+    if (current.plannerContract !== 15
+        && (!isDirectionCurrent(current, messages, chatId) || !plannerInputsMatch(current, messages, context, metadata))) {
         const restored = archived?.plannerState ? { ...archived.plannerState }
-            : current.plannerContract === 15 ? { ...current } : createSafetyFallbackState(defaultState(), {
+            : createSafetyFallbackState(defaultState(), {
             messages, chatId, fingerprint: fingerprintMessages(messages), turnCount: assistantTurnNumber(messages),
             reason: 'replacement has no compatible saved planner state',
         });
@@ -1180,6 +1196,8 @@ function deferReplacementPlanning(context = currentContext(), sourceMessages = n
         chatId, fingerprint: fingerprintMessages(messages), sourceKey: plotInputKey(chatId, messages), messageCount: messages.length,
     } });
     const keepRepair = retryPlannerActive(currentContext())
+        || (campaignHostWork?.replacementRepair && campaignHostWork.chatId === chatId
+            && previousPending?.sourceKey === plotInputKey(chatId, messages))
         || (!analysisPromise && previousPending?.repairAttemptedKey === inputKey);
     if (keepRepair) {
         // A single missing-cache repair uses this exact pre-reply source. Fast
@@ -1198,9 +1216,27 @@ function deferReplacementPlanning(context = currentContext(), sourceMessages = n
 async function repairDeferredReplacementPlan() {
     let context = currentContext();
     if (!getSettings().enabled || !replacementPlanningDeferred(context)) return loadState(context.chatMetadata);
-    // Campaign-only mode retains compatible preparation or runs without it.
-    // A writer retry is never permission for a planner repair call.
-    if (loadState(context.chatMetadata).plannerContract === 15) return loadState(context.chatMetadata);
+    if (loadState(context.chatMetadata).plannerContract === 15) {
+        const state = loadState(context.chatMetadata), pending = context.chatMetadata[REPLACEMENT_PENDING_KEY];
+        const messages = messagesFromChat(context.chat || []).slice(0, pending.messageCount);
+        if (preparedReady(campaignWriterState(state, messages, context), messages, context)) return state;
+        const inputKey = plotInputKey(String(context.getCurrentChatId?.() || ''), messages, generationInputs(context, state));
+        const stopSequence = analysisStopSequence;
+        if (pending.repairAttemptedKey === inputKey && pending.repairPolicyVersion === 7) return state;
+        // Reserve once per pre-response source before any provider work. This
+        // survives rapid swipes, failed passes, stops and reloads. The writer
+        // proceeds immediately; only a later request can use the finished plan.
+        context.updateChatMetadata({ ...context.chatMetadata, [REPLACEMENT_PENDING_KEY]: {
+            ...pending, repairAttemptedKey: inputKey, repairPolicyVersion: 7 } });
+        if (typeof context.saveMetadata === 'function') await context.saveMetadata();
+        else scheduleVerificationPersistence(currentContext());
+        const latest = currentContext();
+        if (analysisStopSequence !== stopSequence || latest.getCurrentChatId?.() !== context.getCurrentChatId?.()
+            || latest.chatMetadata?.[REPLACEMENT_PENDING_KEY]?.repairAttemptedKey !== inputKey
+            || !replacementPlanningDeferred(latest)) return loadState(latest.chatMetadata);
+        renderAnalysisActivity('Preparing missing pre-reply context once · generation will not wait', true);
+        return analyzeCampaignNow({ replacementRepair: true });
+    }
     if (retryPlannerActive(context)) return analysisPromise;
     const messages = messagesFromChat(context.chat || []).slice(0, context.chatMetadata[REPLACEMENT_PENDING_KEY].messageCount);
     deferReplacementPlanning(context, messages, { preserveSelection: true });
@@ -1238,6 +1274,7 @@ function prepareGenerationGuide(state, type) {
     const messages = messagesFromChat(context.chat || []);
     const replacement = type === 'swipe' || type === 'regenerate';
     const replacementMessages = generationRetrySource(messages, replacement);
+    state = campaignWriterState(state, replacementMessages, context);
     const inputs = generationInputs(context, state);
     const inputKey = plotInputKey(chatId, replacementMessages, inputs);
     const candidatePacket = cachedGenerationContext(context.chatMetadata?.[GENERATION_CONTEXT_KEY], inputKey, chatId);
@@ -2944,6 +2981,7 @@ function workingPlanSummary(preparation) {
         plan.trajectories?.length ? `PRIVATE PROGRESSION (not sent to the writer)\n${plan.trajectories.map(t =>
             `[${t.id}] ${t.focus}\n${t.owner}: ${t.drive}\nBasis: ${t.basis}${t.experience ? `\nPlayable experience: ${t.experience}` : ''}\nIntermediate: ${t.next.change}\nDepends on: ${t.next.when}\nLonger range: ${t.later.change}\nDepends on: ${t.later.when}`).join('\n\n')}`
             : plan.trajectories ? 'PRIVATE PROGRESSION · No continuing trajectory prepared.' : 'PRIVATE PROGRESSION · Added on the next planning pass.',
+        ...(plan.openings || []).map(o => `PREPARED OPENING · ${o.trajectoryId}\n${o.circumstance}\nAccess · ${o.access.route}: ${o.access.basis}`),
         plan.goal?.length ? `PRIVATE STORY GOALS (not sent to the writer)\n${plan.goal.map(goal =>
             `[${goal.scope || 'legacy goal'} · ${preparation.selectedMaterial?.some(entry => entry.subjectIds.includes(goal.subjectId)) ? 'selected' : 'held for later'}] ${goal.aim}\nReached when: ${goal.reachedWhen}`).join('\n\n')}`
             : plan.goal ? 'STORY GOALS · Unsteered play; no goals selected.' : 'STORY GOALS · Chosen on the next planning pass.',

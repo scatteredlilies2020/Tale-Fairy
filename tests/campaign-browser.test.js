@@ -67,7 +67,8 @@ const workshopReply = () => ({ rpUnderstanding: structuredClone(design.plan.rpUn
     later: { when: 'Neighbors contribute their own recipes', change: 'A locally illustrated recipe book connects different households.' },
 }], retire: [] } });
 const sceneReply = () => {
-    const value = structuredClone(design); delete value.progression; delete value.plan.rpUnderstanding; return value;
+    const value = structuredClone(design); delete value.progression; delete value.plan.rpUnderstanding;
+    value.plan.openings = []; return value;
 };
 const envelope = value => ({ choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] });
 
@@ -181,6 +182,92 @@ function browser(send = async args => plannedResponse(args), initialState = defa
     }
     return { ...h, requests, shared };
 }
+
+function splitResponse({ prompt, spec }) {
+    const input = JSON.parse(prompt);
+    if (spec.schema.name === HORIZON_SCHEMA.name) {
+        const value = workshopReply();
+        if (input.previous_horizon.trajectories.length) value.progression.upsert = [];
+        else value.progression.upsert[0].id = `${input.new_id_prefix}kitchen`;
+        return envelope(value);
+    }
+    const value = sceneReply();
+    const id = input.previous_plan.developments[0]?.id || `${input.new_id_prefix}music`;
+    value.plan.developments[0].id = id;
+    value.plan.goal[0].subjectId = id;
+    value.selected_material[0].subjectIds = [id];
+    if (prompt.includes('DISCARDED_ONLY_SECRET')) value.plan.direction = 'DISCARDED_ONLY_SECRET';
+    return envelope(value);
+}
+
+test('replacement recovers a source-valid archived packet without rolling back the live revision or spending calls', async () => {
+    const h = browser(splitResponse, defaultState(), { split: true });
+    await h.scope.analyzeCampaignNow();
+    const prior = h.prepare().payload;
+    h.context.chat.push({ is_user: false, name: 'Mara', mes: 'DISCARDED_ONLY_SECRET' });
+    await h.scope.analyzeCampaignNow({ manual: true });
+    assert.equal(h.state().campaignPreparation.revision, 2);
+    h.scope.deferReplacementPlanning(h.context);
+    assert.equal(h.prepare('regenerate').payload, prior);
+    await h.scope.repairDeferredReplacementPlan();
+    assert.equal(h.requests.length, 4);
+    assert.equal(h.state().campaignPreparation.revision, 2, 'writer recovery does not overwrite the authoritative revision');
+});
+
+test('missing pre-reply preparation rebuilds once from accepted play while rapid swipes stay nonblocking and frozen', async () => {
+    let finish;
+    const h = browser(args => h.requests.length === 4 ? new Promise(resolve => { finish = () => resolve(splitResponse(args)); })
+        : splitResponse(args), defaultState(), { split: true });
+    h.context.chat.push({ is_user: false, name: 'Mara', mes: 'DISCARDED_ONLY_SECRET' });
+    await h.scope.analyzeCampaignNow();
+    h.scope.deferReplacementPlanning(h.context);
+    const frozen = h.prepare('regenerate');
+    assert.equal(frozen.payload, '');
+    const work = h.scope.repairDeferredReplacementPlan(); await settle();
+    assert.equal(h.requests.length, 4, 'one two-stage replacement transaction');
+    for (const request of h.requests.slice(2)) assert.doesNotMatch(request.prompt, /DISCARDED_ONLY_SECRET/);
+    assert.equal(JSON.parse(h.requests[2].prompt).new_id_prefix, 'r2-');
+    h.context.chat.at(-1).mes = 'A different unaccepted swipe.';
+    h.scope.deferReplacementPlanning(h.context);
+    await h.scope.repairDeferredReplacementPlan();
+    assert.equal(h.requests.length, 4);
+    assert.equal(h.requests.at(-1).signal.aborted, false);
+    finish(); await work;
+    assert.equal(h.state().campaignPreparation.revision, 2);
+    assert.equal(h.state().campaignPreparation.source.messageCount, 2);
+    assert.equal(frozen.payload, '', 'in-flight writer selection is immutable');
+    assert.ok(h.prepare('swipe').payload);
+    assert.doesNotMatch(h.prepare('swipe').payload, /DISCARDED_ONLY_SECRET/);
+    h.scope.campaignSession = null;
+    await h.scope.repairDeferredReplacementPlan();
+    assert.equal(h.requests.length, 4, 'reload does not start another pass');
+});
+
+test('failed pre-reply repair reserves its source through reload, and an edited source rejects late work', async () => {
+    for (const failure of ['offline', 'edited']) {
+        const h = browser(args => {
+            if (h.requests.length === 3) {
+                if (failure === 'offline') throw Error('offline');
+                h.context.chat[0].mes = 'Edited accepted premise';
+            }
+            return splitResponse(args);
+        }, defaultState(), { split: true });
+        h.context.chat.push({ is_user: false, name: 'Mara', mes: 'DISCARDED_ONLY_SECRET' });
+        await h.scope.analyzeCampaignNow();
+        h.scope.deferReplacementPlanning(h.context);
+        await h.scope.repairDeferredReplacementPlan();
+        assert.equal(h.requests.length, 3);
+        assert.equal(h.state().campaignPreparation.revision, 1);
+        assert.equal(h.prepare('regenerate').payload, '');
+        if (failure === 'offline') {
+            h.scope.campaignSession = null;
+            h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata));
+            h.scope.deferReplacementPlanning(h.context);
+            await h.scope.repairDeferredReplacementPlan();
+            assert.equal(h.requests.length, 3);
+        }
+    }
+});
 
 // Handwritten output fixtures test the actual host input/commit/writer path,
 // not a claim that a live model generated or understood these opportunities.
@@ -1707,7 +1794,8 @@ test('host withholds source-invalidated consequences while retaining local evide
     await h.scope.analyzeCampaignNow();
     h.context.chat[0].mes = 'The show did not happen.';
     const input = JSON.parse(h.scope.buildCampaignHostInput(h.scope.readCampaignSnapshot()).prompt);
-    assert.deepEqual(input.previous_plan.consequences, []);
+    assert.deepEqual(input.previous_plan.developments, []);
+    assert.equal(input.previous_plan.consequences, undefined, 'no unverified branch supplies a prior plan');
     assert.equal(h.state().campaignPreparation.planEvidence.show.text, 'The show ended.');
     assert.equal(h.prepare().payload, '');
 });

@@ -13,7 +13,7 @@ import { needsEventReframe } from '../../extension/bounded-story.js';
 import { preparationInput as ownedInput, preparationPass as ownedPass, nextPlanRevision,
     PREPARATION_SCHEMA as OWNED_SCHEMA, PREPARATION_SYSTEM as OWNED_SYSTEM, PREPARATION_REQUEST_LIMIT, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from '../../extension/story-preparation.js';
 import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from '../../extension/campaign-session.js';
-import { campaignReviewedCount } from '../../extension/campaign-review.js';
+import { campaignReviewedCount, campaignCheckpoint, verifiedClosedSubjects } from '../../extension/campaign-review.js';
 import { isStoryGeneration, refreshGameMasterContract } from '../../extension/game-master.js';
 import { sampleDirectorSignals } from '../../extension/director-sampling.js';
 import { selectSituationalOpenings } from '../../extension/situations.js';
@@ -36,7 +36,7 @@ export function generationHarness(messages, state = stateApi.defaultState(), met
     const scope = {
         activatedStoryContext: new ActivatedStoryContext(), readHostStoryEvidence,
         ...stateApi, ...cacheApi, ...scheduleApi, ...coalescerApi, ...preparedApi, ...campaignApi, ...compactionApi,
-        ownedInput, ownedPass, needsEventReframe, nextPlanRevision, OWNED_SCHEMA, OWNED_SYSTEM, PREPARATION_REQUEST_LIMIT, PLANNER_OUTPUT_LIMIT, plannerInputLimit, CampaignSession, CAMPAIGN_ATTEMPT_KEY, campaignReviewedCount,
+        ownedInput, ownedPass, needsEventReframe, nextPlanRevision, OWNED_SCHEMA, OWNED_SYSTEM, PREPARATION_REQUEST_LIMIT, PLANNER_OUTPUT_LIMIT, plannerInputLimit, CampaignSession, CAMPAIGN_ATTEMPT_KEY, campaignReviewedCount, campaignCheckpoint, verifiedClosedSubjects,
         getRequestHeaders: () => ({}), sha256: bytes => createHash('sha256').update(bytes).digest('hex'),
         isStoryGeneration, refreshGameMasterContract, sampleDirectorSignals, selectSituationalOpenings, createSafetyFallbackState, canRetainSuccessfulPlan,
         // ST returns a new context with a snapshot reference to its metadata.
@@ -73,7 +73,7 @@ export function generationHarness(messages, state = stateApi.defaultState(), met
         DOMException, console,
     };
     vm.createContext(scope);
-    for (const name of ['campaignMode', 'campaignFingerprint', 'preparedReady', 'commitCampaignPreparation', 'runningSourceHasOnlyAppends', 'rebuildState', 'normalizeUserNote', 'persistClarifiedNote', 'migrateCampaignReferences']) {
+    for (const name of ['campaignMode', 'campaignFingerprint', 'preparedReady', 'campaignWriterState', 'commitCampaignPreparation', 'runningSourceHasOnlyAppends', 'rebuildState', 'normalizeUserNote', 'persistClarifiedNote', 'migrateCampaignReferences']) {
         const match = source.match(new RegExp(`(?:export )?(?:async )?function ${name}\\([^]*?^}`, 'm'));
         assert.ok(match, name);
         vm.runInContext(match[0].replace(/^export /u, ''), scope);

@@ -16,8 +16,8 @@ export const BACKGROUND_SCHEMA = { type: 'array', maxItems: 4,
         } },
 };
 
-export function validateBackground(background, subjects, check) {
-    check(background, BACKGROUND_SCHEMA, '$.background');
+export function validateBackground(background, subjects, check, maxItems = 4) {
+    check(background, { ...BACKGROUND_SCHEMA, maxItems }, '$.background');
     const ids = new Set(background.map(entry => entry.subjectId));
     if (ids.size !== background.length || ids.size !== subjects.length
         || subjects.some(subject => !ids.has(subject.id))) {

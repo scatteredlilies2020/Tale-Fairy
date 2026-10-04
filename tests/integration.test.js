@@ -25,12 +25,12 @@ test('settings explanations stay concise', () => {
 });
 
 test('manifest, browser runtime, and detached plugin share the release version', () => {
-    assert.equal(manifest.version, '0.15.0');
-    assert.equal(manifest.js, 'extension/index.js?v=0.15.0&planner-input=1&episode-fields=1&token-budget=1&rp-plot=1&progress=1&response=2&history-budget=1&partial-updates=1&partial-evidence=1&creative=1&follow-through=1&compaction=1&working-plan=1&guidance-preview=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1');
-    assert.equal(manifest.css, 'extension/style.css?v=0.15.0');
+    assert.equal(manifest.version, '0.15.1');
+    assert.equal(manifest.js, 'extension/index.js?v=0.15.1&planner-input=1&episode-fields=1&token-budget=1&rp-plot=1&progress=1&response=2&history-budget=1&partial-updates=1&partial-evidence=1&creative=1&follow-through=1&compaction=1&working-plan=1&guidance-preview=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1&story-bridge=1');
+    assert.equal(manifest.css, 'extension/style.css?v=0.15.1');
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.15\.0'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.15\.0'/);
+    assert.match(pluginSource, /const VERSION = '0\.15\.1'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.15\.1'/);
 });
 
 test('creative contract updates invalidate the browser entry and schema imports', async () => {
@@ -39,14 +39,14 @@ test('creative contract updates invalidate the browser entry and schema imports'
     assert.match(source, /from '\.\/story-preparation\.js\?story-workshop=1[^']*'/);
     assert.match(bounded, /from '\.\/campaign-planner\.js\?[^']*&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1[^']*'/);
     assert.match(source, /from '\.\/campaign-session\.js\?[^']*&recovery=1&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1[^']*'/);
-    assert.match(source, /from '\.\/planner-progress\.js\?[^']*&review-checkpoint=1&story-workshop=1'/);
+    assert.match(source, /from '\.\/planner-progress\.js\?[^']*&review-checkpoint=1&story-workshop=1[^']*'/);
     const session = await readFile(new URL('../extension/campaign-session.js', import.meta.url), 'utf8');
     assert.match(session, /from '\.\/campaign-runtime\.js\?[^']*&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1[^']*'/);
     for (const module of ['campaign-planner', 'state', 'generation-context']) {
         assert.match(source, new RegExp(`from '\\./${module}\\.js\\?[^']*&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1[^']*'`));
     }
     assert.match(story, /from '\.\/selected-material\.js\?[^']*&creative=1&follow-through=1&story-goal=2&story-horizons=1[^']*'/);
-    assert.match(story, /from '\.\/background-progress\.js\?[^']*&creative=1&follow-through=1'/);
+    assert.match(story, /from '\.\/background-progress\.js\?[^']*&creative=1&follow-through=1[^']*'/);
 });
 
 for (const [marker, seeds] of [
@@ -54,6 +54,7 @@ for (const [marker, seeds] of [
     ['story-progression', ['story-progression.js', 'working-plan.js', 'bounded-story.js']],
     ['rp-activities', ['bounded-story.js']],
     ['story-workshop', ['story-preparation.js', 'bounded-story.js', 'story-progression.js', 'campaign-session.js', 'planner-progress.js', 'index.js']],
+    ['story-bridge', ['background-progress.js', 'bounded-story.js', 'campaign-planner.js', 'campaign-review.js', 'campaign-session.js', 'index.js', 'story-preparation.js', 'working-plan.js']],
 ]) test(`${marker} cache invalidation reaches every transitive browser importer`, async () => {
     const directory = new URL('../extension/', import.meta.url);
     const files = (await readdir(directory)).filter(name => name.endsWith('.js'));

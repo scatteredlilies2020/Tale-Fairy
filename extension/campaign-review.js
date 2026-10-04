@@ -1,17 +1,24 @@
-import { campaignUsable, validCampaignState, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1';
-import { WORKING_PLAN_VERSION, workingPlanProjection } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1';
+import { campaignUsable, validCampaignState, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1';
+import { WORKING_PLAN_VERSION, workingPlanProjection } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1';
 
 // Review coverage is not writer freshness or permission to restore old facts.
 // A rewind/rebuild can invalidate the active plan while an older, fully verified
 // prefix still proves that its player contributions were already reviewed.
 export function campaignReviewedCount(state, context) {
-    let reviewed = 0;
+    return campaignCheckpoint(state, context)?.source.messageCount || 0;
+}
+
+// Recover actual preparation only after validating its entire shape AND exact
+// source prefix. Never rebind an invalid post-response plan to a shorter source.
+// Freshness is a separate writer check; stale checkpoints can seed a new review.
+export function campaignCheckpoint(state, context) {
+    let best = null;
     const pending = [state], seen = new Set(), hashes = new Map();
     const fingerprint = messages => {
         if (!hashes.has(messages.length)) hashes.set(messages.length, context.fingerprint(messages));
         return hashes.get(messages.length);
     };
-    if (campaignUsable(state, { ...context, fingerprint }) && validCampaignState(state)) return state.source.messageCount;
+    if (campaignUsable(state, { ...context, fingerprint }) && validCampaignState(state)) return state;
     while (pending.length) {
         const candidate = pending.pop();
         if (!candidate || typeof candidate !== 'object' || seen.has(candidate)) continue;
@@ -26,10 +33,32 @@ export function campaignReviewedCount(state, context) {
                 } catch { /* Unknown/incomplete archive records cannot establish coverage. */ }
             }
         }
-        if (candidate.source?.messageCount > reviewed
+        if ((!best || candidate.source?.messageCount > best.source.messageCount
+            || candidate.source?.messageCount === best.source.messageCount && candidate.revision > best.revision)
             && campaignUsable(candidate, { ...context, fingerprint }) && validCampaignState(candidate)) {
-            reviewed = candidate.source.messageCount;
+            best = candidate;
         }
     }
-    return reviewed;
+    return best;
+}
+
+export function verifiedClosedSubjects(state, context) {
+    const pending = [state], seen = new Set(), closed = new Set(), hashes = new Map();
+    const fingerprint = messages => {
+        if (!hashes.has(messages.length)) hashes.set(messages.length, context.fingerprint(messages));
+        return hashes.get(messages.length);
+    };
+    while (pending.length) {
+        const item = pending.pop();
+        if (!item || seen.has(item)) continue;
+        seen.add(item);
+        for (const entry of Array.isArray(item.archive) ? item.archive : []) {
+            if (entry?.preparation) pending.push(entry.preparation);
+            for (const exit of Array.isArray(entry?.transitions) ? entry.transitions : []) {
+                if (typeof exit?.id === 'string' && ['closed', 'changed'].includes(exit.disposition)
+                    && campaignUsable({ source: exit.source }, { ...context, fingerprint })) closed.add(exit.id);
+            }
+        }
+    }
+    return [...closed];
 }

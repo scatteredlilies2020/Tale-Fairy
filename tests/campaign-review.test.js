@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { campaignReviewedCount } from '../extension/campaign-review.js';
+import { campaignReviewedCount, campaignCheckpoint, verifiedClosedSubjects } from '../extension/campaign-review.js';
 import { emptyCampaign, EVENT_POINTS_FORMAT, validCampaignState } from '../extension/campaign-planner.js';
 import { workingPlanProjection, WORKING_PLAN_VERSION } from '../extension/working-plan.js';
 import { originalUnderstanding } from './helpers/rp-fixtures.js';
@@ -75,4 +75,37 @@ test('a valid active preparation keeps its own review boundary even with later a
     const active = preparation(8);
     active.archive = [{ preparation: preparation(16, 2), rebuild: true }];
     assert.equal(campaignReviewedCount(active, context), 8);
+});
+
+test('checkpoint recovery returns the newest exact preparation without rewriting its source or live revision', () => {
+    const early = preparation(8), newer = preparation(12, 2), latest = preparation(12, 3), discarded = preparation(20, 4);
+    discarded.archive = [archived(latest), archived(early), archived(newer)];
+    const before = structuredClone(discarded), prefix = { ...context, messages: messages.slice(0, 16) };
+    const checkpoint = campaignCheckpoint(discarded, prefix);
+    assert.equal(checkpoint.revision, 3);
+    assert.deepEqual(checkpoint.source, latest.source);
+    assert.deepEqual(checkpoint.workingPlan, latest.workingPlan);
+    assert.equal(validCampaignState(checkpoint), true);
+    assert.deepEqual(discarded, before);
+    assert.equal(campaignCheckpoint(discarded, { ...prefix, referenceHash: 'changed' }), null);
+});
+
+test('closure guards follow accepted prefixes rather than discarded assistant outcomes, including rebuild archives', () => {
+    const accepted = preparation(8), discarded = preparation(16, 2);
+    accepted.archive.push({ transitions: [
+        { id: 'closed', disposition: 'closed', source: accepted.source },
+        { id: 'changed', disposition: 'changed', source: accepted.source },
+        { id: 'paused', disposition: 'paused', source: accepted.source },
+        { id: 'unverified', disposition: 'closed' },
+    ] });
+    discarded.archive = [{ preparation: accepted, rebuild: true }, { transitions: [
+        { id: 'discarded-closure', disposition: 'closed', source: discarded.source },
+    ] }];
+    const state = { ...emptyCampaign(), archive: [{ preparation: discarded, rebuild: true },
+        null, { preparation: { archive: {} } }, { transitions: {} }, { transitions: [null] }] };
+    assert.deepEqual(verifiedClosedSubjects(state, context).sort(), ['changed', 'closed', 'discarded-closure']);
+    assert.deepEqual(verifiedClosedSubjects(state, { ...context, messages: messages.slice(0, 12) }).sort(), ['changed', 'closed']);
+    const edited = structuredClone(messages); edited[12].mes = 'A different outcome.';
+    assert.deepEqual(verifiedClosedSubjects(state, { ...context, messages: edited }).sort(), ['changed', 'closed']);
+    assert.deepEqual(verifiedClosedSubjects(state, { ...context, referenceHash: 'changed' }), []);
 });

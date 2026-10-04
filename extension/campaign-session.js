@@ -1,5 +1,5 @@
-import { CampaignRuntime } from './campaign-runtime.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1';
-import { campaignReviewInterval } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1';
+import { CampaignRuntime } from './campaign-runtime.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1';
+import { campaignReviewInterval } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1';
 import { boundedPlannerResponse, PLANNER_RESPONSE_TIMEOUT_MS } from './planner-progress.js?v=1&review-checkpoint=1&story-workshop=1';
 
 export const CAMPAIGN_ATTEMPT_KEY = 'taleFairyCampaignAttempt';
@@ -70,11 +70,12 @@ export class CampaignSession {
         });
     }
 
-    request({ manual = false } = {}) {
+    request({ manual = false, replacementRepair = false } = {}) {
         if (this.pending) return this.pending;
         const snapshot = this.read();
         const previous = snapshot.attempt;
-        if (!snapshot.enabled || !snapshot.chatId || !snapshot.messages.length || snapshot.replacement && !manual) {
+        if (!snapshot.enabled || !snapshot.chatId || !snapshot.messages.length
+            || snapshot.replacement && !manual && !replacementRepair || replacementRepair && !snapshot.replacement) {
             return Promise.resolve({ accepted: false, state: snapshot.state, skipped: 'inactive-or-replacement' });
         }
         if (!manual && previous?.chatId === snapshot.chatId) {
@@ -87,7 +88,7 @@ export class CampaignSession {
             // Recover only after new accepted assistant play; no same-source,
             // user-only, timer, or reload retry. Stop retains normal cadence.
             const dueAfter = previous.status === 'failed' ? 1 : campaignReviewInterval(this.interval());
-            if (key === previous.key || unchangedBasis && turns(snapshot.messages) - previous.assistantCount < dueAfter) {
+            if (key === previous.key || !replacementRepair && unchangedBasis && turns(snapshot.messages) - previous.assistantCount < dueAfter) {
                 return Promise.resolve({ accepted: false, state: snapshot.state, skipped: 'not-due' });
             }
         }

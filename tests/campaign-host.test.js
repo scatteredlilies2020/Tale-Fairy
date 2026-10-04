@@ -77,7 +77,7 @@ test('reload and appended exchanges retain compatible campaign preparation; edit
     assert.equal(h.calls.length, 0);
 });
 
-test('swipes never repair a campaign and cannot retain discarded-response preparation', async () => {
+test('swipes reuse compatible campaigns and reserve one repair when the pre-reply plan is missing', async () => {
     const h = generationHarness(messages());
     attach(h);
     h.prepare();
@@ -95,7 +95,12 @@ test('swipes never repair a campaign and cannot retain discarded-response prepar
     assert.equal(other.state().plannerContract, 15, 'preserve invalid data for inspection, not a legacy fallback');
     assert.equal(other.prepare('swipe').payload, '');
     await other.scope.repairDeferredReplacementPlan();
-    assert.equal(other.calls.length, 0);
+    assert.equal(other.calls.length, 1);
+    assert.equal(other.calls[0].replacementRepair, true);
+    await other.scope.repairDeferredReplacementPlan();
+    other.scope.deferReplacementPlanning(other.context);
+    await other.scope.repairDeferredReplacementPlan();
+    assert.equal(other.calls.length, 1, 'swipes and reload-style repeated triggers share the reservation');
 });
 
 test('expired scene material is withheld including cached requests, without deleting aims or author instructions', () => {

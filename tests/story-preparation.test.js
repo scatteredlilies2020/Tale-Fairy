@@ -7,6 +7,7 @@ import { emptyCampaign, campaignPayload, validCampaignState } from '../extension
 import { defaultPlannerState, saveState, loadPlannerState } from '../extension/state.js';
 import { storyInputTokens } from '../extension/story-budget.js';
 import { originalUnderstanding } from './helpers/rp-fixtures.js';
+import { workingPlanProjection } from '../extension/working-plan.js';
 
 const messages = [{ index: 0, role: 'assistant', content: 'The council is repairing the village bridge.' },
     { index: 1, role: 'user', name: 'Ren', content: 'I stay for tea.' }];
@@ -34,7 +35,7 @@ async function stuck() {
     assert.equal(result.accepted, true, result.error); return result.state;
 }
 const horizon = () => ({ rpUnderstanding: understanding(), progression: { upsert: [structuredClone(opportunity)], retire: [{ id: 'r1-repair', reason: 'Local repair remains local work.' }] } });
-const scene = () => ({ plan: local(), exits: [], observations: [], selected_material: [] });
+const scene = () => ({ plan: { ...local(), openings: [] }, exits: [], observations: [], selected_material: [] });
 const inputFor = (state, extra = {}) => preparationInput({ reference, state, messages, playerNames: ['Ren'], previousUsable: true, ...extra });
 async function run(state, responses = [horizon(), scene()], extra = {}) {
     const calls = [], input = inputFor(state, extra);
@@ -207,4 +208,61 @@ test('per-stage fitting preserves fresh player choices and the complete source r
         assert.equal(latest.index, 2);
         assert.equal(latest.spans.map(s => Array.isArray(s) ? s[1] : s.text).join(''), text);
     }
+});
+
+function openedScene() {
+    const value = scene();
+    value.plan.openings = [{ trajectoryId: opportunity.id,
+        circumstance: 'At tea, a visiting orchard cook offers warm smoked pears and describes Cinderwick’s communal oven.',
+        access: { route: 'contact', basis: 'A proposed traveler sharing the village tea table; a visit north remains optional.' } }];
+    value.plan.goal.push({ subjectId: opportunity.id, scope: 'near-term', aim: 'Share the orchard kitchen’s preservation craft.',
+        reachedWhen: 'Visitors have compared preserves and tried the pebble charm, or left it aside.' });
+    value.selected_material = [{ subjectIds: [opportunity.id], available: value.plan.openings[0].circumstance,
+        developing: 'If the travelers visit Cinderwick, cooks can compare smoked-pear recipes around the communal oven and share a heat-storing pebble spell.',
+        lasting: 'If they take the charm north, upland winter kitchens can adapt the recipe to their local fruit.' }];
+    return value;
+}
+
+test('two openings fit beside four unfinished local slots and reach the writer without exposing the private horizon', async () => {
+    const state = await stuck();
+    for (let n = 2; n <= 4; n++) state.workingPlan.developments.push({ ...structuredClone(local().developments[0]), id: `r1-task${n}` });
+    Object.assign(state, workingPlanProjection(state.workingPlan));
+    assert.equal(validCampaignState(state), true);
+    const value = openedScene(); value.plan.developments = structuredClone(state.workingPlan.developments);
+    const wider = horizon();
+    wider.progression.upsert.push({ ...structuredClone(opportunity), id: 'r2-upland', focus: 'Upland winter kitchens' });
+    value.plan.openings.push({ trajectoryId: 'r2-upland', circumstance: 'The orchard cook describes a later road toward the upland kitchens.',
+        access: { route: 'information', basis: 'He has traveled that road; reaching the kitchens would take another journey.' } });
+    const result = await run(state, [wider, value]);
+    assert.equal(result.accepted, true, result.error);
+    assert.equal(result.state.workingPlan.developments.length, 4);
+    assert.equal(result.state.developments.length, 6);
+    assert.equal(validCampaignState(result.state), true);
+    assert.match(campaignPayload(result.state), /smoked pears|communal oven/);
+    assert.match(campaignPayload(result.state), /upland winter kitchens/);
+    assert.doesNotMatch(campaignPayload(result.state), /r2-orchard|trajectoryId|drive|goal|orchard cook offers.*instructions/);
+    const restored = loadPlannerState(JSON.parse(JSON.stringify(saveState({}, { ...defaultPlannerState(), campaignPreparation: result.state }))));
+    assert.deepEqual(restored.campaignPreparation.workingPlan.openings, value.plan.openings);
+});
+
+for (const mutation of ['unknown', 'duplicate', 'private', 'bare-horizon']) test(`opening validation rejects ${mutation} selection`, async () => {
+    const value = openedScene();
+    if (mutation === 'unknown') value.plan.openings[0].trajectoryId = 'missing';
+    if (mutation === 'duplicate') value.plan.openings.push(structuredClone(value.plan.openings[0]));
+    if (mutation === 'private') value.plan.openings[0].access.route = 'none';
+    if (mutation === 'bare-horizon') value.plan.openings = [];
+    const result = await run(await stuck(), [horizon(), value, value]);
+    assert.equal(result.accepted, false);
+    assert.equal(result.calls.length, 3);
+});
+
+test('quiet play can withdraw an opening without closing anything or erasing its future', async () => {
+    const first = await run(await stuck(), [horizon(), openedScene()]);
+    assert.equal(first.accepted, true, first.error);
+    const next = await run(first.state, [{ rpUnderstanding: understanding(), progression: { upsert: [], retire: [] } }, scene()]);
+    assert.equal(next.accepted, true, next.error);
+    assert.deepEqual(next.state.workingPlan.openings, []);
+    assert.deepEqual(next.state.workingPlan.trajectories, [opportunity]);
+    assert.deepEqual(next.state.selectedMaterial, []);
+    assert.deepEqual(next.state.archive.at(-1).transitions, []);
 });
