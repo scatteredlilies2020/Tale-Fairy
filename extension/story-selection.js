@@ -1,16 +1,16 @@
 // One provider response: shared story material + private preparation + witnessed progress.
 // The established subject/evidence transaction remains the storage authority.
-import { ownedInput, ownedPass, OWNED_SCHEMA, needsEventReframe } from './event-planning.js?v=0.14.34&planner-input=1&token-budget=1&rp-plot=1&response=2&history-budget=1&compaction=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2';
+import { ownedInput, ownedPass, OWNED_SCHEMA, needsEventReframe } from './event-planning.js?v=0.14.34&planner-input=1&token-budget=1&rp-plot=1&response=2&history-budget=1&compaction=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1';
 import { compactPlannerPayload } from './planner-compaction.js';
-import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check } from './campaign-planner.js?v=0.14.34&rp-plot=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2';
+import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check } from './campaign-planner.js?v=0.14.34&rp-plot=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1';
 import { REALIZATION_SCHEMA } from './undertaking-lifecycle.js?v=0.14.34&response=2';
-import { SELECTED_MATERIAL_SCHEMA, validateSelectedMaterial } from './selected-material.js?v=0.14.36&rp-plot=1&creative=1&follow-through=1&story-goal=2';
+import { SELECTED_MATERIAL_SCHEMA, validateSelectedMaterial } from './selected-material.js?v=0.14.36&rp-plot=1&creative=1&follow-through=1&story-goal=2&story-horizons=1';
 import { BACKGROUND_SCHEMA, validateBackground } from './background-progress.js?v=0.14.34&creative=1&follow-through=1';
 import { SPAN_WITNESS_SCHEMA, witnessMessages, resolveSpanWitnesses, reconcileSpanWitnesses } from './accepted-witnesses.js?v=0.14.34&partial-evidence=1';
-import { storyInputTokens } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2';
+import { storyInputTokens } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1';
 import { RP_BRIEF_SCHEMA } from './rp-brief.js';
 import { normalizePlannerResponse } from './planner-response.js?v=1';
-import { reconcileDevelopments } from './planner-developments.js?v=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2';
+import { reconcileDevelopments } from './planner-developments.js?v=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1';
 export { needsEventReframe };
 
 export const STORY_SCHEMA = structuredClone(OWNED_SCHEMA);
@@ -56,7 +56,7 @@ access identifies a plausible bridge through current people, places, interests o
 
 SELECTION
 Assess preparation before selected_material. Return [] or one compact packet. Rebuild it from current play, not previous selected prose. Include each contributor with fresh background. Exclude inaccessible subjects from every horizon; keep hidden causes and knowledge private.
-available supplies a selected development to enact, not a maybe-hook: definite NPC/world action and an observable surface. Condition only real time, place or causal prerequisites, not initiative on player interest. developing and lasting are optional: follow-through beyond the scene with open outcomes. Several subjects may inform one circumstance; subjectIds stays private. Think beyond the next reply. A future opportunity can be selected before travel or acceptance without forcing it into the present scene.
+available supplies an observable NPC/world circumstance, not a command, recap or maybe-hook. Condition only real time, place or causal prerequisites, not initiative on player interest. For open RP, developing and lasting should supply distinct concrete changes across later scenes and wider possibilities, with open outcomes; omit only where no longer horizon fits. Never use generic "remains an option" filler. Several subjects may inform one circumstance; subjectIds stays private. Think beyond the next reply. A future opportunity can be selected before travel or acceptance without forcing it into the present scene.
 follow_through_subject_ids identifies the previous selection. Carry unplayed developments forward under stable ids; do not reroll merely because they have not appeared yet. Advance them with accepted play, revising for contradiction, changed relevance or user choice. Dormant material stays private.
 
 Check added value before returning: after subtracting known facts, what playable invention remains? Supply what people do or discover and why it matters, not "a lead might emerge". Prefer a distinctive development over generic filler. This is an internal check, not another call.

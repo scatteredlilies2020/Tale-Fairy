@@ -1,10 +1,10 @@
-import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2';
+import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1';
 import { compactPlannerReference } from './planner-reference.js?history-budget=1';
 import { compactCampaignSpeakers } from './campaign-evidence.js';
 import { witnessMessages, resolveSpanWitnesses, SPAN_WITNESS_SCHEMA } from './accepted-witnesses.js?v=0.14.34&partial-evidence=1';
 import { fitEvidenceProviders } from './evidence-providers.js';
-import { SELECTED_MATERIAL_SCHEMA, validateSelectedMaterial } from './selected-material.js?v=0.14.36&rp-plot=1&story-goal=2';
-import { storyInputTokens } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2';
+import { SELECTED_MATERIAL_SCHEMA, validateSelectedMaterial } from './selected-material.js?v=0.14.36&rp-plot=1&story-goal=2&story-horizons=1';
+import { storyInputTokens } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1';
 import { fitPlannerContext } from './planner-context.js?soft-targets=1&story-map=1&story-goal=2';
 import { WORKING_PLAN_SCHEMA, WORKING_PLAN_VERSION, WORKING_PLAN_LIMIT, SELECTED_PACKET_LIMIT, RP_UNDERSTANDING_LIMIT,
     PLANNER_INPUT_LIMIT, planTokens, plannerInputLimit, validateWorkingPlan, validateGoalSelection, workingPlanProjection } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2';
@@ -14,6 +14,9 @@ const text = maxLength => ({ type: 'string', minLength: 1, maxLength });
 const object = properties => ({ type: 'object', additionalProperties: false, required: Object.keys(properties), properties });
 const witnesses = { type: 'array', maxItems: 3, items: SPAN_WITNESS_SCHEMA };
 const selection = structuredClone(SELECTED_MATERIAL_SCHEMA);
+// Saved packets may lack later horizons; every newly selected packet must
+// supply the wider possibility rather than degenerating into a next-turn cue.
+selection.items.required.push('developing', 'lasting');
 // Instructions live once in the system contract, not repeated in schema prose.
 function withoutDescriptions(value) {
     if (Array.isArray(value)) return value.map(withoutDescriptions);
@@ -34,7 +37,7 @@ responseShape.properties.plan.properties.rpUnderstanding.required.push('storySco
 // Admission and saved-state compatibility keep the original field ceilings.
 // Drafting needs much smaller allowances: those ceilings are not a budget to
 // fill independently, and JSON keys/ids consume part of the shared token cap.
-export const STORY_SCHEMA = { name: 'tale_fairy_working_plan_goals_v4', value: structuredClone(responseShape) };
+export const STORY_SCHEMA = { name: 'tale_fairy_working_plan_horizons_v5', value: structuredClone(responseShape) };
 const draftPlan = STORY_SCHEMA.value.properties.plan.properties;
 draftPlan.rpUnderstanding.properties.storyScope.maxLength = 110;
 draftPlan.rpUnderstanding.properties.independentSource.maxLength = 110;
@@ -62,7 +65,7 @@ anchors records applicable rules/relationships; departures records changes and a
 
 Return a complete replacement plan, at most four developments; keep the whole plan below the ${WORKING_PLAN_LIMIT}-token target. direction holds the RP's broader range of fitting experiences, not today's agenda; retain that scope across scene changes, revising it for actual premise changes. Reframe a scene-bound previous direction from the RP basis. threads holds relevant long-running interests/relationships, not obligations. consequences holds at most four relevant witnessed results, not a lifetime ledger. Earlier history stays local.
 
-goal holds coexisting aims linked by subjectId to retained developments. scope is long-term (wider direction), near-term (concrete experience), or side-thread (independent interest). Choose automatically from RP scope, relevant past and user interests; no quota per scope or required main quest. Choose concrete experiences beyond the latest reaction, not generic "advance the story" goals. A long-term and near-term goal may share a subjectId; side threads need not serve either. aim guides the WRITER's NPC/world activity, never assigns player objectives or guarantees outcomes. reachedWhen gives observable fulfillment; an offer alone is not fulfillment. Retain unfinished goals across reviews, scene changes and unselected turns. Revise individually for fulfillment, refusal, incompatibility or changed user direction, not mere delay. Completing one need not end others; completion need not spawn a successor. goal=[] permits unsteered play. Goal text goes to the writer: no hidden motives.
+goal holds coexisting aims linked by subjectId to retained developments. scope is long-term (wider direction), near-term (concrete experience), or side-thread (independent interest). Choose automatically from RP scope, relevant past and user interests; no quota per scope or required main quest. Choose concrete experiences beyond the latest reaction, not generic "advance the story" goals. A long-term and near-term goal may share a subjectId; side threads need not serve either. aim guides the NPC/world's possible activity, never assigns player objectives or guarantees outcomes. reachedWhen gives observable fulfillment; an offer alone is not fulfillment. Retain unfinished goals across reviews, scene changes and unselected turns. Revise individually for fulfillment, refusal, incompatibility or changed user direction, not mere delay. Completing one need not end others; completion need not spawn a successor. goal=[] permits unsteered play. Goals remain private; selected story substance, not an objective checklist, reaches the writer.
 
 Draft below the target: aim for 800 tokens including JSON, at most 1200 prose characters, fewer for non-Latin text. Field maxima are not allocations. Preserve ids, distinct unfinished initiatives and prerequisites; shorten without dropping work. Avoid recaps and duplication.
 
@@ -74,7 +77,7 @@ For every removed development return one exit: closed means ended in play; chang
 
 consequences are accepted facts; other fields are preparation. New/changed facts need observations with ids and exact supplied index/span citations. Unchanged verified facts can carry. No invented player agreement, achievements or unseen actions as history. References supply premises; recall/drafts are not enactment. Current play overrides them; omitted context proves neither absence nor resolution.
 
-selected_material is [] or one integrated packet below the ${SELECTED_PACKET_LIMIT}-token target including selected goals; aim for 300 tokens including JSON. When goals fit now, supply a packet including at least one goal's subjectId. Others stay saved, not resolved. Deliberate rest or no fitting access permits [] without deleting goals. Never force every goal into a reply or rotate on a timer. Reference only retained, accessible developments. available supplies concrete NPC/world steps, not a recap. Invitations are valid when backed by something to experience, not repeated permission-seeking. developing/lasting may carry relevant wider goals, not force them into this scene. Condition only genuine prerequisites; participation and outcomes stay open. No dialogue scripts, ordered beats, assigned player feelings, travel or commitments. Preserve useful unplayed material rather than rerolling. Empty beats filler. Concise JSON only.
+selected_material is [] or one integrated packet below the ${SELECTED_PACKET_LIMIT}-token target; aim for 300 tokens including JSON. When goals fit now, supply a packet including at least one goal's subjectId. Others stay saved, not resolved. Deliberate rest or no fitting access permits [] without deleting goals. Never force every goal into a reply or rotate on a timer. Reference only retained, accessible developments. A nonempty packet always has three distinct horizons: available is an observable NPC/world circumstance; developing is concrete independent activity and possible consequences over later scenes; lasting is a specific wider relationship, discovery or consequence that could outlive this scene. Include substantive invention in the later horizons, not "remains an option" or a restated goal. These are possibilities, not already-accepted history, instructions to the writer or an ordered itinerary. Invitations are valid when backed by something to experience, not repeated permission-seeking. Condition only genuine prerequisites; participation and outcomes stay open. No dialogue scripts, assigned player feelings, travel or commitments. Preserve useful unplayed material rather than rerolling. Empty beats filler. Concise JSON only.
 `;
 
 export const needsEventReframe = state => state?.workingPlanVersion !== WORKING_PLAN_VERSION;
@@ -230,8 +233,7 @@ export async function storyPass({ state, input, source, generate }) {
             preparationFormat: EVENT_POINTS_FORMAT, workingPlanVersion: WORKING_PLAN_VERSION,
             workingPlan: structuredClone(raw.plan), planEvidence, selectedMaterial: structuredClone(raw.selected_material) };
         const budget = { input: result.plannerInputTokens ?? input.inputTokens, plan: planTokens(raw.plan),
-            selected: planTokens(raw.selected_material) + (raw.selected_material.length
-                ? planTokens(raw.plan.goal.filter(goal => raw.selected_material[0].subjectIds.includes(goal.subjectId))) : 0),
+            selected: planTokens(raw.selected_material),
             understanding: planTokens(raw.plan.rpUnderstanding) };
         const targets = { input: input.inputLimit, plan: WORKING_PLAN_LIMIT, selected: SELECTED_PACKET_LIMIT, understanding: RP_UNDERSTANDING_LIMIT };
         const budgetNotices = Object.entries(targets).filter(([key, target]) => budget[key] > target)

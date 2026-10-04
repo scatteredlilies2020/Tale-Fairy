@@ -1,11 +1,11 @@
 // Candidate single-call campaign preparation; host integration is opt-in.
 // Owns proposals only: accepted history always comes from the conversation.
 import { playableSituations, storyMaterial, validateStoredRealization } from './undertaking-lifecycle.js?v=0.14.34';
-import { validateSelectedMaterial, selectedMaterialPacket } from './selected-material.js?v=0.14.36&rp-plot=1&story-goal=2';
+import { validateSelectedMaterial, selectedMaterialPacket } from './selected-material.js?v=0.14.36&rp-plot=1&story-goal=2&story-horizons=1';
 import { RP_BRIEF_SCHEMA } from './rp-brief.js';
 import { validateBackground } from './background-progress.js?v=0.14.34';
 import { estimateTokenCount } from './token-budget.js';
-import { fitStoryContext, storyContextPayload } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2';
+import { fitStoryContext, storyContextPayload } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1';
 import { validateWorkingState } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2';
 
 // Matches the existing host's planner-request marker so request interception
@@ -194,8 +194,8 @@ function contextJson(value) {
     return JSON.stringify(value).replace(/</g, '\\u003c');
 }
 
-function campaignWriterMaterial(state) {
-    const possible_developments = state?.revision && state.selectedMaterial !== undefined ? selectedMaterialPacket(state)
+function campaignWriterMaterial(state, { legacyGoals = false } = {}) {
+    const possible_developments = state?.revision && state.selectedMaterial !== undefined ? selectedMaterialPacket(state, { legacyGoals })
         : (state?.revision ? state.developments : []).flatMap(subject => {
         const entry = state.realization?.[subject.id];
         const open = entry?.playable.filter(p => !['completed', 'declined', 'transformed'].includes(entry.episodes[p.episodeId]?.status));
@@ -220,16 +220,28 @@ export function campaignPayload(state, instructions = []) {
     return campaignPayloadBudget(state, instructions).payload;
 }
 
+// Authenticate packets produced before the material-only handoff. Never use
+// this path for a newly prepared writer request.
+export function contractedCampaignPayload(state, instructions = []) {
+    return fitStoryContext(campaignWriterMaterial(state, { legacyGoals: true }),
+        instructions.filter(text => typeof text === 'string' && text.trim()),
+        { legacyContracts: true }).payload;
+}
+
 // Authenticate pre-follow-through bounded swipe packets without replaying their
 // old handoff contract. Normal outgoing packets always use campaignPayload.
 export function preFollowThroughCampaignPayload(state, instructions = []) {
-    return fitStoryContext(campaignWriterMaterial(state), instructions.filter(text => typeof text === 'string' && text.trim()), { followThrough: false }).payload;
+    return fitStoryContext(campaignWriterMaterial(state, { legacyGoals: true }),
+        instructions.filter(text => typeof text === 'string' && text.trim()),
+        { legacyContracts: true, followThrough: false }).payload;
 }
 
 // Exact pre-budget serialization authenticates old immutable swipe packets.
 // It is never sent to the writer; authenticated snapshots are rebuilt above.
 export function preBudgetCampaignPayload(state, instructions = []) {
-    return storyContextPayload(campaignWriterMaterial(state), instructions.filter(text => typeof text === 'string' && text.trim()), { followThrough: false });
+    return storyContextPayload(campaignWriterMaterial(state, { legacyGoals: true }),
+        instructions.filter(text => typeof text === 'string' && text.trim()),
+        { legacyContracts: true, followThrough: false });
 }
 
 // Exact 0.14.32 serialization authenticates saved packets only. Never send it

@@ -42,23 +42,19 @@ test('writer fitting retains complete small packets with exact escaped instructi
     assert.doesNotMatch(report.payload, /<my instruction>/);
 });
 
-test('follow-through is an explicit bounded writer contract, not a chance gate or factual promotion', () => {
+test('new writer packets contain story material without application-written contracts', () => {
     const material = [{ available_circumstances: 'If they visit the arena, Bolin could dispute an old match diagram.' }];
     const report = fitStoryContext(material, []);
     const decode = payload => JSON.parse(payload.replace(/<\/?tale-fairy-context>/g, ''));
-    assert.equal(decode(report.payload).development_contract, DEVELOPMENT_CONTRACT);
-    assert.deepEqual(decode(report.payload).possible_developments, material, 'legacy hedging is not rewritten as historical fact');
-    assert.match(DEVELOPMENT_CONTRACT, /when its stated circumstances fit/);
-    assert.match(DEVELOPMENT_CONTRACT, /do not wait for the player/);
-    assert.match(DEVELOPMENT_CONTRACT, /without forced travel, time skips or unrelated interruptions/);
-    assert.match(DEVELOPMENT_CONTRACT, /participation and outcomes remain open/);
-    assert.match(DEVELOPMENT_CONTRACT, /not already-accepted history/);
+    assert.deepEqual(decode(report.payload), { possible_developments: material },
+        'legacy hedging is not rewritten as historical fact');
     assert.equal(report.tokens, conservativeTokenCount(report.payload));
     assert.ok(report.tokens <= report.limit);
-    const old = fitStoryContext(material, [], { followThrough: false });
-    assert.equal(decode(old.payload).development_contract, undefined);
-    assert.equal(old.payload, storyContextPayload(material, [], { followThrough: false }));
-    assert.ok(old.tokens < report.tokens);
+    const historical = fitStoryContext(material, [], { legacyContracts: true });
+    assert.equal(decode(historical.payload).development_contract, DEVELOPMENT_CONTRACT);
+    const older = fitStoryContext(material, [], { legacyContracts: true, followThrough: false });
+    assert.equal(decode(older.payload).development_contract, undefined);
+    assert.ok(older.tokens < historical.tokens);
     assert.equal(fitStoryContext([], []).payload, '');
     assert.deepEqual(decode(fitStoryContext([], ['Rest tonight.']).payload), { author_instructions: ['Rest tonight.'] });
 });
@@ -77,13 +73,13 @@ test('oversized integrated packets are omitted whole, not separated from their p
     assert.deepEqual(material, before);
 });
 
-test('goal, completion point, access and writer instructions fit as one indivisible packet', () => {
+test('explicit author instructions and selected story material fit as one indivisible packet', () => {
     const entry = { story_goal: { aim: 'Share the new tune.', reached_when: 'Both arrangements have been heard.' },
         available_circumstances: 'At rehearsal, Jo brings contrasting arrangements.' };
     const notes = ['My writing style stays unchanged.'];
     const fitted = fitStoryContext([entry], notes);
     const decoded = JSON.parse(fitted.payload.replace(/<\/?tale-fairy-context>/g, ''));
-    assert.equal(decoded.story_goal_contract, STORY_GOAL_CONTRACT);
+    assert.equal(decoded.story_goal_contract, undefined);
     assert.deepEqual(decoded.possible_developments, [entry]);
     assert.deepEqual(decoded.author_instructions, notes);
     assert.ok(fitted.tokens <= fitted.limit);
@@ -93,9 +89,11 @@ test('goal, completion point, access and writer instructions fit as one indivisi
     assert.doesNotMatch(withheld.payload, /story_goal|Share the new tune|At rehearsal/);
     assert.deepEqual(JSON.parse(withheld.payload.replace(/<\/?tale-fairy-context>/g, '')), { author_instructions: notes });
     assert.equal(fitStoryContext([], []).payload, '');
+    const old = JSON.parse(fitStoryContext([entry], notes, { legacyContracts: true }).payload.replace(/<\/?tale-fairy-context>/g, ''));
+    assert.equal(old.story_goal_contract, STORY_GOAL_CONTRACT);
 });
 
-test('multiple goals and their access stay atomic within the unchanged writer budget', () => {
+test('historical multiple-goal packets remain authenticatable but new packets add no goal instructions', () => {
     const entry = { story_goals: [
         { scope: 'long-term', aim: 'Build a shared repertoire.', reached_when: 'The group presents an original set.' },
         { scope: 'near-term', aim: 'Try two arrangements.', reached_when: 'Both have been played.' },
@@ -107,12 +105,10 @@ test('multiple goals and their access stay atomic within the unchanged writer bu
     assert.ok(report.tokens <= WRITER_CONTEXT_TOKEN_LIMIT);
     const wire = JSON.parse(report.payload.replace(/<\/?tale-fairy-context>/g, ''));
     assert.deepEqual(wire.possible_developments, [entry]);
-    assert.equal(wire.story_goals_contract, STORY_GOALS_CONTRACT);
-    assert.equal(wire.story_goal_contract, undefined, 'Only the applicable contract consumes the budget.');
-    assert.match(wire.story_goals_contract, /need not converge/);
-    assert.match(wire.story_goals_contract, /Do not service every goal each reply/);
-    assert.match(wire.story_goals_contract, /other unfinished goals may continue/);
-    assert.match(wire.story_goals_contract, /Unselected threads are not resolved/);
+    assert.equal(wire.story_goals_contract, undefined);
+    assert.equal(wire.story_goal_contract, undefined);
+    const historical = JSON.parse(fitStoryContext([entry], notes, { legacyContracts: true }).payload.replace(/<\/?tale-fairy-context>/g, ''));
+    assert.equal(historical.story_goals_contract, STORY_GOALS_CONTRACT);
     const oversized = fitStoryContext([{ ...entry, available_circumstances: '界'.repeat(900) }], notes);
     assert.equal(oversized.omitted, 1);
     assert.deepEqual(JSON.parse(oversized.payload.replace(/<\/?tale-fairy-context>/g, '')), { author_instructions: notes });

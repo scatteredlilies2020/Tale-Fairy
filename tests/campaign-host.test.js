@@ -353,14 +353,14 @@ test('ready revisions replace older retry packets without changing a frozen in-f
     assert.equal(h.calls.length, 0);
 });
 
-test('campaign cache authenticates old bounded packets and adds follow-through without rewriting archives', () => {
+test('campaign cache authenticates old bounded packets while new packets contain only material', () => {
     const h = generationHarness(messages());
     const state = attach(h);
     const current = h.prepare().payload;
     const entries = generationContextEntries(h.context.chatMetadata[GENERATION_CONTEXT_KEY]);
     const oldPayload = preFollowThroughCampaignPayload(state.campaignPreparation);
     assert.doesNotMatch(oldPayload, /development_contract/);
-    assert.match(current, /development_contract/);
+    assert.doesNotMatch(current, /development_contract/);
     const archive = { entries: [{ ...entries[0], payload: oldPayload }] };
     assert.equal(generationContextEntries(archive).length, 1);
     h.context.chatMetadata[GENERATION_CONTEXT_KEY] = archive;

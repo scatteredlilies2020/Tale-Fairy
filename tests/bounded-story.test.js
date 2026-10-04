@@ -17,7 +17,9 @@ const development = (id = 'r1-bridge') => ({ id, kind: 'arc', owner: 'Village co
 const response = () => ({ plan: { rpUnderstanding: originalUnderstanding(), direction: 'A wandering life across distinct communities.', threads: 'Ren hopes to become a trusted guide.',
     goal: [{ subjectId: 'r1-bridge', scope: 'near-term', aim: 'Bring the village together over its reopened crossing.', reachedWhen: 'The council holds the first shared crossing.' }],
     consequences: [], developments: [development()] }, exits: [], observations: [],
-    selected_material: [{ subjectIds: ['r1-bridge'], available: 'The council brings repaired planks to the crossing.' }] });
+    selected_material: [{ subjectIds: ['r1-bridge'], available: 'The council brings repaired planks to the crossing.',
+        developing: 'Workers can reopen the crossing and traders can test a restored route between the banks.',
+        lasting: 'Regular river exchanges could reconnect the two communities and change village life.' }] });
 
 test('active contract tailors opportunities without adding a memory store or a conflict quota', () => {
     assert.match(STORY_SYSTEM, /Infer expected experiences from the supplied setting, characters, player premise and established departures/);
@@ -37,7 +39,7 @@ test('active contract tailors opportunities without adding a memory store or a c
     assert.match(STORY_SYSTEM, /unrelated opportunities need new ids/);
     assert.match(STORY_SYSTEM, /participation and outcomes stay open/);
     assert.doesNotMatch(STORY_SYSTEM, /not another invitation/);
-    assert.ok(storyInputTokens('', STORY_SYSTEM, STORY_SCHEMA) <= 3500,
+    assert.ok(storyInputTokens('', STORY_SYSTEM, STORY_SCHEMA) <= 3700,
         'The fixed contract must leave most of the 10k target for source and state.');
     assert.deepEqual(Object.keys(STORY_SCHEMA.value.properties.plan.properties),
         ['rpUnderstanding', 'direction', 'threads', 'consequences', 'developments', 'goal']);
@@ -52,14 +54,14 @@ test('automatic goal contract supplies direction without assigning player choice
     assert.equal(STORY_SCHEMA.value.properties.plan.properties.goal.maxItems, 4);
     assert.ok(STORY_SCHEMA.value.properties.plan.properties.goal.items.required.includes('scope'));
     assert.match(STORY_SYSTEM, /Choose automatically from RP scope, relevant past and user interests/);
-    assert.match(STORY_SYSTEM, /WRITER's NPC\/world activity, never assigns player objectives/);
+    assert.match(STORY_SYSTEM, /NPC\/world's possible activity, never assigns player objectives/);
     assert.match(STORY_SYSTEM, /Retain unfinished goals across reviews, scene changes and unselected turns/);
     assert.match(STORY_SYSTEM, /fulfillment, refusal, incompatibility or changed user direction, not mere delay/);
     assert.match(STORY_SYSTEM, /an offer alone is not fulfillment/);
     assert.match(STORY_SYSTEM, /completion need not spawn a successor/);
 });
 
-test('goal is persisted, returned to the planner and sent to the writer without private plan internals', async () => {
+test('goal stays private while its selected story horizons reach the writer', async () => {
     const first = await pass();
     assert.equal(first.accepted, true, first.error);
     const saved = loadPlannerState(JSON.parse(JSON.stringify(saveState({}, {
@@ -67,16 +69,33 @@ test('goal is persisted, returned to the planner and sent to the writer without 
     })))).campaignPreparation;
     assert.deepEqual(JSON.parse(input(saved).prompt).previous_plan.goal, response().plan.goal);
     const wire = JSON.parse(campaignPayload(saved).replace(/<\/?tale-fairy-context>/g, ''));
-    assert.deepEqual(wire.possible_developments[0].story_goals, [{
-        scope: 'near-term', aim: response().plan.goal[0].aim, reached_when: response().plan.goal[0].reachedWhen,
-    }]);
-    assert.match(wire.story_goals_contract, /not the player's obligations/);
-    assert.match(wire.story_goals_contract, /stop pursuing any goal reached, declined or contradicted/);
-    assert.doesNotMatch(campaignPayload(saved), /r1-bridge|rpUnderstanding|trusted guide|control|subjectId/);
+    assert.deepEqual(wire, { possible_developments: [{
+        available_circumstances: response().selected_material[0].available,
+        mid_term_possibilities: response().selected_material[0].developing,
+        long_term_possibilities: response().selected_material[0].lasting,
+    }] });
+    assert.doesNotMatch(campaignPayload(saved), /story_goal|development_contract|r1-bridge|rpUnderstanding|trusted guide|control|subjectId/);
     const next = await pass(response(), saved);
     assert.equal(next.accepted, true, next.error);
     assert.deepEqual(next.state.workingPlan.goal, saved.workingPlan.goal);
     assert.deepEqual(next.state.archive.at(-1).workingPlan.goal, saved.workingPlan.goal);
+});
+
+test('new selections require all three horizons, while older saved packets remain readable', async () => {
+    assert.deepEqual(STORY_SCHEMA.value.properties.selected_material.items.required,
+        ['subjectIds', 'available', 'developing', 'lasting']);
+    for (const horizon of ['developing', 'lasting']) {
+        const raw = response(); delete raw.selected_material[0][horizon];
+        const rejected = await pass(raw);
+        assert.equal(rejected.accepted, false);
+        assert.match(rejected.error, new RegExp(`missing ${horizon}`));
+    }
+    const saved = structuredClone((await pass()).state);
+    delete saved.selectedMaterial[0].developing;
+    delete saved.selectedMaterial[0].lasting;
+    assert.equal(validCampaignState(saved), true);
+    assert.deepEqual(JSON.parse(campaignPayload(saved).replace(/<\/?tale-fairy-context>/g, '')),
+        { possible_developments: [{ available_circumstances: response().selected_material[0].available }] });
 });
 
 test('older goal-less preparation stays usable until the next normal pass chooses a goal', async () => {
@@ -114,7 +133,7 @@ function multiResponse() {
     return raw;
 }
 
-test('coexisting goals persist while only relevant accessible goals reach the writer', async () => {
+test('coexisting goals persist privately while only selected accessible horizons reach the writer', async () => {
     const raw = multiResponse(), result = await pass(raw);
     assert.equal(result.accepted, true, result.error);
     const saved = loadPlannerState(JSON.parse(JSON.stringify(saveState({}, {
@@ -123,18 +142,21 @@ test('coexisting goals persist while only relevant accessible goals reach the wr
     assert.equal(validCampaignState(saved), true);
     assert.deepEqual(JSON.parse(input(saved).prompt).previous_plan.goal, raw.plan.goal);
     const wire = JSON.parse(campaignPayload(saved).replace(/<\/?tale-fairy-context>/g, ''));
-    assert.deepEqual(wire.possible_developments[0].story_goals.map(g => g.scope), ['near-term', 'long-term']);
+    assert.deepEqual(Object.keys(wire.possible_developments[0]),
+        ['available_circumstances', 'mid_term_possibilities', 'long_term_possibilities']);
     assert.doesNotMatch(campaignPayload(saved), /gardener|lantern|r1-bridge|subjectId|rpUnderstanding/);
-    assert.equal(result.budget.selected, planTokens(raw.selected_material) + planTokens(raw.plan.goal.slice(0, 2)),
-        'Private and unselected goals do not consume the writer selection target.');
+    assert.equal(result.budget.selected, planTokens(raw.selected_material),
+        'Private goals do not consume the writer selection target.');
     assert.ok(result.budget.plan < 1200, 'Several goals still fit the unchanged plan target.');
 
-    raw.selected_material = [{ subjectIds: ['r1-tea'], available: 'In the village garden, the gardener pours two new teas.' }];
+    raw.selected_material = [{ subjectIds: ['r1-tea'], available: 'In the village garden, the gardener pours two new teas.',
+        developing: 'The gardener experiments with blends based on what the village grows each season.',
+        lasting: 'The garden could become a regular meeting place for exchanging plants and stories.' }];
     const side = await pass(raw, saved);
     assert.equal(side.accepted, true, side.error);
     assert.deepEqual(side.state.workingPlan.goal, saved.workingPlan.goal, 'Changing focus is not dropping other goals.');
     assert.deepEqual(side.state.archive.at(-1).workingPlan.goal, saved.workingPlan.goal);
-    assert.match(campaignPayload(side.state), /Share the gardener/);
+    assert.match(campaignPayload(side.state), /gardener experiments/);
     assert.doesNotMatch(campaignPayload(side.state), /Reconnect|crossing|lantern/);
 });
 
@@ -143,14 +165,17 @@ test('a completed near goal can leave its wider direction and independent goals 
     raw.plan.goal = raw.plan.goal.filter(goal => goal.scope !== 'near-term');
     raw.plan.consequences = [{ id: 'crossing', text: 'The bridge is repaired.' }];
     raw.observations = [{ id: 'crossing', evidence: [{ index: 0, span: 0 }] }];
-    raw.selected_material = [{ subjectIds: ['r1-bridge'], available: 'The council posts river trading days at the repaired crossing.' }];
+    raw.selected_material = [{ subjectIds: ['r1-bridge'], available: 'The council posts river trading days at the repaired crossing.',
+        developing: 'Merchants can test a dependable route and residents can renew exchange across the banks.',
+        lasting: 'Regular trade could reconnect the riverside communities beyond the bridge repair.' }];
     const next = await pass(raw, first.state);
     assert.equal(next.accepted, true, next.error);
     assert.equal(next.state.workingPlan.goal.length, 3);
     assert.deepEqual(next.state.workingPlan.goal, first.state.workingPlan.goal.slice(1));
     assert.equal(next.state.workingPlan.developments.length, 3, 'Finishing a step does not retire the wider undertaking.');
     const wire = JSON.parse(campaignPayload(next.state).replace(/<\/?tale-fairy-context>/g, ''));
-    assert.deepEqual(wire.possible_developments[0].story_goals.map(g => g.scope), ['long-term']);
+    assert.match(wire.possible_developments[0].long_term_possibilities, /riverside communities/);
+    assert.equal(wire.possible_developments[0].story_goals, undefined);
     assert.equal(next.state.planEvidence.crossing.witnesses[0].quote, messages[0].content);
 });
 
@@ -161,7 +186,9 @@ test('multiple private goals need no writer packet and cannot bypass discovery a
     const first = await pass(raw);
     assert.equal(first.accepted, true, first.error);
     assert.equal(campaignPayload(first.state), '');
-    raw.selected_material = [{ subjectIds: ['r1-festival'], available: 'The distant festival suddenly intrudes.' }];
+    raw.selected_material = [{ subjectIds: ['r1-festival'], available: 'The distant festival suddenly intrudes.',
+        developing: 'Artisans continue preparing lanterns for visitors from neighboring towns.',
+        lasting: 'The festival could open an exchange between towns.' }];
     const rejected = await pass(raw, first.state);
     assert.equal(rejected.accepted, false);
     assert.match(rejected.error, /discovery route/);
@@ -188,7 +215,7 @@ test('deliberate rest can withhold all goals without deleting otherwise accessib
     assert.deepEqual(JSON.parse(input(quiet.state).prompt).previous_plan.goal, raw.plan.goal);
     const resumed = await pass(multiResponse(), quiet.state);
     assert.equal(resumed.accepted, true, resumed.error);
-    assert.match(campaignPayload(resumed.state), /Reconnect the riverside/);
+    assert.match(campaignPayload(resumed.state), /reconnect the two communities/);
     assert.deepEqual(resumed.state.workingPlan.goal, raw.plan.goal);
 });
 
@@ -222,7 +249,8 @@ test('unreachable goal stays private until a plausible route exists; deliberate 
     assert.deepEqual(JSON.parse(input(waiting.state).prompt).previous_plan.goal, raw.plan.goal);
     const reachable = await pass(response(), waiting.state);
     assert.equal(reachable.accepted, true, reachable.error);
-    assert.match(campaignPayload(reachable.state), /story_goal/);
+    assert.match(campaignPayload(reachable.state), /mid_term_possibilities/);
+    assert.doesNotMatch(campaignPayload(reachable.state), /story_goal/);
     raw.plan.goal = [];
     const resting = await pass(raw, reachable.state);
     assert.equal(resting.accepted, true, resting.error);
@@ -413,7 +441,9 @@ test('finite arc ends with evidence while a long thread survives and an independ
     raw.exits = [{ id: 'r1-bridge', disposition: 'closed', reason: 'The crossing is repaired.', evidence: [{ index: 0, span: 0 }] }];
     raw.plan.consequences = [{ id: 'crossing', text: 'The bridge is repaired.' }];
     raw.observations = [{ id: 'crossing', evidence: [{ index: 0, span: 0 }] }];
-    raw.selected_material = [{ subjectIds: ['r2-festival'], available: 'The troupe rehearses its comedy in the square.' }];
+    raw.selected_material = [{ subjectIds: ['r2-festival'], available: 'The troupe rehearses its comedy in the square.',
+        developing: 'The troupe can invite local performers to join later rehearsals.',
+        lasting: 'A traveling collaboration could connect the town with other stages.' }];
     const next = await pass(raw, first.state);
     assert.equal(next.accepted, true, next.error);
     assert.equal(next.state.workingPlan.threads, first.state.workingPlan.threads);
@@ -505,7 +535,7 @@ test('complete request target includes schema and instructions without rejecting
     assert.deepEqual(JSON.parse(large.prompt).source_reference, reference);
     assert.ok(storyInput({ reference: {}, state: emptyCampaign(), messages }, 1).inputOverTarget > 0);
     assert.ok(STORY_SYSTEM.includes('No turn timers'));
-    assert.equal(STORY_SCHEMA.name, 'tale_fairy_working_plan_goals_v4');
+    assert.equal(STORY_SCHEMA.name, 'tale_fairy_working_plan_horizons_v5');
 });
 
 test('legacy migration archives whole preparation and fails transactionally', async () => {

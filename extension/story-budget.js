@@ -87,6 +87,8 @@ export function storyContextJson(value) {
     return JSON.stringify(value).replace(/</g, '\\u003c');
 }
 
+// Historical wire text is retained only to authenticate immutable saved swipes.
+// New writer packets contain story material, not application-written directives.
 export const DEVELOPMENT_CONTRACT = 'Selected material is intended story development, not a menu of chance-triggered hooks. Bring NPC/world activity into observable play when its stated circumstances fit; do not wait for the player to request activation. Until then, carry it forward without forced travel, time skips or unrelated interruptions. Could/might wording does not add a random activation gate. Player participation and outcomes remain open. Preparation is not already-accepted history; current play and explicit user choices take precedence.';
 
 // Added only for goal-bearing preparations. Keep the old contract/serialization
@@ -95,12 +97,12 @@ export const STORY_GOAL_CONTRACT = 'Work toward story_goal through NPC/world act
 
 export const STORY_GOALS_CONTRACT = 'story_goals are coexisting writer aims, not the player\'s obligations or guaranteed endings. Long-term direction, near-term goals and independent side threads need not converge. Advance what fits through observable NPC/world activity, not repeated offers or new prerequisites. Do not service every goal each reply, rotate on a timer, or derail quiet interaction. Respect access, player choice and the user\'s prose, tone and pacing. Check newer play: stop pursuing any goal reached, declined or contradicted; other unfinished goals may continue. A near-term completion need not end its wider direction or spawn a replacement. Unselected threads are not resolved, and preparation is not history.';
 
-export function storyContextPayload(material, authored, { followThrough = true } = {}) {
+export function storyContextPayload(material, authored, { legacyContracts = false, followThrough = true } = {}) {
     if (!material.length && !authored.length) return '';
     return `<tale-fairy-context>\n${storyContextJson({
-        ...(material.length ? { ...(followThrough ? { development_contract: DEVELOPMENT_CONTRACT } : {}), possible_developments: material } : {}),
-        ...(material.some(entry => entry.story_goal) ? { story_goal_contract: STORY_GOAL_CONTRACT } : {}),
-        ...(material.some(entry => entry.story_goals?.length) ? { story_goals_contract: STORY_GOALS_CONTRACT } : {}),
+        ...(material.length ? { ...(legacyContracts && followThrough ? { development_contract: DEVELOPMENT_CONTRACT } : {}), possible_developments: material } : {}),
+        ...(legacyContracts && material.some(entry => entry.story_goal) ? { story_goal_contract: STORY_GOAL_CONTRACT } : {}),
+        ...(legacyContracts && material.some(entry => entry.story_goals?.length) ? { story_goals_contract: STORY_GOALS_CONTRACT } : {}),
         ...(authored.length ? { author_instructions: authored } : {}),
     })}\n</tale-fairy-context>`;
 }

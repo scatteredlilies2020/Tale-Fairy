@@ -16,7 +16,7 @@ import { storyInputTokens } from '../extension/story-budget.js';
 import { originalUnderstanding } from './helpers/rp-fixtures.js';
 import { extractTaleFairyContext } from '../extension/request-injection.js';
 import { legacyPlotInputKey, GENERATION_CONTEXT_KEY, generationContextEntries } from '../extension/generation-context.js';
-import { campaignPayload, campaignPayloadBudget, objectiveGuidancePayload, legacyCampaignPayload, validCampaignState } from '../extension/campaign-planner.js';
+import { campaignPayload, campaignPayloadBudget, contractedCampaignPayload, objectiveGuidancePayload, legacyCampaignPayload, validCampaignState } from '../extension/campaign-planner.js';
 
 const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
 test('notebook presents integrated horizons once and distinguishes quiet from legacy selection', () => {
@@ -57,9 +57,7 @@ const design = { plan: { rpUnderstanding: originalUnderstanding({ setting: 'Orig
     selected_material: [{ subjectIds: ['r1-music'], available: 'An original tune has potential for contrasting arrangements.',
         developing: 'Different arrangements could change whose contribution the group values across later sessions.',
         lasting: 'The repertoire could support shared authorship and distinct musical identities.' }] };
-const writerDesign = () => design.selected_material.map(entry => ({
-    story_goals: [{ scope: 'near-term', aim: design.plan.goal[0].aim, reached_when: design.plan.goal[0].reachedWhen }], ...materialHorizons(entry),
-}));
+const writerDesign = () => design.selected_material.map(materialHorizons);
 
 function multiDesign() {
     const value = structuredClone(design);
@@ -242,7 +240,8 @@ for (const correction of [false, true]) test(`${example.name}: ${correction ? 'c
         developments: [{ id: 'r1-opportunity', kind: 'side', owner: example.owner, control: 'npc',
             question: example.question, initiative: example.initiative, resolution: example.resolution,
             beyond: example.beyond, access: { route: 'local', basis: example.basis } }] },
-        exits: [], observations: [], selected_material: [{ subjectIds: ['r1-opportunity'], available: example.available }] };
+        exits: [], observations: [], selected_material: [{ subjectIds: ['r1-opportunity'], available: example.available,
+            developing: example.beyond, lasting: example.direction }] };
     let calls = 0;
     const h = browser(async ({ prompt, spec }) => {
         calls++;
@@ -282,8 +281,9 @@ for (const correction of [false, true]) test(`${example.name}: ${correction ? 'c
         'The broader experience scope, not just current activity, carries to subsequent planning.');
     assert.deepEqual(JSON.parse(nextInput.prompt).previous_plan.rpUnderstanding, value.plan.rpUnderstanding);
     assert.deepEqual(JSON.parse(nextInput.prompt).previous_plan.goal, value.plan.goal);
-    assert.ok(h.prepare().payload.includes(value.plan.goal[0].aim));
-    assert.ok(h.prepare().payload.includes(value.plan.goal[0].reachedWhen));
+    assert.ok(h.prepare().payload.includes(example.beyond));
+    assert.ok(h.prepare().payload.includes(example.direction));
+    assert.doesNotMatch(h.prepare().payload, /story_goal|development_contract/);
 });
 
 test('notebook exposes RP understanding and uncertainty without claiming verified canon', () => {
@@ -292,7 +292,7 @@ test('notebook exposes RP understanding and uncertainty without claiming verifie
     for (const example of opportunityCases.filter(e => e.understanding)) {
         const summary = scope.workingPlanSummary({ workingPlan: { ...design.plan, rpUnderstanding: example.understanding }, archive: [] });
         assert.match(summary, /private · provisional, not verified canon/);
-        assert.match(summary, /STORY GOALS \(for the writer, not the player\)/);
+        assert.match(summary, /PRIVATE STORY GOALS \(not sent to the writer\)/);
         assert.ok(summary.includes(design.plan.goal[0].aim));
         assert.ok(summary.includes(design.plan.goal[0].reachedWhen));
         for (const value of Object.values(example.understanding)) assert.ok(summary.includes(value));
@@ -312,10 +312,12 @@ test('host saves, reloads and selects coexisting goals without assigning them al
     await h.scope.analyzeCampaignNow({ manual: true });
     assert.equal(h.state().campaignPreparation?.revision, 1, h.statuses.join('\n'));
     const first = JSON.parse(h.prepare().payload.replace(/<\/?tale-fairy-context>/g, ''));
-    assert.deepEqual(first.possible_developments[0].story_goals.map(goal => goal.scope), ['near-term', 'long-term', 'side-thread']);
+    assert.deepEqual(first.possible_developments[0], materialHorizons(value.selected_material[0]));
     assert.deepEqual(h.context.chat, untouched, 'Selecting several goals enacts none of them.');
 
-    value.selected_material = [{ subjectIds: ['r1-tea'], available: 'During the club break, the baker cuts two cakes to compare.' }];
+    value.selected_material = [{ subjectIds: ['r1-tea'], available: 'During the club break, the baker cuts two cakes to compare.',
+        developing: 'The baker experiments with cakes for later club gatherings.',
+        lasting: 'A regular tea break could make the bakery part of the ensemble’s shared life.' }];
     h.context.chat.push({ is_user: true, name: 'Neri', mes: 'I take a seat for the break.' });
     await h.scope.analyzeCampaignNow({ manual: true });
     const saved = h.state().campaignPreparation;
@@ -325,7 +327,7 @@ test('host saves, reloads and selects coexisting goals without assigning them al
     const nextInput = JSON.parse(h.requests.at(-1).prompt);
     assert.deepEqual(nextInput.previous_plan.goal, value.plan.goal);
     const wire = h.prepare().payload;
-    assert.match(wire, /Share tea and the baker/);
+    assert.match(wire, /baker experiments/);
     assert.doesNotMatch(wire, /Build a repertoire|Give the ensemble|PRIVATE|subjectId/);
     const reload = browser(undefined, loadPlannerState(JSON.parse(JSON.stringify(h.context.chatMetadata))));
     reload.context.chat = structuredClone(h.context.chat);
@@ -691,7 +693,9 @@ test('host keeps multiple arcs then closes finite work with witnessed events', a
     const wider = structuredClone(design);
     wider.plan.developments.push({ ...structuredClone(wider.plan.developments[0]), id: 'r2-travel', kind: 'emerging',
         question: 'Which regional exchanges can form?', initiative: 'Carriers establish a route between neighboring communities.' });
-    wider.selected_material[0] = { subjectIds: ['r2-travel'], available: 'Open regional routes.' };
+    wider.selected_material[0] = { subjectIds: ['r2-travel'], available: 'Carriers survey open regional routes.',
+        developing: 'Carriers can establish stops between neighboring communities.',
+        lasting: 'Regular routes could support lasting regional exchange.' };
     wider.plan.goal = [{ subjectId: 'r2-travel', scope: 'long-term', aim: 'Open regional exchanges.', reachedWhen: 'The carriers establish their first exchange.' }];
     const closing = structuredClone(wider);
     closing.plan.developments.shift();
@@ -712,7 +716,7 @@ test('host keeps multiple arcs then closes finite work with witnessed events', a
     assert.equal(saved.archive.at(-1).transitions[0].witnesses[0].quote, 'The final performance is finished.');
     assert.equal(saved.workingPlan.threads, design.plan.threads);
     const payload = h.prepare().payload;
-    assert.match(payload, /Open regional routes/);
+    assert.match(payload, /open regional routes/i);
     h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata));
     h.scope.generationGuideSelection = null;
     assert.equal(h.prepare().payload, payload);
@@ -1098,7 +1102,7 @@ test('actual campaign entry builds evidence, uses single-shot transport and comm
     assert.equal(h.requests.length, 1);
     const request = h.requests[0];
     assert.equal(request.spec.singleShot, true);
-    assert.equal(request.spec.schema.name, 'tale_fairy_working_plan_goals_v4');
+    assert.equal(request.spec.schema.name, 'tale_fairy_working_plan_horizons_v5');
     assert.equal(request.spec.responseTokens, 3000);
     assert.equal(request.spec.reasoningMode, undefined, 'honor saved reasoning instead of legacy forced Off');
     assert.equal(request.meta, null, 'no legacy detached recovery contract');
@@ -1110,7 +1114,7 @@ test('actual campaign entry builds evidence, uses single-shot transport and comm
     assert.equal(h.state().campaignPreparation.developments[0].initiative.owner, 'Jo');
     assert.match(h.prepare().payload, /An original tune has potential/);
     assert.deepEqual(JSON.parse(h.prepare().payload.replace(/<\/?tale-fairy-context>/g, '').trim()),
-        { development_contract: DEVELOPMENT_CONTRACT, story_goals_contract: STORY_GOALS_CONTRACT, possible_developments: writerDesign() }, 'actual host injects writer goals and discoverable material, not private ownership or a whole future plan');
+        { possible_developments: writerDesign() }, 'actual host injects story possibilities, not instructions, private goals or a whole future plan');
     assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
 });
 
@@ -1121,14 +1125,16 @@ test('single-goal saved packets still authenticate byte-for-byte and upgrade on 
     delete old.campaignPreparation.workingPlan.goal[0].scope;
     assert.equal(validCampaignState(old.campaignPreparation), true);
     const packet = h.scope.buildGenerationPacket(old, h.context.chat, h.context);
+    assert.deepEqual(JSON.parse(packet.payload.replace(/<\/?tale-fairy-context>/g, '')),
+        { possible_developments: writerDesign() });
     const expected = `<tale-fairy-context>\n${JSON.stringify({
         development_contract: DEVELOPMENT_CONTRACT,
         possible_developments: [{ story_goal: { aim: design.plan.goal[0].aim, reached_when: design.plan.goal[0].reachedWhen },
             ...materialHorizons(design.selected_material[0]) }],
         story_goal_contract: STORY_GOAL_CONTRACT,
     })}\n</tale-fairy-context>`;
-    assert.equal(packet.payload, expected);
-    const cache = { version: 1, entries: [packet] };
+    assert.equal(contractedCampaignPayload(old.campaignPreparation), expected);
+    const cache = { version: 1, entries: [{ ...packet, payload: expected }] };
     assert.equal(generationContextEntries(cache).length, 1);
     const metadata = saveState({ ...h.context.chatMetadata, [GENERATION_CONTEXT_KEY]: cache }, old);
     for (const type of ['normal', 'regenerate', 'swipe']) {
@@ -1137,7 +1143,7 @@ test('single-goal saved packets still authenticate byte-for-byte and upgrade on 
         if (type !== 'normal') reopened.context.chat.push({ is_user: false, name: 'Mara', mes: 'Discarded response.' });
         const selected = reopened.prepare(type);
         assert.equal(selected.reused, true, type);
-        assert.equal(selected.payload, expected);
+        assert.equal(selected.payload, packet.payload, 'authenticated old bytes are rebuilt as material-only guidance');
         assert.equal(reopened.requests.length, 0);
         assert.deepEqual(reopened.context.chatMetadata, structuredClone(metadata));
     }
@@ -1429,7 +1435,7 @@ test('host shrinks old prose without replaying a growing extracted-history ledge
     const payload = JSON.parse(h.requests[0].prompt);
     assert.equal(payload.historical_evidence, undefined);
     assert.ok(payload.accepted_messages.length < h.context.chat.length);
-    assert.ok(payload.accepted_messages.some(m => m.spans.some(s => s.text.includes('I decline the offer'))));
+    assert.match(JSON.stringify(payload.accepted_messages), /I decline the offer/);
     assert.deepEqual(h.context.chat, before);
 });
 
@@ -1588,7 +1594,7 @@ test('author instruction is retained verbatim and reaches writer and the single 
     const selected = h.prepare();
     assert.ok(selected.payload.includes(note));
     assert.deepEqual(JSON.parse(selected.payload.replace(/<\/?tale-fairy-context>/g, '').trim()),
-        { development_contract: DEVELOPMENT_CONTRACT, story_goals_contract: STORY_GOALS_CONTRACT, possible_developments: writerDesign(), author_instructions: [note] });
+        { possible_developments: writerDesign(), author_instructions: [note] });
     h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata));
     h.scope.generationGuideSelection = null;
     assert.equal(h.prepare().payload, selected.payload, 'retry cache includes the exact author instructions');

@@ -11,7 +11,9 @@ const draft = () => ({ plan: { rpUnderstanding: originalUnderstanding(), directi
     developments: [{ id: 'r1-bridge', kind: 'arc', owner: 'Council', control: 'npc', question: 'Repair the crossing?',
         initiative: 'Workers fit new planks.', resolution: 'The bridge reopens or repairs cease.', beyond: 'Trade can resume.',
         access: { route: 'local', basis: 'The workers are here.' } }] }, exits: [], observations: [],
-    selected_material: [{ subjectIds: ['r1-bridge'], available: 'Workers bring planks to the crossing.' }] });
+    selected_material: [{ subjectIds: ['r1-bridge'], available: 'Workers bring planks to the crossing.',
+        developing: 'The crew can test the repaired span and traders can resume their route.',
+        lasting: 'A dependable crossing could restore regular exchange between the villages.' }] });
 const input = () => storyInput({ state: emptyCampaign(), reference: { rule: 'The player chooses participation.' },
     messages: [{ index: 0, role: 'user', name: 'Ren', content: 'I watch from the bank.' }], playerNames: ['Ren'] });
 const response = value => ({ text: JSON.stringify(value), finishReason: 'stop' });

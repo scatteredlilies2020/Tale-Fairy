@@ -1,6 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEVELOPMENT_CONTRACT } from '../extension/story-budget.js';
 import { ownedInput, ownedPass, decodeOwnedResult, OWNED_SCHEMA, OWNED_SYSTEM, EVENT_PLANNING_SCOPE } from '../extension/event-planning.js';
 import { emptyCampaign, mergeCampaign, validCampaignState, campaignPayload, eventPointWire, EVENT_POINTS_FORMAT } from '../extension/campaign-planner.js';
 
@@ -11,7 +10,7 @@ const item = { id: 'music', initiative: { control: 'npc', owner: 'Jo', aim: 'Dev
 const raw = { campaign: 'A touring company develops its repertoire.', episode: { subject: 'An engagement', status: 'finished', boundary: 'The show ended.' }, developments: [item] };
 const source = { chatId: 'story', referenceHash: 'reference', messageCount: 1, fingerprint: 'source' };
 const input = { prompt: '{}', indices: [0], playerNames: ['Neri'] };
-const guidance = (items = [item]) => ({ development_contract: DEVELOPMENT_CONTRACT, possible_developments: items.map(d => ({ source: d.initiative.owner, developing_conditions: d.development, possible_consequences: d.stakes, access: d.participation })) });
+const guidance = (items = [item]) => ({ possible_developments: items.map(d => ({ source: d.initiative.owner, developing_conditions: d.development, possible_consequences: d.stakes, access: d.participation })) });
 const generate = async () => ({ text: JSON.stringify(raw), finishReason: 'stop' });
 
 test('one response plans the wider development before deriving writer events', async () => {
@@ -298,7 +297,7 @@ test('scene-level event plans reframe once from source without recycling old pro
     const next = JSON.parse(ownedInput({ state: result.state, reference: {}, messages: [] }).prompt);
     assert.equal(next.previous_preparation.reframe_required, false);
     assert.deepEqual(next.previous_preparation.developments[0].plot_points, [point]);
-    assert.deepEqual(Object.keys(JSON.parse(campaignPayload(result.state).replace(/<\/?tale-fairy-context>/g, '').trim())), ['development_contract', 'possible_developments']);
+    assert.deepEqual(Object.keys(JSON.parse(campaignPayload(result.state).replace(/<\/?tale-fairy-context>/g, '').trim())), ['possible_developments']);
 });
 
 test('later reviews retain unplayed opportunities and failed responses never retry or mutate state', async () => {

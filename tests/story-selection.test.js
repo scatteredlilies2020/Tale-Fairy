@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { storyInput, storyPass, STORY_SCHEMA, STORY_SYSTEM } from '../extension/story-selection.js';
 import { ownedInput, ownedPass } from '../extension/event-planning.js';
 import { emptyCampaign, campaignPayload, validCampaignState } from '../extension/campaign-planner.js';
-import { storyInputTokens, DEVELOPMENT_CONTRACT } from '../extension/story-budget.js';
+import { storyInputTokens } from '../extension/story-budget.js';
 
 const messages = [{ index: 0, role: 'user', content: 'We arrived in Mere. The performance is finished.' }];
 const source = { chatId: 'story', referenceHash: 'premise', messageCount: 1, fingerprint: 'accepted' };
@@ -513,11 +513,11 @@ test('the actual contract and private background are budgeted without old inject
     assert.equal(STORY_SCHEMA.value.properties.realization.items.properties.selection, undefined);
     assert.match(STORY_SYSTEM, /Rebuild it from current play, not previous selected prose/);
     assert.match(STORY_SYSTEM, /Several subjects may inform one circumstance/);
-    assert.match(STORY_SYSTEM, /developing and lasting are optional/);
+    assert.match(STORY_SYSTEM, /developing and lasting should supply distinct concrete changes/);
     assert.match(STORY_SYSTEM, /Competence permits participation, not agreement or accomplishment/);
     assert.match(STORY_SYSTEM, /Contact does not reveal private motives or knowledge/);
     assert.ok(STORY_SYSTEM.split(/\s+/).length < 800, 'Keep one concise contract instead of accumulating overlapping prompts');
-    assert.match(STORY_SCHEMA.value.properties.selected_material.items.properties.lasting.description, /No guaranteed ending/);
+    assert.match(STORY_SCHEMA.value.properties.selected_material.items.properties.lasting.description, /Not a generic option, guaranteed ending/);
     assert.doesNotMatch(STORY_SYSTEM, /Connect an available premise to developing conditions and conditional consequences/);
 });
 
@@ -526,8 +526,8 @@ test('creative direction stays open without requiring a detailed scene plan', as
     assert.match(STORY_SYSTEM, /No forced conflict, interruption, escalation, reconciliation or novelty quota/);
     assert.match(STORY_SYSTEM, /writer handles execution and incidental detail/);
     const developing = STORY_SCHEMA.value.properties.selected_material.items.properties.developing.description;
-    assert.match(developing, /changes beyond this scene/);
-    assert.match(developing, /not staged scenes or writing directions/);
+    assert.match(developing, /changes that could unfold across later scenes/);
+    assert.match(developing, /Not an ordered scene plan/);
     const direction = {
         subjectIds: ['music'],
         available: 'The ensemble is together after a shared performance, with room to pursue its common interest.',
@@ -551,7 +551,7 @@ test('creativity takes priority and evidence constrains history, not invention',
     assert.match(STORY_SYSTEM, /A proposed opportunity need not already have been offered or accepted/);
     assert.match(STORY_SYSTEM, /Evidence requirements apply to historical claims, not creative proposals/);
     const fields = STORY_SCHEMA.value.properties;
-    assert.match(fields.selected_material.items.properties.available.description, /Invent compatible material/);
+    assert.match(fields.selected_material.items.properties.available.description, /concrete, observable NPC\/world circumstance/);
     assert.match(fields.developments.items.properties.development.description, /not a recap/);
     assert.match(fields.developments.items.properties.background.properties.basis.description, /invented possibilities need no prior enactment/);
 });
@@ -866,10 +866,10 @@ test('planner contract excludes preset directions from all fields; effects come 
     assert.match(STORY_SYSTEM, /Mood, tone, pacing and prose belong to the writing preset, not any output field/);
     assert.match(STORY_SYSTEM, /concrete circumstances, events, choices or consequences, never emotional labels or delivery instructions/);
     assert.match(STORY_SCHEMA.value.properties.rp_brief.description, /no mood, tone, pacing, prose rules/);
-    assert.match(STORY_SCHEMA.value.properties.selected_material.description, /no mood, tone, pacing or prose directives/);
+    assert.match(STORY_SCHEMA.value.properties.selected_material.description, /no instructions, mood, tone, pacing or prose directives/);
     const available = 'The inn has a spare room and hot supper. Tomorrow’s coach leaves at dawn; the unfinished inquiry can wait.';
     const result = await plan(await initial(), body([], [{ subjectIds: ['music'], available }]));
     assert.equal(result.accepted, true, result.error);
-    assert.deepEqual(packet(result.state), { development_contract: DEVELOPMENT_CONTRACT, possible_developments: [{ available_circumstances: available }] });
+    assert.deepEqual(packet(result.state), { possible_developments: [{ available_circumstances: available }] });
     assert.doesNotMatch(campaignPayload(result.state), /tone|mood|pacing|style|PRIVATE/);
 });
