@@ -1,5 +1,5 @@
-import { campaignUsable, validCampaignState, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1';
-import { WORKING_PLAN_VERSION, workingPlanProjection } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1';
+import { campaignUsable, validCampaignState, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1';
+import { WORKING_PLAN_VERSION, workingPlanProjection } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1';
 
 // Review coverage is not writer freshness or permission to restore old facts.
 // A rewind/rebuild can invalidate the active plan while an older, fully verified
@@ -12,13 +12,31 @@ export function campaignReviewedCount(state, context) {
 // source prefix. Never rebind an invalid post-response plan to a shorter source.
 // Freshness is a separate writer check; stale checkpoints can seed a new review.
 export function campaignCheckpoint(state, context) {
+    return findCheckpoint(state, context, false);
+}
+
+// Reference changes invalidate guidance, facts and coverage, but need not erase
+// compatible ideas. Only exact same-chat accepted prefixes can supply proposals.
+// The workshop must explicitly re-author these against the new references.
+export function campaignReconsideration(state, context) {
+    if (context.rebuild) return null;
+    const candidate = findCheckpoint(state, context, true);
+    if (!candidate?.workingPlan || candidate.source.referenceHash === context.referenceHash) return null;
+    const { rpUnderstanding, throughline, trajectories } = candidate.workingPlan;
+    return structuredClone({ ...(rpUnderstanding ? { rpUnderstanding } : {}),
+        ...(throughline ? { throughline } : {}), trajectories: trajectories || [] });
+}
+
+function findCheckpoint(state, context, reconsider) {
     let best = null;
     const pending = [state], seen = new Set(), hashes = new Map();
     const fingerprint = messages => {
         if (!hashes.has(messages.length)) hashes.set(messages.length, context.fingerprint(messages));
         return hashes.get(messages.length);
     };
-    if (campaignUsable(state, { ...context, fingerprint }) && validCampaignState(state)) return state;
+    const usable = candidate => campaignUsable(candidate, { ...context, fingerprint,
+        ...(reconsider ? { referenceHash: candidate?.source?.referenceHash } : {}) }) && validCampaignState(candidate);
+    if (usable(state)) return state;
     while (pending.length) {
         const candidate = pending.pop();
         if (!candidate || typeof candidate !== 'object' || seen.has(candidate)) continue;
@@ -35,7 +53,7 @@ export function campaignCheckpoint(state, context) {
         }
         if ((!best || candidate.source?.messageCount > best.source.messageCount
             || candidate.source?.messageCount === best.source.messageCount && candidate.revision > best.revision)
-            && campaignUsable(candidate, { ...context, fingerprint }) && validCampaignState(candidate)) {
+            && usable(candidate)) {
             best = candidate;
         }
     }

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { campaignReviewedCount, campaignCheckpoint, verifiedClosedSubjects } from '../extension/campaign-review.js';
+import { campaignReviewedCount, campaignCheckpoint, campaignReconsideration, verifiedClosedSubjects } from '../extension/campaign-review.js';
 import { emptyCampaign, EVENT_POINTS_FORMAT, validCampaignState } from '../extension/campaign-planner.js';
 import { workingPlanProjection, WORKING_PLAN_VERSION } from '../extension/working-plan.js';
 import { originalUnderstanding } from './helpers/rp-fixtures.js';
@@ -18,6 +18,43 @@ function archived(state) {
     const { revision, source, workingPlan, planEvidence, selectedMaterial } = state;
     return { revision, source, workingPlan, planEvidence, selectedMaterial, replaced: true, transitions: [] };
 }
+
+test('reference changes preserve only reconsiderable ideas, never current guidance or coverage', () => {
+    const state = preparation(8);
+    state.workingPlan.rpUnderstanding = originalUnderstanding();
+    state.workingPlan.trajectories = [{ id: 'r1-tour', focus: 'A touring ensemble', owner: 'The ensemble',
+        basis: 'The opening tour premise.', drive: 'Share original music.', experience: 'Compare arrangements at a rehearsal.',
+        next: { when: 'The ensemble visits other towns', change: 'Local players exchange arrangements.' },
+        later: { when: 'They meet again', change: 'A shared concert draws on both repertoires.' } }];
+    state.workingPlan.throughline = [{ focus: 'The ensemble finds its shared sound.', basis: 'Accepted music-making.', trajectoryIds: ['r1-tour'] }];
+    assert.equal(validCampaignState(state), true);
+    const changed = { ...context, referenceHash: 'changed' }, before = structuredClone(state);
+    assert.equal(campaignCheckpoint(state, changed), null);
+    assert.equal(campaignReviewedCount(state, changed), 0);
+    const proposals = campaignReconsideration(state, changed);
+    assert.deepEqual(Object.keys(proposals).sort(), ['rpUnderstanding', 'throughline', 'trajectories']);
+    assert.deepEqual(proposals.trajectories, state.workingPlan.trajectories);
+    proposals.trajectories[0].focus = 'Mutated copy';
+    assert.deepEqual(state, before);
+    assert.equal(campaignReconsideration(state, context), null);
+    assert.equal(campaignReconsideration(state, { ...changed, rebuild: true }), null);
+    assert.equal(campaignReconsideration(state, { ...changed, chatId: 'another' }), null);
+    assert.equal(campaignReconsideration(state, { ...changed, messages: messages.slice(0, 4) }), null);
+    const edited = structuredClone(messages); edited[2].mes = 'Changed branch';
+    assert.equal(campaignReconsideration(state, { ...changed, messages: edited }), null);
+    state.planEvidence = null;
+    assert.equal(campaignReconsideration(state, changed), null);
+});
+
+test('reference reconsideration can recover an exact earlier branch but not discarded response ideas', () => {
+    const earlier = preparation(8), later = preparation(16, 2);
+    earlier.workingPlan.rpUnderstanding = originalUnderstanding({ storyScope: 'Accepted earlier premise.' });
+    later.workingPlan.rpUnderstanding = originalUnderstanding({ storyScope: 'Discarded later premise.' });
+    later.archive.push(archived(earlier));
+    const result = campaignReconsideration(later, { ...context, referenceHash: 'changed', messages: messages.slice(0, 12) });
+    assert.equal(result.rpUnderstanding.storyScope, 'Accepted earlier premise.');
+    assert.doesNotMatch(JSON.stringify(result), /Discarded/);
+});
 
 test('complete archived checkpoints survive rewinds and nested rebuilds without restoring plans', () => {
     const prior = preparation(8), later = preparation(16, 2);

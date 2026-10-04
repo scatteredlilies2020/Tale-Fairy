@@ -23,6 +23,19 @@ const state = { ...emptyCampaign(), revision: 52, workingPlanVersion: 1, working
 } };
 const args = { reference, state, messages, previousUsable: true, reviewedMessageCount: 411 };
 
+test('reconsidered old proposals yield before fresh references, trusted preparation and accepted choices', () => {
+    const payload = { source_reference: reference, previous_horizon: { trajectories: [] },
+        reconsider_horizon: { trajectories: [{ focus: prose(1000) }] }, accepted_messages: messages,
+        external_evidence: [{ content: 'Recall.' }], coverage: { reviewed_before: 0 } };
+    const first = [...optionalPlannerContexts(payload)][0];
+    assert.equal(first.reconsider_horizon, undefined);
+    assert.equal(first.coverage.omitted_reconsider_horizon, true);
+    assert.deepEqual(first.accepted_messages, messages);
+    assert.deepEqual(first.source_reference, reference);
+    assert.deepEqual(first.previous_horizon, payload.previous_horizon);
+    assert.deepEqual(first.external_evidence, payload.external_evidence);
+});
+
 for (const target of [8000, 10000]) test(`long-form RP input automatically fits the complete ${target}-token envelope`, () => {
     const fixture = structuredClone(args);
     if (target === 10000) fixture.messages[3].content = prose(6000);

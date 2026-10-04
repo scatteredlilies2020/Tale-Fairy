@@ -60,7 +60,7 @@ const design = { plan: { rpUnderstanding: originalUnderstanding({ setting: 'Orig
         lasting: 'The repertoire could support shared authorship and distinct musical identities.' }] };
 const writerDesign = () => design.selected_material.map(materialHorizons);
 
-const workshopReply = () => ({ rpUnderstanding: structuredClone(design.plan.rpUnderstanding), progression: { upsert: [{
+const workshopReply = () => ({ rpUnderstanding: structuredClone(design.plan.rpUnderstanding), throughline: [], progression: { upsert: [{
     id: 'r1-kitchen', focus: 'A neighborhood supper book', owner: 'Community cooks', basis: 'Proposed neighborhood activity.',
     drive: 'Share family recipes.', experience: 'At the back-street kitchen, cooks test a supper menu and swap handwritten recipe cards.',
     next: { when: 'Cooks compare their trials', change: 'A shared supper menu takes shape.' },
@@ -201,6 +201,29 @@ function splitResponse({ prompt, spec }) {
     if (prompt.includes('DISCARDED_ONLY_SECRET')) value.plan.direction = 'DISCARDED_ONLY_SECRET';
     return envelope(value);
 }
+
+test('active host reconsiders reference-invalidated futures without restoring facts or coverage', async () => {
+    const h = browser(splitResponse, defaultState(), { split: true });
+    await h.scope.analyzeCampaignNow();
+    const old = h.state().campaignPreparation;
+    assert.equal(old.revision, 1);
+    h.context.card = { scenario: 'Newly clarified music-club premise.' };
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 4);
+    const workshop = JSON.parse(h.requests[2].prompt), selection = JSON.parse(h.requests[3].prompt);
+    assert.deepEqual(workshop.reconsider_horizon.trajectories, old.workingPlan.trajectories);
+    assert.deepEqual(Object.keys(workshop.reconsider_horizon).sort(), ['rpUnderstanding', 'throughline', 'trajectories']);
+    assert.deepEqual(workshop.previous_horizon.trajectories, []);
+    assert.equal(workshop.coverage.reviewed_before, 0);
+    assert.deepEqual(selection.previous_plan.developments, []);
+    assert.deepEqual(selection.previous_plan.consequences || [], []);
+    assert.deepEqual(selection.previous_outlook, []);
+    assert.equal(selection.reconsider_horizon, undefined);
+    assert.equal(h.state().campaignPreparation.revision, 2);
+    assert.equal(h.state().campaignPreparation.workingPlan.trajectories[0].id, 'r2-kitchen');
+    assert.notEqual(h.state().campaignPreparation.source.referenceHash, old.source.referenceHash);
+    assert.equal(validCampaignState(h.state().campaignPreparation), true);
+});
 
 test('active host keeps a selected outlook through quiet updates, reload and pre-reply recovery', async () => {
     const send = args => {

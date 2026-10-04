@@ -28,6 +28,10 @@ export function validateOutlook(plan, check) {
             throw Error('Selected outlook needs distinct intermediate and farther possibilities');
         }
         if (!outlookRoute(plan, outlook)) throw Error('Selected outlook needs a renewed accessible opening or linked local development; revise access or explicitly clear it');
+        const ids = plan.throughline?.[0]?.trajectoryIds || [];
+        if (ids.some(trajectoryId => outlookRoute(plan, { trajectoryId })) && !ids.includes(outlook.trajectoryId)) {
+            throw Error('An accessible story throughline supplies the selected future; independent openings cannot displace it. Select its outlook or explicitly clear for a pause.');
+        }
     }
 }
 

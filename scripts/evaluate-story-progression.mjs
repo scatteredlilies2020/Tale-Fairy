@@ -10,6 +10,7 @@ import { journeyCase, musicClubCase } from './story-activity-cases.mjs';
 import { preparationInput as storyInput, preparationPass as storyPassWithRecovery, PLANNER_OUTPUT_LIMIT } from '../extension/story-preparation.js';
 import { campaignEvidenceMessages, campaignReviewWindow } from '../extension/campaign-evidence.js';
 import { emptyCampaign, campaignPayload } from '../extension/campaign-planner.js';
+import { campaignCheckpoint, campaignReconsideration } from '../extension/campaign-review.js';
 import { plannerMessages, PLANNER_OUTPUT_MODE } from '../extension/output-negotiation.js';
 
 if (!process.argv.includes('--live')) throw Error('Explicit --live and TF_ST_ROOT are required for provider calls.');
@@ -34,6 +35,15 @@ if (frozen && state.source.fingerprint !== hash(messages.slice(0, state.source.m
 if (!frozen && name === 'touring') messages = convert([...fixture.messages,
     ...fixture.stages[1].append, ...fixture.stages[2].append]);
 const stages = [{ name: 'initial', append: [] }];
+const chatId = frozen ? state.source.chatId : `isolated-${name}`;
+if (process.argv.includes('--new-story')) {
+    if (!frozen || messages.length < 7) throw Error('--new-story requires a frozen conversation with at least seven messages.');
+    const accepted = structuredClone(messages);
+    messages = accepted.slice(0, 2); state = emptyCampaign();
+    stages.push({ name: 'early-choices', append: accepted.slice(2, 6) },
+        { name: 'reference-change', append: [], referenceChange: true },
+        { name: 'continued-story', append: accepted.slice(6) });
+}
 // These are explicitly synthetic continuations of the isolated snapshot, not
 // accepted turns written back to the user's chat. Repeated quiet changes expose
 // the local-task drift that a single successful output cannot detect.
@@ -50,6 +60,10 @@ if (!frozen && name === 'touring' && !process.argv.includes('--initial-only')) s
 );
 console.log(JSON.stringify({ case: name, output, configuration: provider.configuration }));
 for (const stage of stages) {
+    // An explicitly synthetic, meaning-preserving edit isolates invalidation
+    // from story changes. The same production checkpoint/proposal gates apply.
+    if (stage.referenceChange) fixture.bootstrap = { ...fixture.bootstrap,
+        description: `${fixture.bootstrap.description || ''}\n` };
     if (stage.refuse) {
         const id = state.workingPlan?.outlook?.[0]?.trajectoryId;
         const focus = state.workingPlan?.trajectories?.find(row => row.id === id)?.focus;
@@ -57,12 +71,16 @@ for (const stage of stages) {
         stage.append = [{ role: 'user', name: frozen?.userName || 'Neri', content: `I do not want to pursue ${focus}. Please drop that possibility. I would rather spend time privately with the people already here.` }];
     }
     messages.push(...stage.append.map((message, offset) => ({ ...message, index: messages.length + offset })));
-    const reviewedMessageCount = state.source?.messageCount || 0;
-    const input = storyInput({ reference: fixture.bootstrap, state,
+    const source = { chatId, referenceHash: hash(fixture.bootstrap), fingerprint: hash(messages), messageCount: messages.length };
+    const proof = { ...source, messages, fingerprint: hash };
+    const checkpoint = campaignCheckpoint(state, proof);
+    const reconsiderHorizon = checkpoint ? null : campaignReconsideration(state, proof);
+    const planningState = { ...(checkpoint || emptyCampaign()), revision: state.revision, archive: state.archive };
+    const reviewedMessageCount = checkpoint?.source?.messageCount || 0;
+    const input = storyInput({ reference: fixture.bootstrap, state: planningState, reconsiderHorizon,
         messages: campaignEvidenceMessages(campaignReviewWindow(messages, 32, reviewedMessageCount), { narrative: true }),
         playerNames: frozen ? [frozen.userName] : ['Neri', 'Edda'], reviewedMessageCount,
-        previousUsable: Boolean(state.revision), verifiedPlanEvidence: frozen ? {} : state.planEvidence || {} });
-    const source = { chatId: `isolated-${name}`, referenceHash: hash(fixture.bootstrap), fingerprint: hash(messages), messageCount: messages.length };
+        previousUsable: Boolean(checkpoint), verifiedPlanEvidence: frozen ? {} : checkpoint?.planEvidence || {} });
     const calls = [];
     const result = await storyPassWithRecovery({ state, source, input, generate: async (prompt, system, schema) => {
         if (calls.length >= 3) throw Error('Evaluation request limit exceeded');
@@ -75,6 +93,7 @@ for (const stage of stages) {
         writer: result.accepted ? campaignPayload(result.state) : null }, null, 2));
     console.log(JSON.stringify({ stage: stage.name, accepted: result.accepted, error: result.error,
         calls: calls.length, budget: result.budget, recovery: result.recovery?.status,
+        throughline: result.state.workingPlan?.throughline,
         outlook: result.state.workingPlan?.outlook, writer: result.accepted ? campaignPayload(result.state) : null }));
     if (!result.accepted) { process.exitCode = 1; break; }
     state = result.state;

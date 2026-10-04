@@ -18,6 +18,23 @@ export const PROGRESSION_PATCH_SCHEMA = object({
     retire: list(object({ id: text(80), reason: text(400) }), 3),
 });
 
+// A story's developing direction is separate from the optional episode shelf.
+// Links make it operational without prescribing a player goal or an ending.
+export const THROUGHLINE_SCHEMA = list(object({
+    focus: text(320), basis: text(320), trajectoryIds: { ...list(text(80), 2), minItems: 1 },
+}), 1);
+
+export function validateThroughline(plan, check) {
+    if (plan.throughline === undefined) return; // Historical saved plans.
+    check(plan.throughline, THROUGHLINE_SCHEMA, '$.plan.throughline');
+    for (const row of plan.throughline) {
+        if (new Set(row.trajectoryIds).size !== row.trajectoryIds.length
+            || row.trajectoryIds.some(id => !plan.trajectories?.some(t => t.id === id && t.experience))) {
+            throw Error('Story throughline requires distinct retained substantive trajectories');
+        }
+    }
+}
+
 export function validateTrajectories(rows, check, playerNames = []) {
     check(rows, TRAJECTORIES_SCHEMA, '$.plan.trajectories');
     if (new Set(rows.map(row => row.id)).size !== rows.length) throw Error('Duplicate progression id');
