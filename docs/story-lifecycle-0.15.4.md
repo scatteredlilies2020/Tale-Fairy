@@ -45,6 +45,19 @@ An offline replay of the actual 27-message saved source validates revision 4 and
 retains its conditional hearing/border possibilities while omitting the expired
 compound-gate circumstances. It does not modify the chat or spend a provider call.
 
+The installed 0.15.4 browser planner also completed a manual Guide now check on
+the same story. Before running, its preview retained those future possibilities
+without the expired compound-gate scene. The live pass saved revision 5 against
+all 27 messages in 48.425 seconds, using horizon, scene and one corrected scene
+request. The first scene draft left an outlook attached to a changed trajectory;
+validation rejected it and the shared correction budget produced a valid plan.
+The new preview reflects the south-terrace triage and keeps conditional hearing
+and border-exchange possibilities rather than resetting to only the emergency.
+The story-message count and content hash were unchanged: no story reply was
+generated. The enabled setting was left as found, and the temporary browser tab
+was closed. This confirms the normal/correction path live; the memory-rebase
+race is covered by deterministic regression tests, not simulated in the live chat.
+
 Provider outages, malformed model responses and continuous source changes can
 still prevent a refresh. When the bounded recovery cannot safely finish, the last
 saved preparation remains intact, stale local material stays withheld, and the
