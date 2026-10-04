@@ -68,6 +68,8 @@ const workshopReply = () => ({ rpUnderstanding: structuredClone(design.plan.rpUn
 }], retire: [] } });
 const sceneReply = () => {
     const value = structuredClone(design); delete value.progression; delete value.plan.rpUnderstanding;
+    delete value.selected_material[0].developing; delete value.selected_material[0].lasting;
+    value.outlook = { action: 'clear', reason: 'No selected future in this host-lifecycle fixture.', material: [] };
     value.plan.openings = []; return value;
 };
 const envelope = value => ({ choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] });
@@ -199,6 +201,42 @@ function splitResponse({ prompt, spec }) {
     if (prompt.includes('DISCARDED_ONLY_SECRET')) value.plan.direction = 'DISCARDED_ONLY_SECRET';
     return envelope(value);
 }
+
+test('active host keeps a selected outlook through quiet updates, reload and pre-reply recovery', async () => {
+    const send = args => {
+        const response = splitResponse(args);
+        if (args.spec.schema.name === HORIZON_SCHEMA.name) return response;
+        const input = JSON.parse(args.prompt), value = JSON.parse(response.choices[0].message.content);
+        const id = input.prepared_horizon.trajectories[0].id;
+        value.plan.openings = [{ trajectoryId: id, circumstance: 'If the ensemble visits the neighborhood kitchen, the cooks have handwritten supper cards to compare.',
+            access: { route: 'local', basis: 'PRIVATE route reasoning: a later visit to the nearby kitchen.' } }];
+        value.plan.goal.push({ subjectId: id, scope: 'long-term', aim: 'Share the neighborhood recipes.', reachedWhen: 'The neighbors exchange their illustrated supper book.' });
+        value.outlook = input.previous_outlook.length ? { action: 'keep', reason: 'Quiet packing does not change the supper-book possibility.', material: [] }
+            : { action: 'replace', reason: 'Select a reachable multi-scene experience.', material: [{ trajectoryId: id,
+                developing: 'If they cook together, neighbors can compare the supper menu and trade handwritten recipes.',
+                lasting: 'If neighbors contribute recipes and drawings over later visits, a shared illustrated supper book connects the households.' }] };
+        return envelope(value);
+    };
+    const h = browser(send, defaultState(), { split: true });
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.state().campaignPreparation.revision, 1);
+    const outlook = structuredClone(h.state().campaignPreparation.workingPlan.outlook);
+    assert.match(h.prepare().payload, /illustrated supper book/);
+    assert.doesNotMatch(h.prepare().payload, /PRIVATE route|Quiet packing|outlook|trajectoryId/);
+    h.context.chat.push({ is_user: true, name: 'Neri', mes: 'I take my time packing.' });
+    await h.scope.analyzeCampaignNow({ manual: true });
+    assert.deepEqual(h.state().campaignPreparation.workingPlan.outlook, outlook);
+    h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata));
+    h.scope.campaignSession = null;
+    const beforeReply = h.prepare().payload;
+    h.context.chat.push({ is_user: false, name: 'Mara', mes: 'A quiet moment together.' });
+    await h.scope.analyzeCampaignNow({ manual: true });
+    assert.deepEqual(h.state().campaignPreparation.workingPlan.outlook, outlook);
+    h.scope.deferReplacementPlanning(h.context);
+    assert.equal(h.prepare('regenerate').payload, beforeReply);
+    await h.scope.repairDeferredReplacementPlan();
+    assert.equal(h.requests.length, 6, 'matching future-bearing checkpoint needs no replacement repair');
+});
 
 test('replacement recovers a source-valid archived packet without rolling back the live revision or spending calls', async () => {
     const h = browser(splitResponse, defaultState(), { split: true });

@@ -16,9 +16,11 @@ Two separate passes do different jobs. A **story workshop** prepares concrete fu
 
 Future episodes have their own **openings**: concrete encounters, activities or destinations that can become reachable now or at a natural transition. These do not compete with the four unfinished local tasks. Their entry conditions and specific later possibilities can reach the writer directly, while unselected futures stay private. Quiet play can leave this space empty.
 
+The selected **outlook** also persists separately from the immediate scene. A routine action can update the present without rewriting the farther possibilities into the next chore. Each review renews their route into play and explicitly keeps, revises or withdraws the outlook as participation, circumstances and preferences change. Only its authored circumstances and conditional possibilities reach the writer; selection reasons and access reasoning stay private.
+
 Both stages save together. A review normally uses two planner requests, with at most one shared correction for invalid output. Wider preparation, local work and writer material have separate sizing targets. The writer receives selected story substance, not the private planning instructions. On regeneration, Tale Fairy can reuse a fresh, source-verified earlier plan; if none is usable, it attempts one nonblocking preparation for that exact pre-reply source. Repeated swipes do not repeatedly replan, and discarded replies never become the new plan's premises.
 
-See the [two-stage architecture](docs/story-workshop-0.15.0.md) and [opening/recovery evaluation notes](docs/story-bridge-0.15.1.md).
+See the [two-stage architecture](docs/story-workshop-0.15.0.md), [opening/recovery evaluation notes](docs/story-bridge-0.15.1.md), and [durable outlook and multi-update evaluation](docs/story-outlook-0.15.2.md).
 
 ## Install
 

@@ -2,6 +2,7 @@
 // and replaced plans belong in local archives, never in this request snapshot.
 import { conservativeTokenCount } from './token-budget.js';
 import { TRAJECTORIES_SCHEMA, validateTrajectories } from './story-progression.js?story-progression=1&story-workshop=1';
+import { OUTLOOK_SCHEMA, validateOutlook, validateOutlookSelection } from './story-outlook.js?story-outlook=1';
 
 export const WORKING_PLAN_VERSION = 1;
 // Historical export names are retained for callers; these are sizing targets,
@@ -71,6 +72,7 @@ WORKING_PLAN_SCHEMA.properties.openings = list(object({
     circumstance: text(700),
     access: structuredClone(WORKING_PLAN_SCHEMA.properties.developments.items.properties.access),
 }), 2);
+WORKING_PLAN_SCHEMA.properties.outlook = OUTLOOK_SCHEMA;
 
 export function playableDevelopments(plan) {
     return [...plan.developments, ...(plan.openings || []).map(opening => {
@@ -119,6 +121,7 @@ export function validateWorkingPlan(plan, check, playerNames = []) {
             throw Error('Development links require distinct retained trajectories');
         }
     }
+    validateOutlook(plan, check);
 }
 
 // Compatibility projection for the existing writer, inspector and persistence
@@ -162,6 +165,7 @@ export function validateWorkingState(state, check) {
 }
 
 export function validateGoalSelection(plan, material) {
+    validateOutlookSelection(plan, material);
     if (plan.goal === undefined) return; // Historical preparation, not a new response.
     if (material?.length && !plan.goal.some(goal => material[0].subjectIds.includes(goal.subjectId))) {
         throw Error('Selected material must advance at least one chosen story goal');

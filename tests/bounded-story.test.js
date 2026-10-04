@@ -574,7 +574,7 @@ test('metadata rejects tampered mirrors, evidence and bounds', async () => {
     assert.equal(validCampaignState(bad), false);
     const unknown = structuredClone(state); unknown.workingPlanVersion = 2;
     assert.equal(validCampaignState(unknown), false);
-    const oversize = structuredClone(state); oversize.selectedMaterial[0].available = '音'.repeat(901);
+    const oversize = structuredClone(state); oversize.selectedMaterial[0].available = '音'.repeat(1801);
     assert.equal(validCampaignState(oversize), false);
     const raw = response(); raw.plan.consequences = [{ id: 'crossing', text: 'The bridge is repaired.' }];
     raw.observations = [{ id: 'crossing', evidence: [{ index: 0, span: 0 }] }];

@@ -35,7 +35,8 @@ async function stuck() {
     assert.equal(result.accepted, true, result.error); return result.state;
 }
 const horizon = () => ({ rpUnderstanding: understanding(), progression: { upsert: [structuredClone(opportunity)], retire: [{ id: 'r1-repair', reason: 'Local repair remains local work.' }] } });
-const scene = () => ({ plan: { ...local(), openings: [] }, exits: [], observations: [], selected_material: [] });
+const clearOutlook = () => ({ action: 'clear', reason: 'No future selected for this bounded test.', material: [] });
+const scene = () => ({ plan: { ...local(), openings: [] }, exits: [], observations: [], selected_material: [], outlook: clearOutlook() });
 const inputFor = (state, extra = {}) => preparationInput({ reference, state, messages, playerNames: ['Ren'], previousUsable: true, ...extra });
 async function run(state, responses = [horizon(), scene()], extra = {}) {
     const calls = [], input = inputFor(state, extra);
@@ -63,7 +64,7 @@ test('workshop input excludes entrenched local work, goals, writer selection and
     assert.equal(narrow.previous_plan.developments[0].id, 'r1-bridge');
     assert.ok(HORIZON_TARGET > SCENE_TARGET);
     assert.ok(storyInputTokens('', HORIZON_SYSTEM, HORIZON_SCHEMA) < 2400);
-    assert.ok(storyInputTokens('', SCENE_SYSTEM, SCENE_SCHEMA) < 2700);
+    assert.ok(storyInputTokens('', SCENE_SYSTEM, SCENE_SCHEMA) < 3200);
 });
 
 test('two stages replace narrow future while preserving unfinished local work and quiet selection', async () => {
@@ -217,9 +218,10 @@ function openedScene() {
         access: { route: 'contact', basis: 'A proposed traveler sharing the village tea table; a visit north remains optional.' } }];
     value.plan.goal.push({ subjectId: opportunity.id, scope: 'near-term', aim: 'Share the orchard kitchen’s preservation craft.',
         reachedWhen: 'Visitors have compared preserves and tried the pebble charm, or left it aside.' });
-    value.selected_material = [{ subjectIds: [opportunity.id], available: value.plan.openings[0].circumstance,
+    value.selected_material = [];
+    value.outlook = { action: 'replace', reason: 'An optional route to a substantive future.', material: [{ trajectoryId: opportunity.id,
         developing: 'If the travelers visit Cinderwick, cooks can compare smoked-pear recipes around the communal oven and share a heat-storing pebble spell.',
-        lasting: 'If they take the charm north, upland winter kitchens can adapt the recipe to their local fruit.' }];
+        lasting: 'If they take the charm north, upland winter kitchens can adapt the recipe to their local fruit.' }] };
     return value;
 }
 
@@ -265,4 +267,129 @@ test('quiet play can withdraw an opening without closing anything or erasing its
     assert.deepEqual(next.state.workingPlan.trajectories, [opportunity]);
     assert.deepEqual(next.state.selectedMaterial, []);
     assert.deepEqual(next.state.archive.at(-1).transitions, []);
+});
+
+const unchangedHorizon = () => ({ rpUnderstanding: understanding(), progression: { upsert: [], retire: [] } });
+const keepScene = () => {
+    const value = openedScene();
+    value.outlook = { action: 'keep', reason: 'Only the immediate routine changed; the optional journey remains unplayed.', material: [] };
+    value.selected_material = [{ subjectIds: ['r1-bridge'], available: 'At the village table, the council cook pours another cup of tea.' }];
+    return value;
+};
+
+test('five routine reviews update the present without shrinking, rerolling or enacting the selected future', async () => {
+    let state = (await run(await stuck(), [horizon(), openedScene()])).state;
+    const future = structuredClone(state.workingPlan.outlook);
+    for (let n = 0; n < 5; n++) {
+        const value = keepScene(); value.selected_material[0].available = `The cook sets out cup ${n + 1}.`;
+        value.plan.openings[0].circumstance = `If the travelers later visit the northbound tea stall, the orchard cook has smoked pears and a map to Cinderwick. Visit ${n + 1} remains only a possibility.`;
+        const result = await run(state, [unchangedHorizon(), value]);
+        assert.equal(result.accepted, true, result.error);
+        assert.equal(result.calls.length, 2);
+        assert.deepEqual(result.calls[1].prompt.previous_outlook, future);
+        assert.equal(result.calls[1].prompt.previous_plan.outlook, undefined);
+        assert.equal(result.calls[0].prompt.previous_outlook, undefined);
+        assert.deepEqual(result.state.workingPlan.outlook, future);
+        assert.equal(result.state.selectedMaterial[0].developing, future[0].developing);
+        assert.equal(result.state.selectedMaterial[0].lasting, future[0].lasting);
+        assert.match(result.state.selectedMaterial[0].available, new RegExp(`cup ${n + 1}`));
+        assert.deepEqual(result.state.workingPlan.consequences, []);
+        assert.equal(validCampaignState(result.state), true);
+        assert.doesNotMatch(campaignPayload(result.state), /Only the immediate|action|trajectoryId|r2-orchard/);
+        state = loadPlannerState(JSON.parse(JSON.stringify(saveState({}, { ...defaultPlannerState(), campaignPreparation: result.state })))).campaignPreparation;
+    }
+});
+
+for (const invalid of ['missing-route', 'private-route', 'retired', 'revised', 'missing-prior', 'keep-with-material']) {
+    test(`outlook cannot carry blindly through ${invalid}`, async () => {
+        let state = (await run(await stuck(), [horizon(), openedScene()])).state;
+        const wider = unchangedHorizon(), value = keepScene();
+        if (invalid === 'missing-route') { value.plan.openings = []; value.plan.goal.pop(); }
+        if (invalid === 'private-route') value.plan.openings[0].access.route = 'none';
+        if (invalid === 'retired') wider.progression.retire = [{ id: opportunity.id, reason: 'The player declined the trip.' }];
+        if (invalid === 'revised') wider.progression.upsert = [{ ...opportunity, experience: 'A newly changed premise.' }];
+        if (invalid === 'missing-prior') { delete state.workingPlan.outlook; }
+        if (invalid === 'keep-with-material') value.outlook.material = openedScene().outlook.material;
+        const result = await run(state, [wider, value, value]);
+        assert.equal(result.accepted, false);
+        assert.equal(result.state, state);
+        assert.equal(result.calls.length, 3);
+    });
+}
+
+test('outlook follows a renewed local undertaking after entry, without treating a proposal as history', async () => {
+    const state = (await run(await stuck(), [horizon(), openedScene()])).state;
+    const value = keepScene();
+    value.plan.openings = []; value.plan.goal.pop();
+    value.plan.developments[0].trajectoryIds = [opportunity.id];
+    value.plan.developments[0].initiative = 'If the travelers take the northern road, the orchard cooks have their communal oven ready.';
+    const result = await run(state, [unchangedHorizon(), value]);
+    assert.equal(result.accepted, true, result.error);
+    assert.deepEqual(result.state.selectedMaterial[0].subjectIds, ['r1-bridge']);
+    assert.equal(validCampaignState(result.state), true);
+});
+
+test('accepted participation can explicitly advance the future; refusal can withdraw it without manufacturing closure', async () => {
+    const first = (await run(await stuck(), [horizon(), openedScene()])).state;
+    const revised = openedScene();
+    revised.outlook.reason = 'Accepted travel brings the kitchen experience into reach.';
+    revised.outlook.material[0].developing = 'If the party shares its smoked-pear recipe north, the winter cooks can test a new oat-and-pear preserve.';
+    revised.outlook.material[0].lasting = 'If the oat preserve keeps through winter, two villages can exchange their seasonal recipe notebooks.';
+    const next = await run(first, [unchangedHorizon(), revised]);
+    assert.equal(next.accepted, true, next.error);
+    assert.notEqual(next.state.selectedMaterial[0].developing, first.selectedMaterial[0].developing);
+    const cleared = scene(); cleared.selected_material = [{ subjectIds: ['r1-bridge'], available: 'The tea table stays quiet.' }];
+    cleared.outlook.reason = 'The traveler explicitly declined that trip.';
+    const last = await run(next.state, [unchangedHorizon(), cleared]);
+    assert.equal(last.accepted, true, last.error);
+    assert.deepEqual(last.state.workingPlan.outlook, []);
+    assert.equal(last.state.selectedMaterial[0].lasting, undefined);
+    assert.deepEqual(last.state.workingPlan.trajectories, [opportunity]);
+    assert.deepEqual(last.state.archive.at(-1).transitions, []);
+});
+
+test('active current-only selection cannot label the next chore as a long-term horizon', async () => {
+    const value = scene();
+    value.selected_material = [{ subjectIds: ['r1-bridge'], available: 'Tea is ready.', developing: 'Wash the cups.', lasting: 'Have supper.' }];
+    const result = await run(await stuck(), [horizon(), value, value]);
+    assert.equal(result.accepted, false);
+    assert.match(result.error, /Unknown|unexpected|not allowed/i);
+});
+
+test('saved state cannot substitute local horizons for its durable outlook', async () => {
+    const state = (await run(await stuck(), [horizon(), openedScene()])).state;
+    state.selectedMaterial[0].lasting = 'Have supper.';
+    assert.equal(validCampaignState(state), false);
+});
+
+test('outlook composition exposes authored entry conditions, never private access explanations or motives', async () => {
+    const value = openedScene();
+    value.plan.openings[0].access.basis = 'PRIVATE-MOTIVE: a secret patron finances this visit; only the cook and the kitchen are observable.';
+    const result = await run(await stuck(), [horizon(), value]);
+    assert.equal(result.accepted, true, result.error);
+    assert.match(campaignPayload(result.state), /visiting orchard cook/);
+    assert.doesNotMatch(campaignPayload(result.state), /PRIVATE-MOTIVE|secret patron|reason|trajectoryId/);
+});
+
+test('local outlook access cannot silently copy an unselected private initiative into writer context', async () => {
+    const state = (await run(await stuck(), [horizon(), openedScene()])).state;
+    const value = keepScene();
+    value.plan.openings = []; value.plan.goal.pop();
+    value.plan.developments[0].trajectoryIds = [opportunity.id];
+    value.selected_material = [];
+    const result = await run(state, [unchangedHorizon(), value, value]);
+    assert.equal(result.accepted, false);
+    assert.match(result.error, /entry and prerequisites/);
+});
+
+test('untrusted and rebuilt context never inherits a previous selected future', async () => {
+    const state = (await run(await stuck(), [horizon(), openedScene()])).state;
+    for (const extra of [{ previousUsable: false }, { resetPlan: true }]) {
+        const input = inputFor(state, extra);
+        assert.deepEqual(JSON.parse(input.prompt).previous_outlook, []);
+    }
+    const value = keepScene();
+    const rejected = await run(state, [unchangedHorizon(), value, value], { previousUsable: false });
+    assert.equal(rejected.accepted, false);
+    assert.match(rejected.error, /No previous outlook/);
 });

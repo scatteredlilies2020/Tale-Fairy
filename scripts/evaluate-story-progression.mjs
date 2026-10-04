@@ -34,6 +34,15 @@ if (frozen && state.source.fingerprint !== hash(messages.slice(0, state.source.m
 if (!frozen && name === 'touring') messages = convert([...fixture.messages,
     ...fixture.stages[1].append, ...fixture.stages[2].append]);
 const stages = [{ name: 'initial', append: [] }];
+// These are explicitly synthetic continuations of the isolated snapshot, not
+// accepted turns written back to the user's chat. Repeated quiet changes expose
+// the local-task drift that a single successful output cannot detect.
+if (process.argv.includes('--continuity')) stages.push(
+    { name: 'routine-1', append: [{ role: 'user', name: frozen?.userName || 'Neri', content: 'I take my time with what I am doing, enjoying being here with them.' }] },
+    { name: 'routine-2', append: [{ role: 'assistant', content: 'A few quiet minutes pass together. No journey, new undertaking or invitation has been accepted.' },
+        { role: 'user', name: frozen?.userName || 'Neri', content: 'I finish what I am doing and relax for a little while.' }] },
+    { name: 'refusal', refuse: true, append: [] },
+);
 if (!frozen && name === 'touring' && !process.argv.includes('--initial-only')) stages.push(
     { name: 'quiet', append: [{ role: 'assistant', content: 'Jo sips her tea while Sef stretches his legs. They remain at the table after the show.' },
         { role: 'user', name: 'Neri', content: 'I finish my tea and enjoy the quiet with them.' }] },
@@ -41,6 +50,12 @@ if (!frozen && name === 'touring' && !process.argv.includes('--initial-only')) s
 );
 console.log(JSON.stringify({ case: name, output, configuration: provider.configuration }));
 for (const stage of stages) {
+    if (stage.refuse) {
+        const id = state.workingPlan?.outlook?.[0]?.trajectoryId;
+        const focus = state.workingPlan?.trajectories?.find(row => row.id === id)?.focus;
+        if (!focus) { console.log(JSON.stringify({ stage: stage.name, skipped: 'No selected outlook to refuse.' })); continue; }
+        stage.append = [{ role: 'user', name: frozen?.userName || 'Neri', content: `I do not want to pursue ${focus}. Please drop that possibility. I would rather spend time privately with the people already here.` }];
+    }
     messages.push(...stage.append.map((message, offset) => ({ ...message, index: messages.length + offset })));
     const reviewedMessageCount = state.source?.messageCount || 0;
     const input = storyInput({ reference: fixture.bootstrap, state,
@@ -60,7 +75,7 @@ for (const stage of stages) {
         writer: result.accepted ? campaignPayload(result.state) : null }, null, 2));
     console.log(JSON.stringify({ stage: stage.name, accepted: result.accepted, error: result.error,
         calls: calls.length, budget: result.budget, recovery: result.recovery?.status,
-        trajectories: result.state.workingPlan?.trajectories }));
+        outlook: result.state.workingPlan?.outlook, writer: result.accepted ? campaignPayload(result.state) : null }));
     if (!result.accepted) { process.exitCode = 1; break; }
     state = result.state;
 }

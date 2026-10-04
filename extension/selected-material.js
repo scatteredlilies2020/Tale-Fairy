@@ -12,6 +12,9 @@ export const SELECTED_MATERIAL_SCHEMA = { type: 'array', maxItems: 1,
             lasting: text('A specific wider possibility that can outlive the current scene, with a distinct relationship, discovery or consequence at stake. Not a generic option, guaranteed ending or success/failure branch.'),
         } },
 };
+// The active contract composes a fresh current circumstance with a separately
+// renewed future entry. The old draft retains its smaller explicit allowance.
+SELECTED_MATERIAL_SCHEMA.items.properties.available.maxLength = 1800;
 
 export function validateSelectedMaterial(material, subjects, check, background) {
     check(material, SELECTED_MATERIAL_SCHEMA, '$.selected_material');
