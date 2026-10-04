@@ -63,16 +63,42 @@ Isolated live-provider checks used the configured gpt-6-sol planner, temperature
   strict invalidation, then new-id re-authoring of the investigation and family
   aftermath. The main direction survived without restoring old trusted facts.
   These three stages used 2 / 3 / 2 requests. The following continuation hit a
-  provider HTTP 502; that transaction did not commit. Follow-up evaluation starts
-  from its last accepted checkpoint, not the failed draft.
+  provider HTTP 502; that transaction did not commit. A follow-up resumed from
+  the last accepted checkpoint, not the failed draft. The continuation and two
+  routine reviews retained the investigation, with unchanged future text on
+  the quiet reviews. Explicit refusal redirected the throughline toward family
+  relationships. These four stages completed with 3 / 2 / 2 / 2 requests.
 - **Music club:** a shared musical phrase developed into later musical-postcard
   afternoons and an established friendship habit. Two routine reviews retained
   both future fields exactly. Explicit refusal redirected preparation toward
   private companionship. All four stages completed with two requests each.
+- **Northward journey:** a stop among fen bridges developed into a community
+  walking map, then a later encounter farther north with someone connected to
+  a name in the companions' journal. The direction covered travel and memories
+  beyond the opening location. Two quiet reviews retained the future text;
+  refusal redirected preparation toward the existing companions. All four
+  stages completed with two requests each.
 - **Explicitly one-evening story:** preparation stayed within the family meal
   and reconciliation, rather than adding a campaign or external crisis. Two
   requests. This deliberately bounded premise appropriately has shorter range;
   the output still contained some optional-participation commentary.
+
+The installed ST extension was also tested through its browser UI on the current
+15-message story. The page loaded the 0.15.3 entry point and saved revision 3:
+guesthouse inquiry, a later diplomatic evidence dispute, then changed delegation
+access rules affecting protection and the medic's work. This replaced the
+profession-only selected side future with the investigation the player pursued.
+The request completed in 64 seconds with three calls; the shared correction
+fixed missing accepted-message witnesses for a consequence. All 15 story messages
+remained unchanged (matching before/after content hashes); no writer reply was
+generated. Planning was initially off, temporarily enabled with permission, and
+turned off again after the test.
+
+This live preparation exceeded the soft targets: approximately 2,354 horizon
+tokens versus 1,400, and 1,662 local-plan tokens versus 900. One stage used 10,253
+input tokens versus the 10,000 target. The selected writer packet remained about
+556 tokens. Valid preparation was retained rather than spending another request
+on shortening; this result is not evidence that target sizes are always met.
 
 These checks establish lifecycle behavior and sampled planning quality, not a
 guarantee of satisfying long-running RP. Selection and episode substance still
