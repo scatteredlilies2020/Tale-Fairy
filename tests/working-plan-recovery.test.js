@@ -42,7 +42,7 @@ for (const [name, invalid] of [
         if (calls === 1) return invalid();
         assert.ok(correction.recoveryReason);
         const payload = JSON.parse(prompt);
-        assert.match(system, /corrected complete JSON/);
+        assert.match(system, name.startsWith('oversized') ? /Size edit: compress validated_draft/ : /corrected complete JSON/);
         assert.ok(schema.value.properties.plan.required.includes('rpUnderstanding'));
         assert.equal(schema.value.properties.plan.properties.rpUnderstanding.properties.departures.maxLength, 70);
         assert.equal(schema.value.properties.plan.properties.rpUnderstanding.properties.storyScope.maxLength, 70);
@@ -50,6 +50,10 @@ for (const [name, invalid] of [
         assert.ok(payload.response_correction.error);
         assert.deepEqual(payload.source_reference, JSON.parse(prepared.prompt).source_reference);
         assert.deepEqual(payload.accepted_messages, JSON.parse(prepared.prompt).accepted_messages);
+        if (name.startsWith('oversized')) {
+            assert.deepEqual(payload.validated_draft, JSON.parse(invalid().text));
+            assert.match(system, /preserving its ids, subjects, specific places, activities, dependencies and choices/);
+        } else assert.equal(payload.validated_draft, undefined);
         return response(draft());
     } });
     assert.equal(calls, 2);
@@ -59,6 +63,50 @@ for (const [name, invalid] of [
     assert.ok(result.budget.plan <= 1200 && result.budget.selected <= 600);
     assert.deepEqual(state, original);
 });
+
+test('optional shortening retains a valid draft when source plus draft would exceed the input target', async () => {
+    const prepared = input(), first = draft();
+    prepared.inputLimit = prepared.inputTokens;
+    first.selected_material[0].available = '音'.repeat(500);
+    let calls = 0;
+    const result = await storyPassWithRecovery({ state: emptyCampaign(), input: prepared, source, generate: async () => {
+        calls++; return response(first);
+    } });
+    assert.equal(calls, 1);
+    assert.equal(result.accepted, true, result.error);
+    assert.equal(result.recovery.status, 'target-retained');
+    assert.deepEqual(result.state.selectedMaterial, first.selected_material);
+});
+
+for (const change of ['replace-subject', 'remove-trajectory', 'change-access', 'remove-goal']) {
+    test(`size-only correction cannot ${change}`, async () => {
+        const first = draft();
+        first.selected_material[0].available = '音'.repeat(500);
+        first.progression.upsert = [{ id: 'r1-river', owner: 'Council', focus: 'River exchanges',
+            basis: 'The crossing connects two communities.', drive: 'Reconnect the banks.',
+            next: { when: 'Repairs finish', change: 'Traders cross with their goods.' },
+            later: { when: 'Regular trade resumes', change: 'The two communities share seasonal markets.' } }];
+        const smaller = structuredClone(first);
+        smaller.selected_material[0].available = 'Workers bring planks.';
+        if (change === 'replace-subject') {
+            smaller.plan.developments[0].id = 'r1-other';
+            smaller.plan.goal[0].subjectId = 'r1-other';
+            smaller.selected_material[0].subjectIds = ['r1-other'];
+        } else if (change === 'remove-trajectory') smaller.progression.upsert = [];
+        else if (change === 'change-access') smaller.plan.developments[0].access.route = 'direct';
+        else smaller.plan.goal = [];
+        let calls = 0;
+        const result = await storyPassWithRecovery({ state: emptyCampaign(), input: input(), source, generate: async () => {
+            return response(++calls === 1 ? first : smaller);
+        } });
+        assert.equal(calls, 2);
+        assert.equal(result.accepted, true, result.error);
+        assert.equal(result.recovery.status, 'target-retained');
+        assert.deepEqual(result.state.selectedMaterial, first.selected_material);
+        assert.deepEqual(result.state.workingPlan.developments, first.plan.developments);
+        assert.deepEqual(result.state.workingPlan.trajectories, first.progression.upsert);
+    });
+}
 
 test('two invalid responses stop recovery and leave saved state untouched', async () => {
     const state = emptyCampaign(), before = structuredClone(state);

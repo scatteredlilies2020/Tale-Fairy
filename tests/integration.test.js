@@ -25,12 +25,12 @@ test('settings explanations stay concise', () => {
 });
 
 test('manifest, browser runtime, and detached plugin share the release version', () => {
-    assert.equal(manifest.version, '0.14.40');
-    assert.equal(manifest.js, 'extension/index.js?v=0.14.40&planner-input=1&episode-fields=1&token-budget=1&rp-plot=1&progress=1&response=2&history-budget=1&partial-updates=1&partial-evidence=1&creative=1&follow-through=1&compaction=1&working-plan=1&guidance-preview=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1');
-    assert.equal(manifest.css, 'extension/style.css?v=0.14.40');
+    assert.equal(manifest.version, '0.14.41');
+    assert.equal(manifest.js, 'extension/index.js?v=0.14.41&planner-input=1&episode-fields=1&token-budget=1&rp-plot=1&progress=1&response=2&history-budget=1&partial-updates=1&partial-evidence=1&creative=1&follow-through=1&compaction=1&working-plan=1&guidance-preview=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1');
+    assert.equal(manifest.css, 'extension/style.css?v=0.14.41');
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.14\.40'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.14\.40'/);
+    assert.match(pluginSource, /const VERSION = '0\.14\.41'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.14\.41'/);
 });
 
 test('creative contract updates invalidate the browser entry and schema imports', async () => {
@@ -52,6 +52,7 @@ test('creative contract updates invalidate the browser entry and schema imports'
 for (const [marker, seeds] of [
     ['story-horizons', ['bounded-story.js', 'campaign-planner.js', 'generation-context.js', 'selected-material.js', 'story-budget.js', 'story-selection.js']],
     ['story-progression', ['story-progression.js', 'working-plan.js', 'bounded-story.js']],
+    ['rp-activities', ['bounded-story.js']],
 ]) test(`${marker} cache invalidation reaches every transitive browser importer`, async () => {
     const directory = new URL('../extension/', import.meta.url);
     const files = (await readdir(directory)).filter(name => name.endsWith('.js'));
@@ -68,7 +69,7 @@ for (const [marker, seeds] of [
     for (const edge of edges.filter(edge => changed.has(edge.target))) {
         assert.match(edge.query, new RegExp(`[?&]${marker}=1(?:&|$)`), `${edge.file} must reload ${edge.target}`);
     }
-    assert.match(manifest.js, /&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1$/);
+    assert.match(manifest.js, new RegExp(`[?&]${marker}=1(?:&|$)`));
 });
 
 test('planner input proof travels through normal saves and detached recovery', () => {

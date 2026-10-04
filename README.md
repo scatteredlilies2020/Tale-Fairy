@@ -4,7 +4,7 @@ Tale Fairy is a SillyTavern extension that prepares fitting story possibilities 
 
 ## Goals
 
-- Make opportunities fit the RP: everyday life, relationships, travel, discoveries, conflict, or quiet moments when appropriate, not a generic quest loop.
+- Turn what the RP is about into fresh places, activities and projects: everyday life, relationships, travel, discoveries, conflict, or quiet moments when appropriate, not a generic quest loop. This planning stays internal; the writer receives story material, not instructions to generate it.
 - Keep meaningful past events and plausible NPC or world activity in view without forcing old threads to continue forever.
 - Let long-term direction, near-term goals, and independent side threads coexist without scripted scenes or predetermined outcomes. Goals guide private selection, never control the player or become writer instructions; the user's preset owns writing style and pacing.
 - Keep private progression across scene changes: NPC/world interests, intermediate changes, longer-range possibilities, and the conditions connecting them. Local plans can change without erasing this preparation; trajectories change or retire explicitly. Only accessible story material reaches the writer.

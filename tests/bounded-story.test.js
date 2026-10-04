@@ -40,6 +40,28 @@ function input(state = emptyCampaign(), extra = {}) {
         previousUsable: Boolean(state.revision), verifiedPlanEvidence: state.planEvidence || {}, ...extra });
 }
 
+test('internal contract turns RP identity into fresh characteristic activities', () => {
+    assert.match(STORY_SYSTEM, /experiences names its characteristic recurring activities and interests/);
+    assert.match(STORY_SYSTEM, /Turn that understanding into fresh playable substance/);
+    assert.match(STORY_SYSTEM, /even before they are mentioned in play/);
+    assert.match(STORY_SYSTEM, /worthwhile to experience in its own right/);
+    assert.match(STORY_SYSTEM, /Use this understanding to shape developments and progression; access determines which material is available now/);
+    assert.doesNotMatch(STORY_SYSTEM, /Frieren|K-on|Equalists|Korra/i);
+});
+
+test('RP activity analysis remains internal rather than becoming writer instructions', async () => {
+    const raw = response();
+    raw.plan.rpUnderstanding.experiences = 'Different settlements, shared meals, learning regional crafts.';
+    const result = await pass(raw);
+    assert.equal(result.accepted, true, result.error);
+    const restored = loadPlannerState(JSON.parse(JSON.stringify(saveState({}, {
+        ...defaultPlannerState(), campaignPreparation: result.state,
+    })))).campaignPreparation;
+    assert.equal(restored.workingPlan.rpUnderstanding.experiences, raw.plan.rpUnderstanding.experiences);
+    assert.deepEqual(restored.selectedMaterial, raw.selected_material);
+    assert.doesNotMatch(campaignPayload(restored), /regional crafts|rpUnderstanding|recurring activities|Turn that understanding/);
+});
+
 test('new local goals require explicit references and scopes', () => {
     assert.ok(STORY_SCHEMA.value.properties.plan.required.includes('goal'));
     assert.equal(STORY_SCHEMA.value.properties.plan.properties.goal.maxItems, 4);

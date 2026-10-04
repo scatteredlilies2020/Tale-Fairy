@@ -159,11 +159,16 @@ can be omitted whole. If protected input alone cannot fit, it is sent intact wit
 an over-target notice rather than causing a local token-limit failure.
 
 Valid output above the plan/packet/analysis targets receives one best-effort
-shortening request. Accept the replacement only when valid and its normalized
-target overrun improves. Otherwise retain the valid first result, with notices;
-never erase good preparation solely because a tokenizer estimate is high. There
-are still at most two provider requests per planning pass. Cancellation and
-source/state/save guards apply to either chosen result.
+shortening request with the complete validated draft as editing input. If the
+source plus draft cannot fit the configured input target, skip this optional
+request and retain the first result; source is not displaced to fit the draft.
+Accept the replacement only when valid, its normalized target overrun improves,
+and its subject ids, ownership, access routes, progression links, goal scopes and
+selection membership remain intact. Otherwise retain the valid first result,
+with notices; never erase good preparation solely because a tokenizer estimate
+is high. This structural check cannot prove that rewritten prose preserves every
+specific detail. There are still at most two provider requests per planning pass.
+Cancellation and source/state/save guards apply to either chosen result.
 
 The session persists request counts under the original reservation, checks Stop,
 source/reference/settings/state identity before each send (including after the
@@ -352,3 +357,43 @@ The writer serializer is unchanged: only selected accessible story material reac
 Deterministic regressions cover quiet scene replacement, reload, context fitting, explicit updates/retirement, ownership, links, discovery access, atomic rejection/recovery, merged capacity, historical compatibility and the writer boundary. These checks guarantee lifecycle and structural behavior, not that a model invents worthwhile long-range possibilities. Semantic breadth and causal quality still require inspecting actual model output.
 
 Isolated checks on 2026-10-04 used the configured gpt-6-sol provider at temperature 0.8, low reasoning, with synthetic sources and the active bounded contract. Touring produced composition and changing-repertoire trajectories; a quiet follow-up retained both unchanged; a preference against public debut revised the composition trajectory while retaining the other. A closed family evening produced no trajectories. A wetland case produced hydrology and population-distribution trajectories. These are small qualitative checks, not a general quality guarantee or a test of the installed ST chat. Several drafts remained above the 1,200-token soft target after the single correction allowance (roughly 1,260–1,490 tokens); valid preparation was retained. One changed consequence needed a witness correction. The opt-in `scripts/evaluate-story-progression.mjs --live` runner uses `TF_ST_ROOT` for the read-only provider configuration and `TF_CASE=touring|closed|ecosystem`; artifacts go to a fresh temporary directory, never the live chat.
+
+## Premise-specific activities (0.14.41)
+
+Private RP understanding now identifies what the RP is about beyond the current
+episode and its characteristic recurring activities and interests. The planner
+turns these into specific places, people, projects and occasions, including
+compatible possibilities not yet mentioned in play. Each should be worthwhile
+to experience and have something that can develop through participation or
+independent activity. Ordinary pleasures and pursuits supply story substance;
+interruptions and conflict arise from particular circumstances. This is generic
+planner instruction, not a franchise lookup table or additional writer guidance.
+Existing access and evidence checks still separate future preparation from
+presently available material and accepted history.
+
+The new synthetic `journey` and `music` cases exercise this distinction. Four
+isolated initial planning passes ran on 2026-10-04 with gpt-6-sol, temperature 0.8
+and low reasoning; each used two provider requests. Before the shortening fix,
+the journey's first draft offered an orchard, a canal-side market town and a
+millkeeper's practical spell, but its second response replaced these with vague
+possible stops and spell sources. The shortening request had not contained the
+draft it was meant to edit. The music case produced shared tune and food routines.
+
+After the fix, a fresh journey pass preserved a proposed community drying shed,
+its practical spell and later sharing of that spell. Its selected writer packet
+still focused on generic route-journal possibilities; this sample did not produce
+a set of distinct towns. A fresh music pass preserved melody variations growing
+into a shared piece and homemade snacks developing into a club routine. Neither
+needed an arbitrary crisis. Final conservative plan counts were 1,190 and 1,250;
+selected packets were 157 and 167. The latter plan remains above the soft target
+and is retained intact. These small qualitative checks do not establish reliable
+creative breadth or writer quality. No writer continuation was generated and no
+live chat, preset or ST settings were modified.
+
+The opt-in runner now also accepts `TF_CASE=journey|music` with `--initial-only`.
+Complete local artifacts are in temporary directories
+`tale-fairy-progression-qtsjz6`, `tale-fairy-progression-D5vMmB` (before the fix),
+and `tale-fairy-progression-nhDbUX`, `tale-fairy-progression-dc2BLD` (after it).
+Deterministic regressions cover the private writer boundary, validated editing
+input, structural preservation, skipping an input-limited size edit and retaining
+the writer budget when shortening is unsuccessful or unavailable.

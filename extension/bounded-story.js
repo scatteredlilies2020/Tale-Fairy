@@ -69,7 +69,9 @@ export const STORY_SYSTEM = `${CAMPAIGN_MARKER}
 
 Prepare progression for this particular RP: concrete situations that can develop across scenes and alter its longer story. Infer expected experiences from the supplied setting, characters, player premise and established departures. Begin with the wider story territory, then consider today's scene. Relevant past events supply causes and changed relationships. Invent compatible opportunities without requiring prior mention; accepted messages alone establish their enactment. The writing preset owns prose, tone and pacing.
 
-Analyze the RP in rpUnderstanding. Identify original/franchise/mixed/unclear basis, setting and era. canonIntent reflects the user's stated preference (follow/flexible/alternate), otherwise unspecified. divergence describes established causal impact: none-established, local, major or unclear. For original RP both are not-applicable. anchors records applicable rules/relationships; departures records changes and affected prerequisites. storyScope names the particular setting/era/premise's wider story territory; experiences names fitting experiences; independentSource names a relevant NPC, community, institution or world process beyond the latest scene. uncertainty flags unknowns. Franchise knowledge and prior_story_map are provisional; supplied references, corrections and accepted play take precedence. Reconsider dependent possibilities when their premises change. Keep this analysis below ${RP_UNDERSTANDING_LIMIT} tokens within the plan budget.
+Analyze the RP in rpUnderstanding. Identify original/franchise/mixed/unclear basis, setting and era. canonIntent reflects the user's stated preference (follow/flexible/alternate), otherwise unspecified. divergence describes established causal impact: none-established, local, major or unclear. For original RP both are not-applicable. anchors records applicable rules/relationships; departures records changes and affected prerequisites. storyScope names what this RP is about beyond today's episode; experiences names its characteristic recurring activities and interests; independentSource names a relevant NPC, community, institution or world process beyond the latest scene. uncertainty flags unknowns. Franchise knowledge and prior_story_map are provisional; supplied references, corrections and accepted play take precedence. Reconsider dependent possibilities when their premises change. Keep this analysis below ${RP_UNDERSTANDING_LIMIT} tokens within the plan budget.
+
+Turn that understanding into fresh playable substance. Develop the RP's characteristic activities in specific new forms: a journey can offer distinct settlements, local lives and discoveries along its route; an ensemble's everyday life can offer shared meals, a song taking shape and different ways of spending time together. Infer the activities from this RP, including its ordinary pleasures, pursuits and larger concerns. Prepare concrete places, people, projects or occasions beyond the current scene when its scope supports them, even before they are mentioned in play. Give each chosen possibility something worthwhile to experience in its own right and something that can change through participation or independent activity. Its recurring activities supply new substance across episodes; interruptions, obstacles and conflicts arise from particular circumstances. Use this understanding to shape developments and progression; access determines which material is available now.
 
 Private progression is stored in previous_plan.trajectories, separately from the local plan. Prepare up to three distinctive trajectories grounded in that broader territory, including its characteristic people, interests and developing circumstances. A trajectory spans meaningful changes across scenes, rather than extending today's activity with an eventual-friendship sentence. Its owner is an NPC or world process; basis states the supplied premise or a clearly proposed possibility; drive gives the owner's continuing interest. next describes an intermediate change and the condition that could bring it about. later describes a different, farther-reaching change made possible by that development, with its own condition. These are branches of possibility: each when is a causal dependency, and each change is specific story substance. Shared projects, discoveries, relationships and everyday ambitions can carry progression as readily as political or physical conflict. Use the particular RP's substance.
 
@@ -257,7 +259,7 @@ export async function storyPass({ state, input, source, generate }) {
     }
 }
 
-function correctionInput(input, failure) {
+function correctionInput(input, failure, validDraft) {
     const limit = plannerInputLimit(input.inputLimit);
     let payload = JSON.parse(input.prompt);
     // Supply validation feedback as data. Never append an unbounded rejected
@@ -266,8 +268,9 @@ function correctionInput(input, failure) {
     payload.response_correction = { error: planTokens(detail) <= 80 ? detail : 'Previous output failed validation. Check the complete response shape and shared budgets.' };
     // Replace verbose drafting advice, not story context, to make room for
     // feedback even when the original input used its entire local budget.
-    const system = STORY_SYSTEM.replace(/Draft below the target:[^\n]+/u,
-        'Automatic correction: return corrected complete JSON. Compress merged plan to 700 tokens using upsert; selection 250. Preserve ids, dependencies and unfinished work.');
+    const system = STORY_SYSTEM.replace(/Draft below the target:[^\n]+/u, validDraft
+        ? 'Size edit: compress validated_draft, preserving its ids, subjects, specific places, activities, dependencies and choices. Shorten wording only; plan target 900 tokens, selection 250. Return complete JSON.'
+        : 'Automatic correction: return corrected complete JSON. Compress merged plan to 700 tokens using upsert; selection 250. Preserve ids, dependencies and unfinished work.');
     const schema = structuredClone(STORY_SCHEMA);
     const plan = schema.value.properties.plan.properties;
     for (const key of ['direction', 'threads']) plan[key].maxLength = 100;
@@ -286,9 +289,30 @@ function correctionInput(input, failure) {
         trajectory[stage].properties.change.maxLength = 70;
     }
     const measure = value => storyInputTokens(JSON.stringify(value), system, schema);
+    if (validDraft) {
+        // A valid proposal must be visible to an editor. If source + draft do
+        // not fit, keep the proposal rather than regenerate it from scratch or
+        // displace source/evidence to make room for an optional size edit.
+        payload.validated_draft = JSON.parse(validDraft.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
+        if (measure(payload) > limit) throw Error('Optional shortening draft exceeds input target; original preparation retained.');
+    }
     payload = fitPlannerContext(payload, measure, limit);
     const tokens = measure(payload);
     return { input: { ...input, prompt: JSON.stringify(payload), inputTokens: tokens }, schema, system };
+}
+
+// A size-only edit cannot replace subjects, remove possibilities or change
+// their ownership/access. Prose equivalence still needs qualitative evaluation.
+function preparationStructure(state) {
+    const sorted = rows => rows.map(row => JSON.stringify(row)).sort();
+    const plan = state.workingPlan;
+    return JSON.stringify({
+        developments: sorted(plan.developments.map(d => [d.id, d.kind, d.owner, d.control, d.access.route, [...d.trajectoryIds].sort()])),
+        trajectories: sorted(plan.trajectories.map(t => [t.id, t.owner])),
+        goals: sorted(plan.goal.map(g => [g.subjectId, g.scope])),
+        consequences: sorted(plan.consequences.map(c => c.id)),
+        selected: sorted(state.selectedMaterial.map(packet => [...packet.subjectIds].sort())),
+    });
 }
 
 // One correction belongs to the same reserved planning pass. The session guards
@@ -300,13 +324,15 @@ export async function storyPassWithRecovery(args) {
     if (!refine && (first.accepted || !first.recoverableOutput)) return first;
     const failure = refine ? { error: 'Valid response is above sizing targets. Shorten prose without losing ids, prerequisites or unfinished initiatives: plan 1200, selected packet 600, RP analysis 300 tokens.' } : first;
     let correction;
-    try { correction = correctionInput(args.input, failure); }
-    catch (error) { return refine ? first : { ...first, error: `${first.error} ${error.message}`, recovery: { status: 'unavailable', reason: first.error } }; }
+    try { correction = correctionInput(args.input, failure, refine ? first.result : null); }
+    catch (error) { return refine ? { ...first, recovery: { status: 'target-retained', reason: error.message } }
+        : { ...first, error: `${first.error} ${error.message}`, recovery: { status: 'unavailable', reason: first.error } }; }
     const next = await storyPass({ ...args, input: correction.input,
         generate: prompt => args.generate(prompt, correction.system, correction.schema, { recoveryReason: failure.error }) });
     // A sizing target is not grounds to throw away an otherwise valid result.
     // Transaction/cancellation checks still run before the chosen result commits.
-    if (refine && (!next.accepted || next.outputOverrun >= first.outputOverrun)) {
+    if (refine && (!next.accepted || next.outputOverrun >= first.outputOverrun
+        || preparationStructure(next.state) !== preparationStructure(first.state))) {
         return { ...first, recovery: { status: 'target-retained', reason: failure.error } };
     }
     return { ...next, recovery: { status: next.accepted ? refine ? 'shortened' : 'complete' : 'failed', reason: failure.error } };

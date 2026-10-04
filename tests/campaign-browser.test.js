@@ -398,16 +398,18 @@ test('notebook distinguishes estimated writer cap from preserved author-only ove
     assert.match(scope.campaignBudgetSummary(null, [note]), /Author instructions alone exceed.*remain verbatim/);
 });
 
-test('valid oversized writer material survives an unsuccessful shortening attempt without bypassing the writer budget', async () => {
+for (const [size, requests, outcome] of [[400, 2, 'unsuccessful'], [800, 1, 'input-limited']]) {
+test(`valid oversized writer material survives ${outcome} shortening without bypassing the writer budget`, async () => {
     const value = structuredClone(design);
-    for (const key of ['available', 'developing', 'lasting']) value.selected_material[0][key] = '音'.repeat(800);
+    for (const key of ['available', 'developing', 'lasting']) value.selected_material[0][key] = '音'.repeat(size);
     const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] }));
     await h.scope.analyzeCampaignNow();
-    assert.equal(h.requests.length, 2);
+    assert.equal(h.requests.length, requests);
     assert.deepEqual(h.state().campaignPreparation.selectedMaterial, value.selected_material);
     assert.match(h.statuses.at(-1), /600 token target; kept intact/);
     assert.equal(h.prepare().payload, '');
 });
+}
 
 test('host ignores whole lorebooks without changing source books or fingerprints', async () => {
     const h = browser();

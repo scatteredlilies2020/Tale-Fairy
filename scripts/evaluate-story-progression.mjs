@@ -6,6 +6,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { isolatedProvider } from './isolated-planner-provider.mjs';
 import { touringCase, closedCase, ecosystemCase } from './single-pass-planner-cases.mjs';
+import { journeyCase, musicClubCase } from './story-activity-cases.mjs';
 import { storyInput, storyPassWithRecovery, PLANNER_OUTPUT_LIMIT } from '../extension/bounded-story.js';
 import { emptyCampaign, campaignPayload } from '../extension/campaign-planner.js';
 import { plannerMessages, PLANNER_OUTPUT_MODE } from '../extension/output-negotiation.js';
@@ -14,8 +15,9 @@ if (!process.argv.includes('--live')) throw Error('Explicit --live and TF_ST_ROO
 const root = process.env.TF_ST_ROOT;
 if (!root) throw Error('TF_ST_ROOT is required.');
 const name = process.env.TF_CASE || 'touring';
-const fixture = { touring: touringCase, closed: closedCase, ecosystem: ecosystemCase }[name]?.();
-if (!fixture) throw Error('TF_CASE must be touring, closed, or ecosystem.');
+const fixture = { touring: touringCase, closed: closedCase, ecosystem: ecosystemCase,
+    journey: journeyCase, music: musicClubCase }[name]?.();
+if (!fixture) throw Error('TF_CASE must be touring, closed, ecosystem, journey, or music.');
 const settings = JSON.parse(fs.readFileSync(path.join(root, 'data/default-user/settings.json')));
 const configuredMode = settings.extension_settings?.['living-world-guide']?.analysisReasoningMode;
 const mode = ['off', 'low', 'high'].includes(configuredMode) ? configuredMode : 'off';
