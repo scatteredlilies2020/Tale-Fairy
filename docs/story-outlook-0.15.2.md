@@ -90,6 +90,14 @@ and appropriate selection still depend on the planner; validation does not prove
 creativity. Persistence prevents inadvertent rewrite on keep, not every possible
 bad replacement decision. Longer real-play assessment remains necessary.
 
+After deployment, two manual `Guide now` reviews in the live SillyTavern browser
+saved revisions 81 and 82 of the existing chat. Both completed with two provider
+requests, without correction. Revision 81 replaced the old washhouse-to-supper
+writer horizon with the harvest, later blind tasting and recipe-sharing choice.
+Revision 82 refreshed the washhouse circumstances while preserving both selected
+future horizons exactly (compared from the rendered writer preview). These live
+reviews updated planning metadata only; no story reply was generated or replaced.
+
 Run `scripts/evaluate-story-progression.mjs --live --continuity` with `TF_ST_ROOT`
 and `TF_CASE=journey` or `music`. `TF_FROZEN` can name an existing verified
 saved-plan freeze for the real-chat case. These opt-in runs use the configured
