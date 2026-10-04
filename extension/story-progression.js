@@ -24,6 +24,23 @@ export const THROUGHLINE_SCHEMA = list(object({
     focus: text(320), basis: text(320), trajectoryIds: { ...list(text(80), 2), minItems: 1 },
 }), 1);
 
+// The RP's continuing life is not the latest incident enlarged into an arc.
+// Optional on disk for older plans; required by the wider workshop.
+export const STORY_LIFE_SCHEMA = object({
+    scope: { type: 'string', enum: ['open', 'bounded', 'undetermined'] },
+    premise: text(400), currentEpisode: text(300), continuingLife: text(700),
+    horizonIds: list(text(80), 3),
+});
+
+export function validateStoryLife(plan, check) {
+    if (plan.storyLife === undefined) return;
+    check(plan.storyLife, STORY_LIFE_SCHEMA, '$.plan.storyLife');
+    const ids = plan.storyLife.horizonIds;
+    if (new Set(ids).size !== ids.length || ids.some(id => !plan.trajectories?.some(t => t.id === id && t.experience))) {
+        throw Error('Story life requires distinct retained substantive horizonIds');
+    }
+}
+
 export function validateThroughline(plan, check) {
     if (plan.throughline === undefined) return; // Historical saved plans.
     check(plan.throughline, THROUGHLINE_SCHEMA, '$.plan.throughline');

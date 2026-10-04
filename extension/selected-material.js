@@ -12,9 +12,12 @@ export const SELECTED_MATERIAL_SCHEMA = { type: 'array', maxItems: 1,
             lasting: text('A specific wider possibility that can outlive the current scene, with a distinct relationship, discovery or consequence at stake. Not a generic option, guaranteed ending or success/failure branch.'),
         } },
 };
-// The active contract composes a fresh current circumstance with a separately
-// renewed future entry. The old draft retains its smaller explicit allowance.
-SELECTED_MATERIAL_SCHEMA.items.properties.available.maxLength = 1800;
+// Storage also accepts historical current circumstances alongside up to two
+// renewed future entries. These are ceilings; the combined writer envelope is
+// independently bounded, including its labels and serialization overhead.
+SELECTED_MATERIAL_SCHEMA.items.properties.available.maxLength = 2304;
+SELECTED_MATERIAL_SCHEMA.items.properties.developing.maxLength = 1802;
+SELECTED_MATERIAL_SCHEMA.items.properties.lasting.maxLength = 1802;
 
 export function validateSelectedMaterial(material, subjects, check, background) {
     check(material, SELECTED_MATERIAL_SCHEMA, '$.selected_material');

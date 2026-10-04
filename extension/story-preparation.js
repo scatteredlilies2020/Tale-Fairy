@@ -1,21 +1,23 @@
 // Two creative responsibilities, one transaction. Wider preparation never sees
 // the local task list or previous writer packet; scene selection cannot edit it.
-import { storyInput, storyPass, STORY_RESPONSE_SCHEMA, nextPlanRevision, plannerInputLimit, PLANNER_OUTPUT_LIMIT } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1';
-import { CAMPAIGN_MARKER, check } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1';
-import { mergeProgression, PROGRESSION_PATCH_SCHEMA, THROUGHLINE_SCHEMA } from './story-progression.js?story-progression=1&story-workshop=1&story-throughline=1';
-import { validateWorkingPlan, planTokens } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1';
-import { storyInputTokens } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1';
-import { fitPlannerContext } from './planner-context.js?soft-targets=1&story-map=1&story-goal=2&story-throughline=1';
-import { OUTLOOK_REVIEW_SCHEMA, reviewOutlook, composeOutlookMaterial } from './story-outlook.js?story-outlook=1&story-throughline=1';
+import { storyInput, storyPass, STORY_RESPONSE_SCHEMA, nextPlanRevision, plannerInputLimit, PLANNER_OUTPUT_LIMIT } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1';
+import { CAMPAIGN_MARKER, check } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1';
+import { mergeProgression, PROGRESSION_PATCH_SCHEMA, THROUGHLINE_SCHEMA, STORY_LIFE_SCHEMA } from './story-progression.js?story-progression=1&story-workshop=1&story-throughline=1&story-life=1';
+import { validateWorkingPlan, planTokens } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1';
+import { storyInputTokens, fitStoryContext } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1';
+import { fitPlannerContext } from './planner-context.js?soft-targets=1&story-map=1&story-goal=2&story-throughline=1&story-life=1';
+import { OUTLOOK_REVIEW_SCHEMA, reviewOutlook, composeOutlookMaterial } from './story-outlook.js?story-outlook=1&story-throughline=1&story-life=1';
 export { nextPlanRevision, plannerInputLimit, PLANNER_OUTPUT_LIMIT };
+import { materialHorizons } from './selected-material.js?v=0.14.36&rp-plot=1&story-goal=2&story-horizons=1&story-outlook=1&story-life=1';
 
 export const PREPARATION_REQUEST_LIMIT = 3; // two stages + one shared invalid-output repair
 export const HORIZON_TARGET = 1400;
 export const SCENE_TARGET = 900;
 const object = properties => ({ type: 'object', additionalProperties: false, required: Object.keys(properties), properties });
-export const HORIZON_SCHEMA = { name: 'tale_fairy_horizon_v2', value: object({
+export const HORIZON_SCHEMA = { name: 'tale_fairy_horizon_v3', value: object({
     rpUnderstanding: structuredClone(STORY_RESPONSE_SCHEMA.value.properties.plan.properties.rpUnderstanding),
     throughline: structuredClone(THROUGHLINE_SCHEMA),
+    storyLife: structuredClone(STORY_LIFE_SCHEMA),
     progression: structuredClone(PROGRESSION_PATCH_SCHEMA),
 }) };
 HORIZON_SCHEMA.value.properties.progression.properties.upsert.items.required.push('experience');
@@ -24,7 +26,7 @@ possibility.focus.description = 'Title of one specific prepared situation, under
 possibility.experience.description = 'The actual invented substance: a particular place, people and something worth doing or discovering there. Decide what it contains now.';
 possibility.next.properties.change.description = 'A concrete second experience that develops this particular situation; supply its content, not a promise to invent it later.';
 possibility.later.properties.change.description = 'A distinct farther experience or transformed situation made possible by the intermediate development.';
-export const SCENE_SCHEMA = { name: 'tale_fairy_scene_v3', value: structuredClone(STORY_RESPONSE_SCHEMA.value) };
+export const SCENE_SCHEMA = { name: 'tale_fairy_scene_v5', value: structuredClone(STORY_RESPONSE_SCHEMA.value) };
 SCENE_SCHEMA.value.properties.plan.required.push('openings');
 delete SCENE_SCHEMA.value.properties.progression;
 SCENE_SCHEMA.value.required = SCENE_SCHEMA.value.required.filter(key => key !== 'progression');
@@ -37,21 +39,25 @@ currentMaterial.required = ['subjectIds', 'available'];
 delete currentMaterial.properties.developing;
 delete currentMaterial.properties.lasting;
 currentMaterial.properties.available.maxLength = 900;
-currentMaterial.properties.subjectIds.maxItems = 3;
+currentMaterial.properties.subjectIds.maxItems = 2;
+// Current action already exists in the writer's conversation. The scene ledger
+// is private; only authored future entry points and horizons cross this boundary.
+// Keep the empty field for the common response/commit contract and old saves.
+SCENE_SCHEMA.value.properties.selected_material.maxItems = 0;
 
 export const HORIZON_SYSTEM = `${CAMPAIGN_MARKER}
 
-Develop this RP's unfolding story AND its wider supply of possible experiences. Read source_reference and accepted play together: what story is beginning, what is the player pursuing, and what could meaningfully grow from it across different situations? A new story already has a premise in its opening and first choices; preparation starts there, before a backlog exists. A separate planner handles immediate staging. Your responsibility is what that story can become, alongside other worthwhile territory in its world.
+Prepare the continuing life of this RP across episodes, not its next reply. Read source_reference and accepted play together. Separate the full premise and demonstrated interests from the incident currently occupying the conversation. A separate planner handles that incident. New stories need a wider future from their premise even before the player has accumulated choices.
 
 Return rpUnderstanding: basis (original/franchise/mixed/unclear), setting/era, the user's canonIntent (follow/flexible/alternate, otherwise unspecified), established divergence, anchors, departures, storyScope, characteristic experiences, an independentSource of activity and uncertainty. For original RP canonIntent and divergence are not-applicable. Supplied references, user corrections and accepted events outrank franchise knowledge or previous analysis. Treat unknown lore as provisional. Keep this analysis concise.
 
-Return throughline: [] for deliberately unsteered or concluded play, otherwise one {focus, basis, trajectoryIds}. focus names the developing story beyond today's task; basis identifies the opening premise and demonstrated interests, distinguishing uncertainty. Link one or two prepared trajectories that develop it. A profession or the nearest activity alone is not the story's purpose. An inquiry can transform relations and future action; a journey can unfold through different communities; an ensemble's shared life can grow through pursuits and relationships. Infer the substance and scale from this RP. Keep this orientation through routine turns; revise when choices, discoveries or changed premises genuinely redirect it.
+Return storyLife: scope (open/bounded/undetermined), premise (what this RP is about), currentEpisode (today's bounded business), continuingLife (the relationships, pursuits, places and changing experiences that could sustain play beyond it), and horizonIds linking the trajectories that supply that life. Imagine the current incident settled or left behind: what remains worth playing? Its witnesses, paperwork and political fallout still belong to that incident's causal chain. A profession supplies part of a life, not its entire range. A deliberately bounded story can finish; uncertainty stays explicit rather than inventing a player's ambition.
 
-Prepare up to three concrete trajectories in total: first develop that throughline, then use remaining capacity for independent possibilities where useful. Supply actual people, places, undertakings or occasions and what makes them worth experiencing. Develop consequences into different situations, not more logistics for the current task. Broader means consequential development, not automatically bigger danger. Ordinary pleasures and recurring pursuits can sustain an entire RP. Independent possibilities add breadth without replacing the story being pursued. Compatible inventions can precede their mention in play; only accepted play enacts them.
+Return throughline: [] for unsteered/concluded play, otherwise one {focus, basis, trajectoryIds} linking one or two trajectories. It records a developing thread, not an exclusive agenda. Prepare up to three concrete trajectories across the storyLife's useful range, including independently worthwhile life where the premise supports it. Each has actual people, places, undertakings or occasions worth experiencing. Ordinary companionship, recurring interests and discoveries can sustain progression without emergencies or escalation. An incident's consequences may be one strand alongside that wider life. Compatible inventions can precede their mention in play; only accepted play enacts them.
 
 focus names that particular possibility; owner is an NPC, group or world process; basis distinguishes established premises from proposed additions; drive gives an independent continuing interest. experience contains the first playable undertaking. next supplies a subsequent episode with different substantive play, growing from its outcome; later supplies a farther episode made possible by changed relationships, knowledge, capabilities or circumstances. Throughline trajectories look beyond resolving the opening incident or completing the first activity: preparation includes what life and further pursuits can become afterward. Complete the creative chain with actual contents, not promises of future discoveries or disagreements. Quiet, domestic and musical episodes deserve this range too, without escalation into danger or a public performance. These are possible futures, not scheduled events or decisions for the player. Causal when conditions carry participation, access and changed prerequisites internally.
 
-previous_horizon is preparation, not history. Return a progression patch: upsert creates or revises whole trajectories; retire withdraws a possibility with a reason. Omitted ids remain unchanged. Preserve useful unplayed futures. Advance or redirect them for actual participation, refusal, discovery or premise changes, not elapsed message turns. Enrich a thin trajectory under its existing id when its subject still fits; different work needs a new id beginning with new_id_prefix. throughline is the complete current orientation and must link merged retained trajectories.
+previous_horizon is preparation, not history. horizon_review=orient means the continuing-life orientation has never been established: reconstruct it from the source, opening and accepted choices, then audit the old proposals against it. An old review checkpoint covers local facts, not this wider responsibility. horizon_review=maintain reviews an already established orientation against new play. Return a progression patch: upsert creates or revises whole trajectories; retire withdraws a possibility with a reason. Omitted ids remain unchanged. Preserve useful unplayed futures through routine turns. Audit old preparation against storyLife: a shelf entirely downstream of the latest incident or confined to one occupational role needs broader substance, not automatic keep. Retire redundant proposals if capacity is needed, without declaring their events completed. Enrich a thin trajectory under its existing id when its subject still fits; different work needs a new id beginning with new_id_prefix. storyLife and throughline are complete current orientations linking merged retained trajectories.
 
 reconsider_horizon, when supplied, is an OLD proposal set from the same accepted conversation prefix whose reference inputs changed. It is neither current preparation nor evidence. Compare it against current references and choices, re-author compatible substance under new_id_prefix, and leave contradicted ideas behind. Its old ids, analysis, conditions and selections are not automatically restored. Current source and accepted play take precedence.
 
@@ -60,34 +66,34 @@ The merged horizon (analysis and all retained trajectories) has its own ${HORIZO
 
 export const SCENE_SYSTEM = `${CAMPAIGN_MARKER}
 
-Prepare current NPC/world activity and select useful story material. prepared_horizon is private, provisional wider preparation from a separate workshop, including the story's throughline and independent possibilities. It is read-only: the current scene determines access, not which wider possibilities survive. accepted_messages establish events; source_reference supplies premises. Planning drafts establish neither events nor player decisions. The writing preset owns prose, tone and pacing.
+Prepare current NPC/world activity and select useful story material. prepared_horizon contains private, provisional wider possibilities. It is read-only: scenes determine access, not which futures survive. horizon_changes lists revisions and withdrawals since previous_plan/previous_outlook. Retired trajectories cannot appear in openings, outlook or development trajectoryIds. Their unfinished NPC work can remain local without those links. accepted_messages establish events; source_reference supplies premises. Planning drafts establish neither events nor player decisions. The writing preset owns prose, tone and pacing.
 
-Return plan as a complete local replacement with at most four developments. direction and threads summarize continuing interests. consequences contains at most four relevant accepted facts. Each development has a stable id, NPC/world owner and control, a concrete question/experience, initiative, possible resolution and useful beyond. Group one shared situation in one development. trajectoryIds links to prepared_horizon trajectories only where causally related; unrelated local work uses []. Unselected or inaccessible wider possibilities remain privately prepared without needing a local row.
+Return plan as a complete local replacement with at most four developments. direction and threads summarize continuing interests. consequences contains at most four relevant accepted facts. Each development has a stable id, NPC/world owner and control, a concrete question/experience, initiative, possible resolution and useful beyond. NPC-owned work includes what those actors can accomplish with their own resources while the player is occupied elsewhere. Participation is a prerequisite only when the action actually needs that character's decision or involvement; mere presence or a possible chance to intervene is not a dependency. Group one shared situation in one development. trajectoryIds links only causally related prepared trajectories; unrelated work uses [].
 
 The local ledger records unfinished work; it is not the agenda for the next scene. Separately return openings: zero to two present or conditional entry situations into prepared_horizon. Each has trajectoryId, circumstance and access. This space is independent of the four local developments. Renew the selected outlook's route here (or through a linked local development) against actual location, knowledge, timing and choices. Entries are proposals, not witnessed events. Once participation becomes an undertaking, a local development can track it.
 
 Build the bridge from where play is now to something worth experiencing. Invent a compatible NPC activity, encounter, object, invitation, destination or shared occasion that makes a prepared possibility reachable, including at the next natural transition. A route need not already have been narrated. circumstance supplies the actual observable substance and any condition for encountering it, rather than announcing a theme or promising later invention. Use the particular people, interests and places of this RP. Ordinary companionship and voluntary activities can open sustained play just as readily as interruptions. Private ownership and hidden causes stay private; a nearby person is not access to everything they know.
 
-For both developments and openings, access states the route and prerequisites (direct/local/contact/information/investigation); none keeps the material private. Respect accepted refusal, distance, knowledge and timing. Renew a plausible present or conditional route to the throughline when its pursuit remains live. When that route exists, its linked trajectories supply the selected outlook; an easier nearby side activity cannot replace them. Independent openings can enrich the current scene and remain prepared for later. Deliberate rest can clear the outlook without erasing preparation.
+For both developments and openings, access states the route and prerequisites (direct/local/contact/information/investigation); none keeps the material private. Respect accepted refusal, distance, knowledge and timing. Access may be conditional on a later natural transition rather than happening immediately. The current incident and its throughline have no automatic priority over continuing life. Selected futures can coexist without becoming simultaneous demands. Deliberate rest can clear the outlook without erasing preparation.
 
 goal links NPC/world aims to playable subjectIds (a local development id or an opening's trajectoryId), with scope long-term, near-term or side-thread and an observable reachedWhen. goal=[] is valid. Private goals and links are not writer guidance. New local ids begin with new_id_prefix. Preserve an id's specific meaning. Each removed previous local development needs an exit: paused/dropped withdraws preparation; closed/changed requires exact accepted-message index/span evidence for an actual outcome. Openings are reconsidered offers, so dropping one needs no exit. Rebuilds may replace local drafts without exits. Retained ids cannot exit. New or changed consequences require observations with exact supplied spans; unchanged verified facts may carry. Omitted context proves neither resolution nor absence.
 
-Two independent selections feed one writer packet. selected_material is [] or one CURRENT circumstance: subjectIds and available, from accessible local developments or openings. It can attend to today's quiet activity without supplying its own mid/long-term future. Keep it useful rather than recapping the player. The selected outlook's opening circumstance is included automatically; this current selection contributes only additional scene material, or []. For a locally tracked outlook, include that local id and its entry prerequisites here. The combined packet must include at least one goal's subjectId.
+Return selected_material: []. Current action is already in the writer's conversation; local tasks, unresolved hazards and the next beat remain in the private ledger rather than a duplicate scene recap. The host composes writer material only from the selected outlook's authored openings and horizons. Every selected future needs its own accessible opening, even when also tracked locally. At least one selected opening's trajectoryId must match a goal subjectId; no selection is valid for quiet or bounded play.
 
-outlook reviews the selected FUTURE separately. previous_outlook persists across routine scene updates. action=keep with material=[] preserves its exact two horizons while you renew its entry route; local activity or another review is not a reason to replace it. action=replace supplies one {trajectoryId, developing, lasting} when first choosing, when accepted participation moves the chain forward, or when events/interests change it. action=clear with material=[] withdraws selection for refusal, lost access, deliberate closure or no suitable future; private preparation may remain. reason states the actual basis of this decision and stays private. A revised/retired trajectory requires replace/clear rather than keep.
+outlook reviews selected FUTURES separately. Select up to two complementary trajectories that give this RP meaningful reach beyond the incident, with one or zero appropriate to its scope and access. previous_outlook persists across routine scene updates: action=keep with material=[] preserves all its exact horizons while you renew routes. action=replace supplies one or two {trajectoryId, developing, lasting} when first choosing, when events/interests change them, or when broadening an incident-bound selection to represent storyLife. action=clear with material=[] withdraws selection for refusal, lost access, deliberate closure or no suitable future. reason stays private. A revised/retired selected trajectory requires replace/clear; unrelated local activity alone does not.
 
-Select one worthwhile prepared episode with an accessible opening or linked local development. developing supplies the concrete experience beyond today's situation and its causal/participation condition; lasting supplies a distinct farther experience from that trajectory, conditional on the intermediate development. Adapt its actual contents to this access, exposing neither hidden causes nor information without a route. Use several scenes' worth of substantive possibility, not completion of today's routine. The host combines these durable horizons with the fresh entry and current circumstance; private trajectories and access bases stay private. In writer fields, express participation and timing through positive if/when prerequisites, with the substance of what becomes possible. Permission, pressure and pacing commentary (such as what a scene "needs" or what anyone "has to" do) belongs in private reasoning, not the story material. Entry circumstances include their own encounter conditions.
+developing supplies concrete experiences across later scenes and their real causal/participation conditions; lasting supplies a distinct farther experience made possible by them. Adapt actual contents to access, exposing neither hidden causes nor information without a route. The host combines durable horizons with fresh entries. Writer fields contain fiction and genuine prerequisites, never permission, pressure, pacing or instructions. NPC-owned outcomes can occur through those actors' work; a player's voluntary undertaking remains conditional on their participation.
 
-The local plan has its own ${SCENE_TARGET}-token target; selection has a separate 600-token target. The read-only horizon is outside those budgets and is saved verbatim. Compress wording, not distinct unfinished work or prerequisites. Concise JSON only.
+The local plan has its own ${SCENE_TARGET}-token target. The ENTIRE combined selection (entry circumstances and all future horizons) targets 600 tokens and must fit the 1,000-token writer envelope. The read-only horizon is outside those budgets and is saved verbatim. Compress wording, not distinct unfinished work or prerequisites. Concise JSON only.
 `;
 
 // Used for request invalidation, not sent as a third prompt/schema.
 export const PREPARATION_SCHEMA = { name: 'tale_fairy_preparation_v1', horizon: HORIZON_SCHEMA, scene: SCENE_SCHEMA };
 export const PREPARATION_SYSTEM = HORIZON_SYSTEM + '\n' + SCENE_SYSTEM;
 const horizonOf = plan => ({ ...(plan.rpUnderstanding ? { rpUnderstanding: plan.rpUnderstanding } : {}),
-    ...(plan.throughline ? { throughline: plan.throughline } : {}), trajectories: plan.trajectories || [] });
+    ...(plan.throughline ? { throughline: plan.throughline } : {}), ...(plan.storyLife ? { storyLife: plan.storyLife } : {}), trajectories: plan.trajectories || [] });
 const localOf = plan => {
-    const { rpUnderstanding: _understanding, trajectories: _trajectories, throughline: _throughline, outlook: _outlook, ...local } = plan;
+    const { rpUnderstanding: _understanding, trajectories: _trajectories, throughline: _throughline, storyLife: _life, outlook: _outlook, ...local } = plan;
     return local;
 };
 
@@ -98,11 +104,19 @@ export function horizonContext(payload) {
     const { previous_plan, prior_story_map: _localDrafts, ...source } = payload;
     const boundary = payload.coverage?.reviewed_before;
     let messages = payload.accepted_messages;
+    const orient = !previous_plan.storyLife;
+    // An old local review is not evidence that the story's wider premise was
+    // ever considered. Preserve the opening when migrating such preparation,
+    // along with accepted choices, rather than showing only the incident tail.
+    const opening = orient ? ['assistant', 'user'].map(role => messages.find(message => message.role === role)?.index)
+        .filter(Number.isSafeInteger) : [];
     if (payload.coverage?.reviewed_context_optional === true && Number.isSafeInteger(boundary) && boundary > 0) {
         const latest = new Set(['user', 'assistant'].map(role => messages.findLast(message => message.role === role)?.index));
-        messages = messages.filter(message => message.index >= boundary || latest.has(message.index));
+        messages = messages.filter(message => message.index >= boundary || latest.has(message.index)
+            || orient && (message.role === 'user' || opening.includes(message.index)));
     }
-    return { ...source, accepted_messages: messages, coverage: { ...source.coverage,
+    return { ...source, horizon_review: orient ? 'orient' : 'maintain', accepted_messages: messages, coverage: { ...source.coverage,
+        ...(orient ? { protected_message_indices: opening } : {}),
         supplied_messages: messages.length, wider_lens_omitted_reviewed_messages: payload.accepted_messages.length - messages.length },
         previous_horizon: horizonOf(previous_plan) };
 }
@@ -132,7 +146,7 @@ function parseHorizon(result, input) {
     const raw = JSON.parse(result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
     check(raw, HORIZON_SCHEMA.value);
     const trajectories = mergeProgression(input.previousPlan.trajectories || [], raw.progression, input.newIdPrefix, check, input.playerNames);
-    const horizon = { rpUnderstanding: raw.rpUnderstanding, throughline: raw.throughline, trajectories };
+    const horizon = { rpUnderstanding: raw.rpUnderstanding, throughline: raw.throughline, storyLife: raw.storyLife, trajectories };
     validateWorkingPlan({ ...horizon, direction: 'Private horizon', threads: 'Private horizon', consequences: [], developments: [], goal: [] }, check, input.playerNames);
     return { horizon, progression: raw.progression };
 }
@@ -160,7 +174,10 @@ export async function preparationPass({ state, input, source, generate }) {
             horizonInput = repair(horizonInput, HORIZON_SYSTEM, HORIZON_SCHEMA, error.message);
         }
     }
-    let sceneInput = fittedInput(input, { ...JSON.parse(input.prompt), prepared_horizon: prepared.horizon }, SCENE_SYSTEM, SCENE_SCHEMA);
+    let sceneInput = fittedInput(input, { ...JSON.parse(input.prompt), prepared_horizon: prepared.horizon,
+        horizon_changes: { upserted: prepared.progression.upsert.map(row => row.id),
+            retired: prepared.progression.retire.map(row => row.id),
+            retained: prepared.horizon.trajectories.map(row => row.id) } }, SCENE_SYSTEM, SCENE_SCHEMA);
     let result;
     for (;;) {
         result = await storyPass({ state, source, input: sceneInput, system: SCENE_SYSTEM, schema: SCENE_SCHEMA,
@@ -169,6 +186,9 @@ export async function preparationPass({ state, input, source, generate }) {
                 const plan = { ...raw.plan, ...structuredClone(prepared.horizon) };
                 reviewOutlook(input.rebuild ? {} : input.previousPlan, plan, outlook, check);
                 const selected_material = composeOutlookMaterial(raw.selected_material, plan);
+                if (fitStoryContext(selected_material.map(materialHorizons), []).omitted) {
+                    throw Error('Combined selected material exceeds the 1,000-token writer envelope; shorten current/entry/future wording together without losing prerequisites');
+                }
                 // storyPass merges the same verified progression patch below.
                 delete plan.trajectories;
                 return { ...response, plan, selected_material, progression: structuredClone(prepared.progression) };

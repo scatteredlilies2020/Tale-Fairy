@@ -1,7 +1,7 @@
 import { conservativeTokenCount } from './token-budget.js?story-budget=1';
 import { plannerMessages, PLANNER_OUTPUT_MODE } from './output-negotiation.js?v=0.14.22';
 import { compactProgressPayload, compactMessagePayload } from './planner-compaction.js';
-import { optionalPlannerContexts } from './planner-context.js?soft-targets=1&story-map=1&story-goal=2&story-throughline=1';
+import { optionalPlannerContexts } from './planner-context.js?soft-targets=1&story-map=1&story-goal=2&story-throughline=1&story-life=1';
 
 export const WRITER_CONTEXT_TOKEN_LIMIT = 1000;
 const envelopes = new WeakMap();

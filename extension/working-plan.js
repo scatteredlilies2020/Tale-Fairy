@@ -1,8 +1,8 @@
 // Bounded creative state, not a second continuity database. Historical evidence
 // and replaced plans belong in local archives, never in this request snapshot.
 import { conservativeTokenCount } from './token-budget.js';
-import { TRAJECTORIES_SCHEMA, validateTrajectories, THROUGHLINE_SCHEMA, validateThroughline } from './story-progression.js?story-progression=1&story-workshop=1&story-throughline=1';
-import { OUTLOOK_SCHEMA, validateOutlook, validateOutlookSelection } from './story-outlook.js?story-outlook=1&story-throughline=1';
+import { TRAJECTORIES_SCHEMA, validateTrajectories, THROUGHLINE_SCHEMA, validateThroughline, STORY_LIFE_SCHEMA, validateStoryLife } from './story-progression.js?story-progression=1&story-workshop=1&story-throughline=1&story-life=1';
+import { OUTLOOK_SCHEMA, validateOutlook, validateOutlookSelection } from './story-outlook.js?story-outlook=1&story-throughline=1&story-life=1';
 
 export const WORKING_PLAN_VERSION = 1;
 // Historical export names are retained for callers; these are sizing targets,
@@ -64,6 +64,7 @@ WORKING_PLAN_SCHEMA.properties.goal.items.properties.scope = choice(['long-term'
 // patches before validating the complete saved plan.
 WORKING_PLAN_SCHEMA.properties.trajectories = TRAJECTORIES_SCHEMA;
 WORKING_PLAN_SCHEMA.properties.throughline = THROUGHLINE_SCHEMA;
+WORKING_PLAN_SCHEMA.properties.storyLife = STORY_LIFE_SCHEMA;
 WORKING_PLAN_SCHEMA.properties.developments.items.properties.trajectoryIds = list(text(80), 3);
 // Present routes into wider preparation have their own capacity. They are
 // offers, not accepted undertakings, and are reconsidered rather than carried
@@ -116,6 +117,7 @@ export function validateWorkingPlan(plan, check, playerNames = []) {
     if (plan.developments.some(row => players.has(row.owner.trim().toLocaleLowerCase()))) throw Error('Player cannot own a planned initiative');
     validateTrajectories(plan.trajectories || [], check, playerNames);
     validateThroughline(plan, check);
+    validateStoryLife(plan, check);
     const trajectories = new Set((plan.trajectories || []).map(row => row.id));
     for (const row of plan.developments) {
         const ids = row.trajectoryIds || [];

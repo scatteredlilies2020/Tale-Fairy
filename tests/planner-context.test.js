@@ -89,6 +89,14 @@ test('optional prior story map yields before evidence or reviewed play when fitt
     assert.deepEqual(fitted.accepted_messages, messages);
 });
 
+test('explicitly protected orientation messages survive all optional context fitting', () => {
+    const payload = { accepted_messages: messages, coverage: { reviewed_before: 411,
+        reviewed_context_optional: true, protected_message_indices: [0, 1] } };
+    const candidates = [...optionalPlannerContexts(payload)];
+    assert.deepEqual(candidates.at(-1).accepted_messages.map(m => m.index), [0, 1, 411, 412]);
+    assert.deepEqual(payload.accepted_messages, messages);
+});
+
 test('active tokenizer refits optional context against the actual outgoing envelope', async () => {
     const prepared = storyInput(args), payload = JSON.parse(prepared.prompt);
     let measurements = 0;

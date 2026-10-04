@@ -60,7 +60,7 @@ const design = { plan: { rpUnderstanding: originalUnderstanding({ setting: 'Orig
         lasting: 'The repertoire could support shared authorship and distinct musical identities.' }] };
 const writerDesign = () => design.selected_material.map(materialHorizons);
 
-const workshopReply = () => ({ rpUnderstanding: structuredClone(design.plan.rpUnderstanding), throughline: [], progression: { upsert: [{
+const workshopReply = () => ({ storyLife: { scope: 'open', premise: 'Shared neighborhood life.', currentEpisode: 'Practicing music.', continuingLife: 'Music, meals and friendships.', horizonIds: [] }, rpUnderstanding: structuredClone(design.plan.rpUnderstanding), throughline: [], progression: { upsert: [{
     id: 'r1-kitchen', focus: 'A neighborhood supper book', owner: 'Community cooks', basis: 'Proposed neighborhood activity.',
     drive: 'Share family recipes.', experience: 'At the back-street kitchen, cooks test a supper menu and swap handwritten recipe cards.',
     next: { when: 'Cooks compare their trials', change: 'A shared supper menu takes shape.' },
@@ -68,7 +68,7 @@ const workshopReply = () => ({ rpUnderstanding: structuredClone(design.plan.rpUn
 }], retire: [] } });
 const sceneReply = () => {
     const value = structuredClone(design); delete value.progression; delete value.plan.rpUnderstanding;
-    delete value.selected_material[0].developing; delete value.selected_material[0].lasting;
+    value.selected_material = [];
     value.outlook = { action: 'clear', reason: 'No selected future in this host-lifecycle fixture.', material: [] };
     value.plan.openings = []; return value;
 };
@@ -197,7 +197,6 @@ function splitResponse({ prompt, spec }) {
     const id = input.previous_plan.developments[0]?.id || `${input.new_id_prefix}music`;
     value.plan.developments[0].id = id;
     value.plan.goal[0].subjectId = id;
-    value.selected_material[0].subjectIds = [id];
     if (prompt.includes('DISCARDED_ONLY_SECRET')) value.plan.direction = 'DISCARDED_ONLY_SECRET';
     return envelope(value);
 }
@@ -212,7 +211,7 @@ test('active host reconsiders reference-invalidated futures without restoring fa
     assert.equal(h.requests.length, 4);
     const workshop = JSON.parse(h.requests[2].prompt), selection = JSON.parse(h.requests[3].prompt);
     assert.deepEqual(workshop.reconsider_horizon.trajectories, old.workingPlan.trajectories);
-    assert.deepEqual(Object.keys(workshop.reconsider_horizon).sort(), ['rpUnderstanding', 'throughline', 'trajectories']);
+    assert.deepEqual(Object.keys(workshop.reconsider_horizon).sort(), ['rpUnderstanding', 'storyLife', 'throughline', 'trajectories']);
     assert.deepEqual(workshop.previous_horizon.trajectories, []);
     assert.equal(workshop.coverage.reviewed_before, 0);
     assert.deepEqual(selection.previous_plan.developments, []);
@@ -346,8 +345,8 @@ test('replacement recovers a source-valid archived packet without rolling back t
 
 test('missing pre-reply preparation rebuilds once from accepted play while rapid swipes stay nonblocking and frozen', async () => {
     let finish;
-    const h = browser(args => h.requests.length === 4 ? new Promise(resolve => { finish = () => resolve(splitResponse(args)); })
-        : splitResponse(args), defaultState(), { split: true });
+    const h = browser(args => h.requests.length === 4 ? new Promise(resolve => { finish = () => resolve(outlookResponse(args)); })
+        : outlookResponse(args), defaultState(), { split: true });
     h.context.chat.push({ is_user: false, name: 'Mara', mes: 'DISCARDED_ONLY_SECRET' });
     await h.scope.analyzeCampaignNow();
     h.scope.deferReplacementPlanning(h.context);

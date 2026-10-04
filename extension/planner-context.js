@@ -24,8 +24,9 @@ export function* optionalPlannerContexts(payload) {
         || coverage.reviewed_before < 1 || !Array.isArray(payload.accepted_messages)) return;
     // Keep the latest exchange even if it was reviewed (manual replan/rebuild).
     const latest = new Set(['user', 'assistant'].map(role => payload.accepted_messages.findLast(m => m.role === role)?.index));
+    const protectedIndices = new Set(Array.isArray(coverage.protected_message_indices) ? coverage.protected_message_indices : []);
     const optional = payload.accepted_messages.filter(m => Number.isSafeInteger(m.index)
-        && m.index >= 0 && m.index < coverage.reviewed_before && !latest.has(m.index))
+        && m.index >= 0 && m.index < coverage.reviewed_before && !latest.has(m.index) && !protectedIndices.has(m.index))
         .sort((a, b) => a.index - b.index);
     for (const message of optional) {
         const messages = payload.accepted_messages.filter(m => m.index !== message.index);

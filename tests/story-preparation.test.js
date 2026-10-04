@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { preparationInput, preparationPass, HORIZON_SCHEMA, SCENE_SCHEMA, HORIZON_SYSTEM, SCENE_SYSTEM,
     HORIZON_TARGET, SCENE_TARGET } from '../extension/story-preparation.js';
 import { storyInput, storyPass } from '../extension/bounded-story.js';
-import { emptyCampaign, campaignPayload, validCampaignState } from '../extension/campaign-planner.js';
+import { emptyCampaign, campaignPayload, campaignPayloadBudget, validCampaignState } from '../extension/campaign-planner.js';
 import { defaultPlannerState, saveState, loadPlannerState } from '../extension/state.js';
 import { storyInputTokens } from '../extension/story-budget.js';
 import { originalUnderstanding } from './helpers/rp-fixtures.js';
@@ -14,6 +14,8 @@ const messages = [{ index: 0, role: 'assistant', content: 'The council is repair
 const reference = { premise: 'A wandering life across distinct communities, discovering local customs and small magic.' };
 const source = { chatId: 'story', referenceHash: 'reference', fingerprint: 'accepted', messageCount: 2 };
 const understanding = () => originalUnderstanding({ storyScope: 'Journey across different communities.', experiences: 'Local customs, useful spells and shared meals.' });
+const storyLife = () => ({ scope: 'open', premise: 'A wandering life.', currentEpisode: 'A bridge repair.',
+    continuingLife: 'Travel, companionship, different customs and useful small magic.', horizonIds: [] });
 const oldTrajectory = { id: 'r1-repair', focus: 'Repair the bridge', owner: 'Council', basis: 'A broken crossing.', drive: 'Restore traffic.',
     next: { when: 'Repairs end', change: 'Test the crossing.' }, later: { when: 'The test passes', change: 'Use the bridge.' } };
 const opportunity = { id: 'r2-orchard', focus: 'Cinderwick harvest kitchen', owner: 'Orchard cooks', basis: 'Proposed stop along the northern route.', drive: 'Share ways of preserving fruit.',
@@ -34,7 +36,7 @@ async function stuck() {
     }) });
     assert.equal(result.accepted, true, result.error); return result.state;
 }
-const horizon = () => ({ rpUnderstanding: understanding(), throughline: [], progression: { upsert: [structuredClone(opportunity)], retire: [{ id: 'r1-repair', reason: 'Local repair remains local work.' }] } });
+const horizon = () => ({ rpUnderstanding: understanding(), storyLife: storyLife(), throughline: [], progression: { upsert: [structuredClone(opportunity)], retire: [{ id: 'r1-repair', reason: 'Local repair remains local work.' }] } });
 const clearOutlook = () => ({ action: 'clear', reason: 'No future selected for this bounded test.', material: [] });
 const scene = () => ({ plan: { ...local(), openings: [] }, exits: [], observations: [], selected_material: [], outlook: clearOutlook() });
 const inputFor = (state, extra = {}) => preparationInput({ reference, state, messages, playerNames: ['Ren'], previousUsable: true, ...extra });
@@ -63,7 +65,7 @@ test('workshop input excludes entrenched local work, goals, writer selection and
     assert.equal(narrow.previous_plan.rpUnderstanding, undefined);
     assert.equal(narrow.previous_plan.developments[0].id, 'r1-bridge');
     assert.ok(HORIZON_TARGET > SCENE_TARGET);
-    assert.ok(storyInputTokens('', HORIZON_SYSTEM, HORIZON_SCHEMA) < 2600);
+    assert.ok(storyInputTokens('', HORIZON_SYSTEM, HORIZON_SCHEMA) < 2800);
     assert.ok(storyInputTokens('', SCENE_SYSTEM, SCENE_SCHEMA) < 3200);
 });
 
@@ -72,6 +74,7 @@ test('two stages replace narrow future while preserving unfinished local work an
     assert.equal(result.accepted, true, result.error);
     assert.deepEqual(result.calls.map(c => c.schema.name), [HORIZON_SCHEMA.name, SCENE_SCHEMA.name]);
     assert.deepEqual(result.calls[1].prompt.prepared_horizon.trajectories, [opportunity]);
+    assert.deepEqual(result.calls[1].prompt.horizon_changes, { upserted: [opportunity.id], retired: ['r1-repair'], retained: [opportunity.id] });
     assert.deepEqual(result.state.workingPlan.trajectories, [opportunity]);
     assert.deepEqual(result.state.workingPlan.developments, state.workingPlan.developments);
     assert.deepEqual(result.state.selectedMaterial, []);
@@ -86,7 +89,8 @@ test('two stages replace narrow future while preserving unfinished local work an
 
 test('wider context uses verified changes instead of the rolling scene tail', async () => {
     const history = Array.from({ length: 12 }, (_, index) => ({ index, role: index % 2 ? 'user' : 'assistant', content: `Accepted text ${index}.` }));
-    const input = inputFor(await stuck(), { messages: history, reviewedMessageCount: 9 });
+    const state = await stuck(); state.workingPlan.storyLife = storyLife();
+    const input = inputFor(state, { messages: history, reviewedMessageCount: 9 });
     assert.deepEqual(JSON.parse(input.horizonInput.prompt).accepted_messages.map(m => m.index), [9, 10, 11]);
     assert.equal(JSON.parse(input.horizonInput.prompt).coverage.wider_lens_omitted_reviewed_messages, 9);
     assert.deepEqual(JSON.parse(input.prompt).accepted_messages.map(m => m.index), history.map(m => m.index));
@@ -95,6 +99,7 @@ test('wider context uses verified changes instead of the rolling scene tail', as
 
 test('wider lens keeps the latest exchange on a manual review and all play without coverage', async () => {
     const state = await stuck();
+    state.workingPlan.storyLife = storyLife();
     const history = Array.from({ length: 6 }, (_, index) => ({ index, role: index % 2 ? 'user' : 'assistant', content: `Accepted text ${index}.` }));
     for (const [reviewedMessageCount, expected] of [[6, [4, 5]], [0, [0, 1, 2, 3, 4, 5]]]) {
         const input = inputFor(state, { messages: history, reviewedMessageCount });
@@ -115,14 +120,14 @@ test('scene cannot overwrite the separately prepared horizon or inject it wholes
 
 test('unchanged wider possibilities persist through an unrelated local review', async () => {
     const state = (await run(await stuck())).state;
-    const next = await run(state, [{ rpUnderstanding: understanding(), throughline: [], progression: { upsert: [], retire: [] } }, scene()]);
+    const next = await run(state, [{ rpUnderstanding: understanding(), storyLife: storyLife(), throughline: [], progression: { upsert: [], retire: [] } }, scene()]);
     assert.equal(next.accepted, true, next.error);
     assert.deepEqual(next.state.workingPlan.trajectories, [opportunity]);
 });
 
 test('explicit refusal can retire an opportunity without declaring it happened', async () => {
     const state = (await run(await stuck())).state;
-    const next = await run(state, [{ rpUnderstanding: understanding(), throughline: [], progression: { upsert: [], retire: [{ id: opportunity.id, reason: 'The player declined this route.' }] } }, scene()],
+    const next = await run(state, [{ rpUnderstanding: understanding(), storyLife: storyLife(), throughline: [], progression: { upsert: [], retire: [{ id: opportunity.id, reason: 'The player declined this route.' }] } }, scene()],
         { messages: [...messages, { index: 2, role: 'user', name: 'Ren', content: 'I do not want to visit orchards.' }] });
     assert.equal(next.accepted, true, next.error);
     assert.deepEqual(next.state.workingPlan.trajectories, []);
@@ -194,7 +199,7 @@ test('complete wider experiences use safety ceilings rather than tiny drafting l
 });
 
 test('a deliberately closed story permits an empty horizon', async () => {
-    const result = await run(await stuck(), [{ rpUnderstanding: understanding(), throughline: [], progression: { upsert: [], retire: [{ id: oldTrajectory.id, reason: 'The bounded story has ended.' }] } }, scene()]);
+    const result = await run(await stuck(), [{ rpUnderstanding: understanding(), storyLife: storyLife(), throughline: [], progression: { upsert: [], retire: [{ id: oldTrajectory.id, reason: 'The bounded story has ended.' }] } }, scene()]);
     assert.equal(result.accepted, true, result.error);
     assert.deepEqual(result.state.workingPlan.trajectories, []);
 });
@@ -261,7 +266,7 @@ for (const mutation of ['unknown', 'duplicate', 'private', 'bare-horizon']) test
 test('quiet play can withdraw an opening without closing anything or erasing its future', async () => {
     const first = await run(await stuck(), [horizon(), openedScene()]);
     assert.equal(first.accepted, true, first.error);
-    const next = await run(first.state, [{ rpUnderstanding: understanding(), throughline: [], progression: { upsert: [], retire: [] } }, scene()]);
+    const next = await run(first.state, [{ rpUnderstanding: understanding(), storyLife: storyLife(), throughline: [], progression: { upsert: [], retire: [] } }, scene()]);
     assert.equal(next.accepted, true, next.error);
     assert.deepEqual(next.state.workingPlan.openings, []);
     assert.deepEqual(next.state.workingPlan.trajectories, [opportunity]);
@@ -269,11 +274,11 @@ test('quiet play can withdraw an opening without closing anything or erasing its
     assert.deepEqual(next.state.archive.at(-1).transitions, []);
 });
 
-const unchangedHorizon = () => ({ rpUnderstanding: understanding(), throughline: [], progression: { upsert: [], retire: [] } });
+const unchangedHorizon = () => ({ rpUnderstanding: understanding(), storyLife: storyLife(), throughline: [], progression: { upsert: [], retire: [] } });
 const keepScene = () => {
     const value = openedScene();
     value.outlook = { action: 'keep', reason: 'Only the immediate routine changed; the optional journey remains unplayed.', material: [] };
-    value.selected_material = [{ subjectIds: ['r1-bridge'], available: 'At the village table, the council cook pours another cup of tea.' }];
+    value.selected_material = [];
     return value;
 };
 
@@ -281,7 +286,7 @@ test('five routine reviews update the present without shrinking, rerolling or en
     let state = (await run(await stuck(), [horizon(), openedScene()])).state;
     const future = structuredClone(state.workingPlan.outlook);
     for (let n = 0; n < 5; n++) {
-        const value = keepScene(); value.selected_material[0].available = `The cook sets out cup ${n + 1}.`;
+        const value = keepScene(); value.plan.developments[0].initiative = `The cook sets out cup ${n + 1}.`;
         value.plan.openings[0].circumstance = `If the travelers later visit the northbound tea stall, the orchard cook has smoked pears and a map to Cinderwick. Visit ${n + 1} remains only a possibility.`;
         const result = await run(state, [unchangedHorizon(), value]);
         assert.equal(result.accepted, true, result.error);
@@ -292,7 +297,8 @@ test('five routine reviews update the present without shrinking, rerolling or en
         assert.deepEqual(result.state.workingPlan.outlook, future);
         assert.equal(result.state.selectedMaterial[0].developing, future[0].developing);
         assert.equal(result.state.selectedMaterial[0].lasting, future[0].lasting);
-        assert.match(result.state.selectedMaterial[0].available, new RegExp(`cup ${n + 1}`));
+        assert.match(result.state.selectedMaterial[0].available, new RegExp(`Visit ${n + 1}`));
+        assert.doesNotMatch(campaignPayload(result.state), /sets out cup/);
         assert.deepEqual(result.state.workingPlan.consequences, []);
         assert.equal(validCampaignState(result.state), true);
         assert.doesNotMatch(campaignPayload(result.state), /Only the immediate|action|trajectoryId|r2-orchard/);
@@ -320,12 +326,12 @@ for (const invalid of ['missing-route', 'private-route', 'retired', 'revised', '
 test('outlook follows a renewed local undertaking after entry, without treating a proposal as history', async () => {
     const state = (await run(await stuck(), [horizon(), openedScene()])).state;
     const value = keepScene();
-    value.plan.openings = []; value.plan.goal.pop();
     value.plan.developments[0].trajectoryIds = [opportunity.id];
     value.plan.developments[0].initiative = 'If the travelers take the northern road, the orchard cooks have their communal oven ready.';
+    value.plan.openings[0].circumstance = value.plan.developments[0].initiative;
     const result = await run(state, [unchangedHorizon(), value]);
     assert.equal(result.accepted, true, result.error);
-    assert.deepEqual(result.state.selectedMaterial[0].subjectIds, ['r1-bridge']);
+    assert.deepEqual(result.state.selectedMaterial[0].subjectIds, [opportunity.id]);
     assert.equal(validCampaignState(result.state), true);
 });
 
@@ -338,12 +344,12 @@ test('accepted participation can explicitly advance the future; refusal can with
     const next = await run(first, [unchangedHorizon(), revised]);
     assert.equal(next.accepted, true, next.error);
     assert.notEqual(next.state.selectedMaterial[0].developing, first.selectedMaterial[0].developing);
-    const cleared = scene(); cleared.selected_material = [{ subjectIds: ['r1-bridge'], available: 'The tea table stays quiet.' }];
+    const cleared = scene();
     cleared.outlook.reason = 'The traveler explicitly declined that trip.';
     const last = await run(next.state, [unchangedHorizon(), cleared]);
     assert.equal(last.accepted, true, last.error);
     assert.deepEqual(last.state.workingPlan.outlook, []);
-    assert.equal(last.state.selectedMaterial[0].lasting, undefined);
+    assert.deepEqual(last.state.selectedMaterial, []);
     assert.deepEqual(last.state.workingPlan.trajectories, [opportunity]);
     assert.deepEqual(last.state.archive.at(-1).transitions, []);
 });
@@ -353,7 +359,7 @@ test('active current-only selection cannot label the next chore as a long-term h
     value.selected_material = [{ subjectIds: ['r1-bridge'], available: 'Tea is ready.', developing: 'Wash the cups.', lasting: 'Have supper.' }];
     const result = await run(await stuck(), [horizon(), value, value]);
     assert.equal(result.accepted, false);
-    assert.match(result.error, /Unknown|unexpected|not allowed/i);
+    assert.match(result.error, /Unknown|unexpected|not allowed|array/i);
 });
 
 test('saved state cannot substitute local horizons for its durable outlook', async () => {
@@ -436,8 +442,7 @@ for (const mainAccess of ['local', 'none']) test(`independent future selection r
     side.plan.goal.push({ subjectId: 'r2-supper', scope: 'side-thread', aim: 'Compare recipes.', reachedWhen: 'The supper finishes.' });
     side.outlook.material[0].trajectoryId = 'r2-supper';
     const result = await run(await stuck(), [wider, side, side]);
-    assert.equal(result.accepted, mainAccess === 'none', result.error);
-    if (mainAccess === 'local') assert.match(result.error, /throughline/);
+    assert.equal(result.accepted, true, result.error);
 });
 
 test('a deliberate pause can clear the selected future without erasing the story direction', async () => {
@@ -449,13 +454,142 @@ test('a deliberate pause can clear the selected future without erasing the story
     assert.deepEqual(result.state.workingPlan.outlook, []);
 });
 
+function twoFutures() {
+    const wider = horizon(), value = openedScene();
+    wider.storyLife.horizonIds = [opportunity.id, 'r2-music'];
+    wider.throughline = throughline();
+    wider.progression.upsert.push({ ...structuredClone(opportunity), id: 'r2-music', focus: 'A traveling songbook',
+        experience: 'Two inn musicians collect different verses along the road.' });
+    value.plan.openings.push({ trajectoryId: 'r2-music', circumstance: 'At the next inn, two musicians are trading verses from their travels.',
+        access: { route: 'contact', basis: 'A possible later stop, not travel already taken.' } });
+    value.outlook.material.push({ trajectoryId: 'r2-music', developing: 'If they share songs at the inn, different regional verses can become a shared songbook.',
+        lasting: 'If the collection travels, the musicians can discover the same song transformed by communities along the road.' });
+    return { wider, value };
+}
+
+test('story life stays private, persists independently and cannot be overwritten by local selection', async () => {
+    const { wider, value } = twoFutures();
+    const first = await run(await stuck(), [wider, value]);
+    assert.equal(first.accepted, true, first.error);
+    assert.deepEqual(first.state.workingPlan.storyLife, wider.storyLife);
+    assert.deepEqual(first.calls[1].prompt.prepared_horizon.storyLife, wider.storyLife);
+    assert.doesNotMatch(campaignPayload(first.state), /storyLife|continuingLife|A bridge repair/);
+    const unchanged = unchangedHorizon(); unchanged.storyLife = wider.storyLife;
+    value.outlook = { action: 'keep', reason: 'Both undertakings remain possible.', material: [] };
+    const invalid = structuredClone(value); invalid.plan.storyLife = storyLife();
+    const next = await run(first.state, [unchanged, invalid, value]);
+    assert.equal(next.accepted, true, next.error);
+    assert.equal(next.recovery.status, 'complete');
+    assert.equal(next.calls[1].prompt.previous_plan.storyLife, undefined);
+    assert.deepEqual(next.calls[0].prompt.previous_horizon.storyLife, wider.storyLife);
+    assert.deepEqual(next.state.workingPlan.storyLife, wider.storyLife);
+});
+
+test('initial wider orientation cannot mistake an old scene checkpoint for a reviewed premise', async () => {
+    const state = await stuck();
+    const history = Array.from({ length: 8 }, (_, index) => ({ index, role: index % 2 ? 'user' : 'assistant', content: `Accepted text ${index}.` }));
+    const input = inputFor(state, { messages: history, reviewedMessageCount: 6 });
+    const broad = JSON.parse(input.horizonInput.prompt);
+    assert.equal(broad.horizon_review, 'orient');
+    assert.deepEqual(broad.accepted_messages.map(m => m.index), [0, 1, 3, 5, 6, 7]);
+    assert.deepEqual(broad.coverage.protected_message_indices, [0, 1]);
+    assert.deepEqual(broad.previous_horizon.trajectories, [oldTrajectory]);
+    const tiny = inputFor(state, { messages: history, reviewedMessageCount: 6 });
+    // Real envelope fitting must not sacrifice the opening to repeated staging.
+    const { fitStoryInputBudget } = await import('../extension/story-budget.js');
+    const fitted = await fitStoryInputBudget(tiny.horizonInput.prompt, HORIZON_SYSTEM, HORIZON_SCHEMA, 1, undefined, { softTarget: true });
+    assert.deepEqual(JSON.parse(fitted.prompt).accepted_messages.map(m => m.index), [0, 1, 6, 7]);
+    state.workingPlan.storyLife = storyLife();
+    const routine = JSON.parse(inputFor(state, { messages: history, reviewedMessageCount: 6 }).horizonInput.prompt);
+    assert.equal(routine.horizon_review, 'maintain');
+    assert.deepEqual(routine.accepted_messages.map(m => m.index), [6, 7]);
+});
+
+for (const ids of [['missing'], [opportunity.id, opportunity.id]]) test(`story life validates links: ${ids}`, async () => {
+    const wider = horizon(); wider.storyLife.horizonIds = ids;
+    const result = await run(await stuck(), [wider, wider]);
+    assert.equal(result.accepted, false);
+    assert.match(result.error, /Story life/);
+    assert.equal(result.calls.length, 2);
+});
+
+test('two complementary futures reach normal and horizon-only writer packets without an incident priority gate', async () => {
+    const { wider, value } = twoFutures();
+    const result = await run(await stuck(), [wider, value]);
+    assert.equal(result.accepted, true, result.error);
+    assert.equal(result.state.workingPlan.outlook.length, 2);
+    const selected = result.state.selectedMaterial[0];
+    assert.equal(selected.developing, value.outlook.material.map(row => row.developing).join('\n\n'));
+    assert.equal(selected.lasting, value.outlook.material.map(row => row.lasting).join('\n\n'));
+    for (const horizonsOnly of [false, true]) {
+        const packet = campaignPayloadBudget(result.state, [], { horizonsOnly });
+        assert.equal(packet.omitted, 0);
+        assert.match(packet.payload, /smoked-pear|upland/);
+        assert.match(packet.payload, /regional verses/);
+        assert.match(packet.payload, /song transformed/);
+        if (horizonsOnly) assert.doesNotMatch(packet.payload, /available_circumstances|At the next inn/);
+    }
+    const saved = loadPlannerState(JSON.parse(JSON.stringify(saveState({}, { ...defaultPlannerState(), campaignPreparation: result.state }))));
+    assert.deepEqual(saved.campaignPreparation.workingPlan, result.state.workingPlan);
+    for (const damage of ['route', 'horizon']) {
+        const copy = structuredClone(result.state);
+        if (damage === 'route') copy.selectedMaterial[0].subjectIds.pop();
+        else copy.selectedMaterial[0].lasting = value.outlook.material[0].lasting;
+        assert.equal(validCampaignState(copy), false, damage);
+    }
+});
+
+for (const failure of ['duplicate', 'third', 'hidden-second', 'changed-second']) test(`every selected future is checked: ${failure}`, async () => {
+    const { wider, value } = twoFutures();
+    let state = await stuck(), response = wider;
+    if (failure === 'duplicate') value.outlook.material[1].trajectoryId = opportunity.id;
+    if (failure === 'third') value.outlook.material.push(structuredClone(value.outlook.material[0]));
+    if (failure === 'hidden-second') value.plan.openings[1].access.route = 'none';
+    if (failure === 'changed-second') {
+        state = (await run(state, [wider, value])).state;
+        response = unchangedHorizon();
+        response.progression.upsert = [{ ...wider.progression.upsert[1], drive: 'A changed undertaking.' }];
+        value.outlook = { action: 'keep', reason: 'Attempt to keep a changed second future.', material: [] };
+    }
+    const result = await run(state, [response, value, value]);
+    assert.equal(result.accepted, false);
+    assert.equal(result.calls.length, 3);
+    assert.deepEqual(result.state, state);
+});
+
+test('oversized combined packet receives one bounded repair rather than silently disappearing from writer context', async () => {
+    const { wider, value } = twoFutures(), oversized = structuredClone(value);
+    for (const row of oversized.outlook.material) {
+        row.developing = 'word '.repeat(170).trim();
+        row.lasting = 'later '.repeat(140).trim();
+    }
+    const state = await stuck(), before = structuredClone(state);
+    const repaired = await run(state, [wider, oversized, value]);
+    assert.equal(repaired.accepted, true, repaired.error);
+    assert.equal(repaired.recovery.status, 'complete');
+    assert.match(repaired.calls[2].prompt.response_correction.error, /writer envelope/);
+    assert.equal(JSON.stringify(state), JSON.stringify(before));
+    const rejected = await run(state, [wider, oversized, oversized]);
+    assert.equal(rejected.accepted, false);
+    assert.equal(rejected.calls.length, 3);
+    assert.equal(JSON.stringify(rejected.state), JSON.stringify(before));
+});
+
+test('active planner cannot inject a next-beat recap alongside its future openings', async () => {
+    const value = openedScene();
+    value.selected_material = [{ subjectIds: [opportunity.id], available: value.plan.openings[0].circumstance }];
+    const result = await run(await stuck(), [horizon(), value, value]);
+    assert.equal(result.accepted, false);
+    assert.match(result.error, /array/i);
+});
+
 test('changed-reference ideas go only to the workshop, without restoring local facts, outlook or trusted preparation', async () => {
     const old = (await run(await stuck(), [horizon(), openedScene()])).state;
     const planning = { ...emptyCampaign(), revision: old.revision, archive: old.archive };
     const input = inputFor(planning, { previousUsable: false, reconsiderHorizon: old.workingPlan });
     const broad = JSON.parse(input.horizonInput.prompt), narrow = JSON.parse(input.prompt);
     assert.deepEqual(broad.reconsider_horizon.trajectories, [opportunity]);
-    assert.deepEqual(Object.keys(broad.reconsider_horizon).sort(), ['rpUnderstanding', 'throughline', 'trajectories']);
+    assert.deepEqual(Object.keys(broad.reconsider_horizon).sort(), ['rpUnderstanding', 'storyLife', 'throughline', 'trajectories']);
     assert.deepEqual(broad.previous_horizon.trajectories, []);
     assert.deepEqual(narrow.previous_plan.developments, []);
     assert.deepEqual(narrow.previous_outlook, []);

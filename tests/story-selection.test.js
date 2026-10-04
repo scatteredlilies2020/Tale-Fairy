@@ -859,7 +859,7 @@ test('optional horizons may be absent or empty while oversized content still res
         assert.equal(result.accepted, true, result.error);
         assert.equal(result.state.selectedMaterial[0].developing, undefined);
     }
-    assert.equal((await plan(state, body([], [{ ...entry, developing: 'x'.repeat(901) }]))).accepted, false);
+    assert.equal((await plan(state, body([], [{ ...entry, developing: 'x'.repeat(1803) }]))).accepted, false);
 });
 
 test('planner contract excludes preset directions from all fields; effects come from story substance', async () => {
