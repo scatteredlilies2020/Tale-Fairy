@@ -6,7 +6,7 @@ import { RP_BRIEF_SCHEMA } from './rp-brief.js';
 import { validateBackground } from './background-progress.js?v=0.14.34&story-bridge=1';
 import { estimateTokenCount } from './token-budget.js';
 import { fitStoryContext, storyContextPayload } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1';
-import { validateWorkingState } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1';
+import { validateWorkingState } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1&rp-departures=1';
 
 // Matches the existing host's planner-request marker so request interception
 // cannot mistake this internal pass for RP and inject the guide into itself.
@@ -92,7 +92,10 @@ export function check(value, schema, at = '$') {
     } else if (schema.type === 'string') {
         const nonblank = schema.minLength !== 0;
         if (typeof value !== 'string' || nonblank && !value.trim() || value.length > schema.maxLength) {
-            throw Error(`${at}: ${nonblank ? 'nonblank ' : ''}text up to ${schema.maxLength} characters required`);
+            const limit = schema.maxLength === undefined ? '' : ` up to ${schema.maxLength} characters`;
+            const received = typeof value !== 'string' ? `received ${value === null ? 'null' : Array.isArray(value) ? 'array' : typeof value}`
+                : !value.trim() ? 'received blank text' : `received ${value.length} characters`;
+            throw Error(`${at}: ${nonblank ? 'nonblank ' : ''}text${limit} required (${received})`);
         }
     } else if (!Number.isSafeInteger(value) || value < schema.minimum) throw Error(`${at}: invalid integer`);
 }

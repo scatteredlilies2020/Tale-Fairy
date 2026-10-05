@@ -283,6 +283,43 @@ test('quiet play can withdraw an opening without closing anything or erasing its
 
 const unchangedHorizon = () => ({ rpUnderstanding: understanding(), storyLife: storyLife(), throughline: [], progression: { upsert: [], retire: [] } });
 
+const extendedDepartures = 'Rin survives as a leading medic, carries the Three-Tails, knows Flying Thunder God and houses Naruto. Kakashi has left ANBU, Hinata has been rescued, and the Cloud delegation remains under investigation; dependent future events must account for these established changes.';
+for (const departures of ['', extendedDepartures]) test(`malformed horizon correction accepts ${departures ? 'departures beyond 200 characters intact' : 'no established departures'} and saves both stages`, async () => {
+    const prior = await stuck(), before = structuredClone(prior), wider = unchangedHorizon();
+    if (departures) wider.rpUnderstanding = { ...wider.rpUnderstanding, basis: 'franchise', canonIntent: 'unspecified', divergence: 'major' };
+    wider.rpUnderstanding.departures = departures;
+    const result = await run(prior, ['{"rpUnderstanding":', wider, scene()]);
+    assert.equal(result.accepted, true, result.error);
+    assert.deepEqual(result.calls.map(call => call.metadata.stage), ['horizon', 'horizon', 'scene']);
+    assert.ok(result.calls[1].prompt.response_correction.error);
+    assert.equal(result.recovery.status, 'complete');
+    assert.equal(result.state.workingPlan.rpUnderstanding.departures, departures);
+    assert.deepEqual(structuredClone(prior), before, 'the prior preparation stays intact during recovery');
+    const restored = loadPlannerState(JSON.parse(JSON.stringify(saveState({}, { ...defaultPlannerState(), campaignPreparation: result.state })))).campaignPreparation;
+    assert.equal(validCampaignState(restored), true);
+    assert.equal(restored.workingPlan.rpUnderstanding.departures, departures);
+});
+
+for (const value of [null, 5, []]) test(`non-text departures (${JSON.stringify(value)}) fail without replacing prior preparation`, async () => {
+    const prior = await stuck(), before = structuredClone(prior), wider = unchangedHorizon();
+    wider.rpUnderstanding.departures = value;
+    const result = await run(prior, [wider, wider]);
+    assert.equal(result.accepted, false);
+    assert.match(result.error, /\$\.rpUnderstanding\.departures: text required \(received (?:null|number|array)\)/);
+    assert.equal(result.calls.length, 2);
+    assert.equal(result.state, prior);
+    assert.deepEqual(structuredClone(prior), before);
+});
+
+test('a missing departures field still requires correction rather than assuming no changes', async () => {
+    const prior = await stuck(), wider = unchangedHorizon();
+    delete wider.rpUnderstanding.departures;
+    const result = await run(prior, [wider, wider]);
+    assert.equal(result.accepted, false);
+    assert.match(result.error, /missing departures/);
+    assert.equal(result.state, prior);
+});
+
 function initiatingScene() {
     const value = openedScene();
     value.initiative_review = { action: 'replace', reason: 'A cook initiates an independent encounter, without waiting for a request.', evidence: [],

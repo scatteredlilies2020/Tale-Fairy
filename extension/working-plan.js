@@ -29,7 +29,9 @@ export const RP_UNDERSTANDING_SCHEMA = object({
     canonIntent: choice(['follow', 'flexible', 'alternate', 'unspecified', 'not-applicable']),
     divergence: choice(['none-established', 'local', 'major', 'unclear', 'not-applicable']),
     anchors: text(200),
-    departures: text(200),
+    // No established departures can be empty. Keep meaningful changes intact;
+    // the shared plan target governs concision instead of a small field cap.
+    departures: { type: 'string', minLength: 0 },
     storyScope: text(150),
     experiences: text(180),
     independentSource: text(150),
