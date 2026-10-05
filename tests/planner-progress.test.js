@@ -2,9 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
-import { campaignAttemptSummary } from '../extension/planner-progress.js';
+import { campaignAttemptSummary, PLANNER_RESPONSE_TIMEOUT_MS } from '../extension/planner-progress.js';
 
 const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
+test('director tracker reports one story-planning request and uses a practical timeout', () => {
+    assert.equal(PLANNER_RESPONSE_TIMEOUT_MS, 60000);
+    const summary = campaignAttemptSummary({ status: 'complete', requestCount: 1, stages: ['director'], durationMs: 14000 });
+    assert.match(summary, /14s · 1 request · story planning/);
+    assert.doesNotMatch(summary, /scene selection|correction/);
+});
 test('tracker distinguishes local preparation failure from provider requests and old successes', () => {
     assert.equal(campaignAttemptSummary({ status: 'started', requestCount: 0 }, true), 'Building planner context');
     assert.equal(campaignAttemptSummary({ status: 'failed', requestCount: 0, error: 'Input exceeds limit' }),

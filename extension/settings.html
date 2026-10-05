@@ -107,7 +107,7 @@
           </select>
         </label>
         <small>Use your active model, a saved connection profile, or a direct API.</small>
-        <label>World notebook reasoning
+        <label>Planner reasoning
           <select class="text_pole" data-setting="reasoning" disabled>
             <option value="auto">Auto (selected profile)</option>
             <option value="off">Off</option>
@@ -163,7 +163,8 @@
           <button class="menu_button" data-action="reset" type="button"><i class="fa-solid fa-trash-can"></i> Delete guide state</button>
         </div>
         <small>Guide now / Re-evaluate refreshes context and plans. Full rebuild replaces the notebook while keeping pacing and author notes. Reset settings keeps the notebook and stored API keys, and resets the selected connection.</small>
-        <small>Each review prepares the wider story, then selects current material. Both save together. One memory-refresh restart is allowed only within the original three-request ceiling, shared with corrections. Author instructions and older notebooks stay preserved. Detached recovery is not yet supported.</small>
+        <small>One request updates story possibilities and selects NPC/world activity. Existing memory supplies context; the planner writes no history summary.</small>
+        <small>No automatic correction or memory-refresh calls. Requests stop after 60 seconds and keep previous preparation. Author instructions stay preserved.</small>
         <div class="living-world-guide-grid living-world-guide-note-grid">
           <label>AI-assisted instruction
             <textarea class="text_pole" data-setting="note" rows="3" placeholder="Write naturally. Tale Fairy will understand whether this is a suggestion, correction, canon detail, or hard exclusion."></textarea>

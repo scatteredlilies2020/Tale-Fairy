@@ -1,4 +1,4 @@
-export const PLANNER_RESPONSE_TIMEOUT_MS = 10 * 60 * 1000;
+export const PLANNER_RESPONSE_TIMEOUT_MS = 60 * 1000;
 
 export function plannerElapsed(milliseconds) {
     const seconds = Math.max(0, Math.floor(Number(milliseconds) / 1000) || 0);
@@ -20,7 +20,7 @@ export function campaignAttemptSummary(attempt, active = false) {
     const count = attempt.requestCount > 1 || attempt.stages?.length
         ? ` · ${attempt.requestCount} request${attempt.requestCount === 1 ? '' : 's'}` : '';
     const stages = attempt.stages?.length
-        ? ` · ${attempt.stages.includes('scene') ? 'wider preparation + scene selection' : 'wider preparation'}` : '';
+        ? ` · ${attempt.stages.includes('director') ? 'story planning' : attempt.stages.includes('scene') ? 'wider preparation + scene selection' : 'wider preparation'}` : '';
     const correction = attempt.recoveryReason
         ? ` · automatic correction ${attempt.status === 'complete' ? 'succeeded' : 'attempted'}` : '';
     const memory = attempt.evidenceRestarts

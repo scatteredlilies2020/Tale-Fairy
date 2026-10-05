@@ -10,8 +10,8 @@ import * as compactionApi from '../../extension/notebook-compaction.js';
 import * as preparedApi from '../../extension/prepared-world.js';
 import * as campaignApi from '../../extension/campaign-planner.js';
 import { needsEventReframe } from '../../extension/bounded-story.js';
-import { preparationInput as ownedInput, preparationPass as ownedPass, nextPlanRevision,
-    PREPARATION_SCHEMA as OWNED_SCHEMA, PREPARATION_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from '../../extension/story-preparation.js';
+import { directorInput as ownedInput, directorPass as ownedPass, nextPlanRevision,
+    DIRECTOR_SCHEMA as OWNED_SCHEMA, DIRECTOR_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from '../../extension/story-director.js';
 import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from '../../extension/campaign-session.js';
 import { campaignReviewedCount, campaignCheckpoint, campaignReconsideration, verifiedClosedSubjects } from '../../extension/campaign-review.js';
 import { isStoryGeneration, refreshGameMasterContract } from '../../extension/game-master.js';

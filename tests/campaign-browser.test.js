@@ -7,7 +7,9 @@ import { generationHarness } from './helpers/generation-harness.js';
 import { defaultState, defaultPlannerState, loadPlannerState, saveState, STATE_KEY } from '../extension/state.js';
 import { buildStoryEvidence } from '../extension/analysis.js';
 import { storyInput, storyPassWithRecovery, STORY_SCHEMA, STORY_SYSTEM } from '../extension/bounded-story.js';
-import { HORIZON_SCHEMA, SCENE_SCHEMA } from '../extension/story-preparation.js';
+import { HORIZON_SCHEMA, SCENE_SCHEMA, preparationInput, preparationPass, PREPARATION_SCHEMA, PREPARATION_SYSTEM } from '../extension/story-preparation.js';
+import { DIRECTOR_SCHEMA } from '../extension/story-director.js';
+import { CampaignSession } from '../extension/campaign-session.js';
 import { campaignEvidenceMessages, campaignReviewWindow } from '../extension/campaign-evidence.js';
 import { completionText } from '../extension/completion-response.js';
 import { readEvidenceProviders, evidenceRevisionKey, registerEvidenceProvider } from '../extension/evidence-providers.js';
@@ -75,7 +77,7 @@ const sceneReply = () => {
 };
 const envelope = value => ({ choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] });
 
-test('active browser runs the workshop then scene selection and commits both only once', async () => {
+test('legacy split browser runs the workshop then scene selection and commits both only once', async () => {
     let finish;
     const h = browser(async ({ prompt, spec }) => {
         if (spec.schema.name === HORIZON_SCHEMA.name) {
@@ -104,7 +106,7 @@ test('active browser runs the workshop then scene selection and commits both onl
     assert.equal(h.requests.length, 2, 'one reservation survives reload for the whole pipeline');
 });
 
-test('active browser source change between workshop and scene prevents the second send', async () => {
+test('legacy split browser source change between workshop and scene prevents the second send', async () => {
     const h = browser(async () => {
         h.context.chat[0].mes = 'An edited branch of the story.';
         return envelope(workshopReply());
@@ -115,7 +117,7 @@ test('active browser source change between workshop and scene prevents the secon
     assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'failed');
 });
 
-test('active browser repairs the scene without regenerating the wider preparation', async () => {
+test('legacy split browser repairs the scene without regenerating the wider preparation', async () => {
     let scenes = 0;
     const h = browser(async ({ spec }) => spec.schema.name === HORIZON_SCHEMA.name ? envelope(workshopReply())
         : ++scenes === 1 ? { choices: [{ message: { content: '{bad' }, finish_reason: 'stop' }] } : envelope(sceneReply()), defaultState(), { split: true });
@@ -162,15 +164,22 @@ function plannedResponse({ prompt }) {
     return { choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] };
 }
 
-function browser(send = async args => plannedResponse(args), initialState = defaultState(), { split = false } = {}) {
+function browser(send = async args => plannedResponse(args), initialState = defaultState(), { split = false, director = false } = {}) {
     const h = generationHarness([{ is_user: false, name: 'Mara', mes: 'The show ended.' }, { is_user: true, name: 'Neri', mes: 'I help pack.' }],
         initialState);
     const requests = [], shared = new Map();
     Object.assign(h.settings, { maxPromptTokens: 14000, fullReviewInterval: 3, analysisSource: 'direct', analysisModel: 'test', analysisReasoningMode: 'low' });
-    // Historical wire fixtures still exercise the shared host lifecycle and
-    // validator. Split-pipeline host tests below use the actual active imports.
-    if (!split) Object.assign(h.scope, { ownedInput: storyInput, ownedPass: storyPassWithRecovery,
-        OWNED_SCHEMA: STORY_SCHEMA, OWNED_SYSTEM: STORY_SYSTEM });
+    // Historical contracts exercise their explicitly selected lifecycle. New
+    // director tests use the same imports and one-request policy as the host.
+    if (!director) {
+        Object.assign(h.scope, split ? { ownedInput: preparationInput, ownedPass: preparationPass,
+            OWNED_SCHEMA: PREPARATION_SCHEMA, OWNED_SYSTEM: PREPARATION_SYSTEM, PLANNER_OUTPUT_LIMIT: 3000 }
+            : { ownedInput: storyInput, ownedPass: storyPassWithRecovery,
+                OWNED_SCHEMA: STORY_SCHEMA, OWNED_SYSTEM: STORY_SYSTEM, PLANNER_OUTPUT_LIMIT: 3000 });
+        h.scope.CampaignSession = class extends CampaignSession {
+            constructor(options) { super({ ...options, evidenceRestart: true }); }
+        };
+    }
     Object.assign(h.scope, { buildStoryEvidence, campaignEvidenceMessages, campaignReviewWindow, completionText, readCampaignContinuity, readEvidenceProviders, evidenceRevisionKey,
         loadState: loadPlannerState, defaultState: defaultPlannerState,
         plannerStorage: () => ({ getItem: key => shared.get(key), setItem: (key, value) => shared.set(key, value) }),
@@ -185,6 +194,99 @@ function browser(send = async args => plannedResponse(args), initialState = defa
     }
     return { ...h, requests, shared };
 }
+
+const directorReply = prompt => {
+    const prefix = JSON.parse(prompt).new_id_prefix;
+    const id = `${prefix}kitchen`;
+    return { direction: 'Explore music, friendships and neighborhood life.', upsert: [{ id,
+        title: 'An open neighborhood supper', owner: 'Community cooks', idea: 'Cooks exchange recipes at shared suppers.',
+        next: 'Neighbors try each other\'s recipes.', later: 'A communal recipe book could connect households.' }],
+    retire: [], select: [{ id, route: 'local', when: '', action: 'The cooks open a neighborhood supper for visitors.',
+        next: 'Shared meals could bring unfamiliar neighbors together.', later: 'Neighbors could contribute to a communal recipe book.' }] };
+};
+
+test('active story director uses one compact request, retains the selected model controls and commits writer material', async () => {
+    const h = browser(async ({ prompt }) => envelope(directorReply(prompt)), defaultState(), { director: true });
+    await h.scope.analyzeNow({ force: true });
+    assert.equal(h.requests.length, 1);
+    const request = h.requests[0], prompt = JSON.parse(request.prompt);
+    assert.equal(request.spec.singleShot, true);
+    assert.equal(request.spec.schema.name, DIRECTOR_SCHEMA.name);
+    assert.equal(request.spec.responseTokens, 2200);
+    assert.equal(request.spec.reasoningMode, undefined);
+    assert.equal(h.settings.analysisModel, 'test');
+    assert.equal(h.settings.analysisReasoningMode, 'low');
+    assert.equal(prompt.previous_plan, undefined);
+    assert.deepEqual(Array.from(prompt.previous_preparation.possibilities), []);
+    assert.equal(prompt.rpUnderstanding, undefined);
+    assert.equal(h.state().campaignPreparation.revision, 1);
+    assert.equal(validCampaignState(h.state().campaignPreparation), true);
+    assert.match(h.prepare().payload, /neighborhood supper/);
+    assert.doesNotMatch(h.prepare().payload, /Creative proposal|r1-kitchen|rpUnderstanding/);
+    assert.deepEqual(Array.from(h.context.chatMetadata.taleFairyCampaignAttempt.stages), ['director']);
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
+});
+
+test('active director withholds an unavailable selection and still saves useful preparation after one request', async () => {
+    const h = browser(async ({ prompt }) => {
+        const raw = directorReply(prompt); raw.select.unshift({ ...raw.select[0], id: 'retired-possibility' });
+        return envelope(raw);
+    }, defaultState(), { director: true });
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
+    assert.match(h.prepare().payload, /neighborhood supper/);
+    assert.doesNotMatch(h.prepare().payload, /retired-possibility/);
+    assert.match(h.statuses.join('\n'), /Selection withheld/);
+});
+
+test('active director reads existing memory once as private context without summarizing or writing it', async () => {
+    const memory = memorySnapshot(), before = structuredClone(memory);
+    const h = browser(async ({ prompt }) => envelope(directorReply(prompt)), defaultState(), { director: true });
+    h.scope.continuityMemoryBridge = { version: 2, getContextSnapshot: () => memory };
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 1);
+    assert.match(h.requests[0].prompt, /Private Chronicle/);
+    assert.doesNotMatch(h.prepare().payload, /Private Chronicle|memory-music|external_evidence/);
+    assert.deepEqual(memory, before);
+    assert.deepEqual(h.state().campaignPreparation.planEvidence, {});
+});
+
+test('active director keeps the previous writer packet during refresh and ignores a late response after Stop', async () => {
+    let release;
+    const h = browser(async ({ prompt }) => h.requests.length === 1 ? envelope(directorReply(prompt))
+        : new Promise(resolve => { release = () => resolve(envelope(directorReply(prompt))); }), defaultState(), { director: true });
+    await h.scope.analyzeCampaignNow();
+    const previous = h.prepare().payload, revision = h.state().campaignPreparation.revision;
+    const pending = h.scope.analyzeCampaignNow({ manual: true });
+    await settle(); await settle();
+    assert.equal(h.requests.length, 2);
+    assert.equal(h.prepare().payload, previous);
+    h.scope.campaignSession.stop();
+    await pending;
+    release(); await settle();
+    assert.equal(h.state().campaignPreparation.revision, revision);
+    assert.equal(h.prepare().payload, previous);
+    assert.equal(h.requests.length, 2);
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'stopped');
+});
+
+test('active director never sends a correction for malformed output or restarts a paid request for a memory publication', async () => {
+    const bad = browser(async () => envelope('{broken'), defaultState(), { director: true });
+    await bad.scope.analyzeCampaignNow();
+    assert.equal(bad.requests.length, 1);
+    assert.equal(bad.context.chatMetadata.taleFairyCampaignAttempt.status, 'failed');
+    const memory = memorySnapshot();
+    const h = browser(async ({ prompt }) => {
+        memory.revision++; memory.prompt += ' A corrected detail.';
+        return envelope(directorReply(prompt));
+    }, defaultState(), { director: true });
+    h.scope.continuityMemoryBridge = { version: 2, getContextSnapshot: () => memory };
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'failed');
+    assert.equal(h.state().campaignPreparation?.revision || 0, 0);
+});
 
 function splitResponse({ prompt, spec }) {
     const input = JSON.parse(prompt);
