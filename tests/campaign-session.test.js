@@ -22,7 +22,7 @@ function twoStageFixture(onSend = () => {}, stages = ['horizon', 'scene']) {
     const f = fixture(async () => { onSend(f); return reply; });
     f.current.evidenceKey = 'original';
     f.options.prepare = () => ({ prompt: '{}', indices: [0], evidence: { status: 'included' } });
-    f.session = new CampaignSession({ ...f.options, evidenceRestart: true, minimumPassRequests: 2, requestLimit: 3,
+    f.session = new CampaignSession({ ...f.options, evidenceRestart: true,
         runPass: async ({ state, source, generate }) => {
             for (const stage of stages) await generate('{}', 'system', {}, { stage });
             return { accepted: true, state: mergeCampaign(state, output, { source, basisRevision: state.revision, evidenceIndices: [0] }) };
@@ -30,7 +30,7 @@ function twoStageFixture(onSend = () => {}, stages = ['horizon', 'scene']) {
     return f;
 }
 
-test('memory rebase preserves one run key, aggregate request budget and the newest snapshot', async () => {
+test('memory rebase preserves one run key, aggregate request count and the newest snapshot', async () => {
     const keys = [], snapshots = [];
     const f = twoStageFixture(f => {
         keys.push(f.current.attempt.runKey);
@@ -62,12 +62,14 @@ test('continuing memory churn is bounded to one rebase and never commits either 
 });
 
 for (const stages of [['horizon', 'scene'], ['horizon', 'horizon', 'scene']]) {
-    test(`memory changes after two paid requests cannot restart ${stages.join('/')}`, async () => {
+    test(`memory changes after two paid requests rebuild and finish ${stages.join('/')}`, async () => {
         const f = twoStageFixture(f => { if (f.calls() === 2) f.current.evidenceKey = 'late-correction'; }, stages);
-        assert.equal((await f.session.request()).accepted, false);
-        assert.equal(f.calls(), 2);
-        assert.equal(f.commits(), 0);
-        assert.equal(f.current.attempt.evidenceRestarts, undefined);
+        const result = await f.session.request();
+        assert.equal(result.accepted, true, result.error);
+        assert.equal(f.calls(), 2 + stages.length);
+        assert.equal(f.commits(), 1);
+        assert.equal(f.current.attempt.evidenceRestarts, 1);
+        assert.equal(f.current.attempt.requestCount, f.calls());
     });
 }
 
@@ -91,18 +93,18 @@ for (const reason of ['transcript', 'references', 'settings', 'chat', 'disabled'
     });
 }
 
-test('two-stage planning has a hard three-request ceiling including all repairs', async () => {
+test('stage corrections finish without an aggregate request ceiling', async () => {
     const f = fixture();
-    const session = new CampaignSession({ ...f.options, requestLimit: 3, runPass: async ({ generate }) => {
+    const session = new CampaignSession({ ...f.options, runPass: async ({ state, source, generate }) => {
         for (const stage of ['horizon', 'horizon', 'scene', 'scene']) await generate('{}', 'system', {}, { stage });
-        throw Error('Fourth request must never reach the provider');
+        return { accepted: true, state: mergeCampaign(state, output, { source, basisRevision: state.revision, evidenceIndices: [0] }) };
     } });
     const result = await session.request();
-    assert.equal(result.accepted, false);
-    assert.match(result.error, /request limit/);
-    assert.equal(f.calls(), 3);
-    assert.equal(f.commits(), 0);
-    assert.deepEqual(f.current.attempt.stages, ['horizon', 'horizon', 'scene']);
+    assert.equal(result.accepted, true, result.error);
+    assert.equal(f.calls(), 4);
+    assert.equal(f.commits(), 1);
+    assert.equal(f.current.attempt.status, 'complete');
+    assert.deepEqual(f.current.attempt.stages, ['horizon', 'horizon', 'scene', 'scene']);
 });
 
 test('persisted cadence survives reload and does not plan every reply or replacement', async () => {

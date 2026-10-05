@@ -1418,7 +1418,7 @@ test('campaign snapshot honors the CM toggle, stale identity and replacement iso
     assert.ok(!JSON.parse(h.scope.buildCampaignHostInput(replacement).prompt).external_evidence);
 });
 
-test('same-source memory correction discards both drafts and rebases once inside three requests', async () => {
+test('same-source memory correction discards both drafts and rebases once', async () => {
     let finish;
     const h = browser(args => h.requests.length === 1 ? new Promise(resolve => { finish = resolve; })
         : splitResponse(args), defaultState(), { split: true });
@@ -1440,6 +1440,48 @@ test('same-source memory correction discards both drafts and rebases once inside
     assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.evidenceRestarts, 1);
     await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 3, 'no same-source retry after the bounded rebase');
+});
+
+for (const changedAt of [1, 2]) test(`memory update after request ${changedAt} leaves scene correction available in the rebuilt pass`, async () => {
+    const snapshot = memorySnapshot();
+    const h = browser(args => {
+        assert.equal(h.state().campaignPreparation?.revision || 0, 0, 'no draft commits before the entire pass succeeds');
+        if (h.requests.length === changedAt) {
+            snapshot.prompt = 'Corrected memory for the rebuilt preparation.';
+            snapshot.revision++;
+        }
+        if (h.requests.length === changedAt + 2) return { choices: [{ message: { content: '{bad' }, finish_reason: 'stop' }] };
+        return splitResponse(args);
+    }, defaultState(), { split: true });
+    h.scope.continuityMemoryBridge = { version: 2, getContextSnapshot: () => snapshot };
+    await h.scope.analyzeCampaignNow();
+    const attempt = h.context.chatMetadata.taleFairyCampaignAttempt;
+    assert.equal(h.requests.length, changedAt + 3);
+    assert.equal(attempt.requestCount, h.requests.length);
+    assert.equal(attempt.status, 'complete', attempt.error);
+    assert.equal(attempt.evidenceRestarts, 1);
+    assert.deepEqual(Array.from(attempt.stages), changedAt === 1
+        ? ['horizon', 'horizon', 'scene', 'scene'] : ['horizon', 'scene', 'horizon', 'scene', 'scene']);
+    assert.equal(h.state().campaignPreparation.revision, 1);
+    assert.ok(h.requests.slice(changedAt).every(request => request.prompt.includes(snapshot.prompt)));
+    assert.match(h.requests.at(-1).prompt, /response_correction/);
+    assert.doesNotMatch(h.statuses.join('\n'), /request limit|request \d+ of \d+/i);
+    h.scope.campaignSession = null;
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, changedAt + 3, 'a completed rebuild remains deduplicated after reload');
+});
+
+test('active browser can correct both stages and commit the complete preparation', async () => {
+    const h = browser(args => h.requests.length === 1 || h.requests.length === 3
+        ? { choices: [{ message: { content: '{bad' }, finish_reason: 'stop' }] } : splitResponse(args),
+    defaultState(), { split: true });
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 4);
+    assert.equal(h.state().campaignPreparation.revision, 1);
+    const attempt = h.context.chatMetadata.taleFairyCampaignAttempt;
+    assert.equal(attempt.status, 'complete', attempt.error);
+    assert.deepEqual(Array.from(attempt.stages), ['horizon', 'horizon', 'scene', 'scene']);
+    assert.deepEqual(JSON.parse(h.requests[2].prompt).prepared_horizon, JSON.parse(h.requests[3].prompt).prepared_horizon);
 });
 
 test('memory changes during input preparation spend no stale request and rebuild once', async () => {

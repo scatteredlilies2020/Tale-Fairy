@@ -141,16 +141,17 @@ test('explicit refusal can retire an opportunity without declaring it happened',
 for (const [label, responses, count] of [
     ['horizon correction', ['bad JSON', horizon(), scene()], 3],
     ['scene correction', [horizon(), 'bad JSON', scene()], 3],
-]) test(`${label} spends the one shared repair credit`, async () => {
+    ['both stage corrections', ['bad JSON', horizon(), 'bad JSON', scene()], 4],
+]) test(`${label} corrects invalid output in its own stage`, async () => {
     const result = await run(await stuck(), responses);
     assert.equal(result.accepted, true, result.error);
     assert.equal(result.calls.length, count);
     assert.equal(result.recovery.status, 'complete');
-    assert.ok(result.calls.filter(c => c.metadata.recoveryReason).length === 1);
+    assert.equal(result.calls.filter(c => c.metadata.recoveryReason).length, count - 2);
 });
 
 for (const [label, responses, count] of [
-    ['both stages invalid', ['bad', horizon(), 'bad'], 3],
+    ['both stages invalid with scene still invalid after correction', ['bad', horizon(), 'bad', 'bad'], 4],
     ['horizon twice invalid', ['bad', 'bad'], 2],
     ['scene twice invalid', [horizon(), 'bad', 'bad'], 3],
     ['horizon transport failure', [new Error('offline')], 1],
@@ -475,6 +476,23 @@ test('isolated writer loop feeds actual replies back to planning and keeps the b
         } });
     assert.equal(baseline.state.revision, 0);
     assert.ok(baseline.reports.every(row => row.planningCalls.length === 0));
+});
+
+test('isolated writer evaluation allows both planner stages to correct their output', async () => {
+    const wider = horizon(); wider.progression.retire = [];
+    const first = JSON.parse(JSON.stringify(wider).replaceAll('r2-', 'r1-'));
+    const move = JSON.parse(JSON.stringify(initiatingScene()).replaceAll('r2-', 'r1-'));
+    const responses = ['bad JSON', first, 'bad JSON', move];
+    let calls = 0;
+    const result = await runAutonomousLoop({ fixture: journeyCase(), turns: 1,
+        planner: async () => wire(responses[calls++]),
+        writer: async request => {
+            assert.ok(request.some(row => row.content.includes('next_world_initiative')));
+            return { text: 'The visiting cook arrives with smoked pears.', finishReason: 'stop' };
+        } });
+    assert.equal(calls, 4);
+    assert.equal(result.reports[0].planningAccepted, true, result.reports[0].planningError);
+    assert.equal(result.state.revision, 1);
 });
 
 test('isolated loop rejects truncated writer prose instead of treating it as accepted history', async () => {

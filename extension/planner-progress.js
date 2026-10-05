@@ -17,10 +17,15 @@ export function campaignAttemptSummary(attempt, active = false) {
     const duration = Number.isFinite(attempt.durationMs) ? ` · ${plannerElapsed(attempt.durationMs)}` : '';
     const labels = { complete: 'Last request: preparation saved', failed: 'Last request failed', stopped: 'Last request stopped' };
     const reason = attempt.error || attempt.skipped;
-    const recovery = attempt.stages?.length
-        ? ` · ${attempt.requestCount} request${attempt.requestCount === 1 ? '' : 's'} · ${attempt.stages.includes('scene') ? 'wider preparation + scene selection' : 'wider preparation'}${attempt.recoveryReason ? ' · automatic correction attempted' : ''}`
-        : attempt.requestCount > 1
-        ? attempt.status === 'complete' ? ' · automatic correction succeeded (2 requests)' : ' · automatic correction attempted (2 requests)' : '';
+    const count = attempt.requestCount > 1 || attempt.stages?.length
+        ? ` · ${attempt.requestCount} request${attempt.requestCount === 1 ? '' : 's'}` : '';
+    const stages = attempt.stages?.length
+        ? ` · ${attempt.stages.includes('scene') ? 'wider preparation + scene selection' : 'wider preparation'}` : '';
+    const correction = attempt.recoveryReason
+        ? ` · automatic correction ${attempt.status === 'complete' ? 'succeeded' : 'attempted'}` : '';
+    const memory = attempt.evidenceRestarts
+        ? ` · memory refresh ${attempt.status === 'complete' ? 'incorporated' : 'attempted'}` : '';
+    const recovery = `${count}${stages}${memory}${correction}`;
     return `${labels[attempt.status] || 'Last request: unknown status'}${duration}${recovery}${reason ? ` · ${reason}` : ''}`;
 }
 

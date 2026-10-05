@@ -73,7 +73,6 @@ async function evaluate(name, create, sample) {
         let result;
         try {
             result = await preparationPass({ state: planning, input, source, generate: async (prompt, system, schema, metadata) => {
-                if (calls.length >= 3) throw Error('Evaluation request ceiling exceeded');
                 const fitted = await fitStoryInputBudget(prompt, system, schema, input.inputLimit, undefined, { softTarget: true });
                 const request = plannerMessages(system, fitted.prompt, schema, PLANNER_OUTPUT_MODE.PROMPT_ONLY);
                 const call = { stage: metadata.stage, repair: Boolean(metadata.recoveryReason), error: metadata.recoveryReason,

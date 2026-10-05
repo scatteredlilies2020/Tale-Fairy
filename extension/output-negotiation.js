@@ -92,7 +92,7 @@ export function schemaInstruction(schema) {
         if (node.type === 'array') return `[${shape(node.items)}]${node.maxItems === undefined ? '' : `(${node.minItems || 0}..${node.maxItems} items)`}${node.uniqueItems ? '(unique items)' : ''}`;
         return `${node.type || 'object'}${node.minLength ? `(${node.minLength}..${node.maxLength || 'unbounded'} chars)` : node.maxLength ? `(<=${node.maxLength} chars)` : ''}${node.pattern === '\\S' ? '(nonblank)' : ''}${node.minimum !== undefined ? `(>=${node.minimum})` : ''}`;
     };
-    return `Response shape (JSON schema shorthand): ? means optional key; | means one allowed value; [] means array. Return JSON values, never these type labels. No extra keys.\n${shape(schema.value)}${schema.description ? `\n\n${schema.description}` : ''}`;
+    return `Response shape (JSON schema shorthand): ? optional key; | allowed values; [] array. Return JSON values, not type labels. No extra keys.\n${shape(schema.value)}${schema.description ? `\n\n${schema.description}` : ''}`;
 }
 
 export function plannerBudgetEnvelope(system, schema, mode = PLANNER_OUTPUT_MODE.JSON_SCHEMA) {
@@ -104,7 +104,7 @@ export function plannerValidationRepairInstruction(error) {
         .slice(0, 16)
         .join('; ')
         || String(error?.message || error || 'The response violated the required contract.');
-    return `Your previous response was rejected by deterministic validation. Return a complete replacement JSON object, not a patch or explanation. Correct every listed issue: ${details}`;
+    return `Return a complete replacement JSON object with every issue corrected. JSON only.\n${details}`;
 }
 
 export function plannerMessages(systemPrompt, prompt, schema, mode, repairInstruction = '') {

@@ -19,7 +19,16 @@ test('tracker distinguishes two normal stages from a correction and a partial fa
     const failure = campaignAttemptSummary({ status: 'failed', requestCount: 1, stages: ['horizon'], error: 'offline' });
     assert.match(failure, /1 request · wider preparation/);
     assert.doesNotMatch(failure, /scene selection/);
-    assert.match(campaignAttemptSummary({ status: 'complete', requestCount: 3, stages: ['horizon', 'scene', 'scene'], recoveryReason: 'JSON' }), /automatic correction attempted/);
+    assert.match(campaignAttemptSummary({ status: 'complete', requestCount: 3, stages: ['horizon', 'scene', 'scene'], recoveryReason: 'JSON' }), /automatic correction succeeded/);
+});
+
+test('tracker counts corrections and memory rebuild requests without a fixed ceiling', () => {
+    const summary = campaignAttemptSummary({ status: 'complete', requestCount: 5,
+        stages: ['horizon', 'scene', 'horizon', 'scene', 'scene'], evidenceRestarts: 1, recoveryReason: 'JSON' });
+    assert.match(summary, /5 requests · wider preparation \+ scene selection/);
+    assert.match(summary, /memory refresh incorporated · automatic correction succeeded/);
+    assert.match(campaignAttemptSummary({ status: 'failed', requestCount: 4, recoveryReason: 'JSON' }),
+        /4 requests · automatic correction attempted/);
 });
 function install(scope, names) {
     for (const name of names) vm.runInContext(source.match(new RegExp(`function ${name}\\([^]*?^}`, 'm'))[0], scope);

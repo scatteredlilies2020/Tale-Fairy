@@ -33,7 +33,6 @@ export async function runAutonomousLoop({ fixture, turns = 6, planner, writer, a
             const input = preparationInput({ reference, state, messages, playerNames: ['Neri'], previousUsable: Boolean(state.revision),
                 reviewedMessageCount: state.source?.messageCount || 0, verifiedPlanEvidence: state.planEvidence || {} });
             const result = await preparationPass({ state, input, source, generate: async (prompt, system, schema, metadata) => {
-                if (report.planningCalls.length >= 3) throw Error('Planning request cap exceeded');
                 const fitted = await fitStoryInputBudget(prompt, system, schema, input.inputLimit, undefined, { softTarget: true });
                 const request = plannerMessages(system, fitted.prompt, schema, PLANNER_OUTPUT_MODE.PROMPT_ONLY);
                 const call = { stage: metadata.stage, request }; report.planningCalls.push(call);
@@ -84,7 +83,7 @@ async function main() {
     if (name && !cases[name]) throw Error('TF_CASE must be journey or music');
     fs.mkdirSync(output, { recursive: true });
     const summary = { live, turns, cases: name ? [name] : Object.keys(cases),
-        maximumProviderCalls: (name ? 1 : 2) * turns * 5,
+        maximumProviderCalls: (name ? 1 : 2) * turns * 6,
         limitation: 'Same configured planner model is used as a substitute writer with a minimal fixed preset, not the live ST writer. Synthetic passive-user replies and static references. No automatic score or claim of creative improvement; inspect prose and compare both arms.' };
     if (!live) {
         summary.fixtures = Object.fromEntries(summary.cases.map(key => [key, cases[key]() ]));

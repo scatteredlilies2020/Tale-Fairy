@@ -83,7 +83,6 @@ for (const stage of stages) {
         previousUsable: Boolean(checkpoint), verifiedPlanEvidence: frozen ? {} : checkpoint?.planEvidence || {} });
     const calls = [];
     const result = await storyPassWithRecovery({ state, source, input, generate: async (prompt, system, schema) => {
-        if (calls.length >= 3) throw Error('Evaluation request limit exceeded');
         const response = await provider.generate(plannerMessages(system, prompt, schema, PLANNER_OUTPUT_MODE.PROMPT_ONLY), PLANNER_OUTPUT_LIMIT);
         calls.push({ request: { prompt: JSON.parse(prompt), system, schema }, ...response }); return response;
     } });

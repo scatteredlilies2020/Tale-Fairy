@@ -1,17 +1,16 @@
 // Two creative responsibilities, one transaction. Wider preparation never sees
 // the local task list or previous writer packet; scene selection cannot edit it.
-import { storyInput, storyPass, STORY_RESPONSE_SCHEMA, nextPlanRevision, plannerInputLimit, PLANNER_OUTPUT_LIMIT } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1';
-import { CAMPAIGN_MARKER, check } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1';
+import { storyInput, storyPass, STORY_RESPONSE_SCHEMA, nextPlanRevision, plannerInputLimit, PLANNER_OUTPUT_LIMIT } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1';
+import { CAMPAIGN_MARKER, check } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1';
 import { mergeProgression, PROGRESSION_PATCH_SCHEMA, THROUGHLINE_SCHEMA, STORY_LIFE_SCHEMA } from './story-progression.js?story-progression=1&story-workshop=1&story-throughline=1&story-life=1&autonomous-life=1';
 import { validateWorkingPlan, planTokens } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1';
-import { storyInputTokens, fitStoryContext } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1';
+import { storyInputTokens, fitStoryContext } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1';
 import { fitPlannerContext } from './planner-context.js?soft-targets=1&story-map=1&story-goal=2&story-throughline=1&story-life=1';
 import { OUTLOOK_REVIEW_SCHEMA, reviewOutlook, composeOutlookMaterial } from './story-outlook.js?story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1';
 export { nextPlanRevision, plannerInputLimit, PLANNER_OUTPUT_LIMIT };
 import { materialHorizons } from './selected-material.js?v=0.14.36&rp-plot=1&story-goal=2&story-horizons=1&story-outlook=1&story-life=1&autonomous-life=1';
 import { INITIATIVE_REVIEW_SCHEMA, reviewInitiative } from './story-initiative.js?autonomous-life=1';
 
-export const PREPARATION_REQUEST_LIMIT = 3; // two stages + one shared invalid-output repair
 export const HORIZON_TARGET = 1400;
 export const SCENE_TARGET = 900;
 const object = properties => ({ type: 'object', additionalProperties: false, required: Object.keys(properties), properties });
@@ -24,14 +23,17 @@ export const HORIZON_SCHEMA = { name: 'tale_fairy_horizon_v4', value: object({
 HORIZON_SCHEMA.value.properties.progression.properties.upsert.items.required.push('experience');
 HORIZON_SCHEMA.value.properties.progression.properties.upsert.items.required.push('connection');
 const possibility = HORIZON_SCHEMA.value.properties.progression.properties.upsert.items.properties;
-possibility.focus.description = 'Title of one specific prepared situation, undertaking or journey, rather than a category of life.';
-possibility.experience.description = 'The actual invented substance: a particular place, people and something worth doing or discovering there. Decide what it contains now.';
-possibility.next.properties.change.description = 'A concrete subsequent experience: development or a fitting recurrence with modest variation, not a promise to invent later.';
-possibility.later.properties.change.description = 'A specific farther experience. Ordinary recurrence is valid; transformation and escalation are not required.';
+possibility.focus.description = 'Name a specific situation, undertaking or journey.';
+possibility.experience.description = 'Specify the place, people and activity or discovery.';
+// The base schema shares next/later objects. Keep their descriptions distinct.
+possibility.next = structuredClone(possibility.next);
+possibility.later = structuredClone(possibility.later);
+possibility.next.properties.change.description = 'Specify the next experience, including a fitting recurrence.';
+possibility.later.properties.change.description = 'Specify a farther experience; escalation is optional.';
 export const SCENE_SCHEMA = { name: 'tale_fairy_scene_v7', value: structuredClone(STORY_RESPONSE_SCHEMA.value) };
 SCENE_SCHEMA.value.properties.plan.required.push('openings', 'futureEntryVersion');
 SCENE_SCHEMA.value.properties.plan.properties.openings.items.required.push('futureEntry');
-SCENE_SCHEMA.value.properties.plan.properties.openings.items.properties.circumstance.description = 'Private present-scene grounding and unresolved work used to assess access. Never writer material.';
+SCENE_SCHEMA.value.properties.plan.properties.openings.items.properties.circumstance.description = 'Private scene facts and unresolved work used to assess access.';
 delete SCENE_SCHEMA.value.properties.progression;
 SCENE_SCHEMA.value.required = SCENE_SCHEMA.value.required.filter(key => key !== 'progression');
 delete SCENE_SCHEMA.value.properties.plan.properties.rpUnderstanding;
@@ -51,46 +53,53 @@ currentMaterial.properties.subjectIds.maxItems = 2;
 // Keep the empty field for the common response/commit contract and old saves.
 SCENE_SCHEMA.value.properties.selected_material.maxItems = 0;
 
+const PLANNER_LANGUAGE = 'Use plain, specific language: name people, places and actions. Omit stock phrases, vague promises and repetition. The writing preset controls prose, tone and pacing.';
+const PLANNER_EVIDENCE = 'Source references, user corrections and accepted play govern compatibility. Accepted play records enactment; references supply premises. Memory and summaries are fallible recall; missing context proves no absence or resolution. Preparation establishes no events, player choices or character knowledge.';
+
 export const HORIZON_SYSTEM = `${CAMPAIGN_MARKER}
 
-Prepare the continuing life of this particular RP, not an expansion of its current conversation. Start from source_reference, the full premise, character interests and independent lives; use accepted play for compatibility, preferences and actual progress. A separate planner handles the present scene. Imagine the current topic absent: what other experiences belong in this life? New beginnings need no topical or causal connection to today's scene, its aftermath or the active arc. Invent fitting substance before the player asks for it, even in a new RP. No genre templates, mandatory travel, antagonist, crisis or subplot quotas.
+Prepare future experiences from the full RP premise, character interests and independent lives. A separate planner handles the current scene. Invent fitting places, people and activities before the player asks, including at initialization. Independent beginnings need no link to the current topic or arc. Fit this RP without mandatory travel, conflict, escalation or subplot quotas.
 
-Return rpUnderstanding: basis (original/franchise/mixed/unclear), setting/era, the user's canonIntent (follow/flexible/alternate, otherwise unspecified), established divergence, anchors, departures, storyScope, characteristic experiences, an independentSource of activity and uncertainty. For original RP canonIntent and divergence are not-applicable. Supplied references, user corrections and accepted events outrank franchise knowledge or previous analysis. Treat unknown lore as provisional. Keep this analysis concise.
+${PLANNER_LANGUAGE}
+${PLANNER_EVIDENCE}
 
-Return storyLife: scope (open/bounded/undetermined), premise (the ongoing appeal of this RP), currentEpisode (today's business), continuingLife (relationships, pursuits, places and recurring experiences beyond it), and horizonIds linking that life. Default to open unless the user requests a bounded story; an episode ending is not evidence of RP closure. Renew life beyond completed threads, including unrelated beginnings, without prolonging conflicts or escalating stakes. A profession can be central without monopolizing every experience. Never invent a player's ambition or infer boredom as permission to end the RP.
+rpUnderstanding: record basis, setting/era, stated canonIntent (otherwise unspecified), established divergence, anchors, departures, storyScope, characteristic experiences, independentSource and uncertainty. For original RP, canonIntent/divergence are not-applicable. Franchise lore and previous analysis remain provisional.
 
-Return throughline: [] when no central thread is useful, otherwise one {focus, basis, trajectoryIds} linking one or two trajectories. It is not an exclusive agenda. Prepare up to three concrete trajectories across the RP's useful range: arcs, independent episodes or ordinary life. Arcs have motivated actors, developments, possible turning points and room for resolution, never a predetermined player journey. Not every activity serves an arc or needs a payoff. Characters can initiate and finish their own work; only accepted play enacts proposals.
+storyLife: distinguish premise, currentEpisode and continuingLife (relationships, pursuits, places and recurring experiences); horizonIds link retained trajectories. Default scope to open unless the user requests a bounded story. An episode ending does not close the RP. Prepare life beyond completed threads without prolonging conflict, inventing player ambitions or treating boredom as consent to end. Include interests beyond a central profession.
 
-Each trajectory has focus, owner (NPC/group/world process), basis (established premises versus proposed additions), drive (independent interest), experience (actual invented first experience), and connection: independent, continuation or recurrence relative to present play. This label explains the idea, not a quota. next/later supply concrete subsequent experiences with necessary when conditions; a relationship or activity may recur with small differences. Familiar encounters, another place or another undertaking can be worthwhile without transformation. Recurrence means another actual experience, not endlessly discussing starting one. Do not manufacture causal links between independent stories. Only genuinely joint actions require player participation. Preparation commits no player choice, outcome or schedule.
+throughline: [] or one {focus, basis, trajectoryIds} linking one or two trajectories. Prepare up to three trajectories: arcs, independent episodes or ordinary life. Arcs have motivated actors, possible developments and room for resolution. Ordinary activities can recur without transformation or an arc payoff.
 
-previous_horizon is preparation, not history. horizon_review=orient reconstructs the wider premise from source, opening and choices; maintain reviews that orientation against new play. Return a progression patch: upsert revises/creates whole trajectories; retire withdraws with a reason; omission preserves. Keep useful unfinished futures, not an automatic reroll. Review a shelf trapped downstream of the current topic against the broader premise. Retire spent/redundant proposals to make room, without asserting events. Enrich the same subject under its id; different work uses new_id_prefix. storyLife/throughline link merged retained trajectories. Refused undertakings stay withdrawn unless accepted play changes the relevant interest or access, never repackage a refusal. Routine pauses and turn counts prove neither progress nor expiry. Open RP needs continuing preparation beyond completed episodes; explicit user-requested closure does not.
+Each trajectory gives focus, owner (NPC/group/world process), basis distinguishing premises from inventions, drive, experience and connection (independent/continuation/recurrence). Specify the first experience and distinct next/later experiences with necessary when conditions. Recurrence supplies another experience with modest variation. NPCs can initiate and finish their own work; player participation is required only for joint actions. Proposals prescribe no player choice, outcome or schedule.
 
-reconsider_horizon, when supplied, is an OLD proposal set from the same accepted conversation prefix whose reference inputs changed. It is neither current preparation nor evidence. Compare it against current references and choices, re-author compatible substance under new_id_prefix, and leave contradicted ideas behind. Its old ids, analysis, conditions and selections are not automatically restored. Current source and accepted play take precedence.
+previous_horizon contains proposals. horizon_review=orient revisits source, opening and choices; maintain checks that orientation against new play. progression.upsert creates/revises whole trajectories; retire withdraws with a reason; omission preserves. Keep useful unfinished futures across pauses and scene changes. Revise narrow or redundant preparation against the broader premise. Preserve ids for the same undertaking; new work uses new_id_prefix. storyLife/throughline reference merged trajectories. Refused work stays withdrawn unless accepted play changes interest or access. Reply count establishes neither progress nor expiry.
 
-The merged horizon (analysis and all retained trajectories) has its own ${HORIZON_TARGET}-token target, separate from local work. Empty upsert/retire is appropriate when the existing range still serves this RP. Concise JSON only. No writer guidance is produced in this stage.
+reconsider_horizon contains old proposals from the same accepted prefix after reference changes. Re-author compatible ideas under new_id_prefix against current references; discard contradictions. Old ids, analysis and selections are not restored automatically.
+
+Target ${HORIZON_TARGET} tokens for the merged horizon, including retained trajectories. Compress repetition, preserving distinct experiences and conditions. Empty upsert/retire retains adequate preparation. Return concise JSON only; this stage produces no writer guidance.
 `;
 
 export const SCENE_SYSTEM = `${CAMPAIGN_MARKER}
 
-Prepare NPC/world activity and select story substance. prepared_horizon is read-only, provisional wider preparation; scenes determine access, not which futures survive. horizon_changes lists revisions/withdrawals. Remove retired trajectory links, not unfinished local work. accepted_messages establish events; source_reference supplies premises; drafts establish neither events nor player choices. The writing preset owns prose, tone and pacing.
+Prepare NPC/world activity and select public story material. prepared_horizon is read-only; horizon_changes lists revisions/withdrawals. Remove retired trajectory links while preserving unfinished local work. The current scene determines access to wider preparation.
 
-Return a complete local plan: direction/threads, up to four accepted consequences and four developments. Each development has a stable id, NPC/world owner/control, question/experience, initiative, possible resolution and beyond. NPCs can act with their own resources while the player is elsewhere. Participation is a prerequisite only when actually needed, never merely because the player could intervene. Group one situation per development; trajectoryIds links only related futures, otherwise [].
+${PLANNER_LANGUAGE}
+${PLANNER_EVIDENCE}
 
-Return futureEntryVersion: 1 and zero to two openings, separate from local developments. Each has trajectoryId, PRIVATE circumstance (present grounding), PRIVATE access (route/prerequisites; none means inaccessible), and PUBLIC futureEntry. Renew routes for their own time/place, even when locally tracked. A later destination/contact can be conditional access without being chosen or known now. Proximity to someone does not reveal their secrets.
+plan: replace direction/threads, up to four witnessed consequences and four developments. Each development has a stable id, NPC/world owner/control, question, initiative, possible resolution, beyond and access. Group one situation per development; trajectoryIds links related futures, otherwise []. NPCs can act independently while the player is elsewhere; require participation only for joint actions. New local ids use new_id_prefix; retained ids keep their meaning.
 
-futureEntry is the PUBLIC bridge: prerequisite gives necessary fictional time/place/participation conditions; possibility supplies an actual forthcoming experience, not a theme or recap. Unrelated beginnings need no connection to the current conversation. A later transition can supply access without teleportation or a player commitment. Entries remain proposals; only joint actions need player participation. Refusal, distance, knowledge and timing govern selection. Quiet play need not be interrupted, but an unfinished conversation is not an indefinite veto on independent life.
+Return futureEntryVersion: 1 and up to two openings, separate from developments. Each links trajectoryId to private circumstance/access and public futureEntry. access.route=none means inaccessible. Renew routes for their own time/place. Later travel or contact can be conditional without being chosen or known now. Proximity reveals no secrets.
 
-Return initiative_review for one selected NPC/world action that brings preparation into play, separate from later possibilities. material contains {id, trajectoryId, owner, prerequisite, action}; use a renewed opening and its trajectory owner, revision-prefixed new ids, and only public observable substance. State what the actor initiates, not what the player must do; never reveal private motives. Choose a fitting independent beginning, recurrence or arc development, not automatically the next local chore. No user request/manual revision is needed. keep with material=[] retains an unintroduced move; replace supplies a new/revised move; withdraw with material=[] allows refusal, lost access or deliberate quiet. introduced requires exact NEW accepted-message span evidence for the previous move entering play; it may supply a new move with a new id, or []. Introduction is not arc completion. Other actions require evidence=[]. Planning/repeated injection is not enactment. Check current play before reusing a move; do not repeat an already introduced encounter. Conditions may be immediate or a suitable later occasion, never a reply-count schedule.
+futureEntry.prerequisite states necessary time/place/participation conditions; possibility describes the forthcoming experience. Independent beginnings need no current-topic link. Preserve refusal, distance, timing and knowledge boundaries. Respect quiet play; unfinished conversation alone does not block independent activity. Public material contains concrete possibilities, not recaps, private motives, access reasoning or writing instructions.
 
-goal links NPC/world aims to a local id or opening trajectoryId, with scope and observable reachedWhen; [] is valid. Goals stay private. New local ids use new_id_prefix; preserve meanings. Removed local developments need exits: paused/dropped withdraw; closed/changed require exact accepted-message index/span evidence. Rebuilds and dropped openings need no exits; retained ids cannot exit. New/changed consequences need witnessed observations; unchanged verified facts carry. Omitted context proves neither resolution nor absence.
+initiative_review selects one NPC/world action through a renewed opening. material: {id, trajectoryId, owner, prerequisite, action}; match the trajectory owner and use new_id_prefix for new ids. Describe observable action without directing the player. Choose an independent beginning, recurrence or arc development without waiting for a user request. keep/material=[] retains an unintroduced move; replace supplies new/revised material; withdraw/material=[] allows refusal, lost access or quiet. introduced requires exact NEW accepted-message index/span evidence that the previous move entered play; material may supply a new id or []. Other actions require evidence=[]. Introduction is not arc completion. Check accepted play to avoid replay; conditions use fictional circumstances, never reply counts.
 
-Return selected_material: []. The host composes public future entries, selected initiative and outlook horizons only. Private scene work/reasoning never substitutes. Each selected future/initiative needs a renewed opening; at least one selected subject matches a goal. Zero selection fits deliberate quiet, withdrawal or no plausible access, not a rule to wait for the user to invent the next plot. Finishing an episode does not close open RP; select suitable next life without demanding novelty, escalation or a sequel.
+goal: private NPC/world aims linked to local ids or opening trajectoryIds, with scope and observable reachedWhen; [] is valid. Removed developments need exits: paused/dropped withdraw; closed/changed require exact supplied accepted-message index/span evidence. Retained ids cannot exit. Rebuilds and dropped openings need no exits. New/changed consequences need observations; unchanged verified facts carry.
 
-outlook: keep with material=[] preserves exact previous_outlook horizons while renewing entries; replace supplies one or two {trajectoryId, developing, lasting}; clear with material=[] withdraws unsuitable futures. reason stays private. Changed/retired trajectories require replace/clear; unrelated activity does not. Renew entry conditions against accepted progress, never re-offer an entry taken or step finished. Preserve unaffected futures through routine pauses. Complementary futures need not demand simultaneous action or prioritize the current incident.
+outlook: keep/material=[] preserves previous_outlook while renewing entries; replace supplies one or two {trajectoryId, developing, lasting}; clear/material=[] withdraws. Changed/retired trajectories require replace/clear. Keep unaffected futures through pauses. Renew entry conditions after progress; do not re-offer completed introductions. developing/lasting supply distinct later experiences and conditions, including recurrence. Complementary futures require neither simultaneous uptake nor priority for today's incident.
 
-developing and lasting give concrete later experiences with necessary conditions. Recurring activities with modest variations are valid; neither escalation nor transformation is required. Do not repeat a finished introduction as unfinished work. NPC pursuits need player involvement only for genuinely joint experiences. Writer fields supply fictional substance, never hidden causes, access reasoning, pacing commands, pressure or response choreography.
+Return selected_material: []. The host composes public entries, initiative and outlook. Each selected subject needs a renewed opening; at least one matches a goal. Empty selection fits quiet, withdrawal or no access. An episode ending does not close open RP or require a sequel.
 
-The local plan has its own ${SCENE_TARGET}-token target. The ENTIRE combined selection (entry circumstances and all future horizons) targets 600 tokens and must fit the 1,000-token writer envelope. The read-only horizon is outside those budgets and is saved verbatim. Compress wording, not distinct unfinished work or prerequisites. Concise JSON only.
+Target ${SCENE_TARGET} tokens for local work and 600 for the combined public selection; the latter must fit 1,000 tokens. The read-only horizon is saved separately. Shorten wording while preserving distinct work and prerequisites. Return concise JSON only.
 `;
 
 // Used for request invalidation, not sent as a third prompt/schema.
@@ -157,8 +166,8 @@ function parseHorizon(result, input) {
     return { horizon, progression: raw.progression };
 }
 
-// There is one repair credit for the whole transaction, not a retry per stage.
-// Valid over-target work is kept intact; no optional rewrite spends that credit.
+// Each stage can correct its own invalid response. A horizon correction must
+// not prevent scene recovery. Valid over-target work is kept intact.
 export async function preparationPass({ state, input, source, generate }) {
     let repaired = false, recoveryReason = '', prepared, horizonResult;
     const repair = (stageInput, system, schema, error) => {
@@ -184,7 +193,7 @@ export async function preparationPass({ state, input, source, generate }) {
         horizon_changes: { upserted: prepared.progression.upsert.map(row => row.id),
             retired: prepared.progression.retire.map(row => row.id),
             retained: prepared.horizon.trajectories.map(row => row.id) } }, SCENE_SYSTEM, SCENE_SCHEMA);
-    let result;
+    let result, sceneRepaired = false;
     for (;;) {
         result = await storyPass({ state, source, input: sceneInput, system: SCENE_SYSTEM, schema: SCENE_SCHEMA,
             completeResponse: (raw, { resolve }) => {
@@ -205,7 +214,8 @@ export async function preparationPass({ state, input, source, generate }) {
             generate: (prompt, system, schema) => generate(prompt, system, schema,
                 { stage: 'scene', ...(sceneInput !== input && sceneInput.correctionReason ? { recoveryReason: sceneInput.correctionReason } : {}) }),
         });
-        if (result.accepted || repaired || !result.recoverableOutput) break;
+        if (result.accepted || sceneRepaired || !result.recoverableOutput) break;
+        sceneRepaired = true;
         sceneInput = { ...repair(sceneInput, SCENE_SYSTEM, SCENE_SCHEMA, result.error), correctionReason: recoveryReason };
     }
     if (!result.accepted) return { ...result, ...(repaired ? { recovery: { status: 'failed', reason: recoveryReason } } : {}) };
