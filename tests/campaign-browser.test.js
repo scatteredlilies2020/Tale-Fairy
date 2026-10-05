@@ -61,7 +61,7 @@ const design = { plan: { rpUnderstanding: originalUnderstanding({ setting: 'Orig
 const writerDesign = () => design.selected_material.map(materialHorizons);
 
 const workshopReply = () => ({ storyLife: { scope: 'open', premise: 'Shared neighborhood life.', currentEpisode: 'Practicing music.', continuingLife: 'Music, meals and friendships.', horizonIds: [] }, rpUnderstanding: structuredClone(design.plan.rpUnderstanding), throughline: [], progression: { upsert: [{
-    id: 'r1-kitchen', focus: 'A neighborhood supper book', owner: 'Community cooks', basis: 'Proposed neighborhood activity.',
+    id: 'r1-kitchen', connection: 'independent', focus: 'A neighborhood supper book', owner: 'Community cooks', basis: 'Proposed neighborhood activity.',
     drive: 'Share family recipes.', experience: 'At the back-street kitchen, cooks test a supper menu and swap handwritten recipe cards.',
     next: { when: 'Cooks compare their trials', change: 'A shared supper menu takes shape.' },
     later: { when: 'Neighbors contribute their own recipes', change: 'A locally illustrated recipe book connects different households.' },
@@ -70,6 +70,7 @@ const sceneReply = () => {
     const value = structuredClone(design); delete value.progression; delete value.plan.rpUnderstanding;
     value.selected_material = [];
     value.outlook = { action: 'clear', reason: 'No selected future in this host-lifecycle fixture.', material: [] };
+    value.initiative_review = { action: 'withdraw', reason: 'Quiet host-lifecycle fixture.', material: [], evidence: [] };
     value.plan.openings = []; value.plan.futureEntryVersion = 1; return value;
 };
 const envelope = value => ({ choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] });
@@ -261,13 +262,30 @@ test('active host keeps a selected outlook through quiet updates, reload and pre
     assert.equal(h.requests.length, 6, 'matching future-bearing checkpoint needs no replacement repair');
 });
 
-test('conditional entries and futures persist across twelve replies, failed refreshes, reload, preview and regenerate', async () => {
+for (const withInitiative of [false, true]) test(`conditional futures ${withInitiative ? 'with' : 'without'} initiative persist across twelve replies, failed refreshes, reload, preview and regenerate`, async () => {
     let fail = false;
-    const h = browser(args => { if (fail) throw Error('provider unavailable'); return outlookResponse(args); }, defaultState(), { split: true });
+    const h = browser(args => {
+        if (fail) throw Error('provider unavailable');
+        const reply = outlookResponse(args);
+        if (withInitiative && args.spec.schema.name === SCENE_SCHEMA.name) {
+            const value = JSON.parse(reply.choices[0].message.content);
+            value.initiative_review = { action: 'replace', reason: 'PRIVATE choose a modest recurring experience.', evidence: [],
+                material: [{ id: 'r1-supper', trajectoryId: 'r1-kitchen', owner: 'Community cooks',
+                    prerequisite: 'On a later visit to the kitchen, before this meal has begun,',
+                    action: 'The cooks begin a shared supper and pass around their handwritten recipe cards.' }] };
+            return envelope(value);
+        }
+        return reply;
+    }, defaultState(), { split: true });
     await h.scope.analyzeCampaignNow();
     const saved = structuredClone(h.state().campaignPreparation);
     const original = h.prepare().payload;
     assert.match(original, /available_circumstances/);
+    if (withInitiative) {
+        assert.match(original, /next_world_initiative/);
+        assert.match(original, /cooks begin a shared supper/);
+        assert.doesNotMatch(original, /r1-supper|PRIVATE choose|initiative_review|initiativeReceipt/);
+    }
     fail = true;
     for (let i = 0; i < 12; i++) {
         h.context.chat.push({ is_user: true, name: 'Neri', mes: 'I keep talking here.' },

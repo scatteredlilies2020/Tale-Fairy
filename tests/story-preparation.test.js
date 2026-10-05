@@ -9,6 +9,8 @@ import { storyInputTokens } from '../extension/story-budget.js';
 import { originalUnderstanding } from './helpers/rp-fixtures.js';
 import { composeOutlookMaterial } from '../extension/story-outlook.js';
 import { workingPlanProjection } from '../extension/working-plan.js';
+import { runAutonomousLoop } from '../scripts/evaluate-autonomous-life.mjs';
+import { journeyCase } from '../scripts/story-activity-cases.mjs';
 
 const messages = [{ index: 0, role: 'assistant', content: 'The council is repairing the village bridge.' },
     { index: 1, role: 'user', name: 'Ren', content: 'I stay for tea.' }];
@@ -19,7 +21,7 @@ const storyLife = () => ({ scope: 'open', premise: 'A wandering life.', currentE
     continuingLife: 'Travel, companionship, different customs and useful small magic.', horizonIds: [] });
 const oldTrajectory = { id: 'r1-repair', focus: 'Repair the bridge', owner: 'Council', basis: 'A broken crossing.', drive: 'Restore traffic.',
     next: { when: 'Repairs end', change: 'Test the crossing.' }, later: { when: 'The test passes', change: 'Use the bridge.' } };
-const opportunity = { id: 'r2-orchard', focus: 'Cinderwick harvest kitchen', owner: 'Orchard cooks', basis: 'Proposed stop along the northern route.', drive: 'Share ways of preserving fruit.',
+const opportunity = { id: 'r2-orchard', connection: 'independent', focus: 'Cinderwick harvest kitchen', owner: 'Orchard cooks', basis: 'Proposed stop along the northern route.', drive: 'Share ways of preserving fruit.',
     experience: 'At Cinderwick, cooks trade smoked-pear recipes around a communal oven; a heat-storing pebble spell keeps the pots warm.',
     next: { when: 'Visitors join a cooking afternoon', change: 'A shared recipe and pebble charm can travel with them.' },
     later: { when: 'They reach the colder upland villages', change: 'The charm and recipes can find different uses in winter kitchens.' } };
@@ -39,7 +41,8 @@ async function stuck() {
 }
 const horizon = () => ({ rpUnderstanding: understanding(), storyLife: storyLife(), throughline: [], progression: { upsert: [structuredClone(opportunity)], retire: [{ id: 'r1-repair', reason: 'Local repair remains local work.' }] } });
 const clearOutlook = () => ({ action: 'clear', reason: 'No future selected for this bounded test.', material: [] });
-const scene = () => ({ plan: { ...local(), openings: [], futureEntryVersion: 1 }, exits: [], observations: [], selected_material: [], outlook: clearOutlook() });
+const quietInitiative = () => ({ action: 'withdraw', reason: 'Deliberately quiet fixture.', material: [], evidence: [] });
+const scene = () => ({ plan: { ...local(), openings: [], futureEntryVersion: 1 }, exits: [], observations: [], selected_material: [], outlook: clearOutlook(), initiative_review: quietInitiative() });
 const inputFor = (state, extra = {}) => preparationInput({ reference, state, messages, playerNames: ['Ren'], previousUsable: true, ...extra });
 async function run(state, responses = [horizon(), scene()], extra = {}) {
     const calls = [], input = inputFor(state, extra);
@@ -278,12 +281,224 @@ test('quiet play can withdraw an opening without closing anything or erasing its
 });
 
 const unchangedHorizon = () => ({ rpUnderstanding: understanding(), storyLife: storyLife(), throughline: [], progression: { upsert: [], retire: [] } });
+
+function initiatingScene() {
+    const value = openedScene();
+    value.initiative_review = { action: 'replace', reason: 'A cook initiates an independent encounter, without waiting for a request.', evidence: [],
+        material: [{ id: 'r2-cook-arrival', trajectoryId: opportunity.id, owner: opportunity.owner,
+            prerequisite: 'At the public tea stall while the visiting cook is there, before this introduction has happened,',
+            action: 'The cook sets out smoked pears to share and introduces the communal kitchen where she works.' }] };
+    return value;
+}
+
+test('independent initiative crosses the real writer boundary without leaking private plans or assigning player action', async () => {
+    const value = initiatingScene();
+    value.plan.openings[0].circumstance = 'PRIVATE scene grounding: repair discussions continue.';
+    value.plan.openings[0].access.basis = 'PRIVATE access reasoning.';
+    const result = await run(await stuck(), [horizon(), value]);
+    assert.equal(result.accepted, true, result.error);
+    assert.equal(result.calls.length, 2);
+    const packet = campaignPayload(result.state);
+    assert.match(packet, /next_world_initiative/);
+    assert.match(packet, /sets out smoked pears/);
+    assert.doesNotMatch(packet, /PRIVATE|initiativeReceipt|r2-cook-arrival|trajectoryId|repair discussions/);
+    assert.deepEqual(result.state.workingPlan.consequences, []);
+    const restored = loadPlannerState(JSON.parse(JSON.stringify(saveState({}, { ...defaultPlannerState(), campaignPreparation: result.state })))).campaignPreparation;
+    assert.equal(validCampaignState(restored), true);
+    assert.equal(campaignPayload(restored), packet);
+    assert.deepEqual(restored.workingPlan.initiative, value.initiative_review.material);
+});
+
+test('an initiative can launch ordinary life without requiring a larger selected arc', async () => {
+    const value = initiatingScene(); value.outlook = clearOutlook();
+    const result = await run(await stuck(), [horizon(), value]);
+    assert.equal(result.accepted, true, result.error);
+    assert.match(campaignPayload(result.state), /next_world_initiative/);
+    assert.doesNotMatch(campaignPayload(result.state), /mid_term_possibilities|long_term_possibilities/);
+});
+
+test('pending initiative survives routine review, then a witnessed introduction removes its handoff without completing the arc', async () => {
+    let result = await run(await stuck(), [horizon(), initiatingScene()]);
+    const pending = structuredClone(result.state.workingPlan.initiative);
+    const keep = openedScene();
+    keep.initiative_review = { action: 'keep', reason: 'Not yet introduced; no new commitment needed.', material: [], evidence: [] };
+    result = await run(result.state, [unchangedHorizon(), keep]);
+    assert.equal(result.accepted, true, result.error);
+    assert.deepEqual(result.state.workingPlan.initiative, pending);
+    assert.deepEqual(result.state.workingPlan.initiativeReceipt, []);
+    const introduced = openedScene();
+    introduced.plan.openings[0].futureEntry = { prerequisite: 'During a later voluntary kitchen visit,', possibility: 'The cook has two preserved fruits to compare.' };
+    introduced.initiative_review = { action: 'introduced', reason: 'The cook actually introduced her kitchen.', material: [], evidence: [{ index: 2, span: 0 }] };
+    result = await run(result.state, [unchangedHorizon(), introduced], { messages: [...messages,
+        { index: 2, role: 'assistant', content: 'A visiting cook sets out smoked pears and introduces her communal kitchen.' }] });
+    assert.equal(result.accepted, true, result.error);
+    assert.deepEqual(result.state.workingPlan.initiative, []);
+    assert.equal(result.state.workingPlan.initiativeReceipt[0].disposition, 'introduced');
+    assert.match(result.state.workingPlan.initiativeReceipt[0].witnesses[0].quote, /visiting cook/);
+    assert.deepEqual(result.state.workingPlan.trajectories, [opportunity]);
+    assert.deepEqual(result.state.workingPlan.consequences, []);
+    assert.doesNotMatch(campaignPayload(result.state), /next_world_initiative|witnesses|cook-arrival/);
+});
+
+for (const damage of ['missing-review', 'player-owner', 'wrong-owner', 'inaccessible', 'unknown-trajectory', 'old-id', 'private-overwrite', 'empty-action']) {
+    test(`invalid initiative ${damage} is repaired atomically within the shared request cap`, async () => {
+        const bad = initiatingScene(), entry = bad.initiative_review.material[0];
+        if (damage === 'missing-review') delete bad.initiative_review;
+        if (damage === 'player-owner') entry.owner = 'Ren';
+        if (damage === 'wrong-owner') entry.owner = 'An unrelated actor';
+        if (damage === 'inaccessible') bad.plan.openings[0].access.route = 'none';
+        if (damage === 'unknown-trajectory') entry.trajectoryId = 'r2-missing';
+        if (damage === 'old-id') entry.id = 'r1-stale';
+        if (damage === 'private-overwrite') bad.plan.initiative = [entry];
+        if (damage === 'empty-action') entry.action = ' ';
+        const state = await stuck(), before = structuredClone(state);
+        const rejected = await run(state, [horizon(), bad, bad]);
+        assert.equal(rejected.accepted, false, damage);
+        assert.equal(rejected.calls.length, 3);
+        assert.equal(JSON.stringify(state), JSON.stringify(before));
+        const repaired = await run(state, [horizon(), bad, initiatingScene()]);
+        assert.equal(repaired.accepted, true, repaired.error);
+        assert.equal(repaired.calls.length, 3);
+    });
+}
+
+for (const refs of [[], [{ index: 99, span: 0 }], [{ index: 2, span: 99 }], [{ index: 0, span: 0 }]]) {
+    test(`initiative cannot become history from missing, old or unsupplied evidence ${JSON.stringify(refs)}`, async () => {
+        const state = (await run(await stuck(), [horizon(), initiatingScene()])).state;
+        const value = openedScene();
+        value.initiative_review = { action: 'introduced', reason: 'Claimed introduction.', material: [], evidence: refs };
+        const result = await run(state, [unchangedHorizon(), value, value], { messages: [...messages,
+            { index: 2, role: 'user', name: 'Ren', content: 'I continue my tea.' }] });
+        assert.equal(result.accepted, false);
+        assert.equal(result.state, state);
+        assert.deepEqual(state.workingPlan.initiativeReceipt, []);
+    });
+}
+
+test('initiative evidence is checked against transport-compacted spans, not merely the local candidate', async () => {
+    const state = (await run(await stuck(), [horizon(), initiatingScene()])).state;
+    const history = [...messages, { index: 2, role: 'assistant', content: 'The visiting cook introduces herself.' }];
+    const input = inputFor(state, { messages: history });
+    const value = openedScene();
+    value.initiative_review = { action: 'introduced', reason: 'Claimed introduction.', material: [], evidence: [{ index: 2, span: 0 }] };
+    const result = await preparationPass({ state, input, source, generate: async (prompt, _system, _schema, { stage }) => {
+        if (stage === 'horizon') return wire(unchangedHorizon());
+        const sent = JSON.parse(prompt); sent.accepted_messages = sent.accepted_messages.filter(m => m.index !== 2);
+        return { ...wire(value), plannerPrompt: JSON.stringify(sent) };
+    } });
+    assert.equal(result.accepted, false);
+    assert.match(result.error, /supplied accepted-message span/);
+    assert.equal(result.state, state);
+});
+
+test('introduced move can hand off to a modest recurring experience under a fresh id', async () => {
+    const state = (await run(await stuck(), [horizon(), initiatingScene()])).state;
+    const wider = unchangedHorizon();
+    wider.progression.upsert = [{ ...opportunity, connection: 'recurrence',
+        experience: 'Another cooking afternoon uses apples instead of pears.',
+        next: { when: 'At another cooking afternoon', change: 'The same cooks try a slightly sweeter preserve.' },
+        later: { when: 'On a subsequent visit', change: 'They cook together again with a different seasonal fruit.' } }];
+    const value = initiatingScene();
+    value.initiative_review.action = 'introduced';
+    value.initiative_review.evidence = [{ index: 2, span: 0 }];
+    value.initiative_review.material[0] = { ...value.initiative_review.material[0], id: 'r3-apple-batch',
+        prerequisite: 'At a later kitchen afternoon, before this batch has been started,', action: 'The cook begins an apple preserve and sets out a spare tasting spoon.' };
+    value.plan.openings[0].futureEntry = { prerequisite: 'At a later kitchen afternoon,', possibility: 'Another batch uses seasonal apples.' };
+    const result = await run(state, [wider, value], { messages: [...messages,
+        { index: 2, role: 'assistant', content: 'The cook introduces herself over smoked pears.' }] });
+    assert.equal(result.accepted, true, result.error);
+    assert.equal(result.state.workingPlan.initiativeReceipt[0].id, 'r2-cook-arrival');
+    assert.equal(result.state.workingPlan.initiative[0].id, 'r3-apple-batch');
+    assert.equal(result.state.workingPlan.trajectories[0].connection, 'recurrence');
+    assert.match(campaignPayload(result.state), /begins an apple preserve/);
+    assert.doesNotMatch(campaignPayload(result.state), /sets out smoked pears/);
+});
+
+test('withdrawal is not enactment and does not erase wider preparation', async () => {
+    const state = (await run(await stuck(), [horizon(), initiatingScene()])).state;
+    const value = scene();
+    const result = await run(state, [unchangedHorizon(), value]);
+    assert.equal(result.accepted, true, result.error);
+    assert.deepEqual(result.state.workingPlan.initiative, []);
+    assert.equal(result.state.workingPlan.initiativeReceipt[0].disposition, 'withdrawn');
+    assert.deepEqual(result.state.workingPlan.initiativeReceipt[0].witnesses, []);
+    assert.deepEqual(result.state.workingPlan.trajectories, [opportunity]);
+    assert.equal(campaignPayload(result.state), '');
+});
+
+test('saved writer initiatives cannot diverge from the host-selected public action', async () => {
+    const initial = (await run(await stuck(), [horizon(), initiatingScene()])).state;
+    for (const mutate of [s => { s.selectedMaterial[0].initiative.action = 'Injected private motive'; },
+        s => { delete s.selectedMaterial[0].initiative; }, s => { delete s.workingPlan.initiative; },
+        s => { s.workingPlan.openings[0].access.route = 'none'; }]) {
+        const copy = structuredClone(initial); mutate(copy);
+        assert.equal(validCampaignState(copy), false);
+    }
+});
 const keepScene = () => {
     const value = openedScene();
     value.outlook = { action: 'keep', reason: 'Only the immediate routine changed; the optional journey remains unplayed.', material: [] };
     value.selected_material = [];
     return value;
 };
+
+test('isolated writer loop feeds actual replies back to planning and keeps the baseline planner-free', async () => {
+    const wider = horizon(); wider.progression.retire = [];
+    const first = JSON.parse(JSON.stringify(wider).replaceAll('r2-', 'r1-'));
+    const move = JSON.parse(JSON.stringify(initiatingScene()).replaceAll('r2-', 'r1-'));
+    const introduced = structuredClone(move);
+    introduced.initiative_review = { action: 'introduced', reason: 'The generated reply introduced the cook.', material: [], evidence: [{ index: 2, span: 0 }] };
+    introduced.plan.openings[0].futureEntry = { prerequisite: 'On a subsequent voluntary kitchen visit,', possibility: 'The cook compares two preserves.' };
+    const replies = [first, move, unchangedHorizon(), introduced];
+    let calls = 0, written = 0;
+    const result = await runAutonomousLoop({ fixture: journeyCase(), turns: 2,
+        planner: async (_request, _limit, metadata) => {
+            if (calls >= 2) assert.match(metadata.prompt, /visiting cook sets out smoked pears/);
+            return wire(replies[calls++]);
+        },
+        writer: async request => {
+            const packet = request.find(row => row.content.startsWith('<tale-fairy-context>'))?.content;
+            assert.ok(packet);
+            if (!written++) assert.match(packet, /next_world_initiative/);
+            else assert.doesNotMatch(packet, /next_world_initiative/);
+            return { text: 'The visiting cook sets out smoked pears and introduces her communal kitchen.', finishReason: 'stop' };
+        } });
+    assert.equal(calls, 4);
+    assert.ok(result.reports.every(row => row.planningAccepted), result.reports.map(row => row.planningError).join('; '));
+    assert.equal(result.state.workingPlan.initiativeReceipt[0].disposition, 'introduced');
+    assert.ok(result.reports.every(row => row.writerBudget.tokens > 0 && row.writerBudget.omitted === 0));
+    const baseline = await runAutonomousLoop({ fixture: journeyCase(), turns: 2, assisted: false,
+        planner: () => assert.fail('Baseline cannot call planner'),
+        writer: async request => {
+            assert.ok(request.every(row => !row.content.includes('<tale-fairy-context>')));
+            return { text: 'Ilen closes her book.', finishReason: 'stop' };
+        } });
+    assert.equal(baseline.state.revision, 0);
+    assert.ok(baseline.reports.every(row => row.planningCalls.length === 0));
+});
+
+test('isolated loop rejects truncated writer prose instead of treating it as accepted history', async () => {
+    let recorded = 0;
+    await assert.rejects(runAutonomousLoop({ fixture: journeyCase(), turns: 1, assisted: false,
+        writer: async () => ({ text: 'Partial reply', finishReason: 'length' }), record: () => recorded++ }), /truncated/);
+    assert.equal(recorded, 0);
+});
+
+for (const mode of ['restart', 'fake-withdrawal-evidence', 'lost-access']) test(`pending initiative rejects ${mode} while retaining the previous writer packet`, async () => {
+    const state = (await run(await stuck(), [horizon(), initiatingScene()])).state;
+    const packet = campaignPayload(state), value = initiatingScene();
+    value.initiative_review = mode === 'restart'
+        ? { ...value.initiative_review, action: 'introduced', evidence: [{ index: 2, span: 0 }] }
+        : mode === 'fake-withdrawal-evidence'
+            ? { ...quietInitiative(), evidence: [{ index: 2, span: 0 }] }
+            : { action: 'keep', reason: 'Keep despite lost access.', material: [], evidence: [] };
+    if (mode === 'lost-access') value.plan.openings[0].access.route = 'none';
+    const result = await run(state, [unchangedHorizon(), value, value], { messages: [...messages,
+        { index: 2, role: 'assistant', content: 'The visiting cook introduces her communal kitchen.' }] });
+    assert.equal(result.accepted, false);
+    assert.equal(result.state, state);
+    assert.equal(campaignPayload(result.state), packet);
+});
 
 test('five routine reviews update the present without shrinking, rerolling or enacting the selected future', async () => {
     let state = (await run(await stuck(), [horizon(), openedScene()])).state;

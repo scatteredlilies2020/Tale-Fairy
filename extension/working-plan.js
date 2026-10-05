@@ -1,8 +1,9 @@
 // Bounded creative state, not a second continuity database. Historical evidence
 // and replaced plans belong in local archives, never in this request snapshot.
 import { conservativeTokenCount } from './token-budget.js';
-import { TRAJECTORIES_SCHEMA, validateTrajectories, THROUGHLINE_SCHEMA, validateThroughline, STORY_LIFE_SCHEMA, validateStoryLife } from './story-progression.js?story-progression=1&story-workshop=1&story-throughline=1&story-life=1';
-import { OUTLOOK_SCHEMA, validateOutlook, validateOutlookSelection } from './story-outlook.js?story-outlook=1&story-throughline=1&story-life=1&future-entry=1';
+import { TRAJECTORIES_SCHEMA, validateTrajectories, THROUGHLINE_SCHEMA, validateThroughline, STORY_LIFE_SCHEMA, validateStoryLife } from './story-progression.js?story-progression=1&story-workshop=1&story-throughline=1&story-life=1&autonomous-life=1';
+import { OUTLOOK_SCHEMA, validateOutlook, validateOutlookSelection } from './story-outlook.js?story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1';
+import { INITIATIVE_SCHEMA, INITIATIVE_RECEIPT_SCHEMA, validateInitiative } from './story-initiative.js?autonomous-life=1';
 
 export const WORKING_PLAN_VERSION = 1;
 // Historical export names are retained for callers; these are sizing targets,
@@ -82,6 +83,8 @@ WORKING_PLAN_SCHEMA.properties.openings.items.properties.futureEntry = object({
     possibility: { ...text(700), description: 'Concrete forthcoming encounter, undertaking or changed circumstance added beyond accepted play. Not current status, unfinished immediate work, access reasoning or writer instructions.' },
 });
 WORKING_PLAN_SCHEMA.properties.outlook = OUTLOOK_SCHEMA;
+WORKING_PLAN_SCHEMA.properties.initiative = INITIATIVE_SCHEMA;
+WORKING_PLAN_SCHEMA.properties.initiativeReceipt = INITIATIVE_RECEIPT_SCHEMA;
 
 export function playableDevelopments(plan) {
     return [...plan.developments, ...(plan.openings || []).map(opening => {
@@ -137,6 +140,7 @@ export function validateWorkingPlan(plan, check, playerNames = []) {
         }
     }
     validateOutlook(plan, check);
+    validateInitiative(plan, check, playerNames);
 }
 
 // Compatibility projection for the existing writer, inspector and persistence

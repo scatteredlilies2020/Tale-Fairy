@@ -1,20 +1,23 @@
-import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1';
+import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1';
 import { compactPlannerReference } from './planner-reference.js?history-budget=1';
 import { compactCampaignSpeakers } from './campaign-evidence.js';
 import { witnessMessages, resolveSpanWitnesses, SPAN_WITNESS_SCHEMA } from './accepted-witnesses.js?v=0.14.34&partial-evidence=1';
 import { fitEvidenceProviders } from './evidence-providers.js?story-lifecycle=1';
-import { SELECTED_MATERIAL_SCHEMA, validateSelectedMaterial } from './selected-material.js?v=0.14.36&rp-plot=1&story-goal=2&story-horizons=1&story-outlook=1&story-life=1';
+import { SELECTED_MATERIAL_SCHEMA, validateSelectedMaterial } from './selected-material.js?v=0.14.36&rp-plot=1&story-goal=2&story-horizons=1&story-outlook=1&story-life=1&autonomous-life=1';
 import { storyInputTokens } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1';
 import { fitPlannerContext } from './planner-context.js?soft-targets=1&story-map=1&story-goal=2&story-throughline=1&story-life=1';
-import { PROGRESSION_PATCH_SCHEMA, mergeProgression } from './story-progression.js?story-progression=1&story-workshop=1&story-throughline=1&story-life=1';
+import { PROGRESSION_PATCH_SCHEMA, mergeProgression } from './story-progression.js?story-progression=1&story-workshop=1&story-throughline=1&story-life=1&autonomous-life=1';
 import { WORKING_PLAN_SCHEMA, WORKING_PLAN_VERSION, WORKING_PLAN_LIMIT, SELECTED_PACKET_LIMIT, RP_UNDERSTANDING_LIMIT,
-    PLANNER_INPUT_LIMIT, planTokens, plannerInputLimit, validateWorkingPlan, validateGoalSelection, workingPlanProjection } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1';
-export { PLANNER_INPUT_LIMIT, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1';
+    PLANNER_INPUT_LIMIT, planTokens, plannerInputLimit, validateWorkingPlan, validateGoalSelection, workingPlanProjection } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1';
+export { PLANNER_INPUT_LIMIT, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1';
 
 const text = maxLength => ({ type: 'string', minLength: 1, maxLength });
 const object = properties => ({ type: 'object', additionalProperties: false, required: Object.keys(properties), properties });
 const witnesses = { type: 'array', maxItems: 3, items: SPAN_WITNESS_SCHEMA };
 const selection = structuredClone(SELECTED_MATERIAL_SCHEMA);
+// The host selects initiatives through the split scene review, never through
+// the provider-authored legacy writer material.
+delete selection.items.properties.initiative;
 selection.items.properties.available.maxLength = 900;
 // Saved packets may lack later horizons; every newly selected packet must
 // supply the wider possibility rather than degenerating into a next-turn cue.
@@ -40,6 +43,8 @@ delete responseShape.properties.plan.properties.trajectories;
 delete responseShape.properties.plan.properties.outlook;
 delete responseShape.properties.plan.properties.throughline;
 delete responseShape.properties.plan.properties.storyLife;
+delete responseShape.properties.plan.properties.initiative;
+delete responseShape.properties.plan.properties.initiativeReceipt;
 responseShape.properties.plan.properties.developments.items.required.push('trajectoryIds');
 responseShape.properties.plan.properties.goal.items.required.push('scope');
 responseShape.properties.plan.properties.rpUnderstanding.required.push('storyScope', 'independentSource');
@@ -51,6 +56,8 @@ const completedShape = structuredClone(responseShape);
 completedShape.properties.plan.properties.outlook = structuredClone(WORKING_PLAN_SCHEMA.properties.outlook);
 completedShape.properties.plan.properties.throughline = structuredClone(WORKING_PLAN_SCHEMA.properties.throughline);
 completedShape.properties.plan.properties.storyLife = structuredClone(WORKING_PLAN_SCHEMA.properties.storyLife);
+completedShape.properties.plan.properties.initiative = structuredClone(WORKING_PLAN_SCHEMA.properties.initiative);
+completedShape.properties.plan.properties.initiativeReceipt = structuredClone(WORKING_PLAN_SCHEMA.properties.initiativeReceipt);
 completedShape.properties.selected_material = structuredClone(SELECTED_MATERIAL_SCHEMA);
 export const STORY_SCHEMA = { name: 'tale_fairy_story_progression_v6', value: structuredClone(responseShape) };
 const draftPlan = STORY_SCHEMA.value.properties.plan.properties;
@@ -204,7 +211,16 @@ export async function storyPass({ state, input, source, generate,
         if (['length', 'max_tokens', 'max_output_tokens'].includes(String(result.finishReason).toLowerCase())) throw Error('Truncated working-plan response');
         let raw = JSON.parse(result.text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, ''));
         check(raw, schema === STORY_SCHEMA ? responseShape : schema.value);
-        raw = completeResponse(raw);
+        // Resolve against the actual transport request, including preflight
+        // compaction, for both host-composed initiative receipts and local facts.
+        const sent = JSON.parse(result.plannerPrompt ?? input.prompt);
+        const supplied = new Set((sent.accepted_messages || []).flatMap(message => message.spans
+            .map(span => `${message.index}:${Array.isArray(span) ? span[0] : span.span}`)));
+        const resolve = refs => {
+            if (refs.some(ref => !supplied.has(`${ref.index}:${ref.span}`))) throw Error('Witness requires an exact supplied accepted-message span');
+            return resolveSpanWitnesses(refs, input.evidenceMessages);
+        };
+        raw = completeResponse(raw, { resolve });
         check(raw, completedShape);
         raw.plan.trajectories = mergeProgression(input.previousPlan.trajectories || [], raw.progression,
             input.newIdPrefix, check, input.playerNames);
@@ -217,16 +233,6 @@ export async function storyPass({ state, input, source, generate,
             if (!before.has(item.id) && !item.id.startsWith(input.newIdPrefix)) throw Error('New development requires the supplied id prefix');
         }
         if (!input.rebuild && [...before.keys()].some(id => !after.has(id) && !exits.has(id))) throw Error('Removed development requires an explicit exit');
-        // Transport preflight can shed more reviewed context when the active
-        // tokenizer counts higher. Evidence must exist in the actual sent
-        // request, not just the larger locally assembled candidate.
-        const sent = JSON.parse(result.plannerPrompt ?? input.prompt);
-        const supplied = new Set((sent.accepted_messages || []).flatMap(message => message.spans
-            .map(span => `${message.index}:${Array.isArray(span) ? span[0] : span.span}`)));
-        const resolve = refs => {
-            if (refs.some(ref => !supplied.has(`${ref.index}:${ref.span}`))) throw Error('Witness requires an exact supplied accepted-message span');
-            return resolveSpanWitnesses(refs, input.evidenceMessages);
-        };
         const transitions = raw.exits.map(exit => {
             if (!before.has(exit.id) || after.has(exit.id)) throw Error('Exit requires a removed previous development');
             if (['closed', 'changed'].includes(exit.disposition) && !exit.evidence.length) throw Error('Closing or superseding an undertaking requires witnessed events');

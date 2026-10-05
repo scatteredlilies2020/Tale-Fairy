@@ -13,6 +13,8 @@ export const TRAJECTORIES_SCHEMA = list(object({
 // Older saved trajectories remain readable. The separate horizon preparer
 // requires this concrete playable substance on every new/revised possibility.
 TRAJECTORIES_SCHEMA.items.properties.experience = text(1000);
+// Creative relationship to the present, not a genre or a novelty quota.
+TRAJECTORIES_SCHEMA.items.properties.connection = { type: 'string', enum: ['independent', 'continuation', 'recurrence'] };
 export const PROGRESSION_PATCH_SCHEMA = object({
     upsert: structuredClone(TRAJECTORIES_SCHEMA),
     retire: list(object({ id: text(80), reason: text(400) }), 3),

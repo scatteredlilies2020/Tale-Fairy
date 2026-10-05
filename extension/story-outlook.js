@@ -1,5 +1,6 @@
 // A selected future is not the local scene's next task. Its authored, public
 // possibilities persist independently; every review must renew their access.
+import { initiativeSurface } from './story-initiative.js?autonomous-life=1';
 const text = maxLength => ({ type: 'string', minLength: 1, maxLength });
 const object = properties => ({ type: 'object', additionalProperties: false, required: Object.keys(properties), properties });
 export const OUTLOOK_SCHEMA = { type: 'array', maxItems: 2, items: object({
@@ -61,13 +62,18 @@ export function reviewOutlook(previous, plan, review, check) {
 
 export function composeOutlookMaterial(current, plan) {
     if (plan.futureEntryVersion === 1 && current.length) throw Error('Current scene material must remain private');
-    if (!plan.outlook?.length) return structuredClone(current);
-    const routes = plan.outlook.map(outlook => outlookRoute(plan, outlook));
+    if (!plan.outlook?.length && !plan.initiative?.length) return structuredClone(current);
+    const selected = [...(plan.outlook || [])];
+    for (const entry of plan.initiative || []) {
+        if (!selected.some(row => row.trajectoryId === entry.trajectoryId)) selected.push(entry);
+    }
+    const routes = selected.map(outlook => outlookRoute(plan, outlook));
     if (routes.some(route => !route)) throw Error('Selected outlook has no accessible route');
     if (plan.futureEntryVersion === 1) {
         return [{ subjectIds: routes.map(route => route.id),
             available: routes.map(route => `${route.futureEntry.prerequisite}\n${route.futureEntry.possibility}`).join('\n\n'),
-            ...outlookHorizons(plan) }];
+            ...(plan.initiative?.length ? { initiative: initiativeSurface(plan) } : {}),
+            ...(plan.outlook?.length ? outlookHorizons(plan) : {}) }];
     }
     const entry = current[0];
     if (routes.some(route => !route.circumstance && !entry?.subjectIds.includes(route.id))) {
@@ -87,12 +93,15 @@ export const outlookHorizons = plan => ({
 });
 
 export function validateOutlookSelection(plan, material) {
+    if (JSON.stringify(material?.[0]?.initiative) !== JSON.stringify(initiativeSurface(plan))) {
+        throw Error('Writer initiative must match the selected public action');
+    }
     if (plan.outlook === undefined) return;
     const entry = material?.[0];
     if (plan.futureEntryVersion === 1) {
         const composed = composeOutlookMaterial([], plan);
         if (material?.length !== composed.length || entry && (JSON.stringify(entry.subjectIds) !== JSON.stringify(composed[0].subjectIds)
-            || entry.available !== composed[0].available)) {
+            || entry.available !== composed[0].available || JSON.stringify(entry.initiative) !== JSON.stringify(composed[0].initiative))) {
             throw Error('Writer entry must match only the selected public future entries');
         }
     }

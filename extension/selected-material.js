@@ -1,4 +1,5 @@
 // One integrated horizon packet, not one miniature plot per tracked subject.
+import { INITIATIVE_SURFACE_SCHEMA } from './story-initiative.js?autonomous-life=1';
 const text = description => ({ type: 'string', minLength: 1, maxLength: 900, description });
 export const SELECTED_MATERIAL_SCHEMA = { type: 'array', maxItems: 1,
     description: 'Zero or one integrated story possibility. Story substance only; no instructions, mood, tone, pacing or prose directives.',
@@ -18,6 +19,7 @@ export const SELECTED_MATERIAL_SCHEMA = { type: 'array', maxItems: 1,
 SELECTED_MATERIAL_SCHEMA.items.properties.available.maxLength = 2304;
 SELECTED_MATERIAL_SCHEMA.items.properties.developing.maxLength = 1802;
 SELECTED_MATERIAL_SCHEMA.items.properties.lasting.maxLength = 1802;
+SELECTED_MATERIAL_SCHEMA.items.properties.initiative = INITIATIVE_SURFACE_SCHEMA;
 
 export function validateSelectedMaterial(material, subjects, check, background) {
     check(material, SELECTED_MATERIAL_SCHEMA, '$.selected_material');
@@ -34,6 +36,7 @@ export function validateSelectedMaterial(material, subjects, check, background) 
 }
 
 export const materialHorizons = entry => ({ available_circumstances: entry.available,
+    ...(entry.initiative ? { next_world_initiative: structuredClone(entry.initiative) } : {}),
     ...(entry.developing ? { mid_term_possibilities: entry.developing } : {}),
     ...(entry.lasting ? { long_term_possibilities: entry.lasting } : {}) });
 
