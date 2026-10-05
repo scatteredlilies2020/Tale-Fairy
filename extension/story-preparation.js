@@ -1,10 +1,10 @@
 // Two creative responsibilities, one transaction. Wider preparation never sees
 // the local task list or previous writer packet; scene selection cannot edit it.
-import { storyInput, storyPass, STORY_RESPONSE_SCHEMA, nextPlanRevision, plannerInputLimit, PLANNER_OUTPUT_LIMIT } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1';
-import { CAMPAIGN_MARKER, check } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1';
-import { mergeProgression, PROGRESSION_PATCH_SCHEMA, THROUGHLINE_SCHEMA, STORY_LIFE_SCHEMA } from './story-progression.js?story-progression=1&story-workshop=1&story-throughline=1&story-life=1&autonomous-life=1&relaxed-conditions=1';
-import { validateWorkingPlan, planTokens } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1&rp-departures=1';
-import { storyInputTokens, fitStoryContext } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1';
+import { storyInput, storyPass, STORY_RESPONSE_SCHEMA, nextPlanRevision, plannerInputLimit, PLANNER_OUTPUT_LIMIT } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3';
+import { CAMPAIGN_MARKER, check } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3';
+import { mergeProgression, PROGRESSION_PATCH_SCHEMA, THROUGHLINE_SCHEMA, STORY_LIFE_SCHEMA } from './story-progression.js?story-progression=1&story-workshop=1&story-throughline=1&story-life=1&autonomous-life=1&relaxed-conditions=1&horizon-links=3';
+import { validateWorkingPlan, planTokens } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1&rp-departures=1&horizon-links=3';
+import { storyInputTokens, fitStoryContext } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1&horizon-links=3';
 import { fitPlannerContext } from './planner-context.js?soft-targets=1&story-map=1&story-goal=2&story-throughline=1&story-life=1';
 import { OUTLOOK_REVIEW_SCHEMA, reviewOutlook, composeOutlookMaterial } from './story-outlook.js?story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1';
 export { nextPlanRevision, plannerInputLimit, PLANNER_OUTPUT_LIMIT };
@@ -55,6 +55,7 @@ SCENE_SCHEMA.value.properties.selected_material.maxItems = 0;
 
 const PLANNER_LANGUAGE = 'Use plain, concise language. Give enough substance to make a possibility interesting: who or what is involved and what begins or changes. Leave incidental props, exact gestures, dialogue and execution open. Omit stock phrases, vague promises and repetition. The writing preset controls prose, tone and pacing.';
 const PLANNER_EVIDENCE = 'Source references, user corrections and accepted play govern compatibility. Accepted play records enactment; references supply premises. Memory and summaries are fallible recall; missing context proves no absence or resolution. Preparation establishes no events, player choices or character knowledge.';
+const PLANNER_CORRECTION = 'For response_correction, repair rejected_response against the schema and supplied evidence. It is a failed draft, not accepted history. Return complete JSON.';
 
 export const HORIZON_SYSTEM = `${CAMPAIGN_MARKER}
 
@@ -62,12 +63,13 @@ Prepare future experiences from the full RP premise, character interests and ind
 
 ${PLANNER_LANGUAGE}
 ${PLANNER_EVIDENCE}
+${PLANNER_CORRECTION}
 
 rpUnderstanding: record basis, setting/era, stated canonIntent (otherwise unspecified), established divergence, anchors, departures, storyScope, characteristic experiences, independentSource and uncertainty. Keep departures concise; use empty text when no changes are established. For original RP, canonIntent/divergence are not-applicable. Franchise lore and previous analysis remain provisional.
 
 storyLife: distinguish premise, currentEpisode and continuingLife (relationships, pursuits, places and recurring experiences); horizonIds link retained trajectories. Default scope to open unless the user requests a bounded story. An episode ending does not close the RP. Prepare life beyond completed threads without prolonging conflict, inventing player ambitions or treating boredom as consent to end. Include interests beyond a central profession.
 
-throughline: [] or one {focus, basis, trajectoryIds} linking one or two trajectories. Prepare up to three trajectories: arcs, independent episodes or ordinary life. Arcs have motivated actors, possible developments and room for resolution. Ordinary activities can recur without transformation or an arc payoff.
+throughline: [] or one {focus, basis, trajectoryIds} linking relevant retained trajectories. Usually prepare up to three useful futures: arcs, independent episodes or ordinary life; this is a target, not a limit on the merged horizon. Reuse ids for continuing work and explicitly retire obsolete proposals. Arcs have motivated actors, possible developments and room for resolution. Ordinary activities can recur without transformation or an arc payoff.
 
 Each trajectory gives focus, owner (NPC/group/world process), basis distinguishing premises from inventions, drive, experience and connection (independent/continuation/recurrence). Sketch the first experience and distinct next/later possibilities. when names only a genuine dependency, broadly; use empty text if none. Leave the route between experiences open rather than detailing each step. Recurrence supplies another experience with modest variation. NPCs can initiate and finish their own work; player participation is required only for joint actions. Proposals prescribe no player choice, outcome or schedule.
 
@@ -84,6 +86,7 @@ Prepare NPC/world activity and select public story material. prepared_horizon is
 
 ${PLANNER_LANGUAGE}
 ${PLANNER_EVIDENCE}
+${PLANNER_CORRECTION}
 
 plan: replace direction/threads, up to four witnessed consequences and four developments. Each development has a stable id, NPC/world owner/control, question, initiative, possible resolution, beyond and access. Group one situation per development; trajectoryIds links related futures, otherwise []. NPCs can act independently while the player is elsewhere; require participation only for joint actions. New local ids use new_id_prefix; retained ids keep their meaning.
 
@@ -170,9 +173,11 @@ function parseHorizon(result, input) {
 // not prevent scene recovery. Valid over-target work is kept intact.
 export async function preparationPass({ state, input, source, generate }) {
     let repaired = false, recoveryReason = '', prepared, horizonResult;
-    const repair = (stageInput, system, schema, error) => {
+    const repair = (stageInput, system, schema, error, rejectedResponse) => {
         repaired = true; recoveryReason = String(error).slice(0, 320);
-        return fittedInput(stageInput, { ...JSON.parse(stageInput.prompt), response_correction: { error: recoveryReason } }, system, schema);
+        const response_correction = { error: recoveryReason,
+            ...(typeof rejectedResponse === 'string' && rejectedResponse.trim() ? { rejected_response: rejectedResponse } : {}) };
+        return fittedInput(stageInput, { ...JSON.parse(stageInput.prompt), response_correction }, system, schema);
     };
     let horizonInput = input.horizonInput;
     for (;;) {
@@ -186,7 +191,7 @@ export async function preparationPass({ state, input, source, generate }) {
         } catch (error) {
             if (repaired || !received && error.code !== 'TF_INVALID_PLANNER_RESPONSE') return { accepted: false, state, error: error.message,
                 ...(repaired ? { recovery: { status: 'failed', reason: recoveryReason } } : {}) };
-            horizonInput = repair(horizonInput, HORIZON_SYSTEM, HORIZON_SCHEMA, error.message);
+            horizonInput = repair(horizonInput, HORIZON_SYSTEM, HORIZON_SCHEMA, error.message, horizonResult?.text);
         }
     }
     let sceneInput = fittedInput(input, { ...JSON.parse(input.prompt), prepared_horizon: prepared.horizon,
@@ -216,7 +221,7 @@ export async function preparationPass({ state, input, source, generate }) {
         });
         if (result.accepted || sceneRepaired || !result.recoverableOutput) break;
         sceneRepaired = true;
-        sceneInput = { ...repair(sceneInput, SCENE_SYSTEM, SCENE_SCHEMA, result.error), correctionReason: recoveryReason };
+        sceneInput = { ...repair(sceneInput, SCENE_SYSTEM, SCENE_SCHEMA, result.error, result.result?.text), correctionReason: recoveryReason };
     }
     if (!result.accepted) return { ...result, ...(repaired ? { recovery: { status: 'failed', reason: recoveryReason } } : {}) };
     const budget = { horizonInput: horizonResult.plannerInputTokens ?? horizonInput.inputTokens,

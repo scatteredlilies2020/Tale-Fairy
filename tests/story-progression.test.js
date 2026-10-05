@@ -143,14 +143,22 @@ for (const [name, mutate, pattern] of [
     assert.deepEqual(state, before);
 });
 
-test('retire/update collisions, duplicate retirements and merged capacity are rejected', () => {
+test('retire/update collisions and duplicate retirements fail while merged futures stay intact', () => {
     const prior = [trajectory(), trajectory('r1-b'), trajectory('r1-c')], before = structuredClone(prior);
     assert.throws(() => mergeProgression(prior, { upsert: [trajectory()], retire: [{ id: trajectory().id, reason: 'Changed.' }] }, 'r2-', check), /updated and retired/);
     assert.throws(() => mergeProgression(prior, { upsert: [], retire: Array(2).fill({ id: trajectory().id, reason: 'Changed.' }) }, 'r2-', check), /Duplicate progression retirement/);
-    assert.throws(() => mergeProgression(prior, { upsert: [trajectory('r2-d')], retire: [] }, 'r2-', check), /array bounds/);
+    const extended = mergeProgression(prior, { upsert: [trajectory('r2-d')], retire: [] }, 'r2-', check);
+    assert.deepEqual(extended.map(row => row.id), ['r1-repertoire', 'r1-b', 'r1-c', 'r2-d']);
     const merged = mergeProgression(prior, { upsert: [trajectory('r2-d')], retire: [{ id: 'r1-b', reason: 'Premise changed.' }] }, 'r2-', check);
     assert.deepEqual(merged.map(row => row.id), ['r1-repertoire', 'r1-c', 'r2-d']);
     assert.deepEqual(prior, before);
+});
+
+test('future patches can add and explicitly retire beyond the three-future drafting target', () => {
+    const proposals = ['r2-a', 'r2-b', 'r2-c', 'r2-d'].map(id => trajectory(id));
+    const merged = mergeProgression([], { upsert: proposals, retire: [] }, 'r2-', check);
+    assert.deepEqual(merged, proposals);
+    assert.deepEqual(mergeProgression(merged, { upsert: [], retire: proposals.map(row => ({ id: row.id, reason: 'Withdrawn preparation.' })) }, 'r3-', check), []);
 });
 
 test('notebook shows private progression and causal conditions separately from guidance', async () => {

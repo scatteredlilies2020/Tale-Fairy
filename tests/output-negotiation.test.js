@@ -247,3 +247,10 @@ test('requested planner limits match storage checks and unchanged approach can b
     }
     assert.match(schemaInstruction(WORLD_PLANNER_SCHEMA), /Omit when unchanged/);
 });
+
+test('prompt-only horizon requests preserve the minimum link count without imposing a small maximum', async () => {
+    const { HORIZON_SCHEMA } = await import('../extension/story-preparation.js');
+    const guide = schemaInstruction(HORIZON_SCHEMA);
+    assert.match(guide, /trajectoryIds:\[string\(1\.\.80 chars\)\]\(1\.\.unbounded items\)/);
+    assert.doesNotMatch(guide, /trajectoryIds:[^}]+\(1\.\.2 items\)/);
+});

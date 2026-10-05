@@ -91,6 +91,45 @@ test('two stages replace narrow future while preserving unfinished local work an
     assert.deepEqual(restored.workingPlan.trajectories, [opportunity]);
 });
 
+test('three new futures merge with three retained futures and all valid links survive selection and reload', async () => {
+    const initial = horizon();
+    initial.progression.upsert = ['orchard', 'market', 'trail'].map(name => ({ ...structuredClone(opportunity), id: `r2-${name}`, focus: `Northern ${name} visit` }));
+    const retainedIds = initial.progression.upsert.map(row => row.id);
+    initial.throughline = [{ focus: 'A journey through different communities.', basis: 'The traveler’s continuing interests.', trajectoryIds: retainedIds }];
+    initial.storyLife.horizonIds = retainedIds;
+    const first = await run(await stuck(), [initial, scene()]);
+    assert.equal(first.accepted, true, first.error);
+    const before = structuredClone(first.state);
+
+    const wider = unchangedHorizon(), localScene = scene();
+    wider.progression.upsert = ['kitchen', 'ferry', 'crafts'].map(name => ({ ...structuredClone(opportunity), id: `r3-${name}`, focus: `Upland ${name} visit` }));
+    const allIds = [...retainedIds, ...wider.progression.upsert.map(row => row.id)];
+    wider.throughline = [{ ...initial.throughline[0], trajectoryIds: allIds }];
+    wider.storyLife.horizonIds = allIds;
+    localScene.plan.developments[0].trajectoryIds = allIds;
+    const result = await run(first.state, [wider, localScene]);
+    assert.equal(result.accepted, true, result.error);
+    assert.equal(result.calls.length, 2, 'valid merged futures need no correction');
+    assert.deepEqual(result.state.workingPlan.trajectories.map(row => row.id), allIds);
+    assert.deepEqual(result.calls[1].prompt.prepared_horizon.throughline[0].trajectoryIds, allIds);
+    assert.deepEqual(result.state.workingPlan.developments[0].trajectoryIds, allIds);
+    assert.deepEqual(structuredClone(first.state), before, 'merging does not overwrite prior preparation');
+    assert.equal(campaignPayload(result.state), '', 'private futures do not become writer guidance automatically');
+    const restored = loadPlannerState(JSON.parse(JSON.stringify(saveState({}, { ...defaultPlannerState(), campaignPreparation: result.state })))).campaignPreparation;
+    assert.equal(validCampaignState(restored), true);
+    assert.deepEqual(restored.workingPlan.throughline, wider.throughline);
+    assert.deepEqual(restored.workingPlan.storyLife.horizonIds, allIds);
+    assert.deepEqual(restored.workingPlan.trajectories, result.state.workingPlan.trajectories);
+
+    const withdrawn = unchangedHorizon();
+    withdrawn.progression.retire = allIds.map(id => ({ id, reason: 'This proposed itinerary is withdrawn.' }));
+    const withdrawnScene = scene();
+    const last = await run(restored, [withdrawn, withdrawnScene]);
+    assert.equal(last.accepted, true, last.error);
+    assert.deepEqual(last.state.workingPlan.trajectories, []);
+    assert.deepEqual(restored.workingPlan.trajectories.map(row => row.id), allIds, 'retirement also leaves the prior saved plan intact');
+});
+
 test('wider context uses verified changes instead of the rolling scene tail', async () => {
     const history = Array.from({ length: 12 }, (_, index) => ({ index, role: index % 2 ? 'user' : 'assistant', content: `Accepted text ${index}.` }));
     const state = await stuck(); state.workingPlan.storyLife = storyLife();
@@ -292,6 +331,7 @@ for (const departures of ['', extendedDepartures]) test(`malformed horizon corre
     assert.equal(result.accepted, true, result.error);
     assert.deepEqual(result.calls.map(call => call.metadata.stage), ['horizon', 'horizon', 'scene']);
     assert.ok(result.calls[1].prompt.response_correction.error);
+    assert.equal(result.calls[1].prompt.response_correction.rejected_response, '{"rpUnderstanding":');
     assert.equal(result.recovery.status, 'complete');
     assert.equal(result.state.workingPlan.rpUnderstanding.departures, departures);
     assert.deepEqual(structuredClone(prior), before, 'the prior preparation stays intact during recovery');
@@ -318,6 +358,35 @@ test('a missing departures field still requires correction rather than assuming 
     assert.equal(result.accepted, false);
     assert.match(result.error, /missing departures/);
     assert.equal(result.state, prior);
+});
+
+test('scene correction receives its rejected draft separately from the accepted horizon and evidence', async () => {
+    const rejected = '{"plan":';
+    const result = await run(await stuck(), [unchangedHorizon(), rejected, scene()]);
+    assert.equal(result.accepted, true, result.error);
+    assert.deepEqual(result.calls.map(call => call.metadata.stage), ['horizon', 'scene', 'scene']);
+    const corrected = result.calls[2].prompt;
+    assert.equal(corrected.response_correction.rejected_response, rejected);
+    assert.deepEqual(corrected.source_reference, result.calls[1].prompt.source_reference);
+    assert.deepEqual(corrected.accepted_messages, result.calls[1].prompt.accepted_messages);
+    assert.deepEqual(corrected.prepared_horizon, result.calls[1].prompt.prepared_horizon);
+    assert.match(result.calls[2].system, /failed draft, not accepted history/);
+    assert.equal(result.state.workingPlan.rejected_response, undefined);
+});
+
+test('RP analysis preserves longer useful prose without another field-by-field correction', async () => {
+    const wider = unchangedHorizon();
+    wider.rpUnderstanding.independentSource = "Naruto and his nanny's household routines, Kakashi and Guy's companionship, hospital staff's field initiatives, academy classes and merchant-row neighbors.";
+    assert.ok(wider.rpUnderstanding.independentSource.length > 150);
+    wider.rpUnderstanding.anchors = 'Established communities maintain trade, share customs and teach small magic. Traveling, cooking, friendship and seasonal crafts can sustain different episodes without turning every encounter into another obstruction of the current bridge repair.';
+    assert.ok(wider.rpUnderstanding.anchors.length > 200);
+    const result = await run(await stuck(), [wider, scene()]);
+    assert.equal(result.accepted, true, result.error);
+    assert.equal(result.calls.length, 2);
+    assert.deepEqual(result.state.workingPlan.rpUnderstanding, wider.rpUnderstanding);
+    const restored = loadPlannerState(JSON.parse(JSON.stringify(saveState({}, { ...defaultPlannerState(), campaignPreparation: result.state })))).campaignPreparation;
+    assert.equal(validCampaignState(restored), true);
+    assert.deepEqual(restored.workingPlan.rpUnderstanding, wider.rpUnderstanding);
 });
 
 function initiatingScene() {
@@ -740,7 +809,7 @@ test('story direction survives routine reviews and reload while staying private 
     assert.equal(rejected.accepted, false);
 });
 
-for (const ids of [['missing'], [opportunity.id, opportunity.id], ['r1-repair']]) {
+for (const ids of [[], ['missing'], [opportunity.id, opportunity.id], ['r1-repair']]) {
     test(`throughline links require distinct retained substantive trajectories: ${ids}`, async () => {
         const wider = horizon(); wider.throughline = throughline(); wider.throughline[0].trajectoryIds = ids;
         const result = await run(await stuck(), [wider, wider]);

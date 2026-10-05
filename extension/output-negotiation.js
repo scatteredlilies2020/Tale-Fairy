@@ -89,7 +89,7 @@ export function schemaInstruction(schema) {
         if (node.type === 'object' && !node.properties) return JSON.stringify(node);
         if (node.type === 'object' && node.properties) return `{${Object.entries(node.properties)
             .map(([key, value]) => `${key}${node.required?.includes(key) ? '' : '?'}:${shape(value)}`).join(',')}}`;
-        if (node.type === 'array') return `[${shape(node.items)}]${node.maxItems === undefined ? '' : `(${node.minItems || 0}..${node.maxItems} items)`}${node.uniqueItems ? '(unique items)' : ''}`;
+        if (node.type === 'array') return `[${shape(node.items)}]${node.maxItems === undefined && !node.minItems ? '' : `(${node.minItems || 0}..${node.maxItems ?? 'unbounded'} items)`}${node.uniqueItems ? '(unique items)' : ''}`;
         return `${node.type || 'object'}${node.minLength ? `(${node.minLength}..${node.maxLength || 'unbounded'} chars)` : node.maxLength ? `(<=${node.maxLength} chars)` : ''}${node.pattern === '\\S' ? '(nonblank)' : ''}${node.minimum !== undefined ? `(>=${node.minimum})` : ''}`;
     };
     return `Response shape (JSON schema shorthand): ? optional key; | allowed values; [] array. Return JSON values, not type labels. No extra keys.\n${shape(schema.value)}${schema.description ? `\n\n${schema.description}` : ''}`;

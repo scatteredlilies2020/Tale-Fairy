@@ -2,7 +2,7 @@
 // trajectories survive until explicitly revised or retired. Neither is history.
 const text = maxLength => ({ type: 'string', minLength: 1, maxLength });
 const object = properties => ({ type: 'object', additionalProperties: false, required: Object.keys(properties), properties });
-const list = (items, maxItems) => ({ type: 'array', maxItems, items });
+const list = (items, maxItems) => ({ type: 'array', ...(maxItems === undefined ? {} : { maxItems }), items });
 // Safety ceilings, not drafting targets. Concrete preparation needs room for
 // complete conditions and substance; the workshop has its own total soft target.
 const stage = object({
@@ -12,7 +12,9 @@ const stage = object({
 export const TRAJECTORIES_SCHEMA = list(object({
     id: text(80), focus: text(240), owner: text(160), basis: text(400), drive: text(300),
     next: stage, later: stage,
-}), 3);
+}));
+// Three useful futures is a drafting target. Patches retain omitted proposals,
+// so a merged horizon must not discard them or fail merely for exceeding it.
 // Older saved trajectories remain readable. The separate horizon preparer
 // requires this concrete playable substance on every new/revised possibility.
 TRAJECTORIES_SCHEMA.items.properties.experience = text(1000);
@@ -20,13 +22,13 @@ TRAJECTORIES_SCHEMA.items.properties.experience = text(1000);
 TRAJECTORIES_SCHEMA.items.properties.connection = { type: 'string', enum: ['independent', 'continuation', 'recurrence'] };
 export const PROGRESSION_PATCH_SCHEMA = object({
     upsert: structuredClone(TRAJECTORIES_SCHEMA),
-    retire: list(object({ id: text(80), reason: text(400) }), 3),
+    retire: list(object({ id: text(80), reason: text(400) })),
 });
 
 // A story's developing direction is separate from the optional episode shelf.
 // Links make it operational without prescribing a player goal or an ending.
 export const THROUGHLINE_SCHEMA = list(object({
-    focus: text(320), basis: text(320), trajectoryIds: { ...list(text(80), 2), minItems: 1 },
+    focus: text(320), basis: text(320), trajectoryIds: { ...list(text(80)), minItems: 1 },
 }), 1);
 
 // The RP's continuing life is not the latest incident enlarged into an arc.
@@ -34,7 +36,7 @@ export const THROUGHLINE_SCHEMA = list(object({
 export const STORY_LIFE_SCHEMA = object({
     scope: { type: 'string', enum: ['open', 'bounded', 'undetermined'] },
     premise: text(400), currentEpisode: text(300), continuingLife: text(700),
-    horizonIds: list(text(80), 3),
+    horizonIds: list(text(80)),
 });
 
 export function validateStoryLife(plan, check) {

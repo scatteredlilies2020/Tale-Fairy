@@ -5,8 +5,8 @@ import { validateSelectedMaterial, selectedMaterialPacket } from './selected-mat
 import { RP_BRIEF_SCHEMA } from './rp-brief.js';
 import { validateBackground } from './background-progress.js?v=0.14.34&story-bridge=1';
 import { estimateTokenCount } from './token-budget.js';
-import { fitStoryContext, storyContextPayload } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1';
-import { validateWorkingState } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1&rp-departures=1';
+import { fitStoryContext, storyContextPayload } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1&horizon-links=3';
+import { validateWorkingState } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1&rp-departures=1&horizon-links=3';
 
 // Matches the existing host's planner-request marker so request interception
 // cannot mistake this internal pass for RP and inject the guide into itself.
@@ -86,7 +86,10 @@ export function check(value, schema, at = '$') {
             check(child, schema.properties[key], `${at}.${key}`);
         }
     } else if (schema.type === 'array') {
-        if (!Array.isArray(value) || value.length < (schema.minItems || 0) || value.length > schema.maxItems) throw Error(`${at}: array bounds`);
+        if (!Array.isArray(value)) throw Error(`${at}: array bounds (expected array; received ${value === null ? 'null' : typeof value})`);
+        if (value.length < (schema.minItems || 0) || schema.maxItems !== undefined && value.length > schema.maxItems) {
+            throw Error(`${at}: array bounds (${value.length} items received; ${schema.minItems || 0}..${schema.maxItems ?? 'unbounded'} allowed)`);
+        }
         if (schema.uniqueItems && new Set(value.map(v => JSON.stringify(v))).size !== value.length) throw Error(`${at}: duplicates`);
         value.forEach((v, i) => check(v, schema.items, `${at}[${i}]`));
     } else if (schema.type === 'string') {

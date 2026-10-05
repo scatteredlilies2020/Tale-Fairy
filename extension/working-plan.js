@@ -1,7 +1,7 @@
 // Bounded creative state, not a second continuity database. Historical evidence
 // and replaced plans belong in local archives, never in this request snapshot.
 import { conservativeTokenCount } from './token-budget.js';
-import { TRAJECTORIES_SCHEMA, validateTrajectories, THROUGHLINE_SCHEMA, validateThroughline, STORY_LIFE_SCHEMA, validateStoryLife } from './story-progression.js?story-progression=1&story-workshop=1&story-throughline=1&story-life=1&autonomous-life=1&relaxed-conditions=1';
+import { TRAJECTORIES_SCHEMA, validateTrajectories, THROUGHLINE_SCHEMA, validateThroughline, STORY_LIFE_SCHEMA, validateStoryLife } from './story-progression.js?story-progression=1&story-workshop=1&story-throughline=1&story-life=1&autonomous-life=1&relaxed-conditions=1&horizon-links=3';
 import { OUTLOOK_SCHEMA, validateOutlook, validateOutlookSelection } from './story-outlook.js?story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1';
 import { INITIATIVE_SCHEMA, INITIATIVE_RECEIPT_SCHEMA, validateInitiative } from './story-initiative.js?autonomous-life=1&relaxed-conditions=1';
 
@@ -25,17 +25,19 @@ const list = (items, maxItems) => ({ type: 'array', maxItems, items });
 const choice = values => ({ type: 'string', enum: values });
 export const RP_UNDERSTANDING_SCHEMA = object({
     basis: choice(['original', 'franchise', 'mixed', 'unclear']),
-    setting: text(120),
+    // RP analysis shares a soft token target. Small prose ceilings cause valid
+    // orientation to fail instead of preserving the supplied meaning.
+    setting: text(),
     canonIntent: choice(['follow', 'flexible', 'alternate', 'unspecified', 'not-applicable']),
     divergence: choice(['none-established', 'local', 'major', 'unclear', 'not-applicable']),
-    anchors: text(200),
+    anchors: text(),
     // No established departures can be empty. Keep meaningful changes intact;
     // the shared plan target governs concision instead of a small field cap.
     departures: { type: 'string', minLength: 0 },
-    storyScope: text(150),
-    experiences: text(180),
-    independentSource: text(150),
-    uncertainty: text(160),
+    storyScope: text(),
+    experiences: text(),
+    independentSource: text(),
+    uncertainty: text(),
 });
 // Older saved analyses lack these two fields. Keep them readable until the next
 // provider pass supplies a complete story map; new responses require both.
@@ -68,7 +70,7 @@ WORKING_PLAN_SCHEMA.properties.goal.items.properties.scope = choice(['long-term'
 WORKING_PLAN_SCHEMA.properties.trajectories = TRAJECTORIES_SCHEMA;
 WORKING_PLAN_SCHEMA.properties.throughline = THROUGHLINE_SCHEMA;
 WORKING_PLAN_SCHEMA.properties.storyLife = STORY_LIFE_SCHEMA;
-WORKING_PLAN_SCHEMA.properties.developments.items.properties.trajectoryIds = list(text(80), 3);
+WORKING_PLAN_SCHEMA.properties.developments.items.properties.trajectoryIds = { type: 'array', items: text(80) };
 // Present routes into wider preparation have their own capacity. They are
 // offers, not accepted undertakings, and are reconsidered rather than carried
 // as unfinished work. Optional on disk for pre-bridge preparations.
