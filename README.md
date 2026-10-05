@@ -1,28 +1,36 @@
 # Tale Fairy
 
-Tale Fairy is a SillyTavern extension that prepares continuing story life from the RP's premise, characters, and relevant past: arcs, independent episodes, and ordinary recurring experiences. It keeps unused possibilities private and gives the writing AI fitting NPC/world activity and possible developments. It supports original worlds and franchise settings, including changes made during play.
+Tale Fairy is an AI story director for SillyTavern. It organizes the RP's sagas, arcs and threads, then gives the writing AI concise interpretations, stakes and expectations. It supports original worlds and franchise settings.
 
 ## Goals
 
-- Turn what the RP is about into fresh places, activities and projects: everyday life, relationships, travel, discoveries, conflict, or quiet moments when appropriate, not a generic quest loop. This planning stays internal; the writer receives story material, not instructions to generate it.
-- Keep meaningful past events and plausible NPC or world activity in view without forcing old threads to continue forever.
-- Let longer stories and independent side activities coexist with open player choices. The user's preset owns writing style and pacing.
-- Keep private progression across scene changes: NPC/world interests, intermediate changes, longer-range possibilities, and the conditions connecting them. Local plans can change without erasing this preparation; trajectories change or retire explicitly. Only accessible story material reaches the writer.
-- Stay lightweight and optional. Tale Fairy is not a historical memory system and does not write story replies on its own.
+- Develop the RP's particular interests, relationships and world, not a generic quest loop.
+- Let several stories coexist without forcing convergence or player participation.
+- Introduce fitting developments or good or bad interruptions. Quiet scenes need no escalation.
+- Keep private preparation separate from public writer context and accepted history.
+- Leave prose, pacing and execution to the writer. Presets stand alone.
 
 ## How preparation works
 
-Each review uses **one planner request** to update a compact library of future possibilities and select fitting NPC/world activity. It reads the RP premise, characters, accepted play and existing memory. It does not generate a conversation summary, rebuild historical memory, audit the writer or maintain another consequence ledger.
+Each review uses **one planner request**. The AI reads the premise, characters, accepted play and available memory. It maintains a private story map and renews the public selection. It does not summarize the conversation, write memory, audit the writer or generate story replies.
 
-Possibilities describe an interesting experience and distinct nearer and farther developments. They can be independent beginnings, continuing stories or recurring ordinary life. Unchanged possibilities remain available across scene changes; the planner explicitly revises or withdraws them when appropriate. There is no requirement to add ideas on every review, escalate conflict or tie everything to the latest incident.
+The map uses three flexible scales:
 
-The director selects up to two possibilities with a plausible encounter route. The writer receives a brief forthcoming NPC/world action, a broad prerequisite only where needed, and public later possibilities. Private proposals and access reasoning remain private. Incidental details, dialogue, execution, prose and pacing belong to the writer and its preset. Player participation and outcomes remain open. Quiet play can receive no additional material.
+- **Saga:** related arcs spanning a larger story.
+- **Arc:** a sustained story question.
+- **Thread:** a particular concern or developing strand.
 
-Complete JSON punctuation errors are repaired locally. An invalid optional proposal or unavailable selection is withheld without discarding independent valid preparation. There are no automatic model correction calls or paid memory-refresh restarts. A provider request stops after **60 seconds** and preserves previous source-valid preparation. Cancellation, accepted-source checks, player ownership, reference checks and the writer context budget remain enforced.
+No level is mandatory. Arcs can nest; threads can stand alone. Links connect stories without merging them. Several stories can be active. The AI creates, revises, groups, pauses, resolves and withdraws them. Unchanged records remain private across focus changes. Resolution follows accepted play; withdrawing a proposal does not claim it happened.
 
-Planning runs in the background. Source-valid selected possibilities remain usable while a review is pending or fails. Newer accepted play takes precedence: completed, declined or contradicted activity should not repeat. Source edits and changed references still invalidate old guidance. Regeneration can reuse a verified earlier packet without turning discarded replies into premises.
+The writer receives selected stories' public titles, hierarchy, interpretations, stakes and expectations. A selection can include a fitting development or interruption. It is not a next-turn script or a conditional command beginning with “If”. The packet tells the writer to ignore completed, declined or contradicted developments. Private owners, motives, links and unselected stories stay private. There is no fixed selection quota; quiet play can receive none. The player retains their actions, choices, thoughts and outcomes.
 
-Existing preparations and author instructions remain readable. On the next successful review, old detailed planning state is archived and the active plan uses the compact director format. No memory rescan is needed. Earlier architecture and evaluation notes under `docs/` describe historical versions.
+Reviews normally span **12 accepted AI replies**. The AI can choose a horizon from **4 to 20**, capped by the user's review setting. Refresh begins one reply before expiry. Explicit OOC directions and scene boundaries prompt earlier review and immediately withhold old public guidance. Transcript edits and reference changes invalidate it too. Ordinary dialogue is interpreted by the next AI review, not a keyword classifier. Current play takes precedence over preparation.
+
+Planning stays in the background. A failed or pending review preserves the private map, but public guidance expires at its horizon. Reloads and caches cannot extend it. Failure retries require new accepted AI play, not a timer or user-only input. Regeneration uses a verified pre-reply source without treating discarded replies as premises.
+
+Complete JSON punctuation errors are repaired locally. Invalid updates, broken hierarchy and unavailable selections are withheld without discarding valid siblings. There are no automatic model correction calls or paid memory-refresh restarts. Requests stop after **60 seconds**. Targets are 10,000 input tokens and about 900 response tokens; output is capped at 2,200 tokens. Writer context is capped at 1,000 tokens; entries are withheld whole rather than clipped.
+
+Existing preparations and author instructions remain readable. The next successful review carries retained proposals into the story map and archives the old plan. Author instructions remain verbatim. No memory rescan or preset edit is needed. Notes under `docs/` describe historical versions.
 
 ## Install
 

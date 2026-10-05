@@ -1,6 +1,7 @@
 // Bounded creative state, not a second continuity database. Historical evidence
 // and replaced plans belong in local archives, never in this request snapshot.
 import { conservativeTokenCount } from './token-budget.js';
+import { STORY_STRUCTURE_SCHEMA, validateStoryStructure } from './story-structure.js?story-structure=1';
 import { TRAJECTORIES_SCHEMA, validateTrajectories, THROUGHLINE_SCHEMA, validateThroughline, STORY_LIFE_SCHEMA, validateStoryLife } from './story-progression.js?story-progression=1&story-workshop=1&story-throughline=1&story-life=1&autonomous-life=1&relaxed-conditions=1&horizon-links=3';
 import { OUTLOOK_SCHEMA, validateOutlook, validateOutlookSelection } from './story-outlook.js?story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1';
 import { INITIATIVE_SCHEMA, INITIATIVE_RECEIPT_SCHEMA, validateInitiative } from './story-initiative.js?autonomous-life=1&relaxed-conditions=1';
@@ -89,6 +90,8 @@ WORKING_PLAN_SCHEMA.properties.openings.items.properties.futureEntry = object({
 WORKING_PLAN_SCHEMA.properties.outlook = OUTLOOK_SCHEMA;
 WORKING_PLAN_SCHEMA.properties.initiative = INITIATIVE_SCHEMA;
 WORKING_PLAN_SCHEMA.properties.initiativeReceipt = INITIATIVE_RECEIPT_SCHEMA;
+// Optional only for historical saved plans. New director responses use this map.
+WORKING_PLAN_SCHEMA.properties.storyStructure = STORY_STRUCTURE_SCHEMA;
 
 export function playableDevelopments(plan) {
     return [...plan.developments, ...(plan.openings || []).map(opening => {
@@ -103,6 +106,12 @@ export function playableDevelopments(plan) {
 
 export function validateWorkingPlan(plan, check, playerNames = []) {
     check(plan, WORKING_PLAN_SCHEMA, '$.plan');
+    if (plan.storyStructure) {
+        validateStoryStructure(plan.storyStructure, check, playerNames);
+        if (plan.developments.length || plan.consequences.length || ['trajectories', 'openings', 'outlook', 'goal', 'futureEntryVersion'].some(key => Object.hasOwn(plan, key))) {
+            throw Error('Story structure cannot mix with legacy scene preparation');
+        }
+    }
     if (plan.rpUnderstanding) {
         const rp = plan.rpUnderstanding;
         if (rp.basis === 'original' && (rp.canonIntent !== 'not-applicable' || rp.divergence !== 'not-applicable')) {
@@ -151,10 +160,11 @@ export function validateWorkingPlan(plan, check, playerNames = []) {
 // guards. This is not another prompt or another provider response.
 export function workingPlanProjection(plan) {
     const playable = playableDevelopments(plan);
+    const arcs = plan.storyStructure?.nodes.filter(node => node.kind === 'arc' && node.status === 'active');
     return {
         campaign: plan.direction,
-        episode: { subject: 'Current working plan', status: plan.developments.some(d => d.kind === 'arc') ? 'open' : 'finished',
-            boundary: plan.developments.filter(d => d.kind === 'arc').map(d => d.question).join('; ') || 'No foreground undertaking; quiet play and other directions remain available.' },
+        episode: { subject: 'Current working plan', status: arcs?.length || plan.developments.some(d => d.kind === 'arc') ? 'open' : 'finished',
+            boundary: (arcs ? arcs.length ? 'Active arcs remain open; participation and outcomes belong to play.' : '' : plan.developments.filter(d => d.kind === 'arc').map(d => d.question).join('; ')) || 'No foreground undertaking; quiet play and other directions remain available.' },
         rpBrief: plan.threads,
         developments: playable.map(d => ({ id: d.id,
             initiative: { owner: d.owner, control: d.control, aim: d.question },
@@ -169,6 +179,7 @@ export function validateWorkingState(state, check) {
     if (state.workingPlanVersion !== WORKING_PLAN_VERSION) throw Error('Unknown working-plan version');
     validateWorkingPlan(state.workingPlan, check);
     validateGoalSelection(state.workingPlan, state.selectedMaterial);
+    if (state.workingPlan.storyStructure && state.selectedMaterial?.length) throw Error('Story structure cannot carry legacy writer material');
     for (const [key, value] of Object.entries(workingPlanProjection(state.workingPlan))) {
         if (JSON.stringify(state[key]) !== JSON.stringify(value)) throw Error(`Working-plan projection mismatch: ${key}`);
     }

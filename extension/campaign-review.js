@@ -1,5 +1,5 @@
-import { campaignUsable, validCampaignState, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3';
-import { WORKING_PLAN_VERSION, workingPlanProjection } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1&rp-departures=1&horizon-links=3';
+import { campaignUsable, validCampaignState, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1';
+import { WORKING_PLAN_VERSION, workingPlanProjection } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1';
 
 // Review coverage is not writer freshness or permission to restore old facts.
 // A rewind/rebuild can invalidate the active plan while an older, fully verified
@@ -22,9 +22,10 @@ export function campaignReconsideration(state, context) {
     if (context.rebuild) return null;
     const candidate = findCheckpoint(state, context, true);
     if (!candidate?.workingPlan || candidate.source.referenceHash === context.referenceHash) return null;
-    const { rpUnderstanding, throughline, storyLife, trajectories } = candidate.workingPlan;
+    const { rpUnderstanding, throughline, storyLife, trajectories, storyStructure } = candidate.workingPlan;
     return structuredClone({ ...(rpUnderstanding ? { rpUnderstanding } : {}),
-        ...(throughline ? { throughline } : {}), ...(storyLife ? { storyLife } : {}), trajectories: trajectories || [] });
+        ...(throughline ? { throughline } : {}), ...(storyLife ? { storyLife } : {}),
+        ...(storyStructure ? { storyStructure: { ...storyStructure, selection: [] } } : {}), trajectories: trajectories || [] });
 }
 
 function findCheckpoint(state, context, reconsider) {

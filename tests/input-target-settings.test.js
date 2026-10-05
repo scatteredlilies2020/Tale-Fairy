@@ -25,8 +25,16 @@ test('fresh installs and the old 8k default get the 10k ingestion target', () =>
     for (const stored of [{}, { contextSettingsVersion: 13, maxPromptTokens: 8000 }]) {
         const scope = settingsHarness(stored);
         assert.equal(scope.getSettings().maxPromptTokens, 10000);
-        assert.equal(scope.getSettings().contextSettingsVersion, 14);
+        assert.equal(scope.getSettings().contextSettingsVersion, 15);
     }
+});
+
+test('old forced immediate review settings migrate once; later choices remain deliberate', () => {
+    const scope = settingsHarness({ contextSettingsVersion: 14, fullReviewInterval: 3 });
+    assert.equal(scope.getSettings().fullReviewInterval, 12);
+    scope.getSettings().fullReviewInterval = 4;
+    assert.equal(settingsHarness(scope.getSettings()).getSettings().fullReviewInterval, 4);
+    assert.equal(settingsHarness({ contextSettingsVersion: 14, fullReviewInterval: 18 }).getSettings().fullReviewInterval, 18);
 });
 
 test('custom smaller targets and later explicit 8k choices survive reload', () => {

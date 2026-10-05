@@ -1,6 +1,7 @@
-import { CampaignRuntime } from './campaign-runtime.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3';
-import { campaignReviewInterval, campaignRefreshInterval } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3';
+import { CampaignRuntime } from './campaign-runtime.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1';
+import { campaignReviewInterval, campaignRefreshInterval } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1';
 import { boundedPlannerResponse, PLANNER_RESPONSE_TIMEOUT_MS } from './planner-progress.js?v=1&review-checkpoint=1&story-workshop=1&request-policy=2&story-director=1';
+import { storyReviewInterval, storyChangeSignal } from './story-structure.js?story-structure=1';
 
 export const CAMPAIGN_ATTEMPT_KEY = 'taleFairyCampaignAttempt';
 const turns = messages => messages.filter(message => !message.is_user).length;
@@ -8,7 +9,7 @@ const turns = messages => messages.filter(message => !message.is_user).length;
 // Event-driven scheduling, not a timer or a critic loop. A persisted attempt
 // reserves one source before sending, including across reloads and failures.
 export class CampaignSession {
-    constructor({ read, prepare, generate, commit, fingerprint, saveAttempt, interval = () => 8, runPass,
+    constructor({ read, prepare, generate, commit, fingerprint, saveAttempt, interval = () => 12, runPass,
         onProgress = () => {}, timeoutMs = PLANNER_RESPONSE_TIMEOUT_MS, evidenceRestart = false }) {
         Object.assign(this, { read, fingerprint, saveAttempt, interval });
         this.controller = null;
@@ -54,7 +55,7 @@ export class CampaignSession {
                 await saveAttempt(this.attempt);
                 guard();
                 onProgress(correction.recoveryReason ? `Correcting planner response automatically · request ${this.attempt.requestCount}`
-                    : correction.stage === 'director' ? 'Planning story possibilities and NPC/world activity'
+                    : correction.stage === 'director' ? 'Updating story map and public context'
                     : correction.stage === 'horizon' ? 'Preparing wider story possibilities · stage 1 of 2'
                     : correction.stage === 'scene' ? 'Preparing current scene and selecting material · stage 2 of 2' : 'Preparing planner request');
                 const result = await boundedPlannerResponse(() => generate(prompt, system, schema,
@@ -114,9 +115,12 @@ export class CampaignSession {
             // A failure reserves this source, not the next full review cycle.
             // Recover only after new accepted assistant play; no same-source,
             // user-only, timer, or reload retry. Stop retains normal cadence.
-            const dueAfter = previous.status === 'failed' ? 1 : previous.status === 'stopped'
+            const structured = snapshot.state?.workingPlan?.storyStructure;
+            const earlyReview = structured && previous.status !== 'failed' && previous.status !== 'stopped'
+                && storyChangeSignal(snapshot.messages.slice(previous.messageCount));
+            const dueAfter = previous.status === 'failed' ? 1 : structured ? Math.max(1, storyReviewInterval(this.interval(), snapshot.state) - 1) : previous.status === 'stopped'
                 ? campaignReviewInterval(this.interval()) : campaignRefreshInterval(this.interval());
-            if (key === previous.key || !replacementRepair && unchangedBasis && turns(snapshot.messages) - previous.assistantCount < dueAfter) {
+            if (key === previous.key || !replacementRepair && unchangedBasis && !earlyReview && turns(snapshot.messages) - previous.assistantCount < dueAfter) {
                 return Promise.resolve({ accepted: false, state: snapshot.state, skipped: 'not-due' });
             }
         }

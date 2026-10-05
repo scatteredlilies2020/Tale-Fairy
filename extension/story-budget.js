@@ -97,10 +97,11 @@ export const STORY_GOAL_CONTRACT = 'Work toward story_goal through NPC/world act
 
 export const STORY_GOALS_CONTRACT = 'story_goals are coexisting writer aims, not the player\'s obligations or guaranteed endings. Long-term direction, near-term goals and independent side threads need not converge. Advance what fits through observable NPC/world activity, not repeated offers or new prerequisites. Do not service every goal each reply, rotate on a timer, or derail quiet interaction. Respect access, player choice and the user\'s prose, tone and pacing. Check newer play: stop pursuing any goal reached, declined or contradicted; other unfinished goals may continue. A near-term completion need not end its wider direction or spawn a replacement. Unselected threads are not resolved, and preparation is not history.';
 
-export function storyContextPayload(material, authored, { legacyContracts = false, followThrough = true } = {}) {
+export function storyContextPayload(material, authored, { legacyContracts = false, followThrough = true, storyStructure = false } = {}) {
     if (!material.length && !authored.length) return '';
     return `<tale-fairy-context>\n${storyContextJson({
-        ...(material.length ? { ...(legacyContracts && followThrough ? { development_contract: DEVELOPMENT_CONTRACT } : {}), possible_developments: material } : {}),
+        ...(storyStructure && material.length ? { preparation_basis: 'Story expectations, not established events or player obligations. Current play takes precedence. Ignore completed, declined or contradicted developments.' } : {}),
+        ...(material.length ? { ...(legacyContracts && followThrough ? { development_contract: DEVELOPMENT_CONTRACT } : {}), [storyStructure ? 'story_context' : 'possible_developments']: material } : {}),
         ...(legacyContracts && material.some(entry => entry.story_goal) ? { story_goal_contract: STORY_GOAL_CONTRACT } : {}),
         ...(legacyContracts && material.some(entry => entry.story_goals?.length) ? { story_goals_contract: STORY_GOALS_CONTRACT } : {}),
         ...(authored.length ? { author_instructions: authored } : {}),

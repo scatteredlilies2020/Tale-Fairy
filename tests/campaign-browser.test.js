@@ -198,12 +198,186 @@ function browser(send = async args => plannedResponse(args), initialState = defa
 const directorReply = prompt => {
     const prefix = JSON.parse(prompt).new_id_prefix;
     const id = `${prefix}kitchen`;
-    return { direction: 'Explore music, friendships and neighborhood life.', upsert: [{ id,
-        title: 'An open neighborhood supper', owner: 'Community cooks', idea: 'Cooks exchange recipes at shared suppers.',
-        next: 'Neighbors try each other\'s recipes.', later: 'A communal recipe book could connect households.' }],
-    retire: [], select: [{ id, route: 'local', when: '', action: 'The cooks open a neighborhood supper for visitors.',
-        next: 'Shared meals could bring unfamiliar neighbors together.', later: 'Neighbors could contribute to a communal recipe book.' }] };
+    return { direction: 'Explore music, friendships and neighborhood life.', reviewAfter: 12, upsert: [{ id,
+        kind: 'thread', parentId: '', status: 'proposed', links: [], title: 'An open neighborhood supper', owner: 'Community cooks',
+        interpretation: 'Shared cooking brings neighbors together.', stakes: 'Family recipes and belonging.',
+        expectation: 'Recipe trials and a communal recipe book could connect households.' }],
+    retire: [], select: [{ id, title: 'An open neighborhood supper', context: [],
+        interpretation: 'Shared meals can bridge unfamiliar households.', stakes: 'Belonging and different tastes.',
+        expectation: 'Neighbors exchange recipes and develop friendships over shared suppers.', development: '' }] };
 };
+
+// Keep a retained story rather than introducing it again on every review.
+const retainedDirectorReply = prompt => {
+    const input = JSON.parse(prompt), raw = directorReply(prompt);
+    const retained = input.previous_preparation.nodes[0];
+    if (retained) { raw.upsert = []; raw.select[0].id = retained.id; }
+    return raw;
+};
+const appendPlay = (h, count = 1) => {
+    for (let i = 0; i < count; i++) h.context.chat.push({ is_user: false, name: 'Mara', mes: `Quiet conversation ${h.context.chat.length}.` });
+};
+
+test('story map reviews on a wider horizon and retains private stories across quiet play and reload', async () => {
+    const h = browser(async ({ prompt }) => envelope(retainedDirectorReply(prompt)), defaultState(), { director: true });
+    h.settings.fullReviewInterval = 12;
+    await h.scope.analyzeCampaignNow();
+    const nodes = structuredClone(h.state().campaignPreparation.workingPlan.storyStructure.nodes);
+    for (let i = 0; i < 10; i++) {
+        appendPlay(h); await h.scope.analyzeCampaignNow();
+        assert.equal(h.requests.length, 1);
+        assert.match(h.prepare().payload, /neighborhood supper/);
+    }
+    h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata)); h.scope.campaignSession = null;
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 1, 'reload spends no request');
+    appendPlay(h); await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 2, 'refresh begins one reply before public guidance expires');
+    assert.equal(h.state().campaignPreparation.revision, 2);
+    assert.deepEqual(h.state().campaignPreparation.workingPlan.storyStructure.nodes, nodes);
+    assert.equal(JSON.parse(h.requests[1].prompt).previous_preparation.nodes[0].id, nodes[0].id);
+});
+
+test('AI review horizon can shorten the configured maximum without next-turn polling', async () => {
+    const h = browser(async ({ prompt }) => envelope({ ...retainedDirectorReply(prompt), reviewAfter: 4 }), defaultState(), { director: true });
+    h.settings.fullReviewInterval = 20;
+    await h.scope.analyzeCampaignNow();
+    appendPlay(h, 2); await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 1);
+    appendPlay(h); await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 2);
+    assert.equal(h.state().campaignPreparation.workingPlan.storyStructure.reviewAfter, 4);
+});
+
+for (const change of [
+    { is_user: true, name: 'Neri', mes: 'OOC: The supper idea is declined. Follow the harbor story.' },
+    { is_user: false, name: 'Mara', mes: '***\nAt the harbor, the morning shift begins.' },
+]) test(`story map withholds cached guidance immediately after ${change.is_user ? 'explicit direction' : 'a scene boundary'}`, async () => {
+    const h = browser(async ({ prompt }) => h.requests.length === 1 ? envelope(directorReply(prompt))
+        : envelope({ ...retainedDirectorReply(prompt), upsert: [], retire: [JSON.parse(prompt).previous_preparation.nodes[0].id], select: [] }), defaultState(), { director: true });
+    h.settings.fullReviewInterval = 12;
+    await h.scope.analyzeCampaignNow();
+    assert.match(h.prepare().payload, /neighborhood supper/);
+    h.context.chat.push(change);
+    assert.equal(h.prepare().payload, '', 'new direction takes priority before a paid review finishes');
+    h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata)); h.scope.campaignSession = null;
+    assert.equal(h.prepare().payload, '', 'reload cannot restore the old packet');
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 2, 'explicit changes bypass the long cadence');
+    assert.equal(h.state().campaignPreparation.workingPlan.storyStructure.nodes[0].status, 'retired');
+    assert.equal(h.prepare().payload, '');
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 2, 'the accepted change is reviewed once');
+});
+
+test('failed story-map reviews keep private state but expired public guidance stays absent after reload and retry', async () => {
+    let fail = false;
+    const h = browser(async ({ prompt }) => { if (fail) throw Error('provider unavailable'); return envelope(retainedDirectorReply(prompt)); }, defaultState(), { director: true });
+    h.settings.fullReviewInterval = 12;
+    await h.scope.analyzeCampaignNow();
+    const before = structuredClone(h.state().campaignPreparation);
+    h.prepare(); fail = true; appendPlay(h, 11);
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 2);
+    assert.match(h.prepare().payload, /neighborhood supper/, 'the remaining safety horizon is still available');
+    h.scope.campaignSession = null;
+    h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata));
+    await h.scope.analyzeCampaignNow();
+    h.context.chat.push({ is_user: true, name: 'Neri', mes: 'We keep talking.' });
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 2, 'neither reload nor user-only input retries a failed request');
+    appendPlay(h);
+    assert.equal(h.prepare().payload, '', 'public guidance expires even when the provider is unavailable');
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 3, 'new accepted assistant play permits one recovery attempt');
+    assert.deepEqual(h.state().campaignPreparation, before);
+    h.scope.campaignSession = null;
+    assert.equal(h.prepare().payload, '');
+    assert.equal(h.prepare('regenerate').payload.includes('neighborhood supper'), true, 'retry uses its actual pre-reply source, still inside the horizon');
+    appendPlay(h);
+    assert.equal(h.prepare('regenerate').payload, '', 'a retry beyond that horizon cannot resurrect the cached packet');
+    fail = false; await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 4);
+    assert.equal(h.state().campaignPreparation.revision, 2);
+    assert.match(h.prepare().payload, /neighborhood supper/);
+});
+
+test('reference changes offer only private story-map reconsideration and reserve new ids', async () => {
+    const h = browser(async ({ prompt }) => envelope(directorReply(prompt)), defaultState(), { director: true });
+    await h.scope.analyzeCampaignNow();
+    const old = structuredClone(h.state().campaignPreparation);
+    h.context.card = { scenario: 'The harbor community, not the earlier concert premise.' };
+    assert.equal(h.prepare().payload, '');
+    await h.scope.analyzeCampaignNow();
+    const input = JSON.parse(h.requests[1].prompt);
+    assert.deepEqual(input.previous_preparation.nodes, []);
+    assert.deepEqual(input.reconsider_horizon.nodes, old.workingPlan.storyStructure.nodes);
+    assert.equal(input.reconsider_horizon.selection, undefined);
+    assert.equal(input.coverage.reviewed_before, 0);
+    assert.equal(input.new_id_prefix, 'r2-');
+    assert.equal(h.state().campaignPreparation.workingPlan.storyStructure.nodes[0].id, 'r2-kitchen');
+    assert.equal(validCampaignState(h.state().campaignPreparation), true);
+});
+
+test('regeneration restores the source-aligned story map, never discarded-response private planning', async () => {
+    const h = browser(async ({ prompt }) => {
+        const raw = retainedDirectorReply(prompt);
+        if (prompt.includes('DISCARDED_ONLY_SECRET')) raw.direction = 'DISCARDED_ONLY_SECRET';
+        return envelope(raw);
+    }, defaultState(), { director: true });
+    await h.scope.analyzeCampaignNow();
+    const before = h.prepare().payload;
+    h.context.chat.push({ is_user: false, name: 'Mara', mes: 'DISCARDED_ONLY_SECRET' });
+    await h.scope.analyzeCampaignNow({ manual: true });
+    assert.equal(h.state().campaignPreparation.revision, 2);
+    h.scope.deferReplacementPlanning(h.context);
+    assert.equal(h.prepare('regenerate').payload, before);
+    await h.scope.repairDeferredReplacementPlan();
+    assert.equal(h.requests.length, 2, 'valid pre-reply map needs no replacement call');
+    assert.doesNotMatch(h.prepare('regenerate').payload, /DISCARDED_ONLY_SECRET/);
+});
+
+test('legacy proposals migrate whole and their old planning state remains archived', async () => {
+    const legacy = browser(async ({ spec }) => {
+        if (spec.schema.name === HORIZON_SCHEMA.name) {
+            const raw = workshopReply(), node = raw.progression.upsert[0];
+            node.focus = 'x'.repeat(240); node.experience = 'y'.repeat(1000);
+            node.next.change = 'a'.repeat(600); node.later.change = 'b'.repeat(600);
+            return envelope(raw);
+        }
+        return envelope(sceneReply());
+    }, defaultState(), { split: true });
+    await legacy.scope.analyzeCampaignNow();
+    const old = structuredClone(legacy.state().campaignPreparation);
+    assert.equal(old.revision, 1);
+    const h = browser(async ({ prompt }) => envelope(retainedDirectorReply(prompt)), legacy.state(), { director: true });
+    h.context.chatMetadata = structuredClone(legacy.context.chatMetadata);
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 1);
+    const saved = h.state().campaignPreparation;
+    assert.equal(saved.revision, 2, h.statuses.join('\n'));
+    assert.equal(validCampaignState(saved), true);
+    assert.equal(saved.workingPlan.storyStructure.nodes[0].title, 'x'.repeat(240));
+    assert.equal(saved.workingPlan.storyStructure.nodes[0].interpretation, 'y'.repeat(1000));
+    assert.equal(saved.workingPlan.storyStructure.nodes[0].expectation, `${'a'.repeat(600)} ${'b'.repeat(600)}`);
+    assert.deepEqual(saved.archive.at(-1).workingPlan, old.workingPlan);
+    assert.match(h.prepare().payload, /neighborhood supper/);
+    assert.doesNotMatch(h.prepare().payload, /xxx|yyy|aaa|bbb|trajectory|initiative|If /);
+});
+
+test('story-map inspector shows private organization and separates the actual writer preview', async () => {
+    const h = browser(async ({ prompt }) => envelope(directorReply(prompt)), defaultState(), { director: true });
+    await h.scope.analyzeCampaignNow();
+    const scope = vm.createContext({});
+    vm.runInContext(source.match(/function workingPlanSummary\([^]*?^}/m)[0], scope);
+    const summary = scope.workingPlanSummary(h.state().campaignPreparation);
+    assert.match(summary, /PRIVATE STORY MAP/);
+    assert.match(summary, /Interpretation:.*\nStakes:.*\nExpectation:/);
+    assert.match(summary, /PUBLIC CONTEXT.*actual writer packet/);
+    assert.match(summary, /REVIEW HORIZON.*12 accepted AI replies/);
+    assert.match(summary, /Expired guidance is withheld/);
+    assert.doesNotMatch(summary, /stage [12]|STORY GOALS|PRIVATE PROGRESSION|Reached when/);
+});
 
 test('active story director uses one compact request, retains the selected model controls and commits writer material', async () => {
     const h = browser(async ({ prompt }) => envelope(directorReply(prompt)), defaultState(), { director: true });
@@ -217,7 +391,7 @@ test('active story director uses one compact request, retains the selected model
     assert.equal(h.settings.analysisModel, 'test');
     assert.equal(h.settings.analysisReasoningMode, 'low');
     assert.equal(prompt.previous_plan, undefined);
-    assert.deepEqual(Array.from(prompt.previous_preparation.possibilities), []);
+    assert.deepEqual(Array.from(prompt.previous_preparation.nodes), []);
     assert.equal(prompt.rpUnderstanding, undefined);
     assert.equal(h.state().campaignPreparation.revision, 1);
     assert.equal(validCampaignState(h.state().campaignPreparation), true);
