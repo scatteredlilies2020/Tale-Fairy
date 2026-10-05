@@ -170,19 +170,21 @@ export function campaignUsable(state, { chatId, referenceHash, messages, fingerp
         && s.fingerprint === fingerprint(messages.slice(0, s.messageCount)));
 }
 
-// Prefix validity protects durable aims/evidence, not the shelf life of a
-// scene-facing suggestion. This is response age, never elapsed fictional time.
+// Review cadence remains separate from the lifetime of conditional futures.
+// Legacy scene-facing suggestions still expire by accepted response count.
 export function campaignReviewInterval(value = 4) {
     return Math.min(4, Math.max(1, Math.floor(Number(value) || 4)));
 }
 
 export function campaignMaterialUsable(state, context, interval = 4) {
     return campaignUsable(state, context)
-        && context.messages.slice(state.source.messageCount).filter(message => !message.is_user).length < campaignReviewInterval(interval);
+        && (state?.workingPlan?.futureEntryVersion === 1
+            || context.messages.slice(state.source.messageCount).filter(message => !message.is_user).length < campaignReviewInterval(interval));
 }
 
-// Scene freshness and durable, explicitly selected possibilities have separate
-// lifetimes. Never promote private trajectories or legacy scene prose here.
+// Versioned packets contain only conditional entries and selected futures.
+// Keep their prerequisites together until a review revises or withdraws them.
+// Legacy packets can retain horizons after their scene-facing prose expires.
 export function campaignWriterUsable(state, context, interval = 4) {
     return campaignUsable(state, context) && (campaignMaterialUsable(state, context, interval)
         || campaignHorizonMaterial(state).length > 0);

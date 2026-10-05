@@ -2,6 +2,8 @@
 
 **Status: implemented locally in v0.16.1 — see [verification and remaining limitations](future-entries-0.16.1.md).**
 
+The v0.16.2 follow-up preserves complete conditional future packets across turns and failed reviews. See [persistent entries and verification](persistent-entries-0.16.2.md).
+
 The proposal and baseline evidence below are retained as the original handoff.
 
 This file is self-contained and safe to transfer without chat logs, settings, or credentials.

@@ -261,21 +261,27 @@ test('active host keeps a selected outlook through quiet updates, reload and pre
     assert.equal(h.requests.length, 6, 'matching future-bearing checkpoint needs no replacement repair');
 });
 
-test('expired local material retains only selected futures across failures, reload, preview and regenerate', async () => {
+test('conditional entries and futures persist across twelve replies, failed refreshes, reload, preview and regenerate', async () => {
     let fail = false;
     const h = browser(args => { if (fail) throw Error('provider unavailable'); return outlookResponse(args); }, defaultState(), { split: true });
     await h.scope.analyzeCampaignNow();
     const saved = structuredClone(h.state().campaignPreparation);
-    assert.match(h.prepare().payload, /available_circumstances/);
-    for (let i = 0; i < 3; i++) h.context.chat.push({ is_user: false, name: 'Mara', mes: `Accepted later play ${i}.` });
+    const original = h.prepare().payload;
+    assert.match(original, /available_circumstances/);
     fail = true;
-    await h.scope.analyzeCampaignNow();
+    for (let i = 0; i < 12; i++) {
+        h.context.chat.push({ is_user: true, name: 'Neri', mes: 'I keep talking here.' },
+            { is_user: false, name: 'Mara', mes: `Accepted later play ${i}.` });
+        await h.scope.analyzeCampaignNow();
+        assert.equal(h.prepare().payload, original);
+    }
     const packet = h.prepare();
     assert.equal(packet.preparedUsable, true);
-    assert.equal(packet.horizonsOnly, true);
+    assert.equal(packet.horizonsOnly, false);
+    assert.match(packet.payload, /available_circumstances.*If the ensemble later visits the neighborhood kitchen/);
     assert.match(packet.payload, /mid_term_possibilities.*handwritten recipes/);
     assert.match(packet.payload, /long_term_possibilities.*illustrated supper book/);
-    assert.doesNotMatch(packet.payload, /available_circumstances|contrasting arrangements|supper cards|PRIVATE|goal|trajectoryId/);
+    assert.doesNotMatch(packet.payload, /contrasting arrangements|PRIVATE|goal|trajectoryId/);
     h.scope.generationGuideSelection = null;
     assert.equal(h.scope.buildPromptPayload(h.state(), h.scope.guideSelectionOptions(h.state())), packet.payload,
         'preview uses the same scoped material without a frozen generation');
@@ -285,11 +291,12 @@ test('expired local material retains only selected futures across failures, relo
     assert.equal(h.prepare().payload, packet.payload);
     h.context.chat.push({ is_user: false, name: 'Mara', mes: 'Another accepted response.' });
     h.scope.deferReplacementPlanning(h.context);
+    const calls = h.requests.length;
     assert.equal(h.prepare('regenerate').payload, packet.payload);
-    assert.equal(h.requests.length, 3, 'fallback and cache replay spend no provider calls');
+    assert.equal(h.requests.length, calls, 'preview, reload and cache replay spend no provider calls');
 });
 
-for (const change of ['edit', 'reference', 'clear', 'legacy']) test(`expired future fallback rejects ${change}`, async () => {
+for (const change of ['edit', 'reference', 'clear', 'legacy']) test(`retained future packet rejects ${change}`, async () => {
     const h = browser(outlookResponse, defaultState(), { split: true });
     await h.scope.analyzeCampaignNow();
     for (let i = 0; i < 3; i++) h.context.chat.push({ is_user: false, name: 'Mara', mes: `Later play ${i}` });
@@ -311,10 +318,15 @@ for (const change of ['edit', 'reference', 'clear', 'legacy']) test(`expired fut
     assert.equal(h.prepare().payload, '');
 });
 
-test('cached full material is re-scoped when the scene lifetime shortens, without reviving it on reload', async () => {
+test('legacy scene packets still expire when their lifetime shortens, without reviving on reload', async () => {
     const h = browser(outlookResponse, defaultState(), { split: true });
     h.settings.fullReviewInterval = 4;
     await h.scope.analyzeCampaignNow();
+    const state = h.state();
+    delete state.campaignPreparation.workingPlan.futureEntryVersion;
+    for (const opening of state.campaignPreparation.workingPlan.openings) delete opening.futureEntry;
+    assert.equal(validCampaignState(state.campaignPreparation), true);
+    h.context.chatMetadata = saveState(h.context.chatMetadata, state);
     for (let i = 0; i < 3; i++) h.context.chat.push({ is_user: false, name: 'Mara', mes: `Later play ${i}` });
     assert.match(h.prepare().payload, /available_circumstances/);
     h.settings.fullReviewInterval = 3;
@@ -331,6 +343,81 @@ test('cached full material is re-scoped when the scene lifetime shortens, withou
     assert.equal(generationContextEntries({ entries: [scoped] }).length, 1);
     scoped.payload = campaignPayload(scoped.plannerState.campaignPreparation);
     assert.equal(generationContextEntries({ entries: [scoped] }).length, 0, 'a horizon-only flag cannot authenticate a full packet');
+});
+
+test('a saved horizon-only packet authenticates and restores its conditional entry under current policy', async () => {
+    const h = browser(outlookResponse, defaultState(), { split: true });
+    await h.scope.analyzeCampaignNow();
+    for (let i = 0; i < 8; i++) h.context.chat.push({ is_user: false, name: 'Mara', mes: `Later accepted play ${i}.` });
+    const original = h.prepare().payload;
+    const packet = structuredClone(h.context.chatMetadata[GENERATION_CONTEXT_KEY].entries.at(-1));
+    packet.selection.horizonsOnly = true;
+    packet.payload = campaignPayload(packet.plannerState.campaignPreparation, [], { horizonsOnly: true });
+    assert.equal(generationContextEntries({ entries: [packet] }).length, 1);
+    h.context.chatMetadata[GENERATION_CONTEXT_KEY] = JSON.parse(JSON.stringify({ entries: [packet] }));
+    const calls = h.requests.length;
+    assert.equal(h.prepare().payload, original);
+    assert.equal(h.prepare().horizonsOnly, false);
+    assert.equal(h.requests.length, calls);
+});
+
+test('a pending refresh leaves the full conditional packet immediately usable and Stop preserves it', async () => {
+    let pending = false, release;
+    const h = browser(async args => {
+        if (pending && args.spec.schema.name === HORIZON_SCHEMA.name) await new Promise(resolve => { release = resolve; });
+        return outlookResponse(args);
+    }, defaultState(), { split: true });
+    await h.scope.analyzeCampaignNow();
+    const saved = structuredClone(h.state().campaignPreparation), original = h.prepare().payload;
+    for (let i = 0; i < 6; i++) h.context.chat.push({ is_user: false, name: 'Mara', mes: 'Accepted local play continues.' });
+    pending = true;
+    const work = h.scope.analyzeCampaignNow();
+    await settle();
+    assert.equal(typeof release, 'function');
+    assert.equal(h.prepare().payload, original);
+    h.scope.interruptAnalysis('Stop the pending review.', 'Stopped');
+    await work;
+    release();
+    await settle();
+    assert.deepEqual(h.state().campaignPreparation, saved);
+    assert.equal(h.prepare().payload, original);
+    assert.equal(h.requests.length, 3);
+});
+
+for (const change of ['progress', 'refusal', 'lost-access', 'closure']) test(`successful review updates retained selection for ${change}`, async () => {
+    let changed = false;
+    const h = browser(args => {
+        const response = outlookResponse(args);
+        if (!changed || args.spec.schema.name === HORIZON_SCHEMA.name) return response;
+        const value = JSON.parse(response.choices[0].message.content);
+        if (change === 'progress') {
+            value.plan.openings[0].futureEntry = { prerequisite: 'After the first shared cooking visit,',
+                possibility: 'the neighbors can compare the recipe pages they have contributed.' };
+            value.outlook = { action: 'replace', reason: 'The first shared visit is finished.', material: [{
+                trajectoryId: value.plan.openings[0].trajectoryId,
+                developing: 'The contributed recipes can be tested and annotated together.',
+                lasting: 'Later visits can complete an illustrated book with the tested recipes.',
+            }] };
+        } else {
+            value.plan.openings = [];
+            value.plan.goal = value.plan.goal.filter(row => row.subjectId !== 'r1-kitchen');
+            value.outlook = { action: 'clear', reason: `Accepted play establishes ${change}.`, material: [] };
+        }
+        return envelope(value);
+    }, defaultState(), { split: true });
+    await h.scope.analyzeCampaignNow();
+    const original = h.prepare().payload;
+    for (let i = 0; i < 6; i++) h.context.chat.push({ is_user: false, name: 'Mara', mes: 'Accepted local play continues.' });
+    assert.equal(h.prepare().payload, original);
+    h.context.chat.push({ is_user: true, name: 'Neri', mes: `The shared future has changed through ${change}.` });
+    changed = true;
+    await h.scope.analyzeCampaignNow();
+    const packet = h.prepare().payload;
+    assert.notEqual(packet, original);
+    if (change === 'progress') {
+        assert.match(packet, /After the first shared cooking visit/);
+        assert.doesNotMatch(packet, /If the ensemble later visits|handwritten supper cards/);
+    } else assert.equal(packet, '');
 });
 
 test('replacement recovers a source-valid archived packet without rolling back the live revision or spending calls', async () => {
