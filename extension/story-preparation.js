@@ -1,20 +1,20 @@
 // Two creative responsibilities, one transaction. Wider preparation never sees
 // the local task list or previous writer packet; scene selection cannot edit it.
-import { storyInput, storyPass, STORY_RESPONSE_SCHEMA, nextPlanRevision, plannerInputLimit, PLANNER_OUTPUT_LIMIT } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1';
-import { CAMPAIGN_MARKER, check } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1';
-import { mergeProgression, PROGRESSION_PATCH_SCHEMA, THROUGHLINE_SCHEMA, STORY_LIFE_SCHEMA } from './story-progression.js?story-progression=1&story-workshop=1&story-throughline=1&story-life=1&autonomous-life=1';
-import { validateWorkingPlan, planTokens } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1';
+import { storyInput, storyPass, STORY_RESPONSE_SCHEMA, nextPlanRevision, plannerInputLimit, PLANNER_OUTPUT_LIMIT } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1';
+import { CAMPAIGN_MARKER, check } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1';
+import { mergeProgression, PROGRESSION_PATCH_SCHEMA, THROUGHLINE_SCHEMA, STORY_LIFE_SCHEMA } from './story-progression.js?story-progression=1&story-workshop=1&story-throughline=1&story-life=1&autonomous-life=1&relaxed-conditions=1';
+import { validateWorkingPlan, planTokens } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1';
 import { storyInputTokens, fitStoryContext } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1';
 import { fitPlannerContext } from './planner-context.js?soft-targets=1&story-map=1&story-goal=2&story-throughline=1&story-life=1';
-import { OUTLOOK_REVIEW_SCHEMA, reviewOutlook, composeOutlookMaterial } from './story-outlook.js?story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1';
+import { OUTLOOK_REVIEW_SCHEMA, reviewOutlook, composeOutlookMaterial } from './story-outlook.js?story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1';
 export { nextPlanRevision, plannerInputLimit, PLANNER_OUTPUT_LIMIT };
-import { materialHorizons } from './selected-material.js?v=0.14.36&rp-plot=1&story-goal=2&story-horizons=1&story-outlook=1&story-life=1&autonomous-life=1';
-import { INITIATIVE_REVIEW_SCHEMA, reviewInitiative } from './story-initiative.js?autonomous-life=1';
+import { materialHorizons } from './selected-material.js?v=0.14.36&rp-plot=1&story-goal=2&story-horizons=1&story-outlook=1&story-life=1&autonomous-life=1&relaxed-conditions=1';
+import { INITIATIVE_REVIEW_SCHEMA, reviewInitiative } from './story-initiative.js?autonomous-life=1&relaxed-conditions=1';
 
 export const HORIZON_TARGET = 1400;
 export const SCENE_TARGET = 900;
 const object = properties => ({ type: 'object', additionalProperties: false, required: Object.keys(properties), properties });
-export const HORIZON_SCHEMA = { name: 'tale_fairy_horizon_v4', value: object({
+export const HORIZON_SCHEMA = { name: 'tale_fairy_horizon_v5', value: object({
     rpUnderstanding: structuredClone(STORY_RESPONSE_SCHEMA.value.properties.plan.properties.rpUnderstanding),
     throughline: structuredClone(THROUGHLINE_SCHEMA),
     storyLife: structuredClone(STORY_LIFE_SCHEMA),
@@ -23,14 +23,14 @@ export const HORIZON_SCHEMA = { name: 'tale_fairy_horizon_v4', value: object({
 HORIZON_SCHEMA.value.properties.progression.properties.upsert.items.required.push('experience');
 HORIZON_SCHEMA.value.properties.progression.properties.upsert.items.required.push('connection');
 const possibility = HORIZON_SCHEMA.value.properties.progression.properties.upsert.items.properties;
-possibility.focus.description = 'Name a specific situation, undertaking or journey.';
-possibility.experience.description = 'Specify the place, people and activity or discovery.';
+possibility.focus.description = 'Name the situation, activity or journey.';
+possibility.experience.description = 'Briefly describe the people or process, activity and source of interest. Leave incidental details open.';
 // The base schema shares next/later objects. Keep their descriptions distinct.
 possibility.next = structuredClone(possibility.next);
 possibility.later = structuredClone(possibility.later);
 possibility.next.properties.change.description = 'Specify the next experience, including a fitting recurrence.';
 possibility.later.properties.change.description = 'Specify a farther experience; escalation is optional.';
-export const SCENE_SCHEMA = { name: 'tale_fairy_scene_v7', value: structuredClone(STORY_RESPONSE_SCHEMA.value) };
+export const SCENE_SCHEMA = { name: 'tale_fairy_scene_v8', value: structuredClone(STORY_RESPONSE_SCHEMA.value) };
 SCENE_SCHEMA.value.properties.plan.required.push('openings', 'futureEntryVersion');
 SCENE_SCHEMA.value.properties.plan.properties.openings.items.required.push('futureEntry');
 SCENE_SCHEMA.value.properties.plan.properties.openings.items.properties.circumstance.description = 'Private scene facts and unresolved work used to assess access.';
@@ -53,7 +53,7 @@ currentMaterial.properties.subjectIds.maxItems = 2;
 // Keep the empty field for the common response/commit contract and old saves.
 SCENE_SCHEMA.value.properties.selected_material.maxItems = 0;
 
-const PLANNER_LANGUAGE = 'Use plain, specific language: name people, places and actions. Omit stock phrases, vague promises and repetition. The writing preset controls prose, tone and pacing.';
+const PLANNER_LANGUAGE = 'Use plain, concise language. Give enough substance to make a possibility interesting: who or what is involved and what begins or changes. Leave incidental props, exact gestures, dialogue and execution open. Omit stock phrases, vague promises and repetition. The writing preset controls prose, tone and pacing.';
 const PLANNER_EVIDENCE = 'Source references, user corrections and accepted play govern compatibility. Accepted play records enactment; references supply premises. Memory and summaries are fallible recall; missing context proves no absence or resolution. Preparation establishes no events, player choices or character knowledge.';
 
 export const HORIZON_SYSTEM = `${CAMPAIGN_MARKER}
@@ -69,7 +69,7 @@ storyLife: distinguish premise, currentEpisode and continuingLife (relationships
 
 throughline: [] or one {focus, basis, trajectoryIds} linking one or two trajectories. Prepare up to three trajectories: arcs, independent episodes or ordinary life. Arcs have motivated actors, possible developments and room for resolution. Ordinary activities can recur without transformation or an arc payoff.
 
-Each trajectory gives focus, owner (NPC/group/world process), basis distinguishing premises from inventions, drive, experience and connection (independent/continuation/recurrence). Specify the first experience and distinct next/later experiences with necessary when conditions. Recurrence supplies another experience with modest variation. NPCs can initiate and finish their own work; player participation is required only for joint actions. Proposals prescribe no player choice, outcome or schedule.
+Each trajectory gives focus, owner (NPC/group/world process), basis distinguishing premises from inventions, drive, experience and connection (independent/continuation/recurrence). Sketch the first experience and distinct next/later possibilities. when names only a genuine dependency, broadly; use empty text if none. Leave the route between experiences open rather than detailing each step. Recurrence supplies another experience with modest variation. NPCs can initiate and finish their own work; player participation is required only for joint actions. Proposals prescribe no player choice, outcome or schedule.
 
 previous_horizon contains proposals. horizon_review=orient revisits source, opening and choices; maintain checks that orientation against new play. progression.upsert creates/revises whole trajectories; retire withdraws with a reason; omission preserves. Keep useful unfinished futures across pauses and scene changes. Revise narrow or redundant preparation against the broader premise. Preserve ids for the same undertaking; new work uses new_id_prefix. storyLife/throughline reference merged trajectories. Refused work stays withdrawn unless accepted play changes interest or access. Reply count establishes neither progress nor expiry.
 
@@ -89,9 +89,9 @@ plan: replace direction/threads, up to four witnessed consequences and four deve
 
 Return futureEntryVersion: 1 and up to two openings, separate from developments. Each links trajectoryId to private circumstance/access and public futureEntry. access.route=none means inaccessible. Renew routes for their own time/place. Later travel or contact can be conditional without being chosen or known now. Proximity reveals no secrets.
 
-futureEntry.prerequisite states necessary time/place/participation conditions; possibility describes the forthcoming experience. Independent beginnings need no current-topic link. Preserve refusal, distance, timing and knowledge boundaries. Respect quiet play; unfinished conversation alone does not block independent activity. Public material contains concrete possibilities, not recaps, private motives, access reasoning or writing instructions.
+futureEntry.prerequisite names a broad encounter condition only where needed; use empty text if none. Keep real timing, distance and participation dependencies, without inventing an exact cue, location, clock time or checklist. possibility briefly describes the forthcoming experience and its source of interest, leaving its execution open. Independent beginnings need no current-topic link. Preserve refusal and knowledge boundaries. Respect quiet play; unfinished conversation alone does not block independent activity. Public material contains story possibilities, not recaps, private motives, access reasoning or writing instructions.
 
-initiative_review selects one NPC/world action through a renewed opening. material: {id, trajectoryId, owner, prerequisite, action}; match the trajectory owner and use new_id_prefix for new ids. Describe observable action without directing the player. Choose an independent beginning, recurrence or arc development without waiting for a user request. keep/material=[] retains an unintroduced move; replace supplies new/revised material; withdraw/material=[] allows refusal, lost access or quiet. introduced requires exact NEW accepted-message index/span evidence that the previous move entered play; material may supply a new id or []. Other actions require evidence=[]. Introduction is not arc completion. Check accepted play to avoid replay; conditions use fictional circumstances, never reply counts.
+initiative_review selects one NPC/world initiative through a renewed opening. material: {id, trajectoryId, owner, prerequisite, action}; match the trajectory owner and use new_id_prefix for new ids. action briefly describes what the owner begins or changes, without directing the player or specifying each gesture. prerequisite follows the same broad-condition rule; it may be empty. Choose an independent beginning, recurrence or arc development without waiting for a user request. keep/material=[] retains an unintroduced move; replace supplies new/revised material; withdraw/material=[] allows refusal, lost access or quiet. introduced requires exact NEW accepted-message index/span evidence of the initiative entering play; incidental details need not match word for word. material may supply a new id or []. Other actions require evidence=[]. Introduction is not arc completion. Check accepted play to avoid replay; conditions use fictional circumstances, never reply counts.
 
 goal: private NPC/world aims linked to local ids or opening trajectoryIds, with scope and observable reachedWhen; [] is valid. Removed developments need exits: paused/dropped withdraw; closed/changed require exact supplied accepted-message index/span evidence. Retained ids cannot exit. Rebuilds and dropped openings need no exits. New/changed consequences need observations; unchanged verified facts carry.
 
@@ -103,7 +103,7 @@ Target ${SCENE_TARGET} tokens for local work and 600 for the combined public sel
 `;
 
 // Used for request invalidation, not sent as a third prompt/schema.
-export const PREPARATION_SCHEMA = { name: 'tale_fairy_preparation_v3', horizon: HORIZON_SCHEMA, scene: SCENE_SCHEMA };
+export const PREPARATION_SCHEMA = { name: 'tale_fairy_preparation_v4', horizon: HORIZON_SCHEMA, scene: SCENE_SCHEMA };
 export const PREPARATION_SYSTEM = HORIZON_SYSTEM + '\n' + SCENE_SYSTEM;
 const horizonOf = plan => ({ ...(plan.rpUnderstanding ? { rpUnderstanding: plan.rpUnderstanding } : {}),
     ...(plan.throughline ? { throughline: plan.throughline } : {}), ...(plan.storyLife ? { storyLife: plan.storyLife } : {}), trajectories: plan.trajectories || [] });

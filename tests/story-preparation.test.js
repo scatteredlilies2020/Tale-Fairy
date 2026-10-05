@@ -318,6 +318,50 @@ test('an initiative can launch ordinary life without requiring a larger selected
     assert.doesNotMatch(campaignPayload(result.state), /mid_term_possibilities|long_term_possibilities/);
 });
 
+test('unconditional future and initiative survive composition, save/load and pending review', async () => {
+    const value = initiatingScene(), wider = horizon();
+    wider.progression.upsert[0].next.when = '';
+    wider.progression.upsert[0].later.when = '';
+    value.plan.openings[0].futureEntry = { prerequisite: '', possibility: 'An orchard cook shares her preservation craft.' };
+    value.initiative_review.material[0].prerequisite = '';
+    value.initiative_review.material[0].action = 'The cook shares her preservation craft.';
+    const result = await run(await stuck(), [wider, value]);
+    assert.equal(result.accepted, true, result.error);
+    assert.equal(result.calls.length, 2, 'No repair request needed for absent dependencies');
+    assert.equal(result.state.selectedMaterial[0].available, value.plan.openings[0].futureEntry.possibility);
+    assert.deepEqual(result.state.selectedMaterial[0].initiative, { prerequisite: '', action: 'The cook shares her preservation craft.' });
+    const packet = campaignPayload(result.state);
+    const publicMaterial = JSON.parse(packet.split('\n')[1]).possible_developments[0];
+    assert.equal(publicMaterial.available_circumstances, value.plan.openings[0].futureEntry.possibility);
+    assert.deepEqual(publicMaterial.next_world_initiative, result.state.selectedMaterial[0].initiative);
+    const restored = loadPlannerState(JSON.parse(JSON.stringify(saveState({}, { ...defaultPlannerState(), campaignPreparation: result.state })))).campaignPreparation;
+    assert.equal(validCampaignState(restored), true);
+    assert.equal(campaignPayload(restored), packet);
+    const keep = structuredClone(value);
+    keep.initiative_review = { action: 'keep', reason: 'Still available without an extra dependency.', material: [], evidence: [] };
+    keep.outlook = { action: 'keep', reason: 'The broader possibilities are unchanged.', material: [] };
+    const next = await run(restored, [unchangedHorizon(), keep]);
+    assert.equal(next.accepted, true, next.error);
+    assert.equal(campaignPayload(next.state), packet);
+});
+
+test('broad entry conditions retain real travel and timing dependencies in the writer packet', async () => {
+    const value = initiatingScene();
+    const prerequisite = 'During a later visit to Cinderwick.';
+    value.plan.openings[0].futureEntry.prerequisite = prerequisite;
+    value.initiative_review.material[0].prerequisite = prerequisite;
+    const result = await run(await stuck(), [horizon(), value]);
+    assert.equal(result.accepted, true, result.error);
+    assert.equal(result.state.selectedMaterial[0].available, `${prerequisite}\n${value.plan.openings[0].futureEntry.possibility}`);
+    assert.equal(result.state.selectedMaterial[0].initiative.prerequisite, prerequisite);
+    assert.match(campaignPayload(result.state), /During a later visit to Cinderwick/);
+    value.plan.openings[0].access.route = 'none';
+    value.plan.openings[0].futureEntry.prerequisite = '';
+    value.initiative_review.material[0].prerequisite = '';
+    const blocked = await run(await stuck(), [horizon(), value, value]);
+    assert.equal(blocked.accepted, false, 'An empty condition cannot bypass inaccessible-route validation');
+});
+
 test('pending initiative survives routine review, then a witnessed introduction removes its handoff without completing the arc', async () => {
     let result = await run(await stuck(), [horizon(), initiatingScene()]);
     const pending = structuredClone(result.state.workingPlan.initiative);

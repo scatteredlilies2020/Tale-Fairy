@@ -1,12 +1,12 @@
 // Candidate single-call campaign preparation; host integration is opt-in.
 // Owns proposals only: accepted history always comes from the conversation.
 import { playableSituations, storyMaterial, validateStoredRealization } from './undertaking-lifecycle.js?v=0.14.34';
-import { validateSelectedMaterial, selectedMaterialPacket } from './selected-material.js?v=0.14.36&rp-plot=1&story-goal=2&story-horizons=1&story-outlook=1&story-life=1&autonomous-life=1';
+import { validateSelectedMaterial, selectedMaterialPacket } from './selected-material.js?v=0.14.36&rp-plot=1&story-goal=2&story-horizons=1&story-outlook=1&story-life=1&autonomous-life=1&relaxed-conditions=1';
 import { RP_BRIEF_SCHEMA } from './rp-brief.js';
 import { validateBackground } from './background-progress.js?v=0.14.34&story-bridge=1';
 import { estimateTokenCount } from './token-budget.js';
 import { fitStoryContext, storyContextPayload } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1';
-import { validateWorkingState } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1';
+import { validateWorkingState } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1';
 
 // Matches the existing host's planner-request marker so request interception
 // cannot mistake this internal pass for RP and inject the guide into itself.
@@ -90,7 +90,10 @@ export function check(value, schema, at = '$') {
         if (schema.uniqueItems && new Set(value.map(v => JSON.stringify(v))).size !== value.length) throw Error(`${at}: duplicates`);
         value.forEach((v, i) => check(v, schema.items, `${at}[${i}]`));
     } else if (schema.type === 'string') {
-        if (typeof value !== 'string' || !value.trim() || value.length > schema.maxLength) throw Error(`${at}: nonblank text up to ${schema.maxLength} characters required`);
+        const nonblank = schema.minLength !== 0;
+        if (typeof value !== 'string' || nonblank && !value.trim() || value.length > schema.maxLength) {
+            throw Error(`${at}: ${nonblank ? 'nonblank ' : ''}text up to ${schema.maxLength} characters required`);
+        }
     } else if (!Number.isSafeInteger(value) || value < schema.minimum) throw Error(`${at}: invalid integer`);
 }
 

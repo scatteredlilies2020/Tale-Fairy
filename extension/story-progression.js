@@ -5,7 +5,10 @@ const object = properties => ({ type: 'object', additionalProperties: false, req
 const list = (items, maxItems) => ({ type: 'array', maxItems, items });
 // Safety ceilings, not drafting targets. Concrete preparation needs room for
 // complete conditions and substance; the workshop has its own total soft target.
-const stage = object({ when: text(300), change: text(600) });
+const stage = object({
+    when: { ...text(300), minLength: 0, description: 'Broad dependency if this experience needs one; otherwise empty. No exact activation cue or invented condition.' },
+    change: text(600),
+});
 export const TRAJECTORIES_SCHEMA = list(object({
     id: text(80), focus: text(240), owner: text(160), basis: text(400), drive: text(300),
     next: stage, later: stage,

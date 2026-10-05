@@ -1,9 +1,9 @@
 // Bounded creative state, not a second continuity database. Historical evidence
 // and replaced plans belong in local archives, never in this request snapshot.
 import { conservativeTokenCount } from './token-budget.js';
-import { TRAJECTORIES_SCHEMA, validateTrajectories, THROUGHLINE_SCHEMA, validateThroughline, STORY_LIFE_SCHEMA, validateStoryLife } from './story-progression.js?story-progression=1&story-workshop=1&story-throughline=1&story-life=1&autonomous-life=1';
-import { OUTLOOK_SCHEMA, validateOutlook, validateOutlookSelection } from './story-outlook.js?story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1';
-import { INITIATIVE_SCHEMA, INITIATIVE_RECEIPT_SCHEMA, validateInitiative } from './story-initiative.js?autonomous-life=1';
+import { TRAJECTORIES_SCHEMA, validateTrajectories, THROUGHLINE_SCHEMA, validateThroughline, STORY_LIFE_SCHEMA, validateStoryLife } from './story-progression.js?story-progression=1&story-workshop=1&story-throughline=1&story-life=1&autonomous-life=1&relaxed-conditions=1';
+import { OUTLOOK_SCHEMA, validateOutlook, validateOutlookSelection } from './story-outlook.js?story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1';
+import { INITIATIVE_SCHEMA, INITIATIVE_RECEIPT_SCHEMA, validateInitiative } from './story-initiative.js?autonomous-life=1&relaxed-conditions=1';
 
 export const WORKING_PLAN_VERSION = 1;
 // Historical export names are retained for callers; these are sizing targets,
@@ -79,8 +79,8 @@ WORKING_PLAN_SCHEMA.properties.openings = list(object({
 // Current scene grounding and access reasoning never supply the new surface.
 WORKING_PLAN_SCHEMA.properties.futureEntryVersion = { type: 'integer', enum: [1] };
 WORKING_PLAN_SCHEMA.properties.openings.items.properties.futureEntry = object({
-    prerequisite: { ...text(300), description: 'Only the fictional time, place or participation condition needed to encounter this future. Eventual access does not mean it happens now.' },
-    possibility: { ...text(700), description: 'Concrete forthcoming encounter, undertaking or changed circumstance added beyond accepted play. Not current status, unfinished immediate work, access reasoning or writer instructions.' },
+    prerequisite: { ...text(300), minLength: 0, description: 'Broad time, place or participation condition only where needed; empty if none. Preserve real dependencies without an exact cue or checklist. Eventual access does not mean it happens now.' },
+    possibility: { ...text(700), description: 'Brief forthcoming encounter, activity or change beyond accepted play. Include its source of interest; leave incidental details and execution open. No recap, access reasoning or writer instructions.' },
 });
 WORKING_PLAN_SCHEMA.properties.outlook = OUTLOOK_SCHEMA;
 WORKING_PLAN_SCHEMA.properties.initiative = INITIATIVE_SCHEMA;
@@ -92,7 +92,8 @@ export function playableDevelopments(plan) {
         if (!trajectory) throw Error('Opening requires a retained trajectory');
         return { id: trajectory.id, kind: 'emerging', owner: trajectory.owner, control: 'world',
             question: trajectory.focus, initiative: opening.circumstance,
-            resolution: trajectory.next.when, beyond: trajectory.next.change, access: opening.access };
+            resolution: trajectory.next.when.trim() ? trajectory.next.when : trajectory.next.change,
+            beyond: trajectory.next.change, access: opening.access };
     })];
 }
 
@@ -111,9 +112,8 @@ export function validateWorkingPlan(plan, check, playerNames = []) {
         if (new Set(rows.map(row => row.id)).size !== rows.length) throw Error('Duplicate working-plan id');
     }
     const openings = plan.openings || [];
-    if (plan.futureEntryVersion === 1 && openings.some(row => !row.futureEntry
-        || !row.futureEntry.prerequisite.trim() || !row.futureEntry.possibility.trim())) {
-        throw Error('Versioned openings require a separate, nonempty future entry');
+    if (plan.futureEntryVersion === 1 && openings.some(row => !row.futureEntry || !row.futureEntry.possibility.trim())) {
+        throw Error('Versioned openings require a separate, nonempty future possibility');
     }
     const openingIds = openings.map(row => row.trajectoryId);
     if (new Set(openingIds).size !== openings.length

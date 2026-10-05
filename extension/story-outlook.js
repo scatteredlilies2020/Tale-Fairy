@@ -1,6 +1,6 @@
 // A selected future is not the local scene's next task. Its authored, public
 // possibilities persist independently; every review must renew their access.
-import { initiativeSurface } from './story-initiative.js?autonomous-life=1';
+import { initiativeSurface } from './story-initiative.js?autonomous-life=1&relaxed-conditions=1';
 const text = maxLength => ({ type: 'string', minLength: 1, maxLength });
 const object = properties => ({ type: 'object', additionalProperties: false, required: Object.keys(properties), properties });
 export const OUTLOOK_SCHEMA = { type: 'array', maxItems: 2, items: object({
@@ -71,7 +71,7 @@ export function composeOutlookMaterial(current, plan) {
     if (routes.some(route => !route)) throw Error('Selected outlook has no accessible route');
     if (plan.futureEntryVersion === 1) {
         return [{ subjectIds: routes.map(route => route.id),
-            available: routes.map(route => `${route.futureEntry.prerequisite}\n${route.futureEntry.possibility}`).join('\n\n'),
+            available: routes.map(route => [route.futureEntry.prerequisite, route.futureEntry.possibility].filter(text => text.trim()).join('\n')).join('\n\n'),
             ...(plan.initiative?.length ? { initiative: initiativeSurface(plan) } : {}),
             ...(plan.outlook?.length ? outlookHorizons(plan) : {}) }];
     }

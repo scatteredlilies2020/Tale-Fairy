@@ -3,7 +3,10 @@ import { SPAN_WITNESS_SCHEMA } from './accepted-witnesses.js?v=0.14.34&partial-e
 
 const text = maxLength => ({ type: 'string', minLength: 1, maxLength });
 const object = properties => ({ type: 'object', additionalProperties: false, required: Object.keys(properties), properties });
-export const INITIATIVE_SURFACE_SCHEMA = object({ prerequisite: text(300), action: text(500) });
+export const INITIATIVE_SURFACE_SCHEMA = object({
+    prerequisite: { ...text(300), minLength: 0, description: 'Broad encounter condition only where needed. Empty means no additional prerequisite; retain real timing, distance or participation dependencies.' },
+    action: { ...text(500), description: 'NPC/world initiative in one brief sentence. Describe what begins or changes; leave incidental props, exact gestures, dialogue and execution open.' },
+});
 export const INITIATIVE_SCHEMA = { type: 'array', maxItems: 1, items: object({
     id: text(80), trajectoryId: text(80), owner: text(160), ...INITIATIVE_SURFACE_SCHEMA.properties,
 }) };
@@ -41,7 +44,7 @@ export function validateInitiative(plan, check, playerNames = []) {
     if (entry.owner !== trajectory.owner || playerNames.some(name => name.trim().toLocaleLowerCase() === entry.owner.trim().toLocaleLowerCase())) {
         throw Error('Selected initiative must belong to its NPC/world trajectory owner, never the player');
     }
-    if (!entry.prerequisite.trim() || !entry.action.trim()) throw Error('Selected initiative needs nonempty conditions and action');
+    if (!entry.action.trim()) throw Error('Selected initiative needs a nonempty action');
     if (plan.initiativeReceipt?.some(receipt => receipt.id === entry.id)) throw Error('An ended initiative cannot be selected again');
 }
 

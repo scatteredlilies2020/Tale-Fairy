@@ -1,5 +1,5 @@
 // One integrated horizon packet, not one miniature plot per tracked subject.
-import { INITIATIVE_SURFACE_SCHEMA } from './story-initiative.js?autonomous-life=1';
+import { INITIATIVE_SURFACE_SCHEMA } from './story-initiative.js?autonomous-life=1&relaxed-conditions=1';
 const text = description => ({ type: 'string', minLength: 1, maxLength: 900, description });
 export const SELECTED_MATERIAL_SCHEMA = { type: 'array', maxItems: 1,
     description: 'Zero or one integrated story possibility. Story substance only; no instructions, mood, tone, pacing or prose directives.',
