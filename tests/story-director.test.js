@@ -61,6 +61,59 @@ test('ordinary reviews preserve unused stories and renew the public selection fr
     assert.doesNotMatch(result.input.prompt, /planEvidence|selectedMaterial|story_context|initiative_review|observations/);
 });
 
+test('omitted empty story fields are filled locally without losing stories or public selections', async () => {
+    const raw = response();
+    delete raw.upsert[0].parentId;
+    delete raw.upsert[0].links;
+    delete raw.select[0].development;
+    const result = await run(emptyCampaign(), raw);
+    assert.equal(result.accepted, true, result.error);
+    assert.equal(nodes(result).length, 1);
+    assert.equal(nodes(result)[0].parentId, '');
+    assert.deepEqual(nodes(result)[0].links, []);
+    assert.equal(selections(result).length, 1);
+    assert.equal(selections(result)[0].development, '');
+    assert.deepEqual(result.plannerNotices, []);
+    assert.equal(result.responseAdjustments.length, 3);
+    assert.match(campaignPayload(result.state), /recipe exchanges/);
+});
+
+test('omitted relationships on updates preserve known parents and links', async () => {
+    const raw = response();
+    raw.upsert = [proposal('r1-food', { kind: 'arc' }),
+        proposal('r1-kitchen', { parentId: 'r1-food', links: ['r1-food'] })];
+    raw.select[0].context = [{ kind: 'arc', title: 'Cooking together' }];
+    const first = await run(emptyCampaign(), raw);
+    assert.equal(first.accepted, true, first.error);
+    const update = proposal('r1-kitchen', { title: 'Shared cooking revisited' });
+    delete update.parentId; delete update.links;
+    const result = await run(first.state, { ...raw, upsert: [update] });
+    assert.equal(result.accepted, true, result.error);
+    const changed = nodes(result).find(node => node.id === update.id);
+    assert.equal(changed.parentId, 'r1-food');
+    assert.deepEqual(changed.links, ['r1-food']);
+    assert.equal(changed.title, update.title);
+    assert.deepEqual(result.plannerNotices, []);
+});
+
+test('explicit invalid values and missing substantive fields are still withheld', async () => {
+    for (const raw of [
+        { ...response(), upsert: [proposal('r1-kitchen', { parentId: null })] },
+        { ...response(), upsert: [proposal('r1-kitchen', { links: null })] },
+        { ...response(), select: [selected('r1-kitchen', { development: null })] },
+    ]) {
+        const result = await run(emptyCampaign(), raw);
+        assert.equal(result.accepted, true, result.error);
+        assert.deepEqual(selections(result), []);
+        assert.ok(result.plannerNotices.length);
+    }
+    const raw = response(); delete raw.upsert[0].stakes;
+    const result = await run(emptyCampaign(), raw);
+    assert.equal(result.accepted, true, result.error);
+    assert.deepEqual(nodes(result), []);
+    assert.match(result.plannerNotices[0], /missing stakes/);
+});
+
 test('several active arcs and threads share a saga without fixed levels or convergence', async () => {
     const raw = response();
     raw.upsert = [proposal('r1-kitchen', { parentId: 'r1-food', status: 'active', links: ['r1-music'] }),
@@ -176,13 +229,12 @@ test('complete syntax mistakes repair locally; cutoff and invalid horizons prese
     }
 });
 
-test('rebuilds reserve ids and archive the old map without carrying public guidance', async () => {
+test('rebuilds reserve ids without retaining the old map or archives', async () => {
     const first = await run();
     const result = await run(first.state, { ...response(), upsert: [proposal('r2-fresh')], select: [selected('r2-fresh')] }, { resetPlan: true });
     assert.equal(result.accepted, true, result.error);
     assert.deepEqual(nodes(result).map(row => row.id), ['r2-fresh']);
-    assert.equal(result.state.archive[0].rebuild, true);
-    assert.equal(result.state.archive[0].preparation.revision, 1);
+    assert.deepEqual(result.state.archive, []);
     assert.deepEqual(JSON.parse(result.input.prompt).previous_preparation.nodes, []);
 });
 

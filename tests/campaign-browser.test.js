@@ -182,7 +182,7 @@ function browser(send = async args => plannedResponse(args), initialState = defa
     }
     Object.assign(h.scope, { buildStoryEvidence, campaignEvidenceMessages, campaignReviewWindow, completionText, readCampaignContinuity, readEvidenceProviders, evidenceRevisionKey,
         loadState: loadPlannerState, defaultState: defaultPlannerState,
-        plannerStorage: () => ({ getItem: key => shared.get(key), setItem: (key, value) => shared.set(key, value) }),
+        plannerStorage: () => ({ getItem: key => shared.get(key), setItem: (key, value) => shared.set(key, value), removeItem: key => shared.delete(key) }),
         withPlannerTabLock: (_id, task) => task(),
         requestAnalysisOnce: async (prompt, signal, meta, spec) => {
             requests.push({ prompt, signal, meta, spec });
@@ -412,6 +412,22 @@ test('active director withholds an unavailable selection and still saves useful 
     assert.match(h.prepare().payload, /neighborhood supper/);
     assert.doesNotMatch(h.prepare().payload, /retired-possibility/);
     assert.match(h.statuses.join('\n'), /Selection withheld/);
+    assert.match(h.statuses.join('\n'), /Preparation saved with withheld material/);
+    assert.doesNotMatch(h.statuses.join('\n'), /Campaign preparation ready/);
+});
+
+test('active director accepts the omitted empty fields reported by ordinary planner providers', async () => {
+    const h = browser(async ({ prompt }) => {
+        const raw = directorReply(prompt);
+        delete raw.upsert[0].parentId; delete raw.upsert[0].links; delete raw.select[0].development;
+        return envelope(raw);
+    }, defaultState(), { director: true });
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 1);
+    assert.equal(h.state().campaignPreparation.workingPlan.storyStructure.nodes.length, 1);
+    assert.match(h.prepare().payload, /neighborhood supper/);
+    assert.match(h.statuses.join('\n'), /Campaign preparation ready/);
+    assert.doesNotMatch(h.statuses.join('\n'), /Story withheld|Selection withheld/);
 });
 
 test('active director reads existing memory once as private context without summarizing or writing it', async () => {
@@ -1190,31 +1206,123 @@ test('a rejected host commit is reported as unsaved work, not an unnecessary pla
     assert.doesNotMatch(h.statuses.at(-1), /No new planning pass needed/);
 });
 
-test('rebuild preserves the original plan on provider failure even above target; only success archives/replaces it', async () => {
+test('full rebuild deletes preparation before requesting and stays empty on failure, including above target', async () => {
     let fail = false;
-    const h = browser(async args => { if (fail) throw Error('Provider offline'); return plannedResponse(args); });
+    const h = browser(async ({ prompt }) => { if (fail) throw Error('Provider offline'); return envelope(directorReply(prompt)); }, defaultState(), { director: true });
     await h.scope.analyzeCampaignNow();
-    const before = structuredClone(h.state().campaignPreparation);
+    h.prepare();
     fail = true;
     await h.scope.rebuildGuideState();
-    assert.deepEqual(h.state().campaignPreparation, before);
+    assert.equal(h.state().campaignPreparation, null);
+    assert.equal(h.state().canonBootstrapPending, true);
+    assert.equal(h.context.chatMetadata[GENERATION_CONTEXT_KEY], null);
     assert.equal(h.requests.length, 2);
-    assert.deepEqual(JSON.parse(h.requests[1].prompt).previous_plan.developments, []);
-    assert.equal(JSON.parse(h.requests[1].prompt).coverage.reviewed_before, 2);
+    assert.deepEqual(JSON.parse(h.requests[1].prompt).previous_preparation.nodes, []);
+    assert.equal(JSON.parse(h.requests[1].prompt).coverage.reviewed_before, 0);
     h.context.chat.push({ is_user: true, name: 'Neri', mes: 'Required new contribution. '.repeat(10000) });
     await h.scope.rebuildGuideState();
-    assert.deepEqual(h.state().campaignPreparation, before);
+    assert.equal(h.state().campaignPreparation, null);
     assert.equal(h.requests.length, 3);
     assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.requestCount, 1);
     assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'failed');
-    assert.match(h.statuses.at(-1), /Previous preparation retained/);
+    assert.match(h.statuses.at(-1), /No preparation available/);
     h.context.chat.pop(); fail = false;
     await h.scope.rebuildGuideState();
     assert.equal(h.requests.length, 4);
-    assert.equal(h.state().campaignPreparation.revision, before.revision + 1);
-    assert.deepEqual(h.state().campaignPreparation.archive[0].preparation, before);
+    assert.equal(h.state().campaignPreparation.revision, 1);
+    assert.deepEqual(h.state().campaignPreparation.archive, []);
+    assert.equal(h.state().canonBootstrapPending, false);
     await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 4, 'successful rebuild does not schedule an immediate ordinary duplicate');
+});
+
+test('full rebuild clears archives, legacy data and retry caches before sending while keeping author preferences', async () => {
+    let rejectRebuild;
+    const h = browser(async ({ prompt }) => h.requests.length === 3
+        ? new Promise((_resolve, reject) => { rejectRebuild = reject; })
+        : envelope(retainedDirectorReply(prompt)), defaultState(), { director: true });
+    await h.scope.analyzeCampaignNow();
+    await h.scope.reevaluateGuideState();
+    assert.equal(h.state().campaignPreparation.archive.length, 1);
+    const previous = h.state();
+    previous.contextLedger = 'OBSOLETE LEDGER';
+    previous.preparedWorld.approach = 'OBSOLETE NOTEBOOK';
+    previous.legacyPreparedWorld = structuredClone(previous.preparedWorld);
+    previous.lastRequestVerification = { chatId: 'story', guidanceBlock: 'OBSOLETE VERIFICATION' };
+    previous.userNotes = [{ kind: 'suggest', text: 'Keep the voyage open.', at: 1 }];
+    previous.campaignInstructions = [{ text: 'Allow quiet friendships.', at: 2 }];
+    previous.pacing.mode = 'linger';
+    h.context.chatMetadata = saveState({ ...h.context.chatMetadata, summary: 'External recall.' }, previous);
+    h.settings.lastProviderBoundVerification = { chatId: 'story', guidanceBlock: 'OBSOLETE VERIFICATION' };
+    h.scope.pendingRequestVerification = h.settings.lastProviderBoundVerification;
+    h.prepare();
+    const rebuilding = h.scope.rebuildGuideState();
+    await settle(); await settle();
+    assert.equal(h.requests.length, 3);
+    const cleared = h.state();
+    assert.equal(cleared.campaignPreparation, null);
+    assert.equal(cleared.legacyPreparedWorld, null);
+    assert.equal(cleared.contextLedger, '');
+    assert.equal(cleared.lastRequestVerification, null);
+    assert.equal(h.scope.pendingRequestVerification, null);
+    assert.equal(h.settings.lastProviderBoundVerification, undefined);
+    assert.equal(h.context.chatMetadata[GENERATION_CONTEXT_KEY], null);
+    assert.deepEqual(cleared.userNotes, previous.userNotes);
+    assert.deepEqual(cleared.campaignInstructions, previous.campaignInstructions);
+    assert.equal(cleared.pacing.mode, previous.pacing.mode);
+    assert.equal(h.context.chatMetadata.summary, 'External recall.');
+    const prompt = JSON.parse(h.requests[2].prompt);
+    assert.deepEqual(prompt.previous_preparation, { direction: '', nodes: [] });
+    assert.equal(prompt.coverage.reviewed_before, 0);
+    assert.doesNotMatch(h.requests[2].prompt, /OBSOLETE/);
+    rejectRebuild(Error('Provider offline'));
+    await rebuilding;
+    h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata));
+    h.scope.campaignSession = null;
+    assert.doesNotMatch(h.prepare('regenerate').payload, /neighborhood supper|OBSOLETE/);
+    await h.scope.refreshCurrentPlanIfNeeded();
+    assert.equal(h.requests.length, 3, 'reload keeps the failed rebuild empty without retrying');
+    await h.scope.reevaluateGuideState();
+    assert.equal(h.requests.length, 4);
+    assert.deepEqual(JSON.parse(h.requests[3].prompt).previous_preparation.nodes, []);
+    assert.deepEqual(h.state().campaignPreparation.archive, []);
+    assert.equal(h.state().canonBootstrapPending, false);
+});
+
+test('stopping a full rebuild leaves the deleted notebook empty', async () => {
+    const h = browser(async ({ prompt, signal }) => h.requests.length === 1 ? envelope(directorReply(prompt))
+        : new Promise((_resolve, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true })),
+    defaultState(), { director: true });
+    await h.scope.analyzeCampaignNow();
+    const rebuilding = h.scope.rebuildGuideState();
+    await settle(); await settle();
+    assert.equal(h.requests.length, 2);
+    assert.equal(h.state().campaignPreparation, null);
+    h.scope.interruptAnalysis('User stopped rebuild.', 'Stopped');
+    await rebuilding;
+    assert.equal(h.state().campaignPreparation, null);
+    assert.equal(h.state().canonBootstrapPending, true);
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'stopped');
+    assert.doesNotMatch(h.prepare().payload, /neighborhood supper/);
+});
+
+test('Guide now retains the previous map and retry history when the provider fails', async () => {
+    let fail = false;
+    const h = browser(async ({ prompt }) => {
+        if (fail) throw Error('Provider offline');
+        return envelope(retainedDirectorReply(prompt));
+    }, defaultState(), { director: true });
+    await h.scope.analyzeCampaignNow();
+    h.prepare();
+    const previous = structuredClone(h.state().campaignPreparation);
+    const cache = structuredClone(h.context.chatMetadata[GENERATION_CONTEXT_KEY]);
+    fail = true;
+    await h.scope.reevaluateGuideState();
+    assert.deepEqual(h.state().campaignPreparation, previous);
+    assert.deepEqual(structuredClone(h.context.chatMetadata[GENERATION_CONTEXT_KEY]), cache);
+    assert.equal(JSON.parse(h.requests[1].prompt).previous_preparation.nodes.length, 1);
+    assert.match(h.statuses.at(-1), /Previous preparation retained/);
+    assert.match(h.prepare().payload, /neighborhood supper/);
 });
 
 test('host requires a complete bounded snapshot and preserves unfinished initiative on failure', async () => {
@@ -1329,19 +1437,18 @@ test('notebook omits absent horizons and labels the RP brief private', () => {
 });
 
 test('rebuild replaces the private brief; delete removes it without touching host summaries or lore', async () => {
-    const h = browser();
+    const h = browser(async ({ prompt }) => envelope(directorReply(prompt)), defaultState(), { director: true });
     h.context.chatMetadata.summary = 'External summary stays.';
     const book = { entries: { 0: { content: 'Unmodified source.' } } };
     h.scope.worldInfoCache.set('Book', book);
     await h.scope.analyzeCampaignNow();
-    const saved = h.state().campaignPreparation;
     await h.scope.rebuildGuideState();
     assert.equal(h.requests.length, 2);
     const input = JSON.parse(h.requests[1].prompt);
-    assert.equal(input.previous_plan.threads, undefined);
-    assert.equal(input.previous_plan.developments.length, 0);
+    assert.equal(input.previous_preparation.direction, '');
+    assert.deepEqual(input.previous_preparation.nodes, []);
     assert.match(h.requests[1].prompt, /External summary stays/);
-    assert.deepEqual(h.state().campaignPreparation.archive[0].preparation, saved);
+    assert.deepEqual(h.state().campaignPreparation.archive, []);
     await h.emit('WORLD_INFO_ACTIVATED', [{ content: 'Cached surface.' }]);
     await h.scope.resetState();
     assert.equal(h.state().campaignPreparation, null);
@@ -1536,7 +1643,7 @@ test('manual intent during preflight promotes an otherwise not-due pass without 
 
 test('rebuild and author-note replacement wait for lock release before starting their own pass', async () => {
     for (const action of ['rebuild', 'note']) {
-        const h = browser();
+        const h = browser(async ({ prompt }) => envelope(directorReply(prompt)), defaultState(), { director: true });
         let release;
         const locks = browserLocks(h, { release: new Promise(resolve => { release = resolve; }) });
         const running = h.scope.analyzeCampaignNow({ manual: true });
@@ -1554,7 +1661,7 @@ test('rebuild and author-note replacement wait for lock release before starting 
         assert.equal(locks.requests, 2);
         assert.ok(!h.statuses.some(status => /another.*page|save failed/.test(status)), h.statuses.join('\n'));
         if (action === 'note') assert.equal(h.state().campaignInstructions[0].text, 'Keep the journey open.');
-        else assert.ok(h.state().campaignPreparation.archive.some(entry => entry.rebuild));
+        else assert.deepEqual(h.state().campaignPreparation.archive, []);
     }
 });
 
@@ -2230,7 +2337,7 @@ test('input preparation sends required source whole even when it alone exceeds t
 });
 
 test('normal startup migrates legacy data automatically and Rebuild stays single-pass', async () => {
-    const h = browser();
+    const h = browser(async ({ prompt }) => envelope(directorReply(prompt)), defaultState(), { director: true });
     const legacy = { ...defaultState(), contextLedger: 'Old factual ledger retained for inspection.',
         userNotes: [{ kind: 'forbid', text: 'No forced public solo.', at: 1 }] };
     h.context.chatMetadata = saveState({ unrelated: 'keep' }, legacy);
@@ -2242,13 +2349,14 @@ test('normal startup migrates legacy data automatically and Rebuild stays single
     assert.equal(h.state().contextLedger, legacy.contextLedger);
     assert.equal(h.context.chatMetadata.unrelated, 'keep');
     assert.doesNotMatch(h.prepare().payload, /<plot-anchor>/);
-    const before = h.state().campaignPreparation;
     await h.scope.rebuildGuideState();
     assert.equal(h.requests.length, 2);
     assert.equal(h.state().plannerContract, 15);
-    assert.equal(h.state().campaignPreparation.revision, before.revision + 1);
-    assert.deepEqual(h.state().campaignPreparation.archive[0].preparation, before);
-    assert.equal(JSON.parse(h.requests[1].prompt).previous_plan.developments.length, 0);
+    assert.equal(h.state().campaignPreparation.revision, 1);
+    assert.deepEqual(h.state().campaignPreparation.archive, []);
+    assert.deepEqual(JSON.parse(h.requests[1].prompt).previous_preparation.nodes, []);
+    assert.equal(h.state().contextLedger, '');
+    assert.equal(h.state().legacyPreparedWorld, null);
     assert.equal(h.state().userNotes[0].text, 'No forced public solo.');
 });
 

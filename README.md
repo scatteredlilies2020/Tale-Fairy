@@ -28,6 +28,8 @@ Reviews normally span **12 accepted AI replies**. The AI can choose a horizon fr
 
 Planning stays in the background. A failed or pending review preserves the private map, but public guidance expires at its horizon. Reloads and caches cannot extend it. Failure retries require new accepted AI play, not a timer or user-only input. Regeneration uses a verified pre-reply source without treating discarded replies as premises.
 
+**Guide now / Re-evaluate** updates existing preparation. **Full rebuild** first deletes Tale Fairy's generated plans, archives, legacy notebook and cached guidance, then builds fresh from the chat and current references. It preserves pacing and author instructions. If the request fails or is stopped, the old preparation stays deleted. **Delete guide state** clears the notebook without starting a new request.
+
 Complete JSON punctuation errors are repaired locally. Invalid updates, broken hierarchy and unavailable selections are withheld without discarding valid siblings. There are no automatic model correction calls or paid memory-refresh restarts. Requests stop after **60 seconds**. Targets are 10,000 input tokens and about 900 response tokens; output is capped at 2,200 tokens. Writer context is capped at 1,000 tokens; entries are withheld whole rather than clipped.
 
 Existing preparations and author instructions remain readable. The next successful review carries retained proposals into the story map and archives the old plan. Author instructions remain verbatim. No memory rescan or preset edit is needed. Notes under `docs/` describe historical versions.

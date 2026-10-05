@@ -157,14 +157,15 @@
         <h4>Guide controls</h4>
         <div class="living-world-guide-button-row">
           <button class="menu_button" data-action="guide" type="button" title="Refresh context and plans"><i class="fa-solid fa-wand-magic-sparkles"></i> <span data-role="guide-label">Guide now</span></button>
-          <button class="menu_button" data-action="rebuild" type="button" title="Replace the notebook using current chat context"><i class="fa-solid fa-arrows-rotate"></i> Full rebuild</button>
+          <button class="menu_button" data-action="rebuild" type="button" title="Delete all generated plans, archives and cached guidance, then rebuild from current chat context"><i class="fa-solid fa-arrows-rotate"></i> Full rebuild</button>
           <button class="menu_button" data-action="stop" type="button" disabled><i class="fa-solid fa-stop"></i> Stop analysis</button>
           <button class="menu_button" data-action="reset-settings" type="button" title="Restore default settings; keep the notebook"><i class="fa-solid fa-arrow-rotate-left"></i> Reset settings</button>
           <button class="menu_button" data-action="reset" type="button"><i class="fa-solid fa-trash-can"></i> Delete guide state</button>
         </div>
-        <small>Guide now / Re-evaluate refreshes context and plans. Full rebuild replaces the notebook while keeping pacing and author notes. Reset settings keeps the notebook and stored API keys, and resets the selected connection.</small>
+        <small>Guide now / Re-evaluate updates existing plans. Full rebuild deletes generated plans, archives and cached guidance first, keeping pacing and author notes. Failed rebuilds leave the notebook empty.</small>
+        <small>Reset settings keeps the notebook and stored API keys, and resets the selected connection.</small>
         <small>One request updates story possibilities and selects NPC/world activity. Existing memory supplies context; the planner writes no history summary.</small>
-        <small>No automatic correction or memory-refresh calls. Requests stop after 60 seconds and keep previous preparation. Author instructions stay preserved.</small>
+        <small>No automatic correction or memory-refresh calls. Requests stop after 60 seconds. Failed ordinary reviews keep previous preparation; Full rebuild clears it first. Author instructions stay preserved.</small>
         <div class="living-world-guide-grid living-world-guide-note-grid">
           <label>AI-assisted instruction
             <textarea class="text_pole" data-setting="note" rows="3" placeholder="Write naturally. Tale Fairy will understand whether this is a suggestion, correction, canon detail, or hard exclusion."></textarea>

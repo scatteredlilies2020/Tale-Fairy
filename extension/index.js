@@ -1,6 +1,6 @@
 import { sha256 } from '/lib.js';
 import { campaignAuthorInstructions, campaignPayloadBudget, campaignUsable, campaignMaterialUsable, campaignWriterUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1';
-import { directorInput as ownedInput, directorPass as ownedPass, nextPlanRevision, DIRECTOR_SCHEMA as OWNED_SCHEMA, DIRECTOR_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './story-director.js?story-workshop=1&story-horizons=1&story-progression=1&rp-activities=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1';
+import { directorInput as ownedInput, directorPass as ownedPass, nextPlanRevision, DIRECTOR_SCHEMA as OWNED_SCHEMA, DIRECTOR_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './story-director.js?story-workshop=1&story-horizons=1&story-progression=1&rp-activities=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&full-rebuild=1&empty-fields=1';
 import { fitStoryInputBudget } from './story-budget.js?follow-through=1&compaction=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1&horizon-links=3&story-structure=1';
 import { readCampaignContinuity } from './campaign-continuity.js';
 // Keep the public registration URL stable so external adapters share this registry.
@@ -794,7 +794,7 @@ function readCampaignSnapshot() {
     const context = currentContext(), state = loadState(context.chatMetadata), s = getSettings();
     const chatId = String(context.getCurrentChatId?.() || '');
     const replacement = replacementPlanningDeferred(context);
-    const rebuild = campaignHostWork?.chatId === chatId && campaignHostWork.rebuild === true;
+    const rebuild = state.canonBootstrapPending || campaignHostWork?.chatId === chatId && campaignHostWork.rebuild === true;
     const messages = messagesFromChat(context.chat || []);
     const accepted = replacement ? messages.slice(0, context.chatMetadata[REPLACEMENT_PENDING_KEY].messageCount) : messages;
     const evidence = readEvidenceProviders(context, { continuityBridge: globalThis.continuityMemoryBridge,
@@ -989,7 +989,8 @@ async function runCampaignAnalysis(work) {
             const budget = campaignPayloadBudget(saved.campaignPreparation, campaignAuthorInstructions(saved));
             if (budget.omitted) notices.push(`${budget.omitted} oversized writer block(s) withheld; preparation saved`);
             if (budget.authorOverflow) notices.push('saved author instructions exceed the writer budget; shorten them explicitly');
-            renderAnalysisActivity(['Campaign preparation ready', elapsedLabel(Date.now() - work.startedAt), ...notices].join(' · '), false);
+            const ready = result.plannerNotices?.length ? 'Preparation saved with withheld material' : 'Campaign preparation ready';
+            renderAnalysisActivity([ready, elapsedLabel(Date.now() - work.startedAt), ...notices].join(' · '), false);
         }
         else if (result.error) renderAnalysisActivity(`${loadState(currentContext().chatMetadata).campaignPreparation?.revision
             ? 'Previous preparation retained' : 'No preparation available'} · ${result.error}`, false);
@@ -1004,18 +1005,19 @@ async function startCampaignPlanning({ rebuild = false } = {}) {
     const chatId = String(currentContext().getCurrentChatId?.() || '');
     if (!chatId || !getSettings().enabled) return loadState(currentContext().chatMetadata);
     const previousWork = campaignHostWork?.promise || campaignSession?.pending || analysisPromise;
-    interruptAnalysis('Rebuilding plot preparation.', 'Preparing plot events');
+    // Clear and persist the old notebook before any replacement request, even
+    // if it fails or is stopped. Ordinary Guide now retains preparation.
+    const resetting = rebuild ? resetState({ rebuilding: true }) : null;
+    if (!rebuild) interruptAnalysis('Refreshing plot preparation.', 'Preparing plot events');
     const switchSequence = analysisStopSequence;
+    if (resetting) await resetting;
     await cancelDetachedPlannerJobs(chatId);
     if (previousWork) await previousWork.catch(() => {});
     const context = currentContext();
     if (switchSequence !== analysisStopSequence || String(context.getCurrentChatId?.() || '') !== chatId) return loadState(context.chatMetadata);
     const previous = loadState(context.chatMetadata);
-    // Rebuild is request intent, not a destructive preflight state change.
-    // The successful pass archives/replaces preparation under the normal CAS.
     const next = { ...previous, plannerContract: 15,
-        legacyPreparedWorld: previous.legacyPreparedWorld || previous.preparedWorld,
-        canonBootstrapPending: false };
+        legacyPreparedWorld: rebuild ? null : previous.legacyPreparedWorld || previous.preparedWorld };
     context.updateChatMetadata(saveState(context.chatMetadata, next));
     if (typeof context.saveMetadata === 'function') await context.saveMetadata();
     if (switchSequence !== analysisStopSequence || String(currentContext().getCurrentChatId?.() || '') !== chatId) return loadState(currentContext().chatMetadata);
@@ -1690,7 +1692,8 @@ function commitCampaignPreparation(preparation, { stateFingerprint, evidenceKey 
     // Install only preparation. Accepted appends, user notes, pacing and request
     // verification belong to the current host, never the planner's old snapshot.
     const next = { ...previous, plannerContract: 15, campaignPreparation: preparation,
-        legacyPreparedWorld: previous.legacyPreparedWorld || previous.preparedWorld,
+        legacyPreparedWorld: previous.canonBootstrapPending ? null : previous.legacyPreparedWorld || previous.preparedWorld,
+        canonBootstrapPending: false,
         sourceChatId: chatId, sourceMessageCount: preparation.source.messageCount,
         lastAnalysisFingerprint: fingerprintMessages(messages.slice(0, preparation.source.messageCount)),
         lastAnalyzedAt: Date.now(), lastReason: 'Campaign preparation updated in one pass.' };
@@ -2407,7 +2410,8 @@ async function persistClarifiedNote(text, kind) {
 }
 
 function rebuildState(previous = loadState(currentContext().chatMetadata)) {
-    return { ...defaultState(), pacing: previous.pacing, userNotes: previous.userNotes };
+    return { ...defaultState(), pacing: previous.pacing, userNotes: previous.userNotes,
+        campaignInstructions: previous.campaignInstructions };
 }
 
 function rebuildPendingState(context = currentContext()) {
@@ -3145,9 +3149,9 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
     if (guideButton) guideButton.title = analyzed ? 'Refresh context and plans' : 'Prepare plans for this chat';
 
     const analyzedAt = state.lastAnalyzedAt ? new Date(state.lastAnalyzedAt).toLocaleString() : '';
-    const meta = campaign ? `Campaign preparation · ${validCampaignState(state.campaignPreparation) ? `revision ${state.campaignPreparation.revision}` : 'not ready'} · ${analyzedAt || 'no completed pass'}`
-        : state.canonBootstrapPending
+    const meta = state.canonBootstrapPending
         ? 'Full rebuild pending'
+        : campaign ? `Campaign preparation · ${validCampaignState(state.campaignPreparation) ? `revision ${state.campaignPreparation.revision}` : 'not ready'} · ${analyzedAt || 'no completed pass'}`
         : analyzed ? `Tale Fairy v${RUNTIME_VERSION} · ${state.mode} mode · world context updated ${analyzedAt || 'recently'}` : '';
     scratchpadText(board, 'scratchpad-meta', meta, 'No world analysis yet. Run Guide now or Full rebuild.');
     const campaignRecall = campaign ? readCampaignSnapshot().evidence : null;
@@ -3257,8 +3261,13 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
 }
 async function resetState({ rebuilding = false } = {}) {
     activatedStoryContext.clear();
+    generationGuideSelection = null;
     let context = currentContext();
-    context.updateChatMetadata({ ...context.chatMetadata, [GENERATION_CONTEXT_KEY]: null, [REPLACEMENT_PENDING_KEY]: null });
+    const chatId = String(context.getCurrentChatId?.() || '');
+    try { plannerStorage()?.removeItem(`${CAMPAIGN_ATTEMPT_KEY}:${chatId}`); }
+    catch { /* Chat metadata remains authoritative when shared storage is unavailable. */ }
+    context.updateChatMetadata({ ...context.chatMetadata, [GENERATION_CONTEXT_KEY]: null, [REPLACEMENT_PENDING_KEY]: null,
+        [CAMPAIGN_ATTEMPT_KEY]: null });
     context = currentContext();
     if (rebuilding) {
         interruptAnalysis('A Full Rebuild replaced the previous Tale Fairy analysis.', 'Clearing old guide…');
@@ -3459,7 +3468,7 @@ async function mountUI() {
     uiMountPromise = (async () => {
     // Load the template relative to this module so the extension works from
     // third-party/Tale-Fairy as well as any legacy installation directory.
-    const response = await fetch(new URL(`./settings.html?v=${RUNTIME_VERSION}&progress=1&working-plan=1&soft-targets=1&story-map=1&story-goal=2`, import.meta.url));
+    const response = await fetch(new URL(`./settings.html?v=${RUNTIME_VERSION}&progress=1&working-plan=1&soft-targets=1&story-map=1&story-goal=2&full-rebuild=1`, import.meta.url));
     if (!response.ok) {
         throw new Error(`Could not load Tale Fairy settings: ${response.status} ${response.statusText}`);
     }

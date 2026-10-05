@@ -23,6 +23,7 @@ Organize this RP's story. Read its premise, characters, accepted play and memory
 direction states the RP's wider direction in one sentence. Infer its expected experiences and interpret their significance without imposing a theme. Develop its particular interests, relationships, places and independent NPC/world activity. Invent compatible substance before the player asks. Quiet life, discoveries and conflict all have room. Introduce developments or positive or negative interruptions when they serve the story. No quotas, forced escalation or constant interruptions.
 
 Maintain coexisting sagas, arcs and threads. A saga spans related arcs; an arc develops a sustained question; a thread follows a particular concern. Use the scale the RP needs, not mandatory levels. parentId groups smaller stories; empty text makes a root. links connect related stories without merging them. Different active stories need not converge. owner is an NPC, group or world process, never the player. interpretation explains the concern; stakes states what matters; expectation describes the experience and possible development, not a guaranteed result or next-reply script.
+Every upsert includes parentId ("" for a root) and links ([] for no links). Every select includes development ("" for no new opportunity).
 
 previous_preparation is private creative state, not history. upsert fully replaces a record under its existing id; new records use new_id_prefix. Omission preserves it. status is proposed, active, dormant, resolved or retired. Resolve only from accepted play; retire withdraws a proposal without claiming events occurred. Retiring a parent withdraws its descendants. Reassess completion, refusal, contradictions and changed premises. Do not revive a completed introduction, convert success back into an invitation, or retire a story merely because focus moved. Empty updates are valid. Keep the map compact.
 
@@ -79,8 +80,26 @@ export async function directorPass({ state, input, source, generate }) {
         check(raw.direction, DIRECTOR_SCHEMA.value.properties.direction, '$.direction');
         check(raw.reviewAfter, DIRECTOR_SCHEMA.value.properties.reviewAfter, '$.reviewAfter');
         for (const key of ['upsert', 'retire', 'select']) if (!Array.isArray(raw[key])) throw Error(`$.${key}: array required`);
+        const previousNodes = previousStoryNodes(input.previousPlan), previousRows = new Map(previousNodes.map(node => [node.id, node]));
+        const responseAdjustments = [];
+        // Missing empty fields need no creative repair call. Preserve known
+        // relationships on updates; explicitly supplied invalid values still fail.
+        for (const [index, node] of raw.upsert.entries()) {
+            if (!node || typeof node !== 'object' || Array.isArray(node)) continue;
+            const previous = previousRows.get(node.id);
+            for (const [key, fallback] of [['parentId', previous?.parentId ?? ''], ['links', previous?.links ?? []]]) {
+                if (Object.hasOwn(node, key)) continue;
+                node[key] = structuredClone(fallback);
+                responseAdjustments.push(`$.upsert[${index}].${key}`);
+            }
+        }
+        for (const [index, entry] of raw.select.entries()) {
+            if (!entry || typeof entry !== 'object' || Array.isArray(entry) || Object.hasOwn(entry, 'development')) continue;
+            entry.development = '';
+            responseAdjustments.push(`$.select[${index}].development`);
+        }
         const notices = [], rejectedIds = new Set();
-        const nodes = mergeStoryNodes(previousStoryNodes(input.previousPlan), raw.upsert, raw.retire,
+        const nodes = mergeStoryNodes(previousNodes, raw.upsert, raw.retire,
             { check, playerNames: input.playerNames, newIdPrefix: input.newIdPrefix, notices, rejectedIds });
         const rows = new Map(nodes.map(node => [node.id, node]));
         const plan = { direction: raw.direction, threads: raw.direction, consequences: [], developments: [],
@@ -104,7 +123,7 @@ export async function directorPass({ state, input, source, generate }) {
         validateWorkingPlan(plan, check, input.playerNames);
         const projection = workingPlanProjection(plan), selectedMaterial = [];
         if (state.revision !== basisRevision) throw Error('Preparation changed during planning');
-        const archive = input.resetPlan ? [{ preparation: structuredClone(state), rebuild: true }] : structuredClone(state.archive || []);
+        const archive = input.resetPlan ? [] : structuredClone(state.archive || []);
         if (!input.resetPlan && state.revision) archive.push({ revision: state.revision, source: structuredClone(state.source),
             workingPlan: structuredClone(state.workingPlan), planEvidence: structuredClone(state.planEvidence),
             selectedMaterial: structuredClone(state.selectedMaterial), replaced: true });
@@ -112,7 +131,7 @@ export async function directorPass({ state, input, source, generate }) {
             preparationFormat: EVENT_POINTS_FORMAT, workingPlanVersion: WORKING_PLAN_VERSION,
             workingPlan: plan, planEvidence: {}, selectedMaterial };
         if (!validCampaignState(next)) throw Error('Story preparation failed saved-state validation');
-        return { accepted: true, state: next, result, plannerNotices: notices, budget: {
+        return { accepted: true, state: next, result, plannerNotices: notices, responseAdjustments, budget: {
             input: result.plannerInputTokens ?? input.inputTokens, plan: planTokens(plan), selected: planTokens(selectedMaterial),
         }, budgetNotices: [], outputOverrun: 0 };
     } catch (error) {
