@@ -8,14 +8,37 @@ export const STORY_NODE_SCHEMA = object({
     id: text(80), kind: kinds, parentId: emptyText(80),
     status: { type: 'string', enum: ['proposed', 'active', 'dormant', 'resolved', 'retired'] },
     // Preserve complete legacy proposals on migration; public context has its own limits.
-    title: text(240), owner: text(160), interpretation: text(1000), stakes: text(600), expectation: text(1201),
+    title: text(240), owner: text(160), interpretation: text(1000), stakes: emptyText(600), expectation: emptyText(1201),
     links: { type: 'array', uniqueItems: true, items: text(80) },
 });
 export const STORY_SELECTION_SCHEMA = object({
     id: text(80), title: text(160),
     context: { type: 'array', items: object({ kind: kinds, title: text(160) }) },
-    interpretation: text(800), stakes: text(600), expectation: text(800), development: emptyText(700),
+    interpretation: text(800), stakes: emptyText(600), expectation: emptyText(800), development: emptyText(700),
 });
+// New responses need one explanation. Keep the historical storage fields so
+// saved maps and authenticated regeneration packets remain readable.
+function conciseSchema(schema, limit) {
+    const properties = structuredClone(schema.properties);
+    for (const key of ['interpretation', 'stakes', 'expectation']) delete properties[key];
+    return object({ ...properties, description: text(limit) });
+}
+export const STORY_NODE_RESPONSE_SCHEMA = conciseSchema(STORY_NODE_SCHEMA, 480);
+export const STORY_SELECTION_RESPONSE_SCHEMA = conciseSchema(STORY_SELECTION_SCHEMA, 480);
+STORY_SELECTION_RESPONSE_SCHEMA.properties.development.maxLength = 280;
+
+export function storeStoryDescription(record, schema, check, at) {
+    if (!record || typeof record !== 'object' || !Object.hasOwn(record, 'description')) return record;
+    check(record, schema, at);
+    const { description, ...rest } = record;
+    return { ...rest, interpretation: description, stakes: '', expectation: '' };
+}
+
+export function storyNodeForPlanner(node) {
+    if (node.stakes || node.expectation) return node; // Preserve complete historical preparation.
+    const { interpretation, stakes: _stakes, expectation: _expectation, ...rest } = node;
+    return { ...rest, description: interpretation };
+}
 export const STORY_STRUCTURE_SCHEMA = object({
     version: { type: 'integer', enum: [STORY_STRUCTURE_VERSION] },
     reviewAfter: { type: 'integer', minimum: 4, enum: Array.from({ length: 17 }, (_, i) => i + 4) },
@@ -82,8 +105,10 @@ export function mergeStoryNodes(previous, upsert, retire, { check, playerNames, 
     const old = new Map(previous.map(node => [node.id, structuredClone(node)])), rows = new Map(old), updates = new Set();
     const counts = new Map();
     for (const node of upsert) if (typeof node?.id === 'string') counts.set(node.id, (counts.get(node.id) || 0) + 1);
-    for (const node of upsert) {
+    for (const supplied of upsert) {
+        let node = supplied;
         try {
+            node = storeStoryDescription(supplied, STORY_NODE_RESPONSE_SCHEMA, check, '$.upsert[]');
             check(node, STORY_NODE_SCHEMA, '$.upsert[]');
             if (counts.get(node.id) !== 1) throw Error('Duplicate story update');
             if (!old.has(node.id) && !node.id.startsWith(newIdPrefix)) throw Error('New story requires the supplied id prefix');
@@ -128,7 +153,8 @@ export function storyWriterMaterial(plan) {
     if (structure?.version !== STORY_STRUCTURE_VERSION) return [];
     const rows = new Map(structure.nodes.map(node => [node.id, node]));
     return structure.selection.map(({ id, context, title, interpretation, stakes, expectation, development }) => ({
-        kind: rows.get(id).kind, title, ...(context.length ? { context } : {}), interpretation, stakes, expectation,
+        kind: rows.get(id).kind, title, ...(context.length ? { context } : {}),
+        ...(stakes || expectation ? { interpretation, stakes, expectation } : { description: interpretation }),
         ...(development.trim() ? { development } : {}),
     }));
 }

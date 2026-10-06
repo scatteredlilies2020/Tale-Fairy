@@ -200,11 +200,9 @@ const directorReply = prompt => {
     const id = `${prefix}kitchen`;
     return { direction: 'Explore music, friendships and neighborhood life.', reviewAfter: 12, upsert: [{ id,
         kind: 'thread', parentId: '', status: 'proposed', links: [], title: 'An open neighborhood supper', owner: 'Community cooks',
-        interpretation: 'Shared cooking brings neighbors together.', stakes: 'Family recipes and belonging.',
-        expectation: 'Recipe trials and a communal recipe book could connect households.' }],
+        description: 'Shared cooking and a communal recipe book connect neighboring households.' }],
     retire: [], select: [{ id, title: 'An open neighborhood supper', context: [],
-        interpretation: 'Shared meals can bridge unfamiliar households.', stakes: 'Belonging and different tastes.',
-        expectation: 'Neighbors exchange recipes and develop friendships over shared suppers.', development: '' }] };
+        description: 'Neighbors exchange recipes and develop friendships over shared suppers.', development: '' }] };
 };
 
 // Keep a retained story rather than introducing it again on every review.
@@ -311,7 +309,9 @@ test('reference changes offer only private story-map reconsideration and reserve
     await h.scope.analyzeCampaignNow();
     const input = JSON.parse(h.requests[1].prompt);
     assert.deepEqual(input.previous_preparation.nodes, []);
-    assert.deepEqual(input.reconsider_horizon.nodes, old.workingPlan.storyStructure.nodes);
+    assert.equal(input.reconsider_horizon.nodes[0].id, old.workingPlan.storyStructure.nodes[0].id);
+    assert.equal(input.reconsider_horizon.nodes[0].description, old.workingPlan.storyStructure.nodes[0].interpretation);
+    assert.equal(input.reconsider_horizon.nodes[0].stakes, undefined);
     assert.equal(input.reconsider_horizon.selection, undefined);
     assert.equal(input.coverage.reviewed_before, 0);
     assert.equal(input.new_id_prefix, 'r2-');
@@ -372,7 +372,8 @@ test('story-map inspector shows private organization and separates the actual wr
     vm.runInContext(source.match(/function workingPlanSummary\([^]*?^}/m)[0], scope);
     const summary = scope.workingPlanSummary(h.state().campaignPreparation);
     assert.match(summary, /PRIVATE STORY MAP/);
-    assert.match(summary, /Interpretation:.*\nStakes:.*\nExpectation:/);
+    assert.match(summary, /Shared cooking and a communal recipe book connect neighboring households\./);
+    assert.doesNotMatch(summary, /Interpretation:|Stakes:|Expectation:|Owner:/);
     assert.match(summary, /PUBLIC CONTEXT.*actual writer packet/);
     assert.match(summary, /REVIEW HORIZON.*12 accepted AI replies/);
     assert.match(summary, /Expired guidance is withheld/);

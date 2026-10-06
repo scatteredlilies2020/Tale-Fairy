@@ -1,9 +1,10 @@
 // One creative request. Continuity remains input, never a second memory ledger.
-import { storyInput, nextPlanRevision, plannerInputLimit } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1';
-import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check, validCampaignState } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1';
-import { WORKING_PLAN_VERSION, validateWorkingPlan, workingPlanProjection, planTokens } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1';
-import { STORY_NODE_SCHEMA, STORY_SELECTION_SCHEMA, STORY_STRUCTURE_SCHEMA, previousStoryNodes,
-    mergeStoryNodes, storyAncestors, validateStoryStructure, storyWriterMaterial } from './story-structure.js?story-structure=1';
+import { storyInput, nextPlanRevision, plannerInputLimit } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1';
+import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check, validCampaignState } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1';
+import { WORKING_PLAN_VERSION, validateWorkingPlan, workingPlanProjection, planTokens } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1';
+import { STORY_SELECTION_SCHEMA, STORY_STRUCTURE_SCHEMA, previousStoryNodes,
+    STORY_NODE_RESPONSE_SCHEMA, STORY_SELECTION_RESPONSE_SCHEMA, storeStoryDescription, storyNodeForPlanner,
+    mergeStoryNodes, storyAncestors, validateStoryStructure, storyWriterMaterial } from './story-structure.js?story-structure=1&concise-arcs=1';
 import { fitStoryContext } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1&horizon-links=3&story-structure=1';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
 
@@ -11,23 +12,23 @@ export { nextPlanRevision, plannerInputLimit };
 export const PLANNER_OUTPUT_LIMIT = 2200;
 const text = maxLength => ({ type: 'string', minLength: 1, ...(maxLength ? { maxLength } : {}) });
 const object = properties => ({ type: 'object', additionalProperties: false, required: Object.keys(properties), properties });
-export const DIRECTOR_SCHEMA = { name: 'tale_fairy_story_director_v2', value: object({
+export const DIRECTOR_SCHEMA = { name: 'tale_fairy_story_director_v3', value: object({
     direction: text(600), reviewAfter: STORY_STRUCTURE_SCHEMA.properties.reviewAfter,
-    upsert: { type: 'array', items: STORY_NODE_SCHEMA },
-    retire: { type: 'array', items: text(80) }, select: { type: 'array', items: STORY_SELECTION_SCHEMA },
+    upsert: { type: 'array', items: STORY_NODE_RESPONSE_SCHEMA },
+    retire: { type: 'array', items: text(80) }, select: { type: 'array', items: STORY_SELECTION_RESPONSE_SCHEMA },
 }) };
 
 export const DIRECTOR_SYSTEM = `${CAMPAIGN_MARKER}
 Organize this RP's story. Read its premise, characters, accepted play and memory. Return creative preparation, not a recap, memory ledger, writer audit or scene.
 
-direction states the RP's wider direction in one sentence. Infer its expected experiences and interpret their significance without imposing a theme. Develop its particular interests, relationships, places and independent NPC/world activity. Invent compatible substance before the player asks. Quiet life, discoveries and conflict all have room. Introduce developments or positive or negative interruptions when they serve the story. No quotas, forced escalation or constant interruptions.
+direction gives a one-sentence orientation from the source premise and explicit author instructions. Reassess the inherited direction every review. For open-ended RP, keep future scope open: the current scene, genre, incident or cast is not the whole story. Do not replace that with a catalogue of present plots or predicted destinations. Only explicit user scope can bound it. Wider NPC/world activity can develop independently without being forced into the current scene. Invent compatible substance when useful. Quiet scenes can stay quiet; other experiences remain possible within the premise. No quotas, forced escalation or constant interruptions.
 
-Maintain coexisting sagas, arcs and threads. A saga spans related arcs; an arc develops a sustained question; a thread follows a particular concern. Use the scale the RP needs, not mandatory levels. parentId groups smaller stories; empty text makes a root. links connect related stories without merging them. Different active stories need not converge. owner is an NPC, group or world process, never the player. interpretation explains the concern; stakes states what matters; expectation describes the experience and possible development, not a guaranteed result or next-reply script.
+Use sagas, arcs and threads to organize durable concerns, without mandatory levels, counts or an overarching theme. Routine props, chores and conversational beats need no separate story. Independent concerns can be roots; do not nest everything under the latest scene or incident. parentId groups related concerns; empty text makes a root. links connect stories without merging them. owner is an NPC, group or world process, never the player. description explains the concern and its possible development in one or two short sentences. Include only useful substance; no separate interpretation, stakes or expectation categories, invented significance, recaps or prescribed outcomes. Condense older categorized records when updating them.
 Every upsert includes parentId ("" for a root) and links ([] for no links). Every select includes development ("" for no new opportunity).
 
 previous_preparation is private creative state, not history. upsert fully replaces a record under its existing id; new records use new_id_prefix. Omission preserves it. status is proposed, active, dormant, resolved or retired. Resolve only from accepted play; retire withdraws a proposal without claiming events occurred. Retiring a parent withdraws its descendants. Reassess completion, refusal, contradictions and changed premises. Do not revive a completed introduction, convert success back into an invitation, or retire a story merely because focus moved. Empty updates are valid. Keep the map compact.
 
-select renews the public story context from scratch. Choose relevant proposed or active records, not every active story. [] leaves unsteered play. Supply a public title, context (ancestor kinds and public titles, outermost first), interpretation, stakes and expectation. development may add a fitting new opportunity or interruption; empty text leaves execution open. Describe RP expectations and meaning, not conditional commands beginning with "If", exact triggers, scene scripts, forced travel or player obligations. Redact secrets, private motives and unsupported knowledge, including ancestor titles. Do not claim proposed activity already happened. Selection never executes an action. The writer decides manifestation, timing, prose and pacing; its preset stands alone.
+select renews the public story context from scratch. Choose relevant proposed or active records, not every active story. [] leaves unsteered play. Supply a public title, context (ancestor kinds and public titles, outermost first) and one concise description. development is an optional brief new opportunity; use empty text when the description suffices. Avoid repeated explanations, conditional commands beginning with "If", exact triggers, scene scripts, forced travel or player obligations. Redact secrets, private motives and unsupported knowledge, including ancestor titles. Do not claim proposed activity already happened. Selection never executes an action. The writer decides manifestation, timing, prose and pacing; its preset stands alone.
 
 The player owns their actions, choices, thoughts and outcomes. References, explicit corrections and accepted play govern compatibility. Memory is fallible recall. Attribute character theories; preparation establishes no events or knowledge. Missing context proves no absence or resolution.
 
@@ -38,9 +39,9 @@ export function directorInput(args, maxTokens) {
     return storyInput(args, maxTokens, { system: DIRECTOR_SYSTEM, schema: DIRECTOR_SCHEMA, project: payload => {
         const { previous_plan, prior_story_map: _map, ...context } = payload;
         return { ...context, previous_preparation: {
-            direction: previous_plan.direction || '', nodes: previousStoryNodes(previous_plan),
+            direction: previous_plan.direction || '', nodes: previousStoryNodes(previous_plan).map(storyNodeForPlanner),
         }, ...(!args.resetPlan && !args.previousUsable && args.reconsiderHorizon ? {
-            reconsider_horizon: { nodes: previousStoryNodes(args.reconsiderHorizon) },
+            reconsider_horizon: { nodes: previousStoryNodes(args.reconsiderHorizon).map(storyNodeForPlanner) },
         } : {}) };
     } });
 }
@@ -105,8 +106,9 @@ export async function directorPass({ state, input, source, generate }) {
         const plan = { direction: raw.direction, threads: raw.direction, consequences: [], developments: [],
             storyStructure: { version: 1, reviewAfter: raw.reviewAfter, nodes, selection: [] } };
         const selectedIds = new Set();
-        for (const entry of raw.select) {
+        for (const supplied of raw.select) {
             try {
+                const entry = storeStoryDescription(supplied, STORY_SELECTION_RESPONSE_SCHEMA, check, '$.select[]');
                 check(entry, STORY_SELECTION_SCHEMA, '$.select[]');
                 if (selectedIds.has(entry.id)) throw Error('Duplicate selected story');
                 const node = rows.get(entry.id);

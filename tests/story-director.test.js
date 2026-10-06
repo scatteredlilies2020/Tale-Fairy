@@ -61,6 +61,59 @@ test('ordinary reviews preserve unused stories and renew the public selection fr
     assert.doesNotMatch(result.input.prompt, /planEvidence|selectedMaterial|story_context|initiative_review|observations/);
 });
 
+test('concise descriptions save, reach the writer and return to the next review without redundant categories', async () => {
+    const raw = response();
+    for (const record of [...raw.upsert, ...raw.select]) {
+        delete record.interpretation; delete record.stakes; delete record.expectation;
+        record.description = 'Neighbors share recipes and develop friendships through a communal cookbook.';
+    }
+    delete raw.select[0].development;
+    const first = await run(emptyCampaign(), raw);
+    assert.equal(first.accepted, true, first.error);
+    assert.deepEqual(first.plannerNotices, []);
+    assert.equal(validCampaignState(first.state), true);
+    assert.match(campaignPayload(first.state), /description.*communal cookbook/);
+    assert.doesNotMatch(campaignPayload(first.state), /"(?:interpretation|stakes|expectation|development)":/);
+    const second = await run(first.state, { ...raw, upsert: [] });
+    assert.equal(second.accepted, true, second.error);
+    assert.deepEqual(nodes(second), nodes(first));
+    const previous = JSON.parse(second.input.prompt).previous_preparation.nodes[0];
+    assert.equal(previous.description, raw.upsert[0].description);
+    assert.equal(previous.interpretation, undefined);
+    assert.equal(previous.stakes, undefined);
+    assert.equal(previous.expectation, undefined);
+});
+
+test('a concise update condenses an old explanation while the complete prior plan stays archived', async () => {
+    const first = await run();
+    const raw = response();
+    for (const record of [...raw.upsert, ...raw.select]) {
+        delete record.interpretation; delete record.stakes; delete record.expectation;
+        record.description = 'Neighbors collect recipes together.';
+    }
+    raw.select[0].development = '';
+    const result = await run(first.state, raw);
+    assert.equal(result.accepted, true, result.error);
+    assert.equal(nodes(result)[0].interpretation, raw.upsert[0].description);
+    assert.equal(nodes(result)[0].stakes, '');
+    assert.equal(nodes(result)[0].expectation, '');
+    assert.deepEqual(result.state.archive.at(-1).workingPlan, first.state.workingPlan);
+    assert.doesNotMatch(campaignPayload(result.state), /"(?:interpretation|stakes|expectation)":/);
+});
+
+test('invalid concise descriptions are withheld without losing valid neighboring stories', async () => {
+    const raw = response();
+    raw.upsert.push({ id: 'r1-invalid', kind: 'thread', parentId: '', status: 'active', title: 'Invalid',
+        owner: 'Cooks', links: [], description: '' });
+    raw.select.push({ id: 'r1-invalid', title: 'Invalid', context: [], description: 'Unavailable story.', development: '' });
+    const result = await run(emptyCampaign(), raw);
+    assert.equal(result.accepted, true, result.error);
+    assert.equal(nodes(result).length, 1);
+    assert.equal(selections(result).length, 1);
+    assert.match(result.plannerNotices[0], /description.*nonblank/);
+    assert.match(result.plannerNotices[1], /unavailable/);
+});
+
 test('omitted empty story fields are filled locally without losing stories or public selections', async () => {
     const raw = response();
     delete raw.upsert[0].parentId;
