@@ -947,8 +947,9 @@ for (const failure of ['duplicate', 'third', 'hidden-second', 'changed-second'])
 test('oversized combined packet receives one bounded repair rather than silently disappearing from writer context', async () => {
     const { wider, value } = twoFutures(), oversized = structuredClone(value);
     for (const row of oversized.outlook.material) {
-        row.developing = 'word '.repeat(170).trim();
-        row.lasting = 'later '.repeat(140).trim();
+        // Stay within field character limits while exceeding the shared token ceiling.
+        row.developing = '世界 '.repeat(100).trim();
+        row.lasting = '未来 '.repeat(100).trim();
     }
     const state = await stuck(), before = structuredClone(state);
     const repaired = await run(state, [wider, oversized, value]);

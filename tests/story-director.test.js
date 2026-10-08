@@ -44,7 +44,7 @@ test('one request saves story context, not next-turn scripts, private state or a
     assert.match(payload, /recipe book/);
     assert.doesNotMatch(payload, /If |when|next|later|action|r1-kitchen|Community cooks|upsert|parentId|status|reviewAfter|possible_developments/);
     assert.doesNotMatch(DIRECTOR_SYSTEM, /\u2014/);
-    assert.ok(storyInputTokens('', DIRECTOR_SYSTEM, DIRECTOR_SCHEMA) < 2400, 'contract remains compact');
+    assert.ok(storyInputTokens('', DIRECTOR_SYSTEM, DIRECTOR_SCHEMA) < 2600, 'contract remains compact including headroom guidance');
 });
 
 test('ordinary reviews preserve unused stories and renew the public selection from scratch', async () => {

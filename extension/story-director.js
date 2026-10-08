@@ -10,7 +10,7 @@ import { fitStoryContext } from './story-budget.js?follow-through=1&soft-targets
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
 
 export { nextPlanRevision, plannerInputLimit };
-export const PLANNER_OUTPUT_LIMIT = 2200;
+export const PLANNER_OUTPUT_LIMIT = 3000;
 const text = maxLength => ({ type: 'string', minLength: 1, ...(maxLength ? { maxLength } : {}) });
 const object = properties => ({ type: 'object', additionalProperties: false, required: Object.keys(properties), properties });
 export const DIRECTOR_SCHEMA = { name: 'tale_fairy_story_director_v5', value: object({
@@ -39,7 +39,7 @@ select renews writer-facing cards from scratch; [] keeps only the RP reminder. S
 
 The writer interprets the reminder and cards, choosing manifestation, timing, prose and pacing; its preset stands alone. The player controls ALL their characters' actions, choices, thoughts and outcomes. Current play, references and explicit corrections govern compatibility; memory is fallible. Missing context proves neither absence nor resolution.
 
-reviewAfter is 4 to 20 accepted AI replies, normally 12, shorter for volatile circumstances. It is a safety review horizon, not fictional time or an event schedule. Return concise JSON, aiming for 900 tokens; omit unchanged cards and avoid filling field limits.
+reviewAfter is 4 to 20 accepted AI replies, normally 12, shorter for volatile circumstances. It is a safety review horizon, not fictional time or an event schedule. Aim for 1,400 response tokens at setup and 900 on reviews; use more when needed for coherent substance. Keep the complete writer packet around 1,000 tokens including orientation, effects and framing, leaving room below its 1,600 ceiling for author notes and variation. These are not quotas: preserve distinct pressures and causal specifics, omit unchanged cards and avoid filling field limits.
 `;
 
 export function directorInput(args, maxTokens) {

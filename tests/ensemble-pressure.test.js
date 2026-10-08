@@ -132,7 +132,7 @@ test('orientation and cards share the writer budget; author instructions take pr
     assert.equal(packet.rp_orientation, undefined);
     assert.equal(packet.story_context, undefined);
     assert.equal(packet.author_instructions[0], 'Explicit instruction. '.repeat(500));
-    const report = fitStoryContext(Array.from({ length: 10 }, () => ({ description: 'A useful independent concern. '.repeat(10) })), [],
+    const report = fitStoryContext(Array.from({ length: 20 }, () => ({ description: 'A useful independent concern. '.repeat(10) })), [],
         { storyStructure: true, orientation: fixture.reminder });
     assert.ok(report.omitted > 0);
     assert.ok(report.tokens <= WRITER_CONTEXT_TOKEN_LIMIT);

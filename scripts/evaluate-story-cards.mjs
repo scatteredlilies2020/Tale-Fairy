@@ -7,6 +7,7 @@ import { storyCardCases, cardCaseReply } from './story-card-cases.mjs';
 import { directorInput, directorPass } from '../extension/story-director.js';
 import { emptyCampaign, campaignPayloadBudget, validCampaignState } from '../extension/campaign-planner.js';
 import { storyCardsHtml } from '../extension/story-cards.js';
+import { WRITER_CONTEXT_TOKEN_LIMIT } from '../extension/story-budget.js';
 
 export async function evaluateCardCase(fixture) {
     let state = emptyCampaign(), calls = 0;
@@ -67,7 +68,7 @@ export function cardPreviewHtml(reports) {
     <div id="living-world-guide-settings" class="living-world-guide-panel is-expanded preview-workspace">
     ${reports.map((report, i) => `<div data-example="${i}" ${i ? 'hidden' : ''}><h2>${escape(report.title)}</h2>
         <div class="living-world-guide-board"><section><div data-role="story-cards">${storyCardsHtml(report.stages[0].plan)}</div></section></div>
-        <p class="preview-meta">${report.stages[0].writerTokens} / 1,000 estimated writer tokens · ${report.stages[0].omitted} cards omitted · quiet review retains the same packet</p>
+        <p class="preview-meta">${report.stages[0].writerTokens} / ${WRITER_CONTEXT_TOKEN_LIMIT.toLocaleString('en-US')} estimated writer tokens · ${report.stages[0].omitted} cards omitted · quiet review retains the same packet</p>
         <details class="tf-story-diagnostics"><summary>Exact writer packet</summary><pre>${escape(report.stages[0].writerPacket)}</pre></details>
         <details class="lifecycle"><summary>After an arc ends · see status changes</summary><div class="living-world-guide-board"><section><div data-role="story-cards">${storyCardsHtml(report.stages[2].plan)}</div></section></div>
         <details class="tf-story-diagnostics"><summary>Updated writer packet</summary><pre>${escape(report.stages[2].writerPacket)}</pre></details></details></div>`).join('')}

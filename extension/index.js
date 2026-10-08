@@ -3007,7 +3007,7 @@ function workingPlanSummary(preparation) {
                 + `${node.links.length ? `\nRelated: ${node.links.map(id => rows.get(id)?.title).join('; ')}` : ''}`),
             `PUBLIC CONTEXT · ${map.selection.length} selected story concern(s). The outgoing preview shows the actual writer packet.`,
             `REVIEW HORIZON · ${map.reviewAfter} accepted AI replies, capped by the review setting. Explicit direction and scene boundaries trigger earlier review. Expired guidance is withheld.`,
-            'BUDGETS · One request; 10,000 input target; 2,200 output limit; 1,000 writer context limit. Whole public entries are withheld on overflow. Archives remain local.',
+            'BUDGETS · One request; 10,000 input soft target; 3,000 response allowance plus reasoning reserve. Writer target about 1,000, ceiling 1,600 including author notes (author-only overflow preserved). Whole public entries are withheld on overflow. Archives remain local.',
         ].join('\n\n');
     }
     return [

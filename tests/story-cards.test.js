@@ -7,6 +7,8 @@ import { directorInput, directorPass, DIRECTOR_SYSTEM, DIRECTOR_SCHEMA } from '.
 import { emptyCampaign, campaignPayload, campaignPayloadBudget, check } from '../extension/campaign-planner.js';
 import { mergeStoryNodes, storyWriterMaterial, writerReviewSignal, storyChangeSignal, STORY_NODE_SCHEMA, STORY_NODE_RESPONSE_SCHEMA } from '../extension/story-structure.js';
 import { storyCardsHtml, renderStoryCards } from '../extension/story-cards.js';
+import { fitStoryContext, WRITER_CONTEXT_TOKEN_LIMIT } from '../extension/story-budget.js';
+import { conservativeTokenCount } from '../extension/token-budget.js';
 
 const decode = packet => JSON.parse(packet.replace(/<\/?tale-fairy-context>/g, ''));
 const fixture = storyCardCases[0];
@@ -24,7 +26,7 @@ for (const example of storyCardCases) test(`card lifecycle and exact writer tran
     for (const stage of report.stages) {
         assert.equal(stage.omitted, 0);
         assert.deepEqual(stage.notices, []);
-        assert.ok(stage.writerTokens <= 1000);
+        assert.ok(stage.writerTokens <= WRITER_CONTEXT_TOKEN_LIMIT - 500, 'ordinary examples leave real headroom');
     }
     assert.equal(first.writerPacket, quiet.writerPacket);
     assert.deepEqual(first.plan.storyStructure.nodes, quiet.plan.storyStructure.nodes);
@@ -49,6 +51,27 @@ for (const example of storyCardCases) test(`card lifecycle and exact writer tran
     assert.match(html, /Closed stories/);
     assert.match(html, /tf-status-resolved/);
     assert.ok(!html.includes('data-disclosure="closed" open'));
+});
+
+for (const example of storyCardCases) test(`comfortable writer headroom preserves notes and richer cards: ${example.id}`, async () => {
+    const report = await evaluateCardCase(example);
+    const first = decode(report.stages[0].writerPacket);
+    const notes = ['Keep the current player choices and established relationships central to their own scenes. '.repeat(8)];
+    assert.ok(conservativeTokenCount(notes[0]) >= 250);
+    const cards = first.story_context.map(card => ({ ...card,
+        development: `${card.development || ''} Existing commitments continue to affect access, trust and available choices.` }));
+    const before = structuredClone(cards);
+    const budget = fitStoryContext(cards, notes, { storyStructure: true, orientation: first.rp_orientation });
+    const packet = decode(budget.payload);
+    assert.equal(budget.omitted, 0);
+    assert.equal(budget.orientationOmitted, false);
+    assert.equal(budget.authorOverflow, false);
+    assert.ok(budget.tokens <= WRITER_CONTEXT_TOKEN_LIMIT - 100, 'variation and notes still leave spare capacity');
+    assert.equal(packet.rp_orientation, first.rp_orientation);
+    assert.deepEqual(packet.story_context, cards);
+    assert.deepEqual(packet.author_instructions, notes);
+    assert.deepEqual(cards, before);
+    assert.deepEqual(fitStoryContext(cards, notes, { storyStructure: true, orientation: first.rp_orientation }), budget);
 });
 
 test('effects are stored once, omission retains, [] clears, and archives are untouched', () => {

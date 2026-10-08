@@ -10,7 +10,7 @@ test('live smoke harness sends the production prompt, not the authored answer', 
     let calls = 0;
     const pass = await liveCardPass(fixture, emptyCampaign(), [], async (messages, limit) => {
         calls++;
-        assert.equal(limit, 2200);
+        assert.equal(limit, 3000);
         const request = JSON.stringify(messages);
         assert.ok(request.includes(fixture.premise));
         assert.ok(!request.includes(fixture.reminder));

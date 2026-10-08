@@ -511,7 +511,7 @@ test('active story director uses one compact request, retains the selected model
     const request = h.requests[0], prompt = JSON.parse(request.prompt);
     assert.equal(request.spec.singleShot, true);
     assert.equal(request.spec.schema.name, DIRECTOR_SCHEMA.name);
-    assert.equal(request.spec.responseTokens, 2200);
+    assert.equal(request.spec.responseTokens, 3000);
     assert.equal(request.spec.reasoningMode, undefined);
     assert.equal(h.settings.analysisModel, 'test');
     assert.equal(h.settings.analysisReasoningMode, 'low');
@@ -1203,7 +1203,7 @@ test('empty writer preview distinguishes quiet selection, missing preparation an
 test('notebook distinguishes estimated writer cap from preserved author-only overflow', () => {
     const scope = vm.createContext({ campaignPayloadBudget });
     vm.runInContext(source.match(/function campaignBudgetSummary\([^]*?^}/m)[0], scope);
-    assert.match(scope.campaignBudgetSummary(null, []), /estimated 0\/1000/);
+    assert.match(scope.campaignBudgetSummary(null, []), /estimated 0\/1600/);
     const note = 'Explicit instruction. '.repeat(700);
     assert.match(scope.campaignBudgetSummary(null, [note]), /Author instructions alone exceed.*remain verbatim/);
 });
