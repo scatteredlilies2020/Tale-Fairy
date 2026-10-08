@@ -188,6 +188,140 @@
     display: none !important;
 }
 
+/* Story cards share the host theme and remain readable in a narrow ST drawer. */
+.living-world-guide-board section [data-role="story-cards"] {
+    white-space: normal !important;
+    word-break: normal !important;
+    overflow-wrap: anywhere !important;
+}
+
+.tf-story-board {
+    --tf-border: var(--SmartThemeBorderColor, #46516b);
+    --tf-accent: #8fc6ba;
+    --tf-effect: #e4c48b;
+    line-height: 1.5;
+    color: inherit;
+    text-align: left;
+}
+
+.tf-board-topline, .tf-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px 10px;
+}
+
+.tf-board-topline {
+    margin-bottom: 10px;
+    font-size: .85em;
+}
+
+.tf-card-label, .tf-card-kind {
+    font-size: .78em;
+    font-weight: 650;
+    letter-spacing: .09em;
+    text-transform: uppercase;
+}
+
+.tf-world-card {
+    border: 1px solid var(--tf-border);
+    border-top: 3px solid var(--tf-accent);
+    border-radius: 12px;
+    padding: 14px;
+    background: linear-gradient(130deg, rgba(100, 155, 145, .12), transparent);
+}
+
+.tf-world-reminder {
+    margin: 12px 0 !important;
+    font-size: 1.07em;
+    line-height: 1.6;
+}
+
+.tf-story-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+    gap: 12px;
+    align-items: start;
+}
+
+.tf-story-card {
+    --tf-status: var(--tf-accent);
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid var(--tf-border);
+    border-top: 3px solid var(--tf-status);
+    border-radius: 12px;
+    background: rgba(127, 127, 127, .045);
+    box-shadow: 0 3px 9px rgba(0, 0, 0, .06);
+}
+
+.tf-status-proposed { --tf-status: #b4b4e9; }
+.tf-status-dormant { --tf-status: #d1b685; }
+.tf-status-resolved { --tf-status: #93b7cc; }
+.tf-status-retired { --tf-status: #a3a6b0; }
+
+.tf-card-badge {
+    display: inline-block;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 2px 8px;
+    border: 1px solid var(--tf-border);
+    border-radius: 999px;
+    font-size: .79em;
+    font-weight: 600;
+    line-height: 1.6;
+    vertical-align: middle;
+}
+
+.tf-card-status::before {
+    content: '';
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    margin: 0 6px 1px 0;
+    border-radius: 50%;
+    background: var(--tf-status);
+}
+
+.tf-card-selected { background: rgba(105, 170, 150, .12); }
+.tf-effect-label { background: rgba(207, 164, 90, .1); border-color: rgba(195, 152, 80, .45); }
+
+.tf-card-title {
+    margin: 10px 0 8px !important;
+    padding: 0;
+    font-size: 1.17em !important;
+    font-weight: 650;
+    line-height: 1.3;
+    color: inherit;
+}
+
+.tf-card-path {
+    margin: 10px 0 0 !important;
+    font-size: .8em;
+    opacity: .78;
+}
+
+.tf-card-description { margin: 0 0 12px !important; }
+.tf-card-effects { margin: 14px 0; }
+.tf-card-effects ul { display: grid; gap: 10px; margin: 7px 0 0; padding: 0; list-style: none; }
+.tf-card-effects li { padding-left: 10px; border-left: 2px solid var(--tf-effect); }
+.tf-card-effects p { margin: 5px 0 0 !important; font-size: .93em; }
+.tf-card-detail { margin-top: 10px; font-size: .87em; }
+.tf-card-detail > span { font-weight: 600; opacity: .75; }
+.tf-card-detail p { margin: 2px 0 0 !important; }
+.tf-card-footer { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--tf-border); }
+.tf-card-footer > span:not(.tf-card-badge) { font-size: .78em; opacity: .75; }
+.tf-board-note, .tf-board-empty, .tf-board-warning { margin: 12px 0 !important; font-size: .87em; }
+.tf-board-warning { border-left: 3px solid #c8a066; padding-left: 10px; }
+.tf-story-collection, .tf-story-notes { margin-top: 14px; border-top: 1px solid var(--tf-border); padding-top: 10px; }
+.tf-story-collection summary span { margin-left: 6px; opacity: .65; }
+.tf-story-board summary, .tf-story-diagnostics > summary { cursor: pointer; padding: 4px 0; font-size: .9em; }
+.tf-story-board summary:focus-visible, .tf-story-diagnostics > summary:focus-visible { outline: 2px solid #8fc6ba; outline-offset: 3px; border-radius: 3px; }
+.tf-story-collection[open] > summary { margin-bottom: 10px; }
+.tf-card-legacy { margin-top: 10px; }
+.tf-story-diagnostics { margin-top: 10px; white-space: normal !important; }
+
 @media (max-width: 600px) {
     .living-world-guide-note-grid {
         grid-template-columns: 1fr;

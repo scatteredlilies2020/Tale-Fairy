@@ -1,4 +1,4 @@
-// Creative organization, not accepted history. Private records never go to the writer.
+// Creative organization, not accepted history. Selected cards carry author knowledge.
 export const STORY_STRUCTURE_VERSION = 1;
 const text = maxLength => ({ type: 'string', minLength: 1, maxLength });
 const emptyText = maxLength => ({ ...text(maxLength), minLength: 0 });
@@ -16,6 +16,21 @@ export const STORY_SELECTION_SCHEMA = object({
     context: { type: 'array', items: object({ kind: kinds, title: text(160) }) },
     interpretation: text(800), stakes: emptyText(600), expectation: emptyText(800), development: emptyText(700),
 });
+// Optional on disk: older maps and authenticated swipe packets stay unchanged.
+// An end condition recognizes closure; it does not prescribe its outcome.
+STORY_NODE_SCHEMA.properties.endsWhen = emptyText(240);
+STORY_SELECTION_SCHEMA.properties.endsWhen = emptyText(240);
+// Optional on disk for old maps/swipes. A selected card carries its effects once,
+// directly from the node, rather than asking the planner to repeat them in select.
+export const STORY_EFFECTS_SCHEMA = { type: 'array', maxItems: 3, items: object({
+    label: text(56), pressure: text(200),
+}) };
+STORY_NODE_SCHEMA.properties.effects = STORY_EFFECTS_SCHEMA;
+export const STORY_FOUNDATION_SCHEMA = object({
+    reminder: text(600), changeReason: emptyText(240), scratchpad: emptyText(1000),
+});
+export const STORY_FOUNDATION_RESPONSE_SCHEMA = structuredClone(STORY_FOUNDATION_SCHEMA);
+STORY_FOUNDATION_RESPONSE_SCHEMA.properties.reminder.minLength = 0;
 // New responses need one explanation. Keep the historical storage fields so
 // saved maps and authenticated regeneration packets remain readable.
 function conciseSchema(schema, limit) {
@@ -44,6 +59,21 @@ export const STORY_STRUCTURE_SCHEMA = object({
     reviewAfter: { type: 'integer', minimum: 4, enum: Array.from({ length: 17 }, (_, i) => i + 4) },
     nodes: { type: 'array', items: STORY_NODE_SCHEMA }, selection: { type: 'array', items: STORY_SELECTION_SCHEMA },
 });
+STORY_STRUCTURE_SCHEMA.properties.foundation = STORY_FOUNDATION_SCHEMA;
+
+export function mergeStoryFoundation(previous, supplied, check, notices) {
+    // Legacy replies remain readable; omission cannot erase an existing basis.
+    if (supplied === undefined) return previous ? structuredClone(previous) : undefined;
+    check(supplied, STORY_FOUNDATION_RESPONSE_SCHEMA, '$.foundation');
+    const next = structuredClone(supplied);
+    if (!next.reminder.trim()) next.reminder = previous?.reminder || '';
+    if (previous && next.reminder !== previous.reminder && !next.changeReason.trim()) {
+        next.reminder = previous.reminder;
+        notices.push('RP orientation retained: changing it requires a premise, role, lasting circumstance or author-direction reason.');
+    }
+    check(next, STORY_FOUNDATION_SCHEMA, '$.foundation');
+    return next;
+}
 const terminal = node => ['resolved', 'retired'].includes(node.status);
 const rank = { saga: 0, arc: 1, thread: 2 };
 
@@ -108,7 +138,15 @@ export function mergeStoryNodes(previous, upsert, retire, { check, playerNames, 
     for (const supplied of upsert) {
         let node = supplied;
         try {
-            node = storeStoryDescription(supplied, STORY_NODE_RESPONSE_SCHEMA, check, '$.upsert[]');
+            // Omission retains effects; [] deliberately clears them. Do not mutate
+            // input, archived maps or authenticated historical packets.
+            if (supplied && typeof supplied === 'object' && !Array.isArray(supplied) && !Object.hasOwn(supplied, 'effects')) {
+                const effects = old.get(supplied.id)?.effects;
+                if (effects !== undefined || Object.hasOwn(supplied, 'description')) {
+                    node = { ...supplied, effects: structuredClone(effects ?? []) };
+                }
+            }
+            node = storeStoryDescription(node, STORY_NODE_RESPONSE_SCHEMA, check, '$.upsert[]');
             check(node, STORY_NODE_SCHEMA, '$.upsert[]');
             if (counts.get(node.id) !== 1) throw Error('Duplicate story update');
             if (!old.has(node.id) && !node.id.startsWith(newIdPrefix)) throw Error('New story requires the supplied id prefix');
@@ -152,10 +190,18 @@ export function storyWriterMaterial(plan) {
     const structure = plan?.storyStructure;
     if (structure?.version !== STORY_STRUCTURE_VERSION) return [];
     const rows = new Map(structure.nodes.map(node => [node.id, node]));
-    return structure.selection.map(({ id, context, title, interpretation, stakes, expectation, development }) => ({
+    return structure.selection.filter(({ id }) => {
+        const node = rows.get(id);
+        return node && ['proposed', 'active'].includes(node.status)
+            && storyAncestors(node, rows).every(parent => ['proposed', 'active'].includes(parent.status));
+    }).map(({ id, context, title, interpretation, stakes, expectation, development, endsWhen }) => ({
         kind: rows.get(id).kind, title, ...(context.length ? { context } : {}),
+        // Gate new wire fields on the optional field so legacy swipe hashes stay stable.
+        ...(rows.get(id).effects !== undefined ? { status: rows.get(id).status,
+            ...(rows.get(id).effects.length ? { effects: structuredClone(rows.get(id).effects) } : {}) } : {}),
         ...(stakes || expectation ? { interpretation, stakes, expectation } : { description: interpretation }),
         ...(development.trim() ? { development } : {}),
+        ...(endsWhen?.trim() ? { ends_when: endsWhen } : {}),
     }));
 }
 
@@ -164,14 +210,30 @@ export function storyReviewInterval(value = 12, state) {
     return Math.min(configured, state?.workingPlan?.storyStructure?.reviewAfter || configured);
 }
 
-// Explicit direction and scene boundaries invalidate public guidance immediately.
-// Ordinary in-character dialogue is interpreted by the next AI review, not keyword-classified.
+// A writer may request review, but cannot close cards or establish outcomes by
+// signal alone. Require a standalone final comment outside quoted/code examples.
+export function writerReviewSignal(content = '') {
+    const lines = String(content).trimEnd().split(/\r?\n/);
+    if (!/^ {0,3}<!--tf-review-->\s*$/.test(lines.at(-1) || '')) return false;
+    let fence = null;
+    for (const line of lines.slice(0, -1)) {
+        const match = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/);
+        if (!match) continue;
+        if (!fence) fence = { char: match[1][0], size: match[1].length };
+        else if (match[1][0] === fence.char && match[1].length >= fence.size && !match[2].trim()) fence = null;
+    }
+    return !fence;
+}
+
+// Explicit direction, scene boundaries and accepted writer signals invalidate
+// guidance immediately. Ordinary dialogue is not classified by keywords.
 export function storyChangeSignal(messages = []) {
     return messages.some(message => {
         const content = String(message.mes ?? message.content ?? '');
         const user = message.is_user ?? message.role === 'user';
         return user ? /(?:^|\n)\s*(?:#+\s*)?(?:\[?OOC\b|\(OOC\b|\/director\b|Correction:|Retcon:|(?:New )?Scene:|Time skip:)/i.test(content)
-            : /(?:^|\n)\s*\*\*\*\s*(?:\n|$)/.test(content);
+            : /(?:^|\n)\s*\*\*\*\s*(?:\n|$)/.test(content)
+                || ((message.is_user === false || message.role === 'assistant') && writerReviewSignal(content));
     });
 }
 

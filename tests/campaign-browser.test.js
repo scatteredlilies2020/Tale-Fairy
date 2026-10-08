@@ -212,9 +212,75 @@ const retainedDirectorReply = prompt => {
     if (retained) { raw.upsert = []; raw.select[0].id = retained.id; }
     return raw;
 };
+const ensembleDirectorReply = prompt => {
+    const raw = retainedDirectorReply(prompt);
+    const previous = JSON.parse(prompt).previous_preparation.foundation;
+    raw.foundation = { reminder: previous ? '' : 'Independent communities, livelihoods and relationships sustain a broad ensemble; quiet scenes need no forced interruption.',
+        changeReason: '', scratchpad: 'PRIVATE divergence: proposed harbor politics are not witnessed history.' };
+    for (const card of [...raw.upsert, ...raw.select]) card.endsWhen = 'The current shared project is completed or set aside.';
+    return raw;
+};
 const appendPlay = (h, count = 1) => {
     for (let i = 0; i < count; i++) h.context.chat.push({ is_user: false, name: 'Mara', mes: `Quiet conversation ${h.context.chat.length}.` });
 };
+
+test('host sends the stable orientation even without cards, never private notes, and preserves it on reload', async () => {
+    const h = browser(async ({ prompt }) => envelope({ ...ensembleDirectorReply(prompt), select: [] }), defaultState(), { director: true });
+    h.settings.fullReviewInterval = 12;
+    await h.scope.analyzeCampaignNow();
+    const before = h.prepare().payload;
+    assert.match(before, /rp_orientation.*Independent communities/);
+    assert.doesNotMatch(before, /PRIVATE|scratchpad|changeReason|story_context/);
+    assert.equal(h.requests.length, 1);
+    h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata));
+    h.scope.campaignSession = null;
+    assert.equal(h.prepare().payload, before);
+    appendPlay(h, 11);
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 2);
+    assert.match(JSON.parse(h.requests[1].prompt).previous_preparation.foundation.scratchpad, /PRIVATE divergence/);
+    assert.equal(h.prepare().payload, before, 'a quiet refresh retains the reminder verbatim');
+});
+
+test('host expires orientation after a failed review; a cached packet or reload cannot keep it alive', async () => {
+    let fail = false;
+    const h = browser(async ({ prompt }) => { if (fail) throw Error('offline'); return envelope(ensembleDirectorReply(prompt)); }, defaultState(), { director: true });
+    h.settings.fullReviewInterval = 12;
+    await h.scope.analyzeCampaignNow();
+    assert.match(h.prepare().payload, /rp_orientation/);
+    fail = true; appendPlay(h, 11);
+    await h.scope.analyzeCampaignNow();
+    assert.match(h.prepare().payload, /rp_orientation/);
+    appendPlay(h);
+    assert.equal(h.prepare().payload, '');
+    h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata)); h.scope.campaignSession = null;
+    assert.equal(h.prepare().payload, '');
+    assert.match(h.state().campaignPreparation.workingPlan.storyStructure.foundation.scratchpad, /PRIVATE divergence/);
+});
+
+test('host blocks old orientation immediately on OOC changes and full rebuild clears its private basis', async () => {
+    let fail = false;
+    const h = browser(async ({ prompt }) => { if (fail) throw Error('offline'); return envelope(ensembleDirectorReply(prompt)); }, defaultState(), { director: true });
+    await h.scope.analyzeCampaignNow();
+    assert.match(h.prepare().payload, /rp_orientation/);
+    h.context.chat.push({ is_user: true, name: 'Neri', mes: 'OOC: Shift to an intimate two-person RP.' });
+    assert.equal(h.prepare().payload, '');
+    fail = true;
+    await h.scope.rebuildGuideState();
+    assert.equal(h.prepare().payload, '');
+    assert.doesNotMatch(JSON.stringify(h.state().campaignPreparation), /PRIVATE divergence|Independent communities/);
+});
+
+test('notebook separates stable public interpretation, private scratchpad and card endings', () => {
+    const scope = vm.createContext({});
+    vm.runInContext(source.match(/function workingPlanSummary\([^]*?^}/m)[0], scope);
+    const raw = ensembleDirectorReply(JSON.stringify({ new_id_prefix: 'r1-', previous_preparation: { nodes: [] } }));
+    const summary = scope.workingPlanSummary({ workingPlan: { direction: raw.direction,
+        storyStructure: { foundation: raw.foundation, reviewAfter: 12, nodes: raw.upsert.map(node => ({ ...node, interpretation: node.description })), selection: raw.select } } });
+    assert.match(summary, /RP ORIENTATION \(public/);
+    assert.match(summary, /DIVERGENCE \/ PROGRESSION NOTES \(private/);
+    assert.match(summary, /Can end when: The current shared project/);
+});
 
 test('story map reviews on a wider horizon and retains private stories across quiet play and reload', async () => {
     const h = browser(async ({ prompt }) => envelope(retainedDirectorReply(prompt)), defaultState(), { director: true });
@@ -234,6 +300,64 @@ test('story map reviews on a wider horizon and retains private stories across qu
     assert.equal(h.state().campaignPreparation.revision, 2);
     assert.deepEqual(h.state().campaignPreparation.workingPlan.storyStructure.nodes, nodes);
     assert.equal(JSON.parse(h.requests[1].prompt).previous_preparation.nodes[0].id, nodes[0].id);
+});
+
+test('host persists card effects without per-turn calls and stops them when the review closes the card', async () => {
+    const effect = { label: 'Shared kitchen', pressure: 'Neighbors have practical reasons to trade recipes and help with preparations.' };
+    const h = browser(async ({ prompt }) => {
+        const raw = ensembleDirectorReply(prompt);
+        for (const node of raw.upsert) node.effects = [effect];
+        if (h.requests.length === 3) {
+            raw.upsert = [{ ...JSON.parse(prompt).previous_preparation.nodes[0], status: 'resolved' }];
+            raw.select = [];
+        }
+        return envelope(raw);
+    }, defaultState(), { director: true });
+    h.settings.fullReviewInterval = 12;
+    await h.scope.analyzeCampaignNow();
+    const packet = h.prepare().payload;
+    assert.match(packet, /Shared kitchen/);
+    assert.match(packet, /author-level pressures/);
+    for (let i = 0; i < 10; i++) {
+        appendPlay(h); await h.scope.analyzeCampaignNow();
+        assert.equal(h.prepare().payload, packet);
+        assert.equal(h.requests.length, 1, 'ordinary turns reuse the prepared effects');
+    }
+    h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata)); h.scope.campaignSession = null;
+    assert.equal(h.prepare().payload, packet);
+    appendPlay(h); await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 2, 'one periodic refresh');
+    assert.equal(h.prepare().payload, packet, 'an omitted update retains the effects verbatim');
+    assert.deepEqual(JSON.parse(h.requests[1].prompt).previous_preparation.nodes[0].effects, [effect]);
+    appendPlay(h, 10);
+    h.context.chat.push({ is_user: false, name: 'Mara', mes: 'The supper project is finished; the neighbors clear away the final preparations.' });
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 3);
+    assert.equal(h.state().campaignPreparation.workingPlan.storyStructure.nodes[0].status, 'resolved');
+    assert.doesNotMatch(h.prepare().payload, /Shared kitchen|"effects"/);
+    assert.match(h.prepare().payload, /rp_orientation/);
+});
+
+test('accepted writer signal schedules one early review without deciding closure itself', async () => {
+    const h = browser(async ({ prompt }) => {
+        const raw = ensembleDirectorReply(prompt);
+        for (const node of raw.upsert) node.effects = [{ label: 'Shared kitchen', pressure: 'Neighbors exchange practical help.' }];
+        return envelope(raw);
+    }, defaultState(), { director: true });
+    h.settings.fullReviewInterval = 20;
+    await h.scope.analyzeCampaignNow();
+    assert.match(h.prepare().payload, /review_signal/);
+    h.context.chat.push({ is_user: false, name: 'Mara', mes: 'The group settles its immediate arrangements.\n<!--tf-review-->' });
+    assert.equal(h.prepare().payload, '', 'old guidance is withheld pending the signaled review');
+    assert.equal(h.state().campaignPreparation.workingPlan.storyStructure.nodes[0].status, 'proposed', 'signal alone cannot resolve anything');
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 2);
+    assert.match(h.prepare().payload, /Shared kitchen/, 'the reviewer can retain an open concern');
+    h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata)); h.scope.campaignSession = null;
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 2, 'reload does not replay an already reviewed signal');
+    appendPlay(h); await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 2, 'no per-turn evaluator or signal polling call');
 });
 
 test('AI review horizon can shorten the configured maximum without next-turn polling', async () => {

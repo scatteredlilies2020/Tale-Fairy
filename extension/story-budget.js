@@ -97,10 +97,20 @@ export const STORY_GOAL_CONTRACT = 'Work toward story_goal through NPC/world act
 
 export const STORY_GOALS_CONTRACT = 'story_goals are coexisting writer aims, not the player\'s obligations or guaranteed endings. Long-term direction, near-term goals and independent side threads need not converge. Advance what fits through observable NPC/world activity, not repeated offers or new prerequisites. Do not service every goal each reply, rotate on a timer, or derail quiet interaction. Respect access, player choice and the user\'s prose, tone and pacing. Check newer play: stop pursuing any goal reached, declined or contradicted; other unfinished goals may continue. A near-term completion need not end its wider direction or spawn a replacement. Unselected threads are not resolved, and preparation is not history.';
 
-export function storyContextPayload(material, authored, { legacyContracts = false, followThrough = true, storyStructure = false } = {}) {
-    if (!material.length && !authored.length) return '';
+export const STORY_MOVEMENT_BASIS = 'Sustain appropriate movement across this RP, not a schedule of events: independent interests, relationships, discoveries and opportunities can develop without centering one protagonist. Quiet scenes need no interruption. Invent compatible substance; do not force convergence, escalation, player actions or outcomes. Broader awareness is not character knowledge; proposals and canon expectations are not established events.';
+
+export function storyContextPayload(material, authored, { legacyContracts = false, followThrough = true, storyStructure = false, orientation = '' } = {}) {
+    if (!material.length && !authored.length && !orientation) return '';
     return `<tale-fairy-context>\n${storyContextJson({
-        ...(storyStructure && material.length ? { preparation_basis: 'Story expectations, not established events or player obligations. Current play takes precedence. Ignore completed, declined or contradicted developments.' } : {}),
+        ...(storyStructure && (material.length || orientation) ? { preparation_basis: 'Story expectations, not established events or player obligations. Current play takes precedence. Ignore completed, declined or contradicted developments.' } : {}),
+        ...(storyStructure && material.some(entry => entry.effects?.length) ? {
+            effect_basis: 'Effects are ongoing author-level pressures, including hidden influences, not mandatory events. Let them shape fitting opportunities across the world; characters discover secrets through play. Honor quiet moments and stop applying an effect when newer play ends or contradicts it.',
+        } : {}),
+        // New-format cards opt in; immutable historical packets keep their bytes.
+        ...(storyStructure && material.some(entry => entry.status !== undefined) ? {
+            review_signal: 'When play completes or materially changes a card or world frame, end with a separate line: <!--tf-review-->. Otherwise omit. This requests review, not an outcome.',
+        } : {}),
+        ...(orientation ? { rp_orientation: orientation, movement_basis: STORY_MOVEMENT_BASIS } : {}),
         ...(material.length ? { ...(legacyContracts && followThrough ? { development_contract: DEVELOPMENT_CONTRACT } : {}), [storyStructure ? 'story_context' : 'possible_developments']: material } : {}),
         ...(legacyContracts && material.some(entry => entry.story_goal) ? { story_goal_contract: STORY_GOAL_CONTRACT } : {}),
         ...(legacyContracts && material.some(entry => entry.story_goals?.length) ? { story_goals_contract: STORY_GOALS_CONTRACT } : {}),
@@ -108,12 +118,18 @@ export function storyContextPayload(material, authored, { legacyContracts = fals
     })}\n</tale-fairy-context>`;
 }
 
-export function fitStoryContext(material, authored, options) {
+export function fitStoryContext(material, authored, options = {}) {
     const selected = [];
-    let payload = storyContextPayload(selected, authored, options);
-    const authorTokens = conservativeTokenCount(payload);
+    const authorTokens = conservativeTokenCount(storyContextPayload([], authored, { ...options, orientation: '' }));
+    let fittedOptions = options;
+    let payload = storyContextPayload(selected, authored, fittedOptions);
+    const orientationOmitted = Boolean(options.orientation && conservativeTokenCount(payload) > WRITER_CONTEXT_TOKEN_LIMIT);
+    if (orientationOmitted) {
+        fittedOptions = { ...options, orientation: '' };
+        payload = storyContextPayload(selected, authored, fittedOptions);
+    }
     for (const entry of material) {
-        const candidate = storyContextPayload([...selected, entry], authored, options);
+        const candidate = storyContextPayload([...selected, entry], authored, fittedOptions);
         // Never clip a sentence, separate a prerequisite from its possibility,
         // or split an integrated horizon packet. Saved preparation is untouched.
         if (conservativeTokenCount(candidate) <= WRITER_CONTEXT_TOKEN_LIMIT) {
@@ -123,5 +139,5 @@ export function fitStoryContext(material, authored, options) {
     }
     return { payload, tokens: conservativeTokenCount(payload), limit: WRITER_CONTEXT_TOKEN_LIMIT,
         omitted: material.length - selected.length, authorTokens,
-        authorOverflow: authorTokens > WRITER_CONTEXT_TOKEN_LIMIT };
+        authorOverflow: authorTokens > WRITER_CONTEXT_TOKEN_LIMIT, orientationOmitted };
 }

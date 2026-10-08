@@ -49,11 +49,11 @@
               <small>Input target within the total limit. Review output is capped at 6,144 tokens.</small>
           </label>
           <label>Broad story review interval (assistant replies)
-            <input class="text_pole" type="number" data-setting="full-review-interval" min="3" max="20" step="1" value="12">
-            <small>AI reviews maintain sagas, arcs and threads. Normal reviews are spaced out; explicit direction and scene boundaries can trigger earlier review. Public guidance expires at the review horizon. Private stories stay saved.</small>
+            <input class="text_pole" type="number" data-setting="full-review-interval" min="4" max="20" step="1" value="12">
+            <small>Reviews maintain broad currents, arcs and threads. Writer change signals, explicit direction and scene boundaries can trigger earlier review; the interval is the fallback. Expired guidance is withheld while private cards stay saved.</small>
           </label>
         </div>
-        <small data-role="campaign-budget-help">One planner request. Targets: 10,000 input tokens and 900 response tokens; 2,200 output limit; 1,000 writer context limit. Each selected story gets one concise description. Whole entries are withheld on overflow. No model repair calls.</small>
+        <small data-role="campaign-budget-help">One planner request. Targets: 10,000 input tokens and 900 response tokens; 2,200 output limit; 1,000 writer context limit. A stable ensemble-aware RP reminder encourages movement without prescribing events. Selected cards stay concise and can end. Whole entries are withheld on overflow. No model repair calls.</small>
         <label class="checkbox_label">
           <input type="checkbox" data-setting="continuity">
           <span>Use Continuity context when available</span>
@@ -171,26 +171,33 @@
             <textarea class="text_pole" data-setting="note" rows="3" placeholder="Write naturally. Tale Fairy will understand whether this is a suggestion, correction, canon detail, or hard exclusion."></textarea>
           </label>
         </div>
-        <small data-role="instruction-help">Add a suggestion, correction, canon detail, or exclusion. Tale Fairy applies it to the notebook and asks if clarification is needed.</small>
+        <small data-role="instruction-help">Adjust the RP interpretation, pressure, foreground/background emphasis, canon details or exclusions. Your instructions take precedence; Guide now / Re-evaluate applies them to the next review.</small>
         <div class="living-world-guide-button-row">
           <button class="menu_button" data-action="note" type="button"><i class="fa-solid fa-check"></i> Apply with AI</button>
-          <button class="menu_button" data-action="board" type="button"><i class="fa-solid fa-clipboard-list"></i> Show/Hide Planner Scratchpad</button>
+          <button class="menu_button" data-action="board" type="button"><i class="fa-solid fa-layer-group"></i> Show/Hide Story Board</button>
         </div>
         <div id="living-world-guide-board" class="living-world-guide-board">
           <div class="living-world-guide-scratchpad-title">
-            <b><i class="fa-solid fa-wand-magic-sparkles"></i> Planner Scratchpad</b>
+            <b><i class="fa-solid fa-wand-magic-sparkles"></i> Story Board</b>
             <span><span data-role="scratchpad-continuity">Continuity: unavailable</span> · <span data-role="scratchpad-meta">No planner result yet.</span></span>
           </div>
           <section>
-            <h5>Writer guidance preview</h5>
-            <small>The story context and possible developments selected for the writer.</small>
-            <div data-role="scratchpad-request-verification">No fresh Tale Fairy causal context is ready.</div>
-          </section>
-          <section>
-              <h5>Private RP approach and story directions</h5>
-              <small>The private approach guides planning. Selected developments and relevant context go to the writer.</small>
+            <h5>Story cards</h5>
+            <small>World frame, broad currents, arcs and threads. Effects are ongoing story pressures; multiple cards can coexist. Dormant and closed cards remain available below.</small>
+            <div data-role="story-cards" hidden></div>
+            <details data-role="story-card-diagnostics" class="tf-story-diagnostics" hidden>
+              <summary>Preparation details &amp; budgets</summary>
+              <div data-role="story-card-diagnostics-text"></div>
+            </details>
             <div data-role="scratchpad-prepared">No prepared material yet.</div>
             <div data-role="scratchpad-archives"></div>
+          </section>
+          <section>
+            <details class="tf-story-diagnostics">
+              <summary>Writer guidance preview</summary>
+              <small>The exact selected context. Author knowledge can include secrets; the writer decides when characters discover them.</small>
+              <div data-role="scratchpad-request-verification">No fresh Tale Fairy causal context is ready.</div>
+            </details>
           </section>
           <section>
             <h5>Current scene</h5>
