@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { directorInput, directorPass, DIRECTOR_SYSTEM, DIRECTOR_SCHEMA, parseDirectorResponse, recentCardNames } from '../extension/story-director.js';
+import { directorInput, directorPass, DIRECTOR_SYSTEM, DIRECTOR_SCHEMA, parseDirectorResponse, recentCardNames, continuityStorySummary } from '../extension/story-director.js';
 import { emptyCampaign, validCampaignState, campaignPayload, campaignPayloadBudget, campaignMaterialUsable, campaignWriterUsable, check } from '../extension/campaign-planner.js';
-import { storyInputTokens } from '../extension/story-budget.js';
+import { storyInputTokens, fitStoryInputBudget } from '../extension/story-budget.js';
 import { validateStoryStructure, ongoingStoryNodes, storyReviewInterval } from '../extension/story-structure.js';
 import { planTokens } from '../extension/working-plan.js';
 
@@ -150,6 +150,75 @@ test('creative context carries plans without a continuity proof or historical fa
     assert.equal(context.coverage.review_boundary, undefined);
     assert.doesNotMatch(input.prompt, /prove new outcomes|observations|planEvidence/);
     assert.match(context.previous_preparation.nodes[0].interpretation, /Shared cooking/);
+});
+
+const cmStory = text => ({ provider: 'continuity-memory', status: 'current',
+    summary: `<continuity>\nMemory constraints:\nCM_PRIVATE_CONSTRAINT\nRelevant details:\nCM_PRIVATE_FACT\nStory so far:\n${text}\n</continuity>`,
+    records: [{ id: 'cm-record', text: 'CM_PRIVATE_RECORD' }] });
+
+test('public CM Story so far is read whole, separately from memory instructions and records', () => {
+    const text = 'Premise: village life.\nMajor developments: a shared project ended.\nState at covered boundary: neighbors are home.\nOpen matters: new musical interests.';
+    const memory = cmStory(text), before = structuredClone(memory);
+    assert.equal(continuityStorySummary(memory), text);
+    assert.equal(continuityStorySummary({ ...memory, summary: memory.summary.replaceAll('\n', '\r\n') }), text.replaceAll('\n', '\r\n'));
+    assert.equal(continuityStorySummary({ ...memory, summary: 'Story so far:\n'+text }), text);
+    for (const status of ['off', 'unavailable', 'stale']) assert.equal(continuityStorySummary({ ...memory, status }), '');
+    assert.equal(continuityStorySummary({ status: 'current', summary: 'Ordinary retrieved memory without a story section.' }), '');
+    assert.deepEqual(memory, before);
+});
+
+test('first guide and full rebuild keep the complete checked CM summary even above the usual recall allowance', async () => {
+    const text = 'Premise: shared village life.\nMajor developments: '+ 'Earlier pursuits changed relationships without ending the wider RP. '.repeat(120)
+        +'\nState at covered boundary: the neighbors are home.\nOpen matters: a new tune could develop.';
+    const memory = cmStory(text), first = await run();
+    for (const [state, flags] of [[emptyCampaign(), {}], [first.state, { resetPlan: true, previousUsable: true }]]) {
+        const input = directorInput({ reference, state, messages, continuity: memory, evidence: [memory],
+            continuityEnabled: true, continuityTokens: 0, ...flags }, 3000);
+        const payload = JSON.parse(input.prompt);
+        assert.equal(payload.story_summary.text, text);
+        assert.equal(payload.story_summary.provider, 'continuity-memory');
+        assert.ok(planTokens(text) > 1000);
+        assert.ok(input.inputOverTarget > 0, 'whole summary remains available above the soft target');
+        assert.deepEqual(payload.previous_preparation, { nodes: [] });
+        assert.equal(payload.recent_card_names, undefined);
+        assert.equal(payload.external_evidence, undefined);
+        assert.doesNotMatch(input.prompt, /CM_PRIVATE_CONSTRAINT|CM_PRIVATE_FACT|CM_PRIVATE_RECORD/);
+        assert.equal(input.continuity.status, 'included');
+        assert.deepEqual(input.evidence.providers, ['continuity-memory']);
+        assert.deepEqual(input.indices, [0, 1]);
+    }
+});
+
+test('unchecked CM support excludes its summary and recall while regular reviews retain bounded context', async () => {
+    const text = 'CM_STORY_SECRET: The neighbors have ongoing interests.', memory = cmStory(text);
+    const first = await run();
+    for (const state of [emptyCampaign(), first.state]) {
+        const input = directorInput({ reference, state, messages, previousUsable: state.revision > 0,
+            continuity: memory, evidence: [memory], continuityEnabled: false });
+        assert.equal(JSON.parse(input.prompt).story_summary, undefined);
+        assert.doesNotMatch(input.prompt, /CM_STORY_SECRET|CM_PRIVATE_RECORD/);
+        assert.notEqual(input.continuity.status, 'included');
+    }
+    const review = directorInput({ reference, state: first.state, messages, previousUsable: true,
+        continuity: memory, evidence: [memory], continuityEnabled: true });
+    assert.equal(JSON.parse(review.prompt).story_summary, undefined, 'complete summary is for fresh preparation');
+    assert.ok(JSON.parse(review.prompt).external_evidence.length, 'ordinary reviews keep their bounded background');
+    const missing = directorInput({ reference, state: emptyCampaign(), messages, continuityEnabled: true,
+        continuity: { status: 'unavailable' } });
+    assert.deepEqual(JSON.parse(missing.prompt).accepted_messages, JSON.parse(directorInput({ reference, state: emptyCampaign(), messages }).prompt).accepted_messages);
+});
+
+test('final request fitting preserves the entire fresh CM summary and latest player choice', async () => {
+    const text = 'Major developments: '+ 'Neighbors developed different interests across their travels. '.repeat(100)
+        +'\nState at covered boundary: back home.\nOpen matters: a new shared project.';
+    const input = directorInput({ reference, state: emptyCampaign(), messages, continuityEnabled: true, continuity: cmStory(text) }, 3000);
+    const fitted = await fitStoryInputBudget(input.prompt, DIRECTOR_SYSTEM, DIRECTOR_SCHEMA, 3000, () => 8000, { softTarget: true });
+    const sent = JSON.parse(fitted.prompt);
+    assert.equal(sent.story_summary.text, text);
+    assert.deepEqual(sent.accepted_messages, JSON.parse(input.prompt).accepted_messages);
+    assert.deepEqual(sent.source_reference, JSON.parse(input.prompt).source_reference);
+    assert.equal(fitted.tokens, 8064);
+    assert.ok(fitted.overTarget > 0);
 });
 
 test('recent names are unique, capped and exclude live cards and all archived details', async () => {

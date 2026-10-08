@@ -2,7 +2,7 @@
 // storage and source guards with the host, never an additional planning call.
 import { CAMPAIGN_MARKER, CAMPAIGN_SCHEMA, INITIATIVE_SCHEMA, PLOT_POINTS_FORMAT, plotPointWire, mergeCampaign, validateCampaign } from './campaign-planner.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1';
 import { estimateTokenCount } from './token-budget.js';
-import { compactCampaignSpeakers } from './campaign-evidence.js';
+import { compactCampaignSpeakers } from './campaign-evidence.js?fresh-summary=1';
 
 export const OWNED_SYSTEM = `${CAMPAIGN_MARKER}
 Prepare creative mid-to-long-term PLOT POINTS AND OBJECTIVES in ONE JSON response: enjoyable events and NPC/world pursuits, not assigned lessons, payoffs or endings. Useful, not exhaustive or perfect.

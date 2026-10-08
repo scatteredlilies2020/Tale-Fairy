@@ -1,11 +1,11 @@
 import { sha256 } from '/lib.js';
 import { campaignAuthorInstructions, campaignPayloadBudget, campaignUsable, campaignMaterialUsable, campaignWriterUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1';
-import { directorInput as ownedInput, directorPass as ownedPass, nextPlanRevision, DIRECTOR_SCHEMA as OWNED_SCHEMA, DIRECTOR_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './story-director.js?story-workshop=1&story-horizons=1&story-progression=1&rp-activities=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&full-rebuild=1&empty-fields=1&open-scope=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&no-phase=1&present-future=1&creative-planning=1';
+import { directorInput as ownedInput, directorPass as ownedPass, nextPlanRevision, DIRECTOR_SCHEMA as OWNED_SCHEMA, DIRECTOR_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './story-director.js?story-workshop=1&story-horizons=1&story-progression=1&rp-activities=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&full-rebuild=1&empty-fields=1&open-scope=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&no-phase=1&present-future=1&creative-planning=1&fresh-summary=1';
 import { fitStoryInputBudget } from './story-budget.js?follow-through=1&compaction=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1&horizon-links=3&story-structure=1&ensemble-pressure=1&story-cards=1&player-cards=1&creative-planning=1';
 import { readCampaignContinuity } from './campaign-continuity.js';
 // Keep the public registration URL stable so external adapters share this registry.
 import { readEvidenceProviders, evidenceRevisionKey } from './evidence-providers.js?story-lifecycle=1';
-import { campaignEvidenceMessages, campaignReviewWindow } from './campaign-evidence.js';
+import { campaignEvidenceMessages, campaignReviewWindow } from './campaign-evidence.js?fresh-summary=1';
 import { campaignReviewedCount, campaignCheckpoint, campaignReconsideration, verifiedClosedSubjects } from './campaign-review.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1';
 import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.36&token-budget=1&rp-plot=1&progress=1&follow-through=1&working-plan=1&recovery=1&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&planner-timeout=1&player-cards=1&present-future=1&creative-planning=1';
 import { campaignAttemptSummary } from './planner-progress.js?v=1&recovery=1&review-checkpoint=1&story-workshop=1&request-policy=2&story-director=1&planner-timeout=1';
@@ -837,6 +837,7 @@ function readCampaignSnapshot() {
             .map(key => [key, s[key]])) }),
         reference,
         continuity, evidence,
+        continuityEnabled: s.continuityIntegration !== false && !replacement && context.chatMetadata?.taleFairyEvidence !== 'off',
         evidenceKey: evidenceRevisionKey(evidence),
         continuityTokens: s.summaryContextTokens ?? 1000,
         inputBudget: plannerInputLimit(Number(s.maxPromptTokens) || 10000),
@@ -856,6 +857,7 @@ function buildCampaignHostInput(snapshot) {
     // discarded-response drafts as creative premises for this branch.
     const planningState = { ...(checkpoint || emptyCampaign()), revision: snapshot.state.revision, archive: snapshot.state.archive };
     const previousUsable = Boolean(checkpoint);
+    const fresh = cardPlanning && (snapshot.rebuild || !checkpoint && !reconsiderHorizon);
     const reviewedCount = cardPlanning ? checkpoint?.source.messageCount || 0
         : campaignReviewedCount(snapshot.state, { ...snapshot, fingerprint: campaignFingerprint });
     const verifiedPlanEvidence = Object.fromEntries(Object.entries(checkpoint?.planEvidence || {}).filter(([, entry]) =>
@@ -863,10 +865,11 @@ function buildCampaignHostInput(snapshot) {
     const verifiedClosedIds = cardPlanning ? [] : verifiedClosedSubjects(snapshot.state, proof);
     let best;
     for (const count of [32, 24, 20, 16, 12, 8, 4, 2]) {
-        const selected = campaignReviewWindow(messages, count, reviewedCount);
+        const selected = campaignReviewWindow(messages, count, reviewedCount, { recentOnly: fresh });
         const input = ownedInput({ reference: snapshot.reference, state: planningState, playerNames: snapshot.playerNames, reviewedMessageCount: reviewedCount,
                 messages: campaignEvidenceMessages(selected, { narrative: true }), previousUsable, verifiedPlanEvidence, verifiedClosedIds, resetPlan: snapshot.rebuild, reconsiderHorizon,
-                continuity: snapshot.continuity, evidence: snapshot.evidence, continuityTokens: snapshot.continuityTokens }, snapshot.inputBudget);
+                continuity: snapshot.continuity, evidence: snapshot.evidence, continuityEnabled: snapshot.continuityEnabled,
+                continuityTokens: snapshot.continuityTokens }, snapshot.inputBudget);
         if (!best || input.inputTokens < best.inputTokens) best = input;
         if (input.inputTokens <= input.inputLimit) return input;
     }
@@ -2435,7 +2438,7 @@ function rebuildPendingState(context = currentContext()) {
 async function persistRebuildPending(context = currentContext()) {
     const pending = rebuildPendingState(context);
     // This replaces only Tale Fairy's state, retaining user notes and pacing,
-    // not generated guide content, while making the requested full-history rebuild
+    // not generated guide content, while making the requested fresh preparation
     // durable across reloads, navigation, and an interrupted model request.
     context.updateChatMetadata(saveState(clearState(context.chatMetadata), pending), true);
     if (typeof context.saveMetadata === 'function') await context.saveMetadata();
@@ -3500,7 +3503,7 @@ async function mountUI() {
     uiMountPromise = (async () => {
     // Load the template relative to this module so the extension works from
     // third-party/Tale-Fairy as well as any legacy installation directory.
-    const response = await fetch(new URL(`./settings.html?v=${RUNTIME_VERSION}&progress=1&working-plan=1&soft-targets=1&story-map=1&story-goal=2&full-rebuild=1&concise-arcs=1&ensemble-pressure=1&story-cards=1`, import.meta.url));
+    const response = await fetch(new URL(`./settings.html?v=${RUNTIME_VERSION}&progress=1&working-plan=1&soft-targets=1&story-map=1&story-goal=2&full-rebuild=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&fresh-summary=1`, import.meta.url));
     if (!response.ok) {
         throw new Error(`Could not load Tale Fairy settings: ${response.status} ${response.statusText}`);
     }

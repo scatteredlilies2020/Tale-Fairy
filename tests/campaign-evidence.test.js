@@ -30,6 +30,24 @@ test('shrinking a review preserves every unreviewed user message whole, ordered 
     assert.throws(() => campaignReviewWindow(messages, 0), /valid window/);
 });
 
+test('fresh preparation uses a recent scene window instead of all historical player messages', () => {
+    const messages = Array.from({ length: 300 }, (_, index) => ({ index, role: index % 2 ? 'user' : 'assistant',
+        content: `Whole RP message ${index}.` }));
+    const before = structuredClone(messages);
+    const selected = campaignReviewWindow(messages, 12, 0, { recentOnly: true });
+    assert.deepEqual(selected, messages.slice(-12));
+    assert.deepEqual(campaignReviewWindow(messages, 2, 0, { recentOnly: true }), messages.slice(-2));
+    assert.deepEqual(messages, before);
+    assert.ok(campaignReviewWindow(messages, 12).length > selected.length, 'ordinary review keeps its existing protection');
+});
+
+test('fresh-window fitting preserves the latest player contribution even across multiple assistant messages', () => {
+    const messages = Array.from({ length: 8 }, (_, index) => ({ index, role: index === 2 ? 'user' : 'assistant',
+        content: index === 2 ? 'I decline the invitation and stay here.' : 'The current scene continues.' }));
+    assert.deepEqual(campaignReviewWindow(messages, 2, 0, { recentOnly: true }), [messages[2], messages[6], messages[7]]);
+    assert.deepEqual(campaignReviewWindow(messages.slice(0, 1), 2, 0, { recentOnly: true }), messages.slice(0, 1));
+});
+
 test('presentation removal preserves all text, statuses, tables and semantic markup', () => {
     const source = '<stat>Time = 12:00</stat>\nKira keeps the house. <div style="color:red"><table class="card"><tr><td width="10">Relation</td><td>No kin</td></tr></table><s>Little</s> Guild</div>';
     assert.equal(campaignEvidenceText(source), '<stat>Time = 12:00</stat>\nKira keeps the house. <div><table><tr><td width="10">Relation</td><td>No kin</td></tr></table><s>Little</s> Guild</div>');

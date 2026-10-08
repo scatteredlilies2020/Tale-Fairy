@@ -32,9 +32,9 @@
             <input class="text_pole" type="number" data-setting="recent-budget" min="1000" max="12000" step="500" value="6000">
             <small>Recent-message limit: up to 3,000 tokens for routine updates, 4,500 for reviews, and this setting for rebuilds. Earlier context comes from retrieval and summaries.</small>
           </label>
-          <label>Summary retrieval pool (tokens)
+          <label>Optional memory context (tokens)
             <input class="text_pole" type="number" data-setting="summary-budget" min="0" max="1000" step="250" value="1000">
-            <small>Maximum summary evidence available to planning. Final inclusion depends on the total input budget.</small>
+            <small>Limits extra memory context on reviews. Fresh preparation reads CM's complete Story so far outside this allowance when CM support is enabled.</small>
           </label>
           <label>Total planner input target (tokens)
             <input class="text_pole" type="number" data-setting="budget" min="3000" max="10000" step="1000" value="10000">
@@ -58,7 +58,7 @@
           <input type="checkbox" data-setting="continuity">
           <span>Use Continuity context when available</span>
         </label>
-        <small>Reads Continuity's current same-chat snapshot privately for planning. No extra memory call; stale or oversized context is omitted without delaying roleplay.</small>
+        <small>First guide and Full rebuild read CM's complete Story so far as creative background. Ordinary reviews use bounded context. Uses available memory without an extra memory call.</small>
       </div>
 
       <div class="living-world-guide-card">

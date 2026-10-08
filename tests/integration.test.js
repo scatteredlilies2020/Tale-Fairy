@@ -26,7 +26,7 @@ test('settings explanations stay concise', () => {
 
 test('manifest, browser runtime, and detached plugin share the release version', () => {
     assert.equal(manifest.version, '0.19.0');
-    assert.equal(manifest.js, 'extension/index.js?v=0.19.0&planner-input=1&episode-fields=1&token-budget=1&rp-plot=1&progress=1&response=2&history-budget=1&partial-updates=1&partial-evidence=1&creative=1&follow-through=1&compaction=1&working-plan=1&guidance-preview=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&full-rebuild=1&empty-fields=1&open-scope=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&planner-timeout=1&player-cards=1&no-phase=1&present-future=1&creative-planning=1');
+    assert.equal(manifest.js, 'extension/index.js?v=0.19.0&planner-input=1&episode-fields=1&token-budget=1&rp-plot=1&progress=1&response=2&history-budget=1&partial-updates=1&partial-evidence=1&creative=1&follow-through=1&compaction=1&working-plan=1&guidance-preview=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&full-rebuild=1&empty-fields=1&open-scope=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&planner-timeout=1&player-cards=1&no-phase=1&present-future=1&creative-planning=1&fresh-summary=1');
     assert.equal(manifest.css, 'extension/style.css?v=0.19.0&story-cards=1');
     assert.equal(pluginPackage.version, manifest.version);
     assert.match(pluginSource, /const VERSION = '0\.19\.0'/);
@@ -50,6 +50,7 @@ test('creative contract updates invalidate the browser entry and schema imports'
 });
 
 for (const [marker, seeds] of [
+    ['fresh-summary', ['campaign-evidence.js', 'story-director.js', 'index.js']],
     ['creative-planning', ['campaign-runtime.js', 'campaign-session.js', 'story-director.js', 'planner-context.js', 'index.js']],
     ['present-future', ['story-structure.js', 'story-director.js', 'story-cards.js', 'index.js']],
     ['no-phase', ['story-director.js', 'story-cards.js']],
@@ -242,7 +243,7 @@ test('settings describe private simulation and causal injection without branch c
 });
 
 test('Continuity remains optional one-way evidence rather than an authority dependency', () => {
-    assert.match(template, /Reads Continuity's current same-chat snapshot privately for planning/i);
+    assert.match(template, /First guide and Full rebuild read CM's complete Story so far as creative background/i);
     const binding = source.slice(source.indexOf('function bindContinuityBridge'), source.indexOf('// The generation interceptor runs'));
     assert.match(binding, /bridge\.subscribe\(snapshot/);
     assert.match(binding, /reconcileStateWithContinuity/);

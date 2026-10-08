@@ -1,13 +1,19 @@
 import { leadingGeneratedStatusSummary } from './transcript-status.js';
 
 // Callers may advance reviewedCount only after verifying the saved source
-// prefix. Budget pressure can remove old assistant prose, never an unreviewed
-// player contribution. Required messages remain whole or preparation fails.
-export function campaignReviewWindow(messages, count, reviewedCount = 0) {
+// prefix. Ordinary reviews preserve unreviewed player contributions. Fresh
+// creative preparation uses a recent window instead. Included messages stay whole.
+export function campaignReviewWindow(messages, count, reviewedCount = 0, { recentOnly = false } = {}) {
     if (!Number.isSafeInteger(count) || count < 1
         || !Number.isSafeInteger(reviewedCount) || reviewedCount < 0 || reviewedCount > messages.length
         || messages.some((message, index) => message.index !== index)) {
         throw Error('Campaign review needs a complete indexed prefix and valid window bounds');
+    }
+    if (recentOnly) {
+        // A fresh creative guide needs the present scene, not every historic
+        // player contribution. Keep both sides of the latest exchange whole.
+        const latest = new Set(['user', 'assistant'].map(role => messages.findLast(m => m.role === role)?.index));
+        return messages.filter(m => m.index >= messages.length - count || latest.has(m.index));
     }
     return messages.filter(m => m.index < 2 || m.index >= messages.length - count
         || (m.role === 'user' && m.index >= reviewedCount));

@@ -221,6 +221,60 @@ const ensembleDirectorReply = prompt => {
     return raw;
 };
 
+for (const mode of ['first', 'rebuild', 'after-delete']) test(`${mode} creative guide reads the whole checked CM story and recent RP without past cards`, async () => {
+    const h = browser(async ({ prompt }) => envelope(retainedDirectorReply(prompt)), defaultState(), { director: true });
+    h.context.chat = Array.from({ length: 120 }, (_, index) => ({ is_user: Boolean(index % 2), name: index % 2 ? 'Neri' : 'Mara',
+        mes: index === 1 ? 'HISTORICAL_PLAYER_SECRET' : `Current RP contribution ${index}.` }));
+    const story = 'Premise: neighborhood life.\nMajor developments: '+ 'Shared pursuits have changed village relationships. '.repeat(110)
+        +'\nState at covered boundary: neighbors are home.\nOpen matters: new music and shared meals.';
+    const snapshot = { ...memorySnapshot(), coverage: { throughMessageIndex: 117, signature: 'story-source' },
+        prompt: `<continuity>\nMemory constraints:\nCM_INSTRUCTION_SECRET\nStory so far:\n${story}\n</continuity>` };
+    const before = structuredClone(snapshot);
+    h.settings.continuityIntegration = true;
+    h.settings.summaryContextTokens = 0;
+    h.scope.continuityMemoryBridge = { version: 2, getContextSnapshot: () => snapshot };
+    if (mode !== 'first') {
+        await h.scope.analyzeCampaignNow();
+        await h.scope.analyzeCampaignNow({ manual: true });
+        assert.equal(h.state().campaignPreparation.archive.length, 1);
+        if (mode === 'after-delete') await h.scope.resetState();
+    }
+    if (mode === 'rebuild') await h.scope.rebuildGuideState();
+    else await h.scope.analyzeCampaignNow();
+    const prompt = h.requests.at(-1).prompt, input = JSON.parse(prompt);
+    assert.equal(input.story_summary.text, story);
+    assert.deepEqual(input.previous_preparation, { nodes: [] });
+    assert.equal(input.recent_card_names, undefined);
+    assert.equal(input.reconsider_horizon, undefined);
+    assert.equal(input.external_evidence, undefined);
+    assert.ok(input.accepted_messages.length <= 32);
+    assert.ok(input.accepted_messages.every(message => message.index >= 88));
+    assert.deepEqual(input.accepted_messages.slice(-2).map(message => message.index), [118, 119]);
+    assert.doesNotMatch(prompt, /HISTORICAL_PLAYER_SECRET|CM_INSTRUCTION_SECRET|memory-music/);
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
+    assert.doesNotMatch(h.prepare().payload, /story_summary|Major developments|CM_INSTRUCTION_SECRET/);
+    assert.deepEqual(snapshot, before, 'fresh creative preparation cannot write or rebuild CM');
+});
+
+for (const mode of ['first', 'rebuild']) test(`${mode} guide never reads CM when support is unchecked`, async () => {
+    const h = browser(async ({ prompt }) => envelope(directorReply(prompt)), defaultState(), { director: true });
+    let reads = 0;
+    h.settings.continuityIntegration = false;
+    h.scope.continuityMemoryBridge = { version: 2, getContextSnapshot: () => {
+        reads++; return { ...memorySnapshot(), prompt: '<continuity>\nStory so far:\nCM_DISABLED_SECRET\n</continuity>' };
+    } };
+    h.context.extensionPrompts = { continuity_memory: { value: 'CM_DISABLED_SECRET' } };
+    await h.scope.analyzeCampaignNow();
+    if (mode === 'rebuild') await h.scope.rebuildGuideState();
+    assert.equal(reads, 0);
+    for (const request of h.requests) {
+        assert.equal(JSON.parse(request.prompt).story_summary, undefined);
+        assert.equal(JSON.parse(request.prompt).recent_card_names, undefined);
+        assert.doesNotMatch(request.prompt, /CM_DISABLED_SECRET/);
+    }
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
+});
+
 test('creative director commits its plan when Continuity Memory updates during a paid response', async () => {
     let finish;
     const h = browser(({ prompt }) => h.requests.length === 1

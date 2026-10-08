@@ -1,5 +1,5 @@
 // One creative request. Memory supplies background, not a continuity audit.
-import { storyInput, nextPlanRevision, plannerInputLimit } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1';
+import { storyInput, nextPlanRevision, plannerInputLimit } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&fresh-summary=1';
 import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check, validCampaignState } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1';
 import { WORKING_PLAN_VERSION, validateWorkingPlan, workingPlanProjection, planTokens } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1';
 import { STORY_SELECTION_SCHEMA, STORY_STRUCTURE_SCHEMA, previousStoryNodes,
@@ -64,13 +64,28 @@ export function recentCardNames(state) {
     return names;
 }
 
+// CM's public prompt ends with the complete Story so far section. Read that
+// section only, leaving retrieval instructions and canonical records with CM.
+export function continuityStorySummary(memory) {
+    if (memory?.status !== 'current' || typeof memory.summary !== 'string') return '';
+    const match = memory.summary.match(/(?:^|\r?\n)[ \t]*Story so far:[ \t]*\r?\n([\s\S]*)$/i);
+    return match ? match[1].replace(/\s*<\/continuity>\s*$/i, '').trim() : '';
+}
+
 export function directorInput(args, maxTokens) {
-    const names = args.previousUsable && !args.resetPlan ? recentCardNames(args.state) : [];
-    const input = storyInput(args, maxTokens, { system: DIRECTOR_SYSTEM, schema: DIRECTOR_SCHEMA, project: payload => {
+    const fresh = args.resetPlan || !args.previousUsable && !args.reconsiderHorizon;
+    const names = !fresh && args.previousUsable ? recentCardNames(args.state) : [];
+    const memory = args.evidence?.find(item => item.provider === 'continuity-memory') ?? args.continuity;
+    const summary = fresh && args.continuityEnabled === true ? continuityStorySummary(memory) : '';
+    const omitRecall = args.continuityEnabled === false || Boolean(summary);
+    const input = storyInput({ ...args,
+        ...(omitRecall ? { evidence: args.evidence?.filter(item => item.provider !== 'continuity-memory'), continuity: undefined } : {}),
+    }, maxTokens, { system: DIRECTOR_SYSTEM, schema: DIRECTOR_SCHEMA, project: payload => {
         const { previous_plan, prior_story_map: _map, ...context } = payload;
         const { review_boundary: _boundary, omitted_context: _omitted, ...coverage } = context.coverage;
         return { ...context, coverage: { ...coverage,
             context_use: 'Recent RP and summaries provide creative background. Carry useful plans forward; no continuity audit is requested.' },
+        ...(summary ? { story_summary: { provider: 'continuity-memory', text: summary } } : {}),
         previous_preparation: {
             nodes: ongoingStoryNodes(previousStoryNodes(previous_plan)).map(storyNodeForPlanner),
             ...(previous_plan.storyStructure?.foundation ? { foundation: previous_plan.storyStructure.foundation } : {}),
@@ -78,6 +93,12 @@ export function directorInput(args, maxTokens) {
             reconsider_horizon: { nodes: ongoingStoryNodes(previousStoryNodes(args.reconsiderHorizon)).map(storyNodeForPlanner) },
         } : {}) };
     } });
+    if (summary) {
+        // The complete summary is part of fresh preparation, not optional
+        // recall subject to the ordinary 1,000-token allowance.
+        input.continuity.status = input.evidence.status = 'included';
+        input.evidence.providers.unshift('continuity-memory');
+    }
     // Add hints only after current plans, RP and memory have their allocation.
     // Precise tokenizer fitting can also drop the whole hint list first.
     if (names.length) {
