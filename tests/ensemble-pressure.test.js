@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { directorInput, directorPass, DIRECTOR_SYSTEM } from '../extension/story-director.js';
+import { directorInput, directorPass, DIRECTOR_SYSTEM, DIRECTOR_SCHEMA } from '../extension/story-director.js';
+import { plannerMessages, PLANNER_OUTPUT_MODE } from '../extension/output-negotiation.js';
 import { emptyCampaign, campaignPayload, campaignPayloadBudget, campaignWriterUsable, validCampaignState } from '../extension/campaign-planner.js';
 import { fitStoryContext, WRITER_CONTEXT_TOKEN_LIMIT } from '../extension/story-budget.js';
 import { ensemblePressureCases, fixtureDirectorReply } from '../scripts/ensemble-pressure-cases.mjs';
@@ -206,12 +207,18 @@ test('orientation remains subject to expiry, OOC changes, edited transcript and 
 });
 
 test('director asks for broad original invention, canon causality and finite cards, not protagonist scripting', () => {
+    const request = plannerMessages(DIRECTOR_SYSTEM, 'Recent RP', DIRECTOR_SCHEMA, PLANNER_OUTPUT_MODE.PROMPT_ONLY);
+    assert.ok(request.at(-1).content.endsWith(DIRECTOR_SCHEMA.description), 'world-frame rules follow the output shape and RP');
+    const contract = request.map(message => message.content).join('\n');
     for (const requirement of [/AI-Dungeon-like/, /one-on-one/, /ALL their characters/, /Original worlds support invention/,
         /canon is (?:only )?a fallible reference/i, /what can meaningfully develop/, /do not force their events back/,
-        /Quiet scenes can stay quiet/, /endsWhen/, /Keep the reminder verbatim/, /no mandatory levels/,
-        /not who the player plays/, /Starting characters, professions and factions are local focus/,
+        /Quiet scenes can stay quiet/, /endsWhen/, /Keep a valid reminder verbatim/, /no mandatory levels/,
+        /Exclude individual characters' names, biographies, jobs, households and scene details/,
+        /Starting cast\/factions do not set scope/, /do not repeat prompt rules/,
         /role or viewpoint switch is not a new premise/, /Correct inherited frames/,
+        /persists longer than any card and changes least often/, /finished cards do not redefine it/,
+        /revise only parts made irrelevant/,
         /Character-specific concerns belong in cards/]) {
-        assert.match(DIRECTOR_SYSTEM, requirement);
+        assert.match(contract, requirement);
     }
 });

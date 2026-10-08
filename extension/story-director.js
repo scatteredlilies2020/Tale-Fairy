@@ -20,13 +20,16 @@ export const DIRECTOR_SCHEMA = { name: 'tale_fairy_story_director_v7', value: ob
     retain: { type: 'array', uniqueItems: true, items: text(80) },
     retire: { type: 'array', items: text(80) }, select: { type: 'array', items: STORY_SELECTION_RESPONSE_SCHEMA },
 }) };
+// Prompt-only transports place these field rules after the response shape,
+// beside the actual output request rather than before the RP transcript.
+DIRECTOR_SCHEMA.description = `foundation.reminder describes the setting's broad identity and enduring sources of movement: societies, institutions, customs, livelihoods, relationships, discovery and tensions. Exclude individual characters' names, biographies, jobs, households and scene details. Starting cast/factions do not set scope; explicit premise and author instructions do. AI-Dungeon-like sandboxes span ensembles and places; one-on-one RP can remain intimate. Original worlds support invention; canon is a fallible reference. Describe the setting itself; do not repeat prompt rules.
+
+Keep a valid reminder verbatim on ordinary reviews, or return "" to retain it. It persists longer than any card and changes least often. A respite, role or viewpoint switch is not a new premise; finished cards do not redefine it. Correct inherited frames that include biographies or mistake local focus for scope. Otherwise revise only parts made irrelevant by explicit author direction or lasting world changes. Explain in foundation.changeReason, otherwise "". Character-specific concerns belong in cards. Quiet scenes can stay quiet; no quotas, forced escalation or convergence.`;
 
 export const DIRECTOR_SYSTEM = `${CAMPAIGN_MARKER}
 Be a creative story director: develop fresh present and future possibilities. Use premise, references, author instructions, recent RP and memory as background. Carry unfinished plans forward for a loose sense of continuity. Continuity Memory handles recall; do not fact-check history, reconcile memories, audit continuity, recap or write scenes.
 
-foundation.reminder is the stable world frame: recurring sources of movement across the setting, not who the player plays. Starting characters, professions and factions are local focus, not the whole RP. Describe institutions, livelihoods, relationships, discoveries and fitting tensions. Explicit premise and author instructions set scope: AI-Dungeon-like sandboxes span characters, factions and places; one-on-one RP can remain intimate. Original worlds support invention; canon is a fallible reference.
-
-Keep the reminder verbatim on ordinary reviews, or return "" to retain it. A respite, role or viewpoint switch is not a new premise. Correct inherited frames that mistake a starting character or faction for world scope. Changes require author direction, corrected interpretation or lasting world changes; explain in foundation.changeReason, otherwise "". Character-specific concerns belong in cards. Quiet scenes can stay quiet; movement needs no quota, forced escalation or convergence.
+foundation.reminder is the persistent setting frame; see its content and retention rules in the response contract.
 
 foundation.scratchpad replaces brief creative considerations affecting future possibilities; "" when unnecessary. Ask what still matters and what can meaningfully develop. Divergence can invalidate canonical causes: do not force their events back into existence. Invent fitting people, places and pursuits; proposals are possibilities, not past events.
 
