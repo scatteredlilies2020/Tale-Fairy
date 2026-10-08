@@ -1,14 +1,14 @@
 import { sha256 } from '/lib.js';
 import { campaignAuthorInstructions, campaignPayloadBudget, campaignUsable, campaignMaterialUsable, campaignWriterUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1';
-import { directorInput as ownedInput, directorPass as ownedPass, nextPlanRevision, DIRECTOR_SCHEMA as OWNED_SCHEMA, DIRECTOR_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './story-director.js?story-workshop=1&story-horizons=1&story-progression=1&rp-activities=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&full-rebuild=1&empty-fields=1&open-scope=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&no-phase=1&present-future=1&creative-planning=1&fresh-summary=1&world-frame=1&frame-stability=1&rp-world-frame=1&portable-frame=1&genre-frame=1&arc-focus=1';
+import { directorInput as ownedInput, directorPass as ownedPass, nextPlanRevision, DIRECTOR_SCHEMA as OWNED_SCHEMA, DIRECTOR_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './story-director.js?story-workshop=1&story-horizons=1&story-progression=1&rp-activities=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&full-rebuild=1&empty-fields=1&open-scope=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&no-phase=1&present-future=1&creative-planning=1&fresh-summary=1&world-frame=1&frame-stability=1&rp-world-frame=1&portable-frame=1&genre-frame=1&arc-focus=1&saga-hierarchy=1';
 import { fitStoryInputBudget } from './story-budget.js?follow-through=1&compaction=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1&horizon-links=3&story-structure=1&ensemble-pressure=1&story-cards=1&player-cards=1&creative-planning=1&portable-frame=1';
 import { readCampaignContinuity } from './campaign-continuity.js';
 // Keep the public registration URL stable so external adapters share this registry.
 import { readEvidenceProviders, evidenceRevisionKey } from './evidence-providers.js?story-lifecycle=1';
 import { campaignEvidenceMessages, campaignReviewWindow } from './campaign-evidence.js?fresh-summary=1';
 import { campaignReviewedCount, campaignCheckpoint, campaignReconsideration, verifiedClosedSubjects } from './campaign-review.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1';
-import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.36&token-budget=1&rp-plot=1&progress=1&follow-through=1&working-plan=1&recovery=1&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&planner-timeout=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1';
-import { campaignAttemptSummary } from './planner-progress.js?v=1&recovery=1&review-checkpoint=1&story-workshop=1&request-policy=2&story-director=1&planner-timeout=1';
+import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.36&token-budget=1&rp-plot=1&progress=1&follow-through=1&working-plan=1&recovery=1&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&planner-timeout=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&server-jobs=1';
+import { campaignAttemptSummary } from './planner-progress.js?v=1&recovery=1&review-checkpoint=1&story-workshop=1&request-policy=2&story-director=1&planner-timeout=1&server-jobs=1';
 import { finalizeNotebookCompactions, writeNotebookArchive } from './notebook-compaction.js?v=0.14.22';
 import { eventSource, event_types, extension_prompt_roles, extension_prompt_types, generateRaw, Generate, setExtensionPrompt, getRequestHeaders, getCharacterCardFields, saveSettingsDebounced } from '/script.js';
 import { getContext } from '/scripts/st-context.js';
@@ -41,7 +41,7 @@ import { clearPlannerRecoveryRepair, clearPlannerFailed, clearPlannerPending, ma
 import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.13.9';
 import { hasUsableCausalContext } from './causal-context.js?v=0.14.22';
 import { formatHiddenMotives } from './scratchpad-format.js?v=0.13.9';
-import { renderStoryCards } from './story-cards.js?story-cards=1&player-cards=1&no-phase=1&present-future=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&world-frame=1';
+import { renderStoryCards } from './story-cards.js?story-cards=1&player-cards=1&no-phase=1&present-future=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&world-frame=1&saga-hierarchy=1';
 import { WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA } from './world-planner.js?v=0.14.22';
 import { buildWorldPlannerPrompt } from './analysis.js?v=0.14.22&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1';
 import { defaultPreparedWorld, preparedWorldUsable, unchangedSourcePrefix, stampPreparedWorld } from './prepared-world.js?v=0.14.22';
@@ -51,11 +51,12 @@ import { classifyAssistantReply } from './response-usability.js?v=0.13.9';
 import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, legacyPlotInputKey, migrateCampaignBudgetKeys, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.34&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1';
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 import { ActivatedStoryContext, readHostStoryEvidence } from './rp-context.js?story-lifecycle=1';
+import { campaignJobMeta, campaignJobMatches, recoverCampaignJob } from './campaign-jobs.js?server-jobs=1';
 
 const activatedStoryContext = new ActivatedStoryContext();
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.19.2';
+const RUNTIME_VERSION = '0.19.3';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -105,6 +106,7 @@ const plannerOutputModeCache = new Map();
 const detachedPlannerJobIds = new Map();
 const plannerNativeFetch = globalThis.fetch?.taleFairyNativeFetch || globalThis.fetch.bind(globalThis);
 let detachedPlannerEnabled = false;
+let detachedCampaignEnabled = false;
 let detachedPlannerRecovering = false;
 let replyRepairTimer = null;
 let replyRepairInFlight = false;
@@ -381,6 +383,22 @@ function installDetachedPlannerTransport() {
             cache: 'no-store',
         });
         rememberDetachedPlannerJob(meta.runKey, response.headers.get('X-Tale-Fairy-Job-Id'));
+        if (meta.campaign && response.ok) {
+            let { job } = await response.json();
+            rememberDetachedPlannerJob(meta.runKey, job.id);
+            while (['queued', 'processing', 'retry_wait'].includes(job.status)) {
+                await waitForAbortable(new Promise(resolve => setTimeout(resolve, 2000)), init.signal);
+                ({ job } = await plannerServerApi(`/planner-jobs/${encodeURIComponent(job.id)}`));
+            }
+            if (job.status !== 'complete') throw Error(job.error || 'Server planning did not complete.');
+            const attempt = readCampaignSnapshot().attempt;
+            if (attempt?.runKey === job.runKey && attempt.status !== 'stopped') {
+                await saveCampaignAttempt({ ...attempt, serverAttempts: job.attempts });
+            }
+            return new Response(JSON.stringify({ choices: [{ message: { content: job.text }, finish_reason: 'stop' }] }), {
+                status: 200, headers: { 'Content-Type': 'application/json', 'X-Tale-Fairy-Job-Id': job.id },
+            });
+        }
         // SillyTavern turns non-2xx response bodies into a generic
         // "Got response status ..." exception after showing its own toast.
         // Preserve the provider's actual reason here so output negotiation can
@@ -395,6 +413,8 @@ async function initializeDetachedPlanner() {
     try {
         const health = await plannerServerApi('/health');
         detachedPlannerEnabled = health?.detachedPlanner === true;
+        detachedCampaignEnabled = health?.campaignJobs === 1;
+        if (!detachedCampaignEnabled) console.warn(`[${EXTENSION_ID}] Pending campaign recovery requires the updated server plugin; restart SillyTavern after updating Tale Fairy.`);
     } catch (error) {
         detachedPlannerEnabled = false;
         console.warn(`[${EXTENSION_ID}] Browser-independent planner is unavailable; restart SillyTavern after updating Tale Fairy.`, error);
@@ -869,7 +889,7 @@ function buildCampaignHostInput(snapshot) {
         const input = ownedInput({ reference: snapshot.reference, state: planningState, playerNames: snapshot.playerNames, reviewedMessageCount: reviewedCount,
                 messages: campaignEvidenceMessages(selected, { narrative: true }), previousUsable, verifiedPlanEvidence, verifiedClosedIds, resetPlan: snapshot.rebuild, reconsiderHorizon,
                 continuity: snapshot.continuity, evidence: snapshot.evidence, continuityEnabled: snapshot.continuityEnabled,
-                continuityTokens: snapshot.continuityTokens }, snapshot.inputBudget);
+                continuityTokens: snapshot.continuityTokens, requireSagaHierarchy: true }, snapshot.inputBudget);
         if (!best || input.inputTokens < best.inputTokens) best = input;
         if (input.inputTokens <= input.inputLimit) return input;
     }
@@ -967,16 +987,26 @@ async function runCampaignAnalysis(work) {
         fingerprint: campaignFingerprint, saveAttempt: saveCampaignAttempt, commit: commitCampaignPreparation,
         interval: () => Number(getSettings().fullReviewInterval) || DEFAULT_REFRESH_INTERVAL,
         onProgress: showCampaignPhase,
-        generate: (prompt, systemPrompt, schema, { signal }) => requestAnalysisOnce(prompt, signal, null, {
-            onProgress: showCampaignPhase,
-            singleShot: true, systemPrompt, schema, responseTokens: PLANNER_OUTPUT_LIMIT, parseResponse: campaignCompletion,
-            label: 'campaign preparation', cacheNamespace: `campaign-v15:${OWNED_SCHEMA.name}`,
-        }),
+        generate: (prompt, systemPrompt, schema, { signal, snapshot, attempt, input }) => {
+            if (campaignHostWork?.chatId === snapshot.chatId) campaignHostWork.runKey = attempt.runKey;
+            const meta = schema.name.startsWith('tale_fairy_story_director_')
+                ? campaignJobMeta(snapshot, attempt, input, campaignFingerprint) : null;
+            return requestAnalysisOnce(prompt, signal, meta, {
+                onProgress: showCampaignPhase,
+                singleShot: true, systemPrompt, schema, responseTokens: PLANNER_OUTPUT_LIMIT, parseResponse: campaignCompletion,
+                label: 'campaign preparation', cacheNamespace: `campaign-v15:${OWNED_SCHEMA.name}`,
+            });
+        },
     });
-    const result = await withPlannerTabLock(chatId, () => {
+    const result = await withPlannerTabLock(chatId, async () => {
         if (stopSequence !== analysisStopSequence || chatId !== String(currentContext().getCurrentChatId?.() || '')
             || !getSettings().enabled) return { accepted: false, skipped: 'cancelled-before-lock' };
-        const result = campaignSession.request({ manual: work.manual, replacementRepair: work.replacementRepair });
+        const recovered = await recoverDetachedCampaignJobs({ duringPreflight: true });
+        if (recovered.active || recovered.recovered) return { accepted: false, skipped: 'server-job-handled' };
+        if (stopSequence !== analysisStopSequence || chatId !== String(currentContext().getCurrentChatId?.() || '')
+            || !getSettings().enabled) return { accepted: false, skipped: 'cancelled-before-lock' };
+        const result = await campaignSession.request({ manual: work.manual, replacementRepair: work.replacementRepair });
+        if (result.accepted && work.runKey) await acknowledgeDetachedPlannerRun(work.runKey, chatId);
         return result;
     });
     if (stopSequence === analysisStopSequence && chatId === String(currentContext().getCurrentChatId?.() || '')) {
@@ -1002,6 +1032,7 @@ async function runCampaignAnalysis(work) {
             const ready = result.plannerNotices?.length ? 'Preparation saved with withheld material' : 'Campaign preparation ready';
             renderAnalysisActivity([ready, elapsedLabel(Date.now() - work.startedAt), ...notices].join(' · '), false);
         }
+        else if (result.skipped === 'server-job-handled') { /* Recovery already rendered the server status. */ }
         else if (result.error) renderAnalysisActivity(`${loadState(currentContext().chatMetadata).campaignPreparation?.revision
             ? 'Previous preparation retained' : 'No preparation available'} · ${result.error}`, false);
         else if (['not-due', 'already-attempted', 'inactive-or-replacement', 'cancelled-before-lock'].includes(result.skipped)) {
@@ -1218,19 +1249,24 @@ function deferReplacementPlanning(context = currentContext(), sourceMessages = n
         ...(previousPending?.chatId === chatId && previousPending.sourceKey === plotInputKey(chatId, messages) ? previousPending : {}),
         chatId, fingerprint: fingerprintMessages(messages), sourceKey: plotInputKey(chatId, messages), messageCount: messages.length,
     } });
-    const keepRepair = retryPlannerActive(currentContext())
+    const keepRepair = (current.plannerContract === 15 && campaignSession?.pending
+            && !campaignSession.sourceChange(readCampaignSnapshot()))
+        || retryPlannerActive(currentContext())
         || (campaignHostWork?.replacementRepair && campaignHostWork.chatId === chatId
             && previousPending?.sourceKey === plotInputKey(chatId, messages))
         || (!analysisPromise && previousPending?.repairAttemptedKey === inputKey);
     if (keepRepair) {
-        // A single missing-cache repair uses this exact pre-reply source. Fast
-        // swipes must not cancel it, including a detached job after a reload.
+        // Any pending review still based on the accepted prefix can continue.
+        // Fast swipes must not cancel a valid review or missing-cache repair.
         generationGuideSelection = null;
         clearTranscriptRefresh();
         clearQueuedAnalysis();
     } else {
-        interruptAnalysis('A replacement reuses its pre-response context.', 'Retry source preserved · no per-retry planner calls');
-        void cancelDetachedPlannerJobs(chatId);
+        interruptAnalysis('A replacement reuses its pre-response context.', 'Retry source preserved · no per-retry planner calls',
+            current.plannerContract === 15 ? { detach: true } : undefined);
+        // Campaign recovery checks the accepted prefix before cancelling an
+        // obsolete server draft. A swipe alone cannot cancel valid server work.
+        if (current.plannerContract !== 15) void cancelDetachedPlannerJobs(chatId);
     }
     if (preserveSelection && previousSelection?.chatId === chatId && previousSelection.inputKey === inputKey) generationGuideSelection = previousSelection;
     scheduleVerificationPersistence(context);
@@ -1874,8 +1910,8 @@ async function withPlannerTabLock(chatId, task) {
     });
 }
 
-function cancelRunningAnalysis(reason, status) {
-    campaignSession?.stop(reason);
+function cancelRunningAnalysis(reason, status, options) {
+    campaignSession?.stop(reason, options);
     clearQueuedAnalysis();
     if (!analysisAbortController) return false;
     analysisRunId++;
@@ -2053,15 +2089,14 @@ function scheduleAnalysisRetry(error, options, chatId) {
     return status;
 }
 
-function interruptAnalysis(reason, status) {
-    campaignSession?.stop(reason);
+function interruptAnalysis(reason, status, options) {
     generationGuideSelection = null;
     clearTranscriptRefresh();
     analysisStopSequence++;
     generationRevision++;
     clearQueuedAnalysis();
     cancelAnalysisRetry();
-    if (!cancelRunningAnalysis(reason, status)) {
+    if (!cancelRunningAnalysis(reason, status, options)) {
         renderAnalysisActivity(status, false);
     }
 }
@@ -2070,6 +2105,8 @@ function stopAnalysis() {
     const context = currentContext();
     const chatId = String(context.getCurrentChatId?.() || '');
     clearPlannerPending(plannerStorage(), chatId);
+    const attempt = readCampaignSnapshot().attempt;
+    if (campaignMode() && attempt?.runKey) void saveCampaignAttempt({ ...attempt, status: 'stopped', finishedAt: Date.now() });
     interruptAnalysis('Tale Fairy analysis stopped by the user.', 'Stopped');
     void cancelDetachedPlannerJobs(chatId);
 }
@@ -2140,15 +2177,73 @@ async function cancelDetachedPlannerJobs(chatId) {
         // that has since resumed for a new turn (or a newer stop request).
         if (runId !== analysisRunId || stopSequence !== analysisStopSequence) return;
         await Promise.allSettled(jobs
-            .filter(job => job.status === 'queued' || job.status === 'processing')
+            .filter(job => ['queued', 'processing', 'retry_wait'].includes(job.status) || job.meta?.campaign && job.status === 'complete')
             .map(job => plannerServerApi(`/planner-jobs/${encodeURIComponent(job.id)}`, { method: 'DELETE', body: '{}' })));
     } catch (error) {
         console.warn(`[${EXTENSION_ID}] Could not cancel detached planner jobs`, error);
     }
 }
 
+async function recoverDetachedCampaignJobs({ duringPreflight = false } = {}) {
+    if (detachedPlannerRecovering) return { active: true, recovered: false };
+    if (!getSettings().enabled) return { active: false, recovered: false };
+    if (campaignSession?.pending || campaignHostWork && !duringPreflight) return { active: true, recovered: false };
+    await detachedPlannerReady;
+    if (!detachedCampaignEnabled) return { active: false, recovered: false };
+    if (detachedPlannerRecovering || campaignSession?.pending || campaignHostWork && !duringPreflight) return { active: true, recovered: false };
+    const chatId = String(currentContext().getCurrentChatId?.() || '');
+    if (!chatId) return { active: false, recovered: false };
+    const stopSequence = analysisStopSequence;
+    const stillHere = () => stopSequence === analysisStopSequence && getSettings().enabled
+        && chatId === String(currentContext().getCurrentChatId?.() || '');
+    detachedPlannerRecovering = true;
+    try {
+        const jobs = await detachedPlannerJobs(chatId);
+        for (const job of jobs.filter(item => item.meta?.campaign)) {
+            if (!stillHere()) return { active: false, recovered: false };
+            const latest = readCampaignSnapshot();
+            if (!campaignJobMatches(job, latest, campaignFingerprint)) {
+                if (['queued', 'processing', 'retry_wait'].includes(job.status)) {
+                    await plannerServerApi(`/planner-jobs/${encodeURIComponent(job.id)}`, { method: 'DELETE', body: '{}' });
+                }
+                await acknowledgeDetachedPlannerJob(job.id);
+                continue;
+            }
+            if (['queued', 'processing', 'retry_wait'].includes(job.status)) {
+                renderAnalysisActivity(job.status === 'retry_wait'
+                    ? `Server planner waiting to retry · attempt ${job.attempts}/3 · safe to close this page`
+                    : `Server planner running · attempt ${job.attempts}/3 · safe to close this page`, true);
+                return { active: true, recovered: false };
+            }
+            const result = job.status === 'complete' ? await recoverCampaignJob(job, {
+                read: () => ({ ...readCampaignSnapshot(), enabled: stillHere() }), fingerprint: campaignFingerprint,
+                runPass: ownedPass, commit: commitCampaignPreparation,
+            }) : { accepted: false, error: job.error || 'Server planning did not complete.' };
+            if (!stillHere()) return { active: false, recovered: false };
+            const attempt = readCampaignSnapshot().attempt;
+            if (attempt?.runKey === job.runKey && attempt.status !== 'stopped') {
+                await saveCampaignAttempt({ ...attempt, status: result.accepted ? 'complete' : job.status === 'cancelled' ? 'stopped' : 'failed',
+                    serverAttempts: job.attempts, finishedAt: Date.now(), durationMs: Date.now() - attempt.at,
+                    error: result.error || '', skipped: result.skipped || '' });
+            }
+            await acknowledgeDetachedPlannerJob(job.id);
+            if (stillHere()) renderAnalysisActivity(result.accepted ? 'Server preparation recovered and saved'
+                : `Previous preparation retained · ${result.error || result.skipped}`, false);
+            return { active: false, recovered: true, state: loadState(currentContext().chatMetadata) };
+        }
+        return { active: false, recovered: false };
+    } catch (error) {
+        // An unavailable status endpoint is not permission to duplicate an
+        // uncertain server request. Retry collection on the next browser poll.
+        if (stillHere()) renderAnalysisActivity(`Server recovery unavailable · ${error.message}`, false);
+        return { active: true, recovered: false };
+    } finally {
+        detachedPlannerRecovering = false;
+    }
+}
+
 async function recoverDetachedPlannerJobs() {
-    if (campaignMode()) return { active: Boolean(campaignHostWork || campaignSession?.pending), recovered: false };
+    if (campaignMode()) return recoverDetachedCampaignJobs();
     if (detachedPlannerRecovering || analysisPromise || !getSettings().enabled) return { active: false, recovered: false };
     const context = currentContext();
     const chatId = String(context.getCurrentChatId?.() || '');
@@ -2307,11 +2402,16 @@ async function negotiatePlannerOutput(run, modes, label, signal, cacheKey = '', 
 }
 
 function waitForAbortable(promise, signal) {
+    if (!signal) return promise;
     if (signal.aborted) return Promise.reject(signal.reason);
+    let onAbort;
     return Promise.race([
         promise,
-        new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true })),
-    ]);
+        new Promise((_, reject) => {
+            onAbort = () => reject(signal.reason);
+            signal.addEventListener('abort', onAbort, { once: true });
+        }),
+    ]).finally(() => signal.removeEventListener('abort', onAbort));
 }
 
 function isUnsupportedTemperatureError(error) {
@@ -2474,7 +2574,8 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
         // previous preparation and exposes the error instead of repairing it.
         const singleShot = requestSpec.singleShot === true;
         const compactModes = requestSpec.compactOutput ? [PLANNER_OUTPUT_MODE.PROMPT_ONLY] : null;
-        const detachedMarker = detachedPlannerEnabled && detachedMeta ? { _taleFairyPlanner: detachedMeta } : {};
+        const detachedMarker = detachedPlannerEnabled && detachedMeta && (!detachedMeta.campaign || detachedCampaignEnabled)
+            ? { _taleFairyPlanner: detachedMeta } : {};
         const model = analysisModelOptions();
         if (singleShot) {
             const context = currentContext();
@@ -4036,7 +4137,7 @@ setInterval(() => void recoverDetachedPlannerJobs(), 3000);
 // continues the detached model request. A restored or newly loaded page polls
 // the retained job and saves its result into chat metadata.
 globalThis.addEventListener?.('pagehide', () => {
-    interruptAnalysis('Tale Fairy page is shutting down.', '');
+    interruptAnalysis('Tale Fairy page is shutting down.', '', { detach: true });
 });
 globalThis.addEventListener?.('pageshow', () => {
     setTimeout(() => void refreshCurrentPlanIfNeeded(), 0);

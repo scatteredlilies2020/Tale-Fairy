@@ -215,7 +215,7 @@ test('director asks for broad original invention, canon causality and finite car
     const contract = request.map(message => message.content).join('\n');
     for (const requirement of [/AI-Dungeon-like/, /one-on-one/, /ALL their characters/, /Original worlds support invention/,
         /canon is (?:only )?a fallible reference/i, /what can meaningfully develop/, /do not force their events back/,
-        /Quiet scenes can stay quiet/, /endsWhen/, /Keep a valid reminder verbatim/, /no mandatory levels/,
+        /Quiet scenes can stay quiet/, /endsWhen/, /Keep a valid reminder verbatim/, /exactly one active root Saga/,
         /character, genre and lasting style of play/,
         /what people do, what draws them into contact and what complicates or rewards participation/,
         /concrete setting mechanisms and causal links/,

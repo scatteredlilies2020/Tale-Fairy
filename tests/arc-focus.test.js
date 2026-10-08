@@ -6,12 +6,12 @@ import { DIRECTOR_SYSTEM, DIRECTOR_SCHEMA } from '../extension/story-director.js
 import { STORY_NODE_RESPONSE_SCHEMA } from '../extension/story-structure.js';
 
 test('production planner requires arc significance at creation, retention and selection, not a kind/title blacklist', () => {
-    for (const rule of [/Plan around arcs/, /A saga connects several arcs/, /a thread is a distinct substantial subplot/,
-        /no mandatory levels or counts/, /Significance is relative to this RP/, /friendship can qualify without danger/,
+    for (const rule of [/Plan around arcs/, /exactly one active root Saga/, /a thread is a distinct substantial subplot/,
+        /No quota for Arcs or Threads/, /Significance is relative to this RP/, /friendship can qualify without danger/,
         /new, retained and selected cards alike/, /Unfinished alone is insufficient/, /including inherited cards/,
         /not stale cards with only hypothetical future relevance/, /not indefinite storage/,
         /do not rename it an arc, park it as dormant/, /invent complications and grander stakes to justify keeping it/,
-        /explicitly central rehabilitation story can qualify/, /Quiet play can need no cards/,
+        /explicitly central rehabilitation story can qualify/, /Quiet play can keep just the Saga/,
         /Respect the activity named in an explicit time skip/, /Bare elapsed time does not imply that work/,
         /Neither establishes a difficult cure, diagnosis, return-to-duty clearance/,
         /Drop incidental preparation without claiming its underlying problem is solved/]) assert.match(DIRECTOR_SYSTEM, rule);

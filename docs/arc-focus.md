@@ -1,6 +1,6 @@
 # Arc-focused planning
 
-The world frame defines the RP's lasting premise. Sagas (displayed as **Broad current**) connect related arcs; arcs are sustained storylines; threads are substantial smaller subplots. These scales remain optional. There is no card quota and no requirement to escalate quiet play.
+The world frame defines the RP's lasting premise. Beneath it, one active **Saga** holds the current broad chapter; connected **Arcs** are sustained storylines; optional **Threads** are substantial smaller subplots attached to Arcs. A Saga can be an ordinary school year. Quiet play can keep just the Saga: there is no Arc/Thread quota or requirement to escalate. Shared scope does not require every storyline to converge. When accepted play ends the Saga, the next chapter replaces it. Existing maps are reorganized on the next successful review, not rewritten on load.
 
 The director now applies a significance test at creation, retention and selection. An unfinished errand or medical condition does not automatically deserve a subplot. Reviews omit filler rather than renaming it, making it dormant or inventing stakes to preserve it. This is a model judgment, not a deterministic topic/title classifier. The same arm-rehabilitation case may be incidental in a diplomatic sandbox and central in a medical drama.
 

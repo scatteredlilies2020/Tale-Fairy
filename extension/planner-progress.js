@@ -15,6 +15,7 @@ export function campaignAttemptSummary(attempt, active = false) {
     if (attempt.status === 'started') return active
         ? 'Request in progress · completion not yet confirmed'
         : 'Previous request has no completion record · it may still be running in another page; Guide now can retry';
+    if (attempt.status === 'pending') return 'Browser wait released · checking for pending server work';
     const duration = Number.isFinite(attempt.durationMs) ? ` · ${plannerElapsed(attempt.durationMs)}` : '';
     const labels = { complete: 'Last request: preparation saved', failed: 'Last request failed', stopped: 'Last request stopped' };
     const reason = attempt.error || attempt.skipped;
@@ -26,7 +27,8 @@ export function campaignAttemptSummary(attempt, active = false) {
         ? ` · automatic correction ${attempt.status === 'complete' ? 'succeeded' : 'attempted'}` : '';
     const memory = attempt.evidenceRestarts
         ? ` · memory refresh ${attempt.status === 'complete' ? 'incorporated' : 'attempted'}` : '';
-    const recovery = `${count}${stages}${memory}${correction}`;
+    const server = attempt.serverAttempts > 1 ? ` · ${attempt.serverAttempts} server attempts` : '';
+    const recovery = `${count}${stages}${memory}${correction}${server}`;
     return `${labels[attempt.status] || 'Last request: unknown status'}${duration}${recovery}${reason ? ` · ${reason}` : ''}`;
 }
 
@@ -40,7 +42,7 @@ export async function boundedPlannerResponse(generate, controller, timeoutMs = P
         onAbort = () => reject(signal.reason);
         signal.addEventListener('abort', onAbort, { once: true });
         timer = setTimeout(() => controller.abort(new DOMException(
-            `Planner response timed out after ${plannerElapsed(timeoutMs)}; no automatic retry was sent.`, 'TimeoutError')), timeoutMs);
+            `Browser wait timed out after ${plannerElapsed(timeoutMs)}; pending server work can still finish.`, 'TimeoutError')), timeoutMs);
     });
     try {
         return await Promise.race([Promise.resolve().then(() => { signal.throwIfAborted(); return generate(); }), cancelled]);

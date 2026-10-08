@@ -16,7 +16,7 @@ import { writerFailureDetails } from './isolated-writer-provider.mjs';
 
 const hash = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 export async function liveCardPass(fixture, state, messages, generate) {
-    const input = directorInput({ reference: { premise: fixture.premise }, state, messages,
+    const input = directorInput({ reference: { premise: fixture.premise }, state, messages, requireSagaHierarchy: fixture.requireSagaHierarchy === true,
         playerNames: fixture.players, previousUsable: state.revision > 0 });
     const source = { chatId: `live-smoke-${fixture.id}`, referenceHash: hash(fixture.premise),
         fingerprint: hash(messages), messageCount: messages.length };

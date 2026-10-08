@@ -168,7 +168,7 @@ test('card renderer escapes every model-authored surface and labels status witho
     assert.match(html, /&lt;img src=x onerror=&quot;alert\(1\)&quot;&gt;/);
     assert.match(html, /tf-card-status">Active/);
     assert.match(html, /Writer selection/);
-    assert.match(html, /Broad current|Thread/);
+    assert.match(html, /Saga|Thread/);
     assert.equal(storyCardsHtml(null), '');
 });
 

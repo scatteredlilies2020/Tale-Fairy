@@ -55,6 +55,157 @@ function plannerBody(runKey = 'run-1') {
     };
 }
 
+function campaignBody(runKey) {
+    const body = plannerBody(runKey);
+    body.meta.chatId = 'campaign-chat';
+    body.meta.campaign = { version: 1, input: { prompt: 'Synthetic RP' },
+        source: { chatId: 'campaign-chat', referenceHash: 'ref', messageCount: 3, fingerprint: 'abc' },
+        stateFingerprint: 'state', requestSignature: 'settings' };
+    return body;
+}
+
+function inspectJob(router, id) {
+    const res = responseMock();
+    router.routes.get('GET /planner-jobs/:id')(request({}, { params: { id } }), res);
+    return res.payload.job;
+}
+
+async function untilJob(router, id, predicate) {
+    for (let n = 0; n < 100; n++) {
+        const job = inspectJob(router, id);
+        if (predicate(job)) return job;
+        await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    assert.fail('Server job did not reach expected state.');
+}
+
+test('campaign submission is acknowledged immediately; reconnect deduplicates and idle polling never generates', async () => {
+    let release, calls = 0;
+    const router = routerMock();
+    await init(router, { fetchImpl: () => { calls++; return new Promise(resolve => { release = resolve; }); } });
+    const first = responseMock();
+    await router.routes.get('POST /planner-jobs/generate')(request(campaignBody('campaign-dedup')), first);
+    assert.equal(first.statusCode, 202);
+    assert.equal(first.payload.job.status, 'processing');
+    const id = first.payload.job.id;
+    const second = responseMock();
+    await router.routes.get('POST /planner-jobs/generate')(request(campaignBody('campaign-dedup')), second);
+    assert.equal(second.payload.job.id, id);
+    assert.equal(calls, 1);
+    release(new Response(JSON.stringify({ choices: [{ message: { content: 'Synthetic completed plan' } }] })));
+    const result = await untilJob(router, id, job => job.status === 'complete');
+    assert.equal(result.text, 'Synthetic completed plan');
+    assert.deepEqual(result.meta.campaign, campaignBody('x').meta.campaign);
+    for (let i = 0; i < 5; i++) inspectJob(router, id);
+    assert.equal(calls, 1);
+    assert.equal(result.request, undefined);
+    assert.equal(result.backendHeaders, undefined);
+});
+
+test('server retries pending campaign after temporary failures without any browser; bounded at three requests', async () => {
+    for (const succeeds of [true, false]) {
+        let calls = 0;
+        const router = routerMock();
+        await init(router, { retryDelays: [1, 1], fetchImpl: async () => {
+            calls++;
+            return succeeds && calls === 3
+                ? new Response(JSON.stringify({ choices: [{ message: { content: 'done' } }] }))
+                : new Response('temporarily unavailable', { status: 503 });
+        } });
+        const res = responseMock();
+        await router.routes.get('POST /planner-jobs/generate')(request(campaignBody(`campaign-retry-${succeeds}`)), res);
+        const job = await untilJob(router, res.payload.job.id, job => ['complete', 'error'].includes(job.status));
+        assert.equal(calls, 3);
+        assert.equal(job.attempts, 3);
+        assert.equal(job.status, succeeds ? 'complete' : 'error');
+        assert.equal(job.retryAt, null);
+        await new Promise(resolve => setTimeout(resolve, 15));
+        assert.equal(calls, 3, 'terminal failure is not an idle review loop');
+    }
+});
+
+test('explicit server stop cancels a retry wait, including a repeated submission', async () => {
+    let calls = 0;
+    const router = routerMock();
+    await init(router, { retryDelays: [100, 100], fetchImpl: async () => { calls++; return new Response('', { status: 429 }); } });
+    const res = responseMock(), body = campaignBody('campaign-stop');
+    await router.routes.get('POST /planner-jobs/generate')(request(body), res);
+    const id = res.payload.job.id;
+    await untilJob(router, id, job => job.status === 'retry_wait');
+    router.routes.get('DELETE /planner-jobs/:id')(request({}, { params: { id } }), responseMock());
+    const repeated = responseMock();
+    await router.routes.get('POST /planner-jobs/generate')(request(body), repeated);
+    assert.equal(repeated.payload.job.status, 'cancelled');
+    await new Promise(resolve => setTimeout(resolve, 120));
+    assert.equal(calls, 1);
+});
+
+test('server timeout can retry before output; auth, invalid output and partial streams cannot', async () => {
+    const router = routerMock();
+    let calls = 0;
+    await init(router, { retryDelays: [1, 1], requestTimeoutMs: 2, fetchImpl: async (_url, { signal }) => {
+        if (++calls === 1) return new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
+        return new Response(JSON.stringify({ choices: [{ message: { content: 'done' } }] }));
+    } });
+    const res = responseMock();
+    await router.routes.get('POST /planner-jobs/generate')(request(campaignBody('campaign-timeout')), res);
+    await untilJob(router, res.payload.job.id, job => job.status === 'complete');
+    assert.equal(calls, 2);
+
+    for (const [name, response] of [
+        ['auth', () => new Response('unauthorized', { status: 401 })],
+        ['settings', () => new Response('invalid model', { status: 400 })],
+        ['invalid', () => new Response('not JSON')],
+        ['truncated', () => new Response(JSON.stringify({ choices: [{ message: { content: '{}' }, finish_reason: 'length' }] }))],
+        ['partial', () => new Response(new ReadableStream({ start(controller) {
+            controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"partial"}}]}\n\n'));
+            setTimeout(() => controller.error(new TypeError('terminated')), 2);
+        } }), { headers: { 'Content-Type': 'text/event-stream' } })],
+    ]) {
+        let count = 0;
+        const local = routerMock();
+        await init(local, { retryDelays: [1, 1], fetchImpl: async () => { count++; return response(); } });
+        const result = responseMock();
+        await local.routes.get('POST /planner-jobs/generate')(request(campaignBody(`campaign-no-retry-${name}`)), result);
+        const job = await untilJob(local, result.payload.job.id, job => job.status === 'error');
+        assert.equal(job.attempts, 1, name);
+        assert.equal(count, 1, name);
+    }
+});
+
+test('partial non-stream responses are not retried', async () => {
+    const router = routerMock();
+    let calls = 0;
+    await init(router, { retryDelays: [1, 1], fetchImpl: async () => {
+        calls++;
+        return new Response(new ReadableStream({ start(controller) {
+            controller.enqueue(new TextEncoder().encode('{"choices":['));
+            setTimeout(() => controller.error(new TypeError('terminated')), 2);
+        } }));
+    } });
+    const body = campaignBody('nonstream-partial');
+    body.backendPath = '/api/backends/text-completions/generate';
+    const res = responseMock();
+    await router.routes.get('POST /planner-jobs/generate')(request(body), res);
+    await untilJob(router, res.payload.job.id, job => job.status === 'error');
+    assert.equal(calls, 1);
+});
+
+test('a late response cannot resurrect explicitly cancelled server work', async () => {
+    const router = routerMock();
+    let release;
+    await init(router, { fetchImpl: () => new Promise(resolve => { release = resolve; }) });
+    const res = responseMock();
+    await router.routes.get('POST /planner-jobs/generate')(request(campaignBody('late-after-stop')), res);
+    const id = res.payload.job.id;
+    router.routes.get('DELETE /planner-jobs/:id')(request({}, { params: { id } }), responseMock());
+    release(new Response('{"choices":[{"message":{"content":"late"}}]}'));
+    await new Promise(resolve => setImmediate(resolve));
+    const job = await untilJob(router, id, job => job.status === 'cancelled');
+    assert.equal(job.text, '');
+    assert.equal(job.attempts, 1);
+});
+
 test('planner finishes on the server and remains recoverable after the browser disappears', async () => {
     let forwarded;
     const payload = { candidates: [{ content: { parts: [{ text: '{"contract_version":2}' }] } }] };

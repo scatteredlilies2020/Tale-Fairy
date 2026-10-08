@@ -1,7 +1,8 @@
 import crypto from 'node:crypto';
+import { setTimeout as sleep } from 'node:timers/promises';
 
 const PLUGIN = 'tale-fairy';
-const VERSION = '0.19.2';
+const VERSION = '0.19.3';
 const jobs = new Map();
 const MAX_FINISHED_JOBS = 40;
 const MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
@@ -36,6 +37,8 @@ function publicJob(job) {
         acknowledged: Boolean(job.acknowledged),
         createdAt: job.createdAt,
         completedAt: job.completedAt || null,
+        attempts: job.attempts || 0,
+        retryAt: job.retryAt || null,
     };
 }
 
@@ -198,6 +201,7 @@ async function readEventStream(upstream, job, touchTimeout) {
     };
 
     for await (const chunk of upstream.body) {
+        job.controller.signal.throwIfAborted();
         const bytes = Buffer.from(chunk);
         totalBytes += bytes.byteLength;
         if (totalBytes > MAX_RESPONSE_BYTES) throw new Error('Tale Fairy planner response exceeded the 32 MB safety limit.');
@@ -219,6 +223,21 @@ async function readEventStream(upstream, job, touchTimeout) {
     return { text: output.trim(), fallbackRaw: sawEventData ? '' : fallbackRaw, sawReasoning, exhaustedOutputBudget };
 }
 
+async function readResponseBytes(upstream, job, touchTimeout, trackOutput = true) {
+    const chunks = [];
+    let size = 0;
+    for await (const chunk of upstream.body) {
+        job.controller.signal.throwIfAborted();
+        const bytes = Buffer.from(chunk);
+        size += bytes.length;
+        if (size > MAX_RESPONSE_BYTES) throw new Error('Tale Fairy planner response exceeded the 32 MB safety limit.');
+        if (trackOutput) job.receivedBytes = size;
+        touchTimeout();
+        chunks.push(bytes);
+    }
+    return Buffer.concat(chunks, size);
+}
+
 function trimJobs() {
     const finished = [...jobs.values()]
         .filter(job => ['complete', 'error', 'cancelled'].includes(job.status))
@@ -226,12 +245,16 @@ function trimJobs() {
     for (const job of finished.slice(MAX_FINISHED_JOBS)) jobs.delete(job.id);
 }
 
-async function run(job, res) {
+async function runAttempt(job, res) {
     job.status = 'processing';
+    job.attempts++;
+    job.retryAt = null;
+    job.receivedBytes = 0;
+    job.text = '';
     let timer;
     const touchTimeout = () => {
         clearTimeout(timer);
-        timer = setTimeout(() => job.controller.abort(new Error('Tale Fairy planner request timed out after ten minutes without data.')), REQUEST_TIMEOUT_MS);
+        timer = setTimeout(() => job.controller.abort(Object.assign(new Error('Tale Fairy planner request timed out without data.'), { name: 'TimeoutError' })), job.requestTimeoutMs);
     };
     touchTimeout();
     try {
@@ -241,15 +264,17 @@ async function run(job, res) {
             body: JSON.stringify(job.request),
             signal: job.controller.signal,
         });
+        job.controller.signal.throwIfAborted();
         const contentType = upstream.headers.get('content-type') || 'application/json';
         if (!upstream.ok) {
-            const bytes = Buffer.from(await upstream.arrayBuffer());
+            const bytes = await readResponseBytes(upstream, job, touchTimeout, false);
             const raw = bytes.toString('utf8');
             throw Object.assign(new Error(`Planner backend returned HTTP ${upstream.status}: ${raw.slice(0, 500)}`), { status: upstream.status });
         }
 
         if (job.request.stream || /text\/event-stream/i.test(contentType)) {
             const streamed = await readEventStream(upstream, job, touchTimeout);
+            job.controller.signal.throwIfAborted();
             job.text = streamed.text;
             let responseBytes;
             if (!job.text && streamed.fallbackRaw.trim()) {
@@ -278,8 +303,8 @@ async function run(job, res) {
             return;
         }
 
-        const bytes = Buffer.from(await upstream.arrayBuffer());
-        if (bytes.byteLength > MAX_RESPONSE_BYTES) throw new Error('Tale Fairy planner response exceeded the 32 MB safety limit.');
+        const bytes = await readResponseBytes(upstream, job, touchTimeout);
+        job.controller.signal.throwIfAborted();
         const raw = bytes.toString('utf8');
         let payload;
         try { payload = raw ? JSON.parse(raw) : {}; }
@@ -297,13 +322,46 @@ async function run(job, res) {
             res.setHeader('Access-Control-Expose-Headers', 'X-Tale-Fairy-Job-Id');
         }
         if (!res.destroyed && !res.writableEnded) res.end(bytes);
+    } finally {
+        clearTimeout(timer);
+    }
+}
+
+function transientFailure(error, job) {
+    // No semantic/JSON/auth/configuration retry and no retry after partial
+    // output: the server may already have completed a billable response.
+    if (job.receivedBytes || job.text) return false;
+    return [408, 429, 502, 503, 504].includes(Number(error.status))
+        || job.controller.signal.reason?.name === 'TimeoutError'
+        || error.name === 'TypeError' && /fetch failed|network|terminated/i.test(error.message)
+        || ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN'].includes(error.cause?.code || error.code);
+}
+
+async function run(job, res) {
+    try {
+        for (;;) {
+            try {
+                job.controller.signal.throwIfAborted();
+                await runAttempt(job, res);
+                job.error = '';
+                break;
+            } catch (error) {
+                if (job.cancelled || !job.meta.campaign || job.attempts > job.retryDelays.length || !transientFailure(error, job)) throw error;
+                const delay = job.retryDelays[job.attempts - 1];
+                job.controller = new AbortController();
+                job.status = 'retry_wait';
+                job.error = error.message;
+                job.retryAt = new Date(Date.now() + delay).toISOString();
+                await sleep(delay, undefined, { signal: job.controller.signal });
+            }
+        }
     } catch (error) {
         job.status = job.cancelled || error?.name === 'AbortError' ? 'cancelled' : 'error';
         job.error = job.status === 'cancelled' ? 'Planner job cancelled.' : error.message || String(error);
         if (!res.destroyed && !res.headersSent) res.status(Number(error.status) || 500).json({ error: job.error });
         else if (!res.destroyed && !res.writableEnded) res.end();
     } finally {
-        clearTimeout(timer);
+        job.retryAt = null;
         job.completedAt = new Date().toISOString();
         job.request = null;
         job.backendHeaders = null;
@@ -317,9 +375,9 @@ function sendError(res, error) {
     res.status(status).json({ ok: false, error: error.message || String(error) });
 }
 
-export async function init(router, { fetchImpl = fetch } = {}) {
+export async function init(router, { fetchImpl = fetch, retryDelays = [15000, 60000], requestTimeoutMs = REQUEST_TIMEOUT_MS } = {}) {
     router.get('/health', (_req, res) => {
-        res.json({ ok: true, plugin: PLUGIN, version: VERSION, detachedPlanner: true });
+        res.json({ ok: true, plugin: PLUGIN, version: VERSION, detachedPlanner: true, campaignJobs: 1 });
     });
 
     router.post('/planner-jobs/generate', async (req, res) => {
@@ -335,7 +393,24 @@ export async function init(router, { fetchImpl = fetch } = {}) {
             const backendPath = String(req.body?.backendPath || '/api/backends/chat-completions/generate');
             request.stream = backendPath === '/api/backends/chat-completions/generate';
             const backend = internalBackend(req, backendPath);
+            let campaign;
+            if (suppliedMeta.campaign) {
+                const saved = suppliedMeta.campaign;
+                if (saved.version !== 1 || !isRecord(saved.input) || !isRecord(saved.source)
+                    || saved.source.chatId !== suppliedMeta.chatId || typeof saved.stateFingerprint !== 'string'
+                    || typeof saved.requestSignature !== 'string' || JSON.stringify(saved).length > 2 * 1024 * 1024) {
+                    throw Object.assign(new Error('Invalid campaign recovery envelope.'), { status: 400 });
+                }
+                campaign = { version: 1, input: saved.input, source: saved.source,
+                    stateFingerprint: saved.stateFingerprint, requestSignature: saved.requestSignature };
+                // Reconnecting or an uncertain POST must never buy the same
+                // pass twice. Ownership scopes run keys to one ST user.
+                const existing = [...jobs.values()].find(job => belongsTo(req, job)
+                    && job.chatId === suppliedMeta.chatId && job.runKey === suppliedMeta.runKey && job.meta.campaign);
+                if (existing) return res.status(202).json({ ok: true, job: publicJob(existing) });
+            }
             const meta = {
+                ...(campaign ? { campaign } : {}),
                 chatId: String(suppliedMeta.chatId),
                 runKey: String(suppliedMeta.runKey),
                 fingerprint: String(suppliedMeta.fingerprint || ''),
@@ -365,6 +440,9 @@ export async function init(router, { fetchImpl = fetch } = {}) {
                 backendUrl: backend.url,
                 backendHeaders: backend.headers,
                 fetchImpl,
+                retryDelays,
+                requestTimeoutMs,
+                attempts: 0,
                 controller: new AbortController(),
                 status: 'queued',
                 text: '',
@@ -377,6 +455,12 @@ export async function init(router, { fetchImpl = fetch } = {}) {
                 lastActivityAt: null,
             };
             jobs.set(job.id, job);
+            if (campaign) {
+                // The browser only submits/collects. Neither its AbortSignal
+                // nor a closed socket owns the provider request or retry timer.
+                void run(job, { destroyed: true });
+                return res.status(202).json({ ok: true, job: publicJob(job) });
+            }
             await run(job, res);
         } catch (error) {
             sendError(res, error);
@@ -410,6 +494,8 @@ export async function init(router, { fetchImpl = fetch } = {}) {
         if (!belongsTo(req, job)) return res.status(404).json({ ok: false, error: 'Detached planner job not found.' });
         job.cancelled = true;
         job.controller.abort();
+        job.status = 'cancelled';
+        job.error = 'Planner job cancelled.';
         res.json({ ok: true, job: publicJob(job) });
     });
 
@@ -417,6 +503,6 @@ export async function init(router, { fetchImpl = fetch } = {}) {
 }
 
 export async function exit() {
-    for (const job of jobs.values()) job.controller.abort();
+    for (const job of jobs.values()) { job.cancelled = true; job.controller.abort(); }
     console.log(`[${PLUGIN}] stopped`);
 }

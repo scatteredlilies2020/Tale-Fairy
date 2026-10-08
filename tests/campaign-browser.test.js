@@ -196,20 +196,63 @@ function browser(send = async args => plannedResponse(args), initialState = defa
 }
 
 const directorReply = prompt => {
-    const prefix = JSON.parse(prompt).new_id_prefix;
+    const input = JSON.parse(prompt), prefix = input.new_id_prefix;
+    const saga = input.previous_preparation?.nodes.find(node => node.kind === 'saga');
+    const sagaId = saga?.id || `${prefix}neighborhood`;
     const id = `${prefix}kitchen`;
     return { direction: 'Explore music, friendships and neighborhood life.', reviewAfter: 12, upsert: [{ id,
-        kind: 'thread', parentId: '', status: 'proposed', links: [], title: 'An open neighborhood supper', owner: 'Community cooks',
-        description: 'Shared cooking and a communal recipe book connect neighboring households.' }],
-    retain: [], retire: [], select: [{ id, title: 'An open neighborhood supper', context: [],
+        kind: 'arc', parentId: sagaId, status: 'proposed', links: [], title: 'An open neighborhood supper', owner: 'Community cooks',
+        description: 'Shared cooking and a communal recipe book connect neighboring households.' },
+        ...(!saga ? [{ id: sagaId, kind: 'saga', parentId: '', status: 'active', links: [],
+            title: 'A season in the neighborhood', owner: 'The neighborhood',
+            description: 'A season of shared projects, music and neighborhood friendships.' }] : [])],
+    retain: saga ? [saga.id] : [], retire: [], select: [{ id, title: 'An open neighborhood supper', context: [],
         description: 'Neighbors exchange recipes and develop friendships over shared suppers.', development: '' }] };
 };
+
+test('actual pagehide handler detaches the host session without changing pending work to stopped', async () => {
+    const h = browser(() => new Promise(() => {}), defaultState(), { director: true });
+    const work = h.scope.analyzeCampaignNow();
+    await settle();
+    assert.equal(h.requests.length, 1);
+    let pagehide;
+    h.scope.addEventListener = (name, callback) => { if (name === 'pagehide') pagehide = callback; };
+    vm.runInContext(source.slice(source.indexOf("globalThis.addEventListener?.('pagehide'"),
+        source.indexOf("globalThis.addEventListener?.('pageshow'")), h.scope);
+    pagehide();
+    await work;
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'pending');
+    assert.equal(h.requests.length, 1);
+});
+
+test('swiping an appended reply does not stop a pending review of the accepted prefix', async () => {
+    let finish;
+    const h = browser(({ prompt }) => new Promise(resolve => { finish = () => resolve(envelope(directorReply(prompt))); }),
+        defaultState(), { director: true });
+    const work = h.scope.analyzeCampaignNow();
+    await settle();
+    h.context.chat.push({ is_user: false, mes: 'An unwanted draft.' });
+    h.scope.deferReplacementPlanning(h.context);
+    assert.equal(h.requests[0].signal.aborted, false);
+    finish();
+    await work;
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
+    assert.equal(h.state().campaignPreparation.revision, 1);
+    assert.equal(h.requests.length, 1);
+});
 
 // Keep a retained story rather than introducing it again on every review.
 const retainedDirectorReply = prompt => {
     const input = JSON.parse(prompt), raw = directorReply(prompt);
     const retained = input.previous_preparation.nodes[0];
-    if (retained) { raw.upsert = []; raw.select[0].id = retained.id; }
+    if (retained) {
+        const sagaId = raw.upsert[0].parentId;
+        raw.upsert = raw.upsert.filter(node => node.kind === 'saga');
+        if (retained.kind !== 'arc' || retained.parentId !== sagaId) {
+            raw.upsert.push({ ...retained, kind: 'arc', parentId: sagaId });
+        }
+        raw.select[0].id = retained.id;
+    }
     return raw;
 };
 const ensembleDirectorReply = prompt => {
@@ -325,9 +368,9 @@ test('player-centered cards survive planning, dependent selections, reload and w
         const raw = ensembleDirectorReply(prompt), prefix = JSON.parse(prompt).new_id_prefix;
         const template = raw.upsert[0];
         raw.upsert = [
-            { ...template, id: `${prefix}life`, kind: 'saga', owner: 'Neri', title: 'Neri and the neighborhood' },
+            { ...template, id: `${prefix}life`, kind: 'saga', parentId: '', status: 'active', owner: 'Neri', title: 'Neri and the neighborhood' },
             { ...template, id: `${prefix}music`, kind: 'arc', parentId: `${prefix}life`, owner: 'Neri', title: 'Music and friendship' },
-            { ...template, id: `${prefix}supper`, parentId: `${prefix}music`, owner: 'Mara', title: 'Shared supper',
+            { ...template, id: `${prefix}supper`, kind: 'thread', parentId: `${prefix}music`, owner: 'Mara', title: 'Shared supper',
                 links: [`${prefix}life`], effects: [{ label: 'Shared invitations', pressure: 'Neighbors offer company and music without deciding Neri’s response.' }] },
         ];
         raw.select = raw.upsert.map((node, index) => ({ ...raw.select[0], id: node.id, title: node.title,
@@ -438,7 +481,7 @@ test('host persists card effects without per-turn calls and stops them when the 
     const effect = { label: 'Shared kitchen', pressure: 'Neighbors have practical reasons to trade recipes and help with preparations.' };
     const h = browser(async ({ prompt }) => {
         const raw = ensembleDirectorReply(prompt);
-        for (const node of raw.upsert) node.effects = [effect];
+        for (const node of raw.upsert.filter(node => node.kind !== 'saga')) node.effects = [effect];
         if (h.requests.length === 3) {
             raw.upsert = [{ ...JSON.parse(prompt).previous_preparation.nodes[0], status: 'resolved' }];
             raw.select = [];
@@ -465,7 +508,7 @@ test('host persists card effects without per-turn calls and stops them when the 
     h.context.chat.push({ is_user: false, name: 'Mara', mes: 'The supper project is finished; the neighbors clear away the final preparations.' });
     await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 3);
-    assert.deepEqual(h.state().campaignPreparation.workingPlan.storyStructure.nodes, []);
+    assert.deepEqual(h.state().campaignPreparation.workingPlan.storyStructure.nodes.map(node => node.kind), ['saga']);
     assert.equal(h.state().campaignPreparation.archive.at(-1).workingPlan.storyStructure.nodes[0].status, 'proposed');
     assert.doesNotMatch(h.prepare().payload, /Shared kitchen|"effects"/);
     assert.match(h.prepare().payload, /rp_orientation/);
@@ -519,7 +562,7 @@ for (const change of [
     assert.equal(h.prepare().payload, '', 'reload cannot restore the old packet');
     await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 2, 'explicit changes bypass the long cadence');
-    assert.deepEqual(h.state().campaignPreparation.workingPlan.storyStructure.nodes, []);
+    assert.deepEqual(h.state().campaignPreparation.workingPlan.storyStructure.nodes.map(node => node.kind), ['saga']);
     assert.equal(h.prepare().payload, '');
     await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 2, 'the accepted change is reviewed once');
@@ -682,12 +725,12 @@ test('active director withholds an unavailable selection and still saves useful 
 test('active director accepts the omitted empty fields reported by ordinary planner providers', async () => {
     const h = browser(async ({ prompt }) => {
         const raw = directorReply(prompt);
-        delete raw.upsert[0].parentId; delete raw.upsert[0].links; delete raw.select[0].development;
+        delete raw.upsert[1].parentId; delete raw.upsert[0].links; delete raw.select[0].development;
         return envelope(raw);
     }, defaultState(), { director: true });
     await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 1);
-    assert.equal(h.state().campaignPreparation.workingPlan.storyStructure.nodes.length, 1);
+    assert.equal(h.state().campaignPreparation.workingPlan.storyStructure.nodes.length, 2);
     assert.match(h.prepare().payload, /neighborhood supper/);
     assert.match(h.statuses.join('\n'), /Campaign preparation ready/);
     assert.doesNotMatch(h.statuses.join('\n'), /Story withheld|Selection withheld/);
@@ -1583,7 +1626,7 @@ test('Guide now retains the previous map and retry history when the provider fai
     await h.scope.reevaluateGuideState();
     assert.deepEqual(h.state().campaignPreparation, previous);
     assert.deepEqual(structuredClone(h.context.chatMetadata[GENERATION_CONTEXT_KEY]), cache);
-    assert.equal(JSON.parse(h.requests[1].prompt).previous_preparation.nodes.length, 1);
+    assert.equal(JSON.parse(h.requests[1].prompt).previous_preparation.nodes.length, 2);
     assert.match(h.statuses.at(-1), /Previous preparation retained/);
     assert.match(h.prepare().payload, /neighborhood supper/);
 });

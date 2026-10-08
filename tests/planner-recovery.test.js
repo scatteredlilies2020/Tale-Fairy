@@ -17,6 +17,7 @@ function harness(jobs, overrides = {}) {
     const scope = {
         canRetainSuccessfulPlan,
         detachedPlannerRecovering: false, analysisPromise: null, analysisStopSequence: 0, campaignHostWork: null,
+        recoverDetachedCampaignJobs: async () => ({ recovered: false, active: Boolean(scope.campaignHostWork) }),
         replacementPlanningDeferred: () => false,
         retryPlannerSourceMatches: (_context, meta) => meta.allowOneAssistantAppend === true,
         getSettings: () => ({ enabled: true }), currentContext: () => context,

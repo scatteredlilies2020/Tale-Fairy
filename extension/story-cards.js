@@ -3,7 +3,7 @@ import { ongoingStoryNodes } from './story-structure.js?story-structure=1&concis
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 })[char]);
-const kinds = { saga: 'Broad current', arc: 'Arc', thread: 'Thread' };
+const kinds = { saga: 'Saga', arc: 'Arc', thread: 'Thread' };
 const statuses = { proposed: 'Proposed', active: 'Active', dormant: 'Dormant', resolved: 'Resolved', retired: 'Retired' };
 const field = (label, value) => value ? `<div class="tf-card-detail"><span>${label}</span><p>${escape(value)}</p></div>` : '';
 const badge = (label, modifier = '') => `<span class="tf-card-badge ${modifier}">${escape(label)}</span>`;

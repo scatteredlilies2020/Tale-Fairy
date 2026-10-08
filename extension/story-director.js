@@ -42,9 +42,11 @@ foundation.scratchpad replaces brief creative considerations; "" when unnecessar
 
 Take a deep, god's-eye view: how institutions, incentives, customs and relationships drive independent lives. Infer and invent boldly: fitting people, places, pursuits and hidden motives. Depth can be playful. Show causes. AI-Dungeon-like sandboxes span ensembles; one-on-one RP can stay intimate. Original worlds support invention; canon is a fallible reference. Quiet scenes can stay quiet; no quotas, forced escalation or convergence. These are planner rules, not reminder content.
 
-Plan around arcs: sustained pursuits, questions or changes with room for meaningful development across scenes. A saga connects several arcs into a larger story; a thread is a distinct substantial subplot, not a task or loose end. Use concise saga/arc/thread cards with no mandatory levels or counts. Significance is relative to this RP: a festival project or slowly changing friendship can qualify without danger. Routine care, errands, appointments, individual rehearsals, static conditions and incidental encounters normally stay in chat or memory. They can support an arc without becoming cards themselves. An explicitly central rehabilitation story can qualify; an incidental patient does not qualify merely because recovery is unfinished.
+Keep exactly one active root Saga: the broad current chapter of this RP, connecting its Arcs. Scale it to the genre: "Our year in the light music club" needs no epic stakes. Preserve it across quiet scenes; when accepted play ends it, replace it with the next fitting chapter without deciding player outcomes. Every Arc has that Saga as parentId; every optional Thread has an Arc as parentId. Shared scope is enough: connected stories need not converge or involve every character. Repair inherited orphan cards rather than keep disconnected roots.
 
-Apply this significance test to new, retained and selected cards alike: what continuing story makes this worth returning to, beyond completing routine business? Unfinished alone is insufficient. Omit filler, including inherited cards; do not rename it an arc, park it as dormant, or invent complications and grander stakes to justify keeping it. Fold useful supporting details into a real arc only when they affect it. Quiet play can need no cards.
+Plan around arcs: sustained pursuits, questions or changes across scenes; a thread is a distinct substantial subplot, not a task or loose end. No quota for Arcs or Threads. Significance is relative to this RP: a festival project or slowly changing friendship can qualify without danger. Routine care, errands, appointments, individual rehearsals, static conditions and incidental encounters normally stay in chat or memory. They can support an arc without becoming cards themselves. An explicitly central rehabilitation story can qualify; an incidental patient does not qualify merely because recovery is unfinished.
+
+Apply this significance test to new, retained and selected cards alike: what continuing story makes this worth returning to, beyond completing routine business? Unfinished alone is insufficient. Omit filler, including inherited cards; do not rename it an arc, park it as dormant, or invent complications and grander stakes to justify keeping it. Fold useful supporting details into a real arc only when they affect it. Quiet play can keep just the Saga; never invent filler to populate the hierarchy.
 
 description gives the concern and what it encourages in one or two sentences. Descriptions/effects outlast scenes; current actions and errands stay in chat. effects holds up to three {label, pressure} pairs: concrete ongoing influences on opportunities, relationships, resources or choices. Narrative effects, no numbers/schedules; [] for none. endsWhen recognizes an end boundary with outcomes open; "" for ongoing concerns. parentId groups cards ("" for root); links connect without merging ([] for none). owner identifies the character, group or process concerned, including a player character; it grants no control.
 
@@ -122,7 +124,21 @@ export function directorInput(args, maxTokens) {
         const inputTokens = storyInputTokens(prompt, DIRECTOR_SYSTEM, DIRECTOR_SCHEMA);
         if (inputTokens <= input.inputLimit) Object.assign(input, { prompt, inputTokens });
     }
-    return input;
+    return { ...input, requireSagaHierarchy: args.requireSagaHierarchy === true };
+}
+
+export function validateSagaHierarchy(nodes) {
+    const sagas = nodes.filter(node => node.kind === 'saga');
+    if (sagas.length !== 1 || sagas[0].status !== 'active' || sagas[0].parentId) {
+        throw Error('Story map requires exactly one active root Saga.');
+    }
+    const root = sagas[0], rows = new Map(nodes.map(node => [node.id, node]));
+    for (const node of nodes) {
+        if (node.kind === 'arc' && node.parentId !== root.id
+            || node.kind === 'thread' && rows.get(node.parentId)?.kind !== 'arc') {
+            throw Error('Connect each Arc to the active Saga and each optional Thread to an Arc.');
+        }
+    }
 }
 
 // Repair complete JSON syntax locally. Never close a cut-off response or send
@@ -193,6 +209,9 @@ export async function directorPass({ state, input, source, generate }) {
         const retainedIds = new Set(raw.retain ?? []);
         for (const record of [...raw.upsert, ...raw.select]) if (record?.id) retainedIds.add(record.id);
         const nodes = ongoingStoryNodes(merged, retainedIds), mergedRows = new Map(merged.map(node => [node.id, node]));
+        // Current host passes enforce the hierarchy; old archived formats and
+        // historical fixture readers remain compatible. Never fabricate links.
+        if (input.requireSagaHierarchy) validateSagaHierarchy(nodes);
         const rows = new Map(nodes.map(node => [node.id, node]));
         // These compatibility fields are required by historical saved-state schemas.
         const orientation = foundation?.reminder || 'Ongoing roleplay.';

@@ -13,6 +13,7 @@ import { needsEventReframe } from '../../extension/bounded-story.js';
 import { directorInput as ownedInput, directorPass as ownedPass, nextPlanRevision,
     DIRECTOR_SCHEMA as OWNED_SCHEMA, DIRECTOR_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from '../../extension/story-director.js';
 import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from '../../extension/campaign-session.js';
+import { campaignJobMeta } from '../../extension/campaign-jobs.js';
 import { campaignReviewedCount, campaignCheckpoint, campaignReconsideration, verifiedClosedSubjects } from '../../extension/campaign-review.js';
 import { isStoryGeneration, refreshGameMasterContract } from '../../extension/game-master.js';
 import { sampleDirectorSignals } from '../../extension/director-sampling.js';
@@ -36,7 +37,7 @@ export function generationHarness(messages, state = stateApi.defaultState(), met
     const scope = {
         activatedStoryContext: new ActivatedStoryContext(), readHostStoryEvidence,
         ...stateApi, ...cacheApi, ...scheduleApi, ...coalescerApi, ...preparedApi, ...campaignApi, ...compactionApi,
-        ownedInput, ownedPass, needsEventReframe, nextPlanRevision, OWNED_SCHEMA, OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit, CampaignSession, CAMPAIGN_ATTEMPT_KEY, campaignReviewedCount, campaignCheckpoint, campaignReconsideration, verifiedClosedSubjects,
+        ownedInput, ownedPass, needsEventReframe, nextPlanRevision, OWNED_SCHEMA, OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit, CampaignSession, CAMPAIGN_ATTEMPT_KEY, campaignJobMeta, campaignReviewedCount, campaignCheckpoint, campaignReconsideration, verifiedClosedSubjects,
         getRequestHeaders: () => ({}), sha256: bytes => createHash('sha256').update(bytes).digest('hex'),
         isStoryGeneration, refreshGameMasterContract, sampleDirectorSignals, selectSituationalOpenings, createSafetyFallbackState, canRetainSuccessfulPlan,
         // ST returns a new context with a snapshot reference to its metadata.
@@ -60,6 +61,8 @@ export function generationHarness(messages, state = stateApi.defaultState(), met
         recordRuntimeStage() {}, scheduleVerificationPersistence() {}, saveSettingsDebounced() {},
         cancelDetachedPlannerJobs: async () => {}, clearAutomaticReplyRepair() {},
         recoverDetachedPlannerJobs: async () => ({ recovered: false, active: false }),
+        recoverDetachedCampaignJobs: async () => ({ recovered: false, active: false }),
+        acknowledgeDetachedPlannerRun: async () => {},
         plannerStorage: () => null, plannerWasInterrupted: () => false, plannerFailedForSnapshot: () => false,
         clearPromptManagerInjection() {}, promptManager: null, setExtensionPrompt() {}, PROMPT_KEY: 'test', stopAnalysis() {},
         confirmReturnedReplyUsedGuidance: async () => {}, classifyAssistantReply: () => ({ unusable: false }),

@@ -6,7 +6,7 @@ import { createHash } from 'node:crypto';
 import { isolatedProvider } from './isolated-planner-provider.mjs';
 import { liveCardPass } from './evaluate-live-story-cards.mjs';
 import { arcFocusCases, seedArcFocus } from './arc-focus-cases.mjs';
-import { DIRECTOR_SYSTEM, DIRECTOR_SCHEMA } from '../extension/story-director.js';
+import { DIRECTOR_SYSTEM, DIRECTOR_SCHEMA, validateSagaHierarchy } from '../extension/story-director.js';
 
 async function main() {
     if (!process.argv.includes('--live')) throw Error('Explicit --live required.');
@@ -16,7 +16,7 @@ async function main() {
     if (!relative || !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative)) throw Error('Output must be outside the repository.');
     fs.mkdirSync(output); // New directory only; never overwrite a report.
     const provider = isolatedProvider(process.env.TF_ST_ROOT, { mode: process.env.TF_EVAL_REASONING || 'off' });
-    const protocolHash = createHash('sha256').update(JSON.stringify([DIRECTOR_SYSTEM, DIRECTOR_SCHEMA, arcFocusCases])).digest('hex');
+    const protocolHash = createHash('sha256').update(JSON.stringify([DIRECTOR_SYSTEM, DIRECTOR_SCHEMA, arcFocusCases, { requireSagaHierarchy: true }])).digest('hex');
     let calls = 0;
     const generate = (messages, maxTokens) => {
         if (++calls > arcFocusCases.length) throw Error('Request cap reached.');
@@ -26,9 +26,12 @@ async function main() {
         const report = { id: fixture.id, configuration: provider.configuration, protocolHash, review: fixture.review,
             limitation: 'Single synthetic review through production planner and writer-packet functions. Structural checks do not establish semantic quality; inspect full responses for renamed filler and invented outcomes. Not a live UI or writer test.' };
         try {
-            report.pass = await liveCardPass(fixture, await seedArcFocus(fixture), fixture.messages, generate);
+            report.pass = await liveCardPass({ ...fixture, requireSagaHierarchy: true }, await seedArcFocus(fixture), fixture.messages, generate);
             const pass = report.pass, nodes = pass.state.workingPlan?.storyStructure?.nodes || [];
+            let connectedHierarchy = true;
+            try { validateSagaHierarchy(nodes); } catch { connectedHierarchy = false; }
             report.checks = { accepted: pass.accepted, validState: pass.validState, oneCall: pass.calls === 1,
+                connectedHierarchy,
                 noNotices: pass.notices.length === 0, frameIncluded: !pass.orientationOmitted,
                 keptSubstantial: fixture.keep.every(id => nodes.some(node => node.id === id)),
                 droppedFiller: fixture.drop.every(id => !nodes.some(node => node.id === id)),

@@ -30,6 +30,23 @@ function twoStageFixture(onSend = () => {}, stages = ['horizon', 'scene']) {
     return f;
 }
 
+test('page closure releases browser wait but records recoverable pending work, not explicit Stop', async () => {
+    let sent;
+    const started = new Promise(resolve => { sent = resolve; });
+    const f = fixture(async (_prompt, _system, _schema, options) => {
+        assert.deepEqual(options.input, { prompt: '{}', indices: [0] });
+        sent();
+        return new Promise(() => {});
+    });
+    const running = f.session.request();
+    await started;
+    f.session.stop('Page closing', { detach: true });
+    assert.equal((await running).accepted, false);
+    assert.equal(f.current.attempt.status, 'pending');
+    assert.equal((await f.session.request()).skipped, 'not-due');
+    assert.equal(f.calls(), 1);
+});
+
 for (const changedAt of ['prepare', 'before-send', 'response']) test(`creative planning completes once when memory changes at ${changedAt}`, async () => {
     const f = fixture(async () => {
         if (changedAt === 'response') f.current.evidenceKey = 'new-memory';
