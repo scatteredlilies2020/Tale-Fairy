@@ -30,6 +30,7 @@ for (const example of ensemblePressureCases) test(`exact writer packet: ${exampl
     assert.ok(report.writerTokens <= WRITER_CONTEXT_TOKEN_LIMIT);
     const packet = decode(report.writerPacket);
     assert.equal(packet.rp_orientation, example.reminder);
+    for (const player of example.playerNames) assert.ok(!packet.rp_orientation.includes(player));
     assert.equal(packet.story_context[0].description, example.card.description);
     assert.equal(packet.story_context[0].ends_when, example.card.endsWhen);
     assert.doesNotMatch(report.writerPacket, /"(?:scratchpad|changeReason|owner|links|parentId)":/);
@@ -67,11 +68,60 @@ test('changing orientation requires a reason, while explicit lasting changes can
     assert.equal(decode(campaignPayload(accidental.state)).rp_orientation, fixture.reminder);
     assert.match(accidental.plannerNotices[0], /changing it requires/);
     const explicit = await run(first.state, raw => ({ ...raw, foundation: { ...raw.foundation, reminder: changed,
-        changeReason: 'Explicit author direction: foreground civilian life after the lasting role change.' } }));
+        changeReason: 'Explicit author direction: focus the RP on civilian community life.' } }));
     assert.equal(explicit.accepted, true, explicit.error);
     assert.equal(decode(campaignPayload(explicit.state)).rp_orientation, changed);
     assert.doesNotMatch(campaignPayload(explicit.state), /Explicit author direction:/);
     assert.equal(explicit.state.archive.at(-1).workingPlan.storyStructure.foundation.reminder, fixture.reminder);
+});
+
+test('ordinary review corrects a frame narrowed to the starting character and faction while retaining local cards', async () => {
+    const narrow = "Sandbox Naruto world, currently focused on Rin's life in Konoha. Player controls Rin. Hyūga politics, hospital duties and home life press on her time.";
+    const concern = 'Competing clan expectations create pressure around family duties.';
+    const first = await run(emptyCampaign(), raw => ({ ...raw,
+        foundation: { ...raw.foundation, reminder: narrow },
+        upsert: raw.upsert.map(node => ({ ...node, title: 'Hyūga succession', owner: 'Hyūga elders', description: concern })),
+        select: raw.select.map(entry => ({ ...entry, title: 'Hyūga succession', description: concern })),
+    }));
+    assert.equal(first.accepted, true, first.error);
+    const before = first.state.workingPlan.storyStructure;
+    const corrected = await run(first.state, raw => ({ ...raw,
+        foundation: { ...raw.foundation, reminder: fixture.reminder,
+            changeReason: 'Corrected interpretation: the starting character and clan concerns are local focus within an open world.' },
+        retain: before.nodes.map(node => node.id),
+        select: before.selection.map(entry => ({ id: entry.id, title: entry.title, context: entry.context,
+            description: concern, development: '', endsWhen: entry.endsWhen })),
+    }));
+    assert.equal(corrected.accepted, true, corrected.error);
+    assert.equal(corrected.input.rebuild, false);
+    assert.equal(JSON.parse(corrected.input.prompt).previous_preparation.foundation.reminder, narrow);
+    assert.deepEqual(corrected.state.workingPlan.storyStructure.nodes, before.nodes);
+    assert.equal(corrected.state.archive.at(-1).workingPlan.storyStructure.foundation.reminder, narrow);
+    const packet = decode(campaignPayload(corrected.state));
+    assert.equal(packet.rp_orientation, fixture.reminder);
+    assert.equal(packet.story_context[0].title, 'Hyūga succession');
+    assert.deepEqual(corrected.plannerNotices, []);
+});
+
+test('switching player characters and locations keeps the broad frame and useful independent cards', async () => {
+    const first = await run();
+    assert.equal(first.accepted, true, first.error);
+    const before = first.state.workingPlan.storyStructure;
+    const switched = await run(first.state, raw => ({ ...raw,
+        retain: before.nodes.map(node => node.id), select: [],
+    }), { playerNames: ['Aya'], messages: [
+        { index: 0, role: 'assistant', content: 'At a coastal port, Aya welcomes visiting merchants.' },
+        { index: 1, role: 'user', name: 'Aya', content: 'I join the conversation about their travels.' },
+    ] });
+    assert.equal(switched.accepted, true, switched.error);
+    const request = JSON.parse(switched.input.prompt);
+    assert.deepEqual(request.player_names, ['Aya']);
+    assert.equal(request.previous_preparation.foundation.reminder, fixture.reminder);
+    assert.deepEqual(switched.state.workingPlan.storyStructure.nodes, before.nodes);
+    const packet = decode(campaignPayload(switched.state));
+    assert.equal(packet.rp_orientation, fixture.reminder);
+    assert.equal(packet.story_context, undefined);
+    assert.doesNotMatch(packet.rp_orientation, /Rin|Sora|Aya/);
 });
 
 test('old replies cannot erase a foundation, while rebuild does not resurrect it', async () => {
@@ -158,7 +208,10 @@ test('orientation remains subject to expiry, OOC changes, edited transcript and 
 test('director asks for broad original invention, canon causality and finite cards, not protagonist scripting', () => {
     for (const requirement of [/AI-Dungeon-like/, /one-on-one/, /ALL their characters/, /Original worlds support invention/,
         /canon is (?:only )?a fallible reference/i, /what can meaningfully develop/, /do not force their events back/,
-        /Quiet scenes can stay quiet/, /endsWhen/, /Keep the reminder verbatim/, /no mandatory levels/]) {
+        /Quiet scenes can stay quiet/, /endsWhen/, /Keep the reminder verbatim/, /no mandatory levels/,
+        /not who the player plays/, /Starting characters, professions and factions are local focus/,
+        /role or viewpoint switch is not a new premise/, /Correct inherited frames/,
+        /Character-specific concerns belong in cards/]) {
         assert.match(DIRECTOR_SYSTEM, requirement);
     }
 });

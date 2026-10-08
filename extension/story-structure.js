@@ -69,7 +69,7 @@ export function mergeStoryFoundation(previous, supplied, check, notices) {
     if (!next.reminder.trim()) next.reminder = previous?.reminder || '';
     if (previous && next.reminder !== previous.reminder && !next.changeReason.trim()) {
         next.reminder = previous.reminder;
-        notices.push('RP orientation retained: changing it requires a premise, role, lasting circumstance or author-direction reason.');
+        notices.push('RP orientation retained: changing it requires a reason based on author direction, corrected interpretation or lasting world changes.');
     }
     check(next, STORY_FOUNDATION_SCHEMA, '$.foundation');
     return next;
