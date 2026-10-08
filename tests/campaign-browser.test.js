@@ -201,7 +201,7 @@ const directorReply = prompt => {
     return { direction: 'Explore music, friendships and neighborhood life.', reviewAfter: 12, upsert: [{ id,
         kind: 'thread', parentId: '', status: 'proposed', links: [], title: 'An open neighborhood supper', owner: 'Community cooks',
         description: 'Shared cooking and a communal recipe book connect neighboring households.' }],
-    retire: [], select: [{ id, title: 'An open neighborhood supper', context: [],
+    retain: [], retire: [], select: [{ id, title: 'An open neighborhood supper', context: [],
         description: 'Neighbors exchange recipes and develop friendships over shared suppers.', development: '' }] };
 };
 
@@ -220,6 +220,51 @@ const ensembleDirectorReply = prompt => {
     for (const card of [...raw.upsert, ...raw.select]) card.endsWhen = 'The current shared project is completed or set aside.';
     return raw;
 };
+
+test('creative director commits its plan when Continuity Memory updates during a paid response', async () => {
+    let finish;
+    const h = browser(({ prompt }) => h.requests.length === 1
+        ? new Promise(resolve => { finish = () => resolve(envelope(directorReply(prompt))); }) : envelope(directorReply(prompt)),
+        defaultState(), { director: true });
+    const snapshot = memorySnapshot();
+    h.settings.continuityIntegration = true;
+    h.scope.continuityMemoryBridge = { version: 2, getContextSnapshot: () => snapshot };
+    const work = h.scope.analyzeCampaignNow();
+    await settle();
+    assert.equal(h.requests.length, 1);
+    assert.match(h.requests[0].prompt, /Private Chronicle/);
+    snapshot.revision++;
+    snapshot.prompt = 'New memory background, published during planning.';
+    finish(); await work;
+    assert.equal(h.state().campaignPreparation.revision, 1);
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.evidenceRestarts, undefined);
+    assert.match(h.prepare().payload, /shared suppers/);
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 1, 'memory publication cannot cause another request');
+    appendPlay(h, 12);
+    await h.scope.analyzeCampaignNow();
+    assert.equal(h.requests.length, 2);
+    assert.match(h.requests[1].prompt, /New memory background/);
+});
+
+test('Continuity Memory publications only provide context for the next creative review', async () => {
+    const h = browser(undefined, defaultPlannerState(), { director: true });
+    let subscriber, triggers = 0;
+    const snapshot = memorySnapshot();
+    Object.assign(h.scope, { continuityUnsubscribe: null, continuityReplacementRevision: 0,
+        analyzeCampaignNow: () => { triggers++; },
+        continuityMemoryBridge: { version: 2, getContextSnapshot: () => snapshot,
+            subscribe: callback => { subscriber = callback; return () => {}; } } });
+    h.settings.continuityIntegration = true;
+    vm.runInContext(source.match(/function bindContinuityBridge\([^]*?^}/m)[0], h.scope);
+    h.scope.bindContinuityBridge();
+    subscriber(snapshot);
+    snapshot.revision++; snapshot.prompt = 'Latest story background.';
+    subscriber(snapshot);
+    assert.equal(triggers, 0);
+    assert.match(h.scope.buildCampaignHostInput(h.scope.readCampaignSnapshot()).prompt, /Latest story background/);
+});
 
 test('player-centered cards survive planning, dependent selections, reload and writer injection', async () => {
     const h = browser(async ({ prompt }) => {
@@ -366,7 +411,8 @@ test('host persists card effects without per-turn calls and stops them when the 
     h.context.chat.push({ is_user: false, name: 'Mara', mes: 'The supper project is finished; the neighbors clear away the final preparations.' });
     await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 3);
-    assert.equal(h.state().campaignPreparation.workingPlan.storyStructure.nodes[0].status, 'resolved');
+    assert.deepEqual(h.state().campaignPreparation.workingPlan.storyStructure.nodes, []);
+    assert.equal(h.state().campaignPreparation.archive.at(-1).workingPlan.storyStructure.nodes[0].status, 'proposed');
     assert.doesNotMatch(h.prepare().payload, /Shared kitchen|"effects"/);
     assert.match(h.prepare().payload, /rp_orientation/);
 });
@@ -419,7 +465,7 @@ for (const change of [
     assert.equal(h.prepare().payload, '', 'reload cannot restore the old packet');
     await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 2, 'explicit changes bypass the long cadence');
-    assert.equal(h.state().campaignPreparation.workingPlan.storyStructure.nodes[0].status, 'retired');
+    assert.deepEqual(h.state().campaignPreparation.workingPlan.storyStructure.nodes, []);
     assert.equal(h.prepare().payload, '');
     await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 2, 'the accepted change is reviewed once');
@@ -476,21 +522,26 @@ test('reference changes offer only private story-map reconsideration and reserve
     assert.equal(validCampaignState(h.state().campaignPreparation), true);
 });
 
-test('regeneration restores the source-aligned story map, never discarded-response private planning', async () => {
+test('regeneration replans from accepted chat while archived story maps stay passive', async () => {
     const h = browser(async ({ prompt }) => {
         const raw = retainedDirectorReply(prompt);
         if (prompt.includes('DISCARDED_ONLY_SECRET')) raw.direction = 'DISCARDED_ONLY_SECRET';
         return envelope(raw);
     }, defaultState(), { director: true });
     await h.scope.analyzeCampaignNow();
-    const before = h.prepare().payload;
+    const before = structuredClone(h.state().campaignPreparation.workingPlan);
     h.context.chat.push({ is_user: false, name: 'Mara', mes: 'DISCARDED_ONLY_SECRET' });
     await h.scope.analyzeCampaignNow({ manual: true });
     assert.equal(h.state().campaignPreparation.revision, 2);
     h.scope.deferReplacementPlanning(h.context);
-    assert.equal(h.prepare('regenerate').payload, before);
+    assert.equal(h.prepare('regenerate').payload, '', 'a source-invalid live map cannot restore archived guidance');
     await h.scope.repairDeferredReplacementPlan();
-    assert.equal(h.requests.length, 2, 'valid pre-reply map needs no replacement call');
+    assert.equal(h.requests.length, 3, 'replacement reviews accepted chat instead of restoring an archive');
+    const input = JSON.parse(h.requests[2].prompt);
+    assert.deepEqual(input.previous_preparation.nodes, []);
+    assert.equal(input.reconsider_horizon, undefined);
+    assert.doesNotMatch(h.requests[2].prompt, /DISCARDED_ONLY_SECRET/);
+    assert.deepEqual(h.state().campaignPreparation.archive[0].workingPlan, before);
     assert.doesNotMatch(h.prepare('regenerate').payload, /DISCARDED_ONLY_SECRET/);
 });
 
@@ -632,8 +683,8 @@ test('active director never sends a correction for malformed output or restarts 
     h.scope.continuityMemoryBridge = { version: 2, getContextSnapshot: () => memory };
     await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 1);
-    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'failed');
-    assert.equal(h.state().campaignPreparation?.revision || 0, 0);
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
+    assert.equal(h.state().campaignPreparation?.revision || 0, 1);
 });
 
 function splitResponse({ prompt, spec }) {
@@ -1430,7 +1481,7 @@ test('full rebuild clears archives, legacy data and retry caches before sending 
     assert.equal(cleared.pacing.mode, previous.pacing.mode);
     assert.equal(h.context.chatMetadata.summary, 'External recall.');
     const prompt = JSON.parse(h.requests[2].prompt);
-    assert.deepEqual(prompt.previous_preparation, { direction: '', nodes: [] });
+    assert.deepEqual(prompt.previous_preparation, { nodes: [] });
     assert.equal(prompt.coverage.reviewed_before, 0);
     assert.doesNotMatch(h.requests[2].prompt, /OBSOLETE/);
     rejectRebuild(Error('Provider offline'));
@@ -1603,7 +1654,7 @@ test('rebuild replaces the private brief; delete removes it without touching hos
     await h.scope.rebuildGuideState();
     assert.equal(h.requests.length, 2);
     const input = JSON.parse(h.requests[1].prompt);
-    assert.equal(input.previous_preparation.direction, '');
+    assert.equal(Object.hasOwn(input.previous_preparation, 'direction'), false);
     assert.deepEqual(input.previous_preparation.nodes, []);
     assert.match(h.requests[1].prompt, /External summary stays/);
     assert.deepEqual(h.state().campaignPreparation.archive, []);

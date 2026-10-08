@@ -30,6 +30,45 @@ function twoStageFixture(onSend = () => {}, stages = ['horizon', 'scene']) {
     return f;
 }
 
+for (const changedAt of ['prepare', 'before-send', 'response']) test(`creative planning completes once when memory changes at ${changedAt}`, async () => {
+    const f = fixture(async () => {
+        if (changedAt === 'response') f.current.evidenceKey = 'new-memory';
+        return reply;
+    });
+    f.current.evidenceKey = 'original-memory';
+    f.options.prepare = () => {
+        if (changedAt === 'prepare') f.current.evidenceKey = 'new-memory';
+        return { prompt: '{}', indices: [0], evidence: { status: 'included' } };
+    };
+    f.options.saveAttempt = async value => {
+        f.current.attempt = value;
+        if (changedAt === 'before-send' && value.requestCount === 1) f.current.evidenceKey = 'new-memory';
+    };
+    f.session = new CampaignSession({ ...f.options, guardEvidence: false });
+    const key = f.session.runtime.key(f.current);
+    const result = await f.session.request();
+    assert.equal(result.accepted, true, result.error);
+    assert.equal(f.calls(), 1);
+    assert.equal(f.commits(), 1);
+    assert.equal(f.current.attempt.status, 'complete');
+    assert.equal(f.current.attempt.evidenceRestarts, undefined);
+    assert.equal(f.session.runtime.key(f.current), key);
+    assert.equal((await f.session.request()).skipped, 'not-due');
+});
+
+test('creative planning still rejects a response for an edited RP', async () => {
+    const f = fixture(async () => {
+        f.current.evidenceKey = 'new-memory';
+        f.current.messages[0].mes = 'A different branch of the RP.';
+        return reply;
+    });
+    f.options.prepare = () => ({ prompt: '{}', indices: [0], evidence: { status: 'included' } });
+    f.session = new CampaignSession({ ...f.options, guardEvidence: false });
+    assert.equal((await f.session.request()).accepted, false);
+    assert.equal(f.calls(), 1);
+    assert.equal(f.commits(), 0);
+});
+
 test('memory rebase preserves one run key, aggregate request count and the newest snapshot', async () => {
     const keys = [], snapshots = [];
     const f = twoStageFixture(f => {

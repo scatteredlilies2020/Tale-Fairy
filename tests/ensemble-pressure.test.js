@@ -46,7 +46,8 @@ for (const example of ensemblePressureCases) test(`exact writer packet: ${exampl
 test('stable reminder and private divergence notes survive quiet review with no selected card', async () => {
     const first = await run();
     assert.equal(first.accepted, true, first.error);
-    const reviewed = await run(first.state, raw => ({ ...raw, direction: 'A peaceful meal after rescue.', select: [] }));
+    const reviewed = await run(first.state, raw => ({ ...raw, direction: 'A peaceful meal after rescue.',
+        retain: first.state.workingPlan.storyStructure.nodes.map(node => node.id), select: [] }));
     assert.equal(reviewed.accepted, true, reviewed.error);
     const packet = decode(campaignPayload(reviewed.state));
     assert.equal(packet.rp_orientation, fixture.reminder);
@@ -156,7 +157,7 @@ test('orientation remains subject to expiry, OOC changes, edited transcript and 
 
 test('director asks for broad original invention, canon causality and finite cards, not protagonist scripting', () => {
     for (const requirement of [/AI-Dungeon-like/, /one-on-one/, /ALL their characters/, /Original worlds support invention/,
-        /canon is only a fallible reference/i, /most plausible meaningful progression/, /do not force their events back/,
+        /canon is (?:only )?a fallible reference/i, /what can meaningfully develop/, /do not force their events back/,
         /Quiet scenes can stay quiet/, /endsWhen/, /Keep the reminder verbatim/, /no mandatory levels/]) {
         assert.match(DIRECTOR_SYSTEM, requirement);
     }

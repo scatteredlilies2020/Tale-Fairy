@@ -4,6 +4,11 @@ import { compactPlannerPayload } from './planner-compaction.js';
 // review checkpoint against the complete source prefix. Never infer coverage
 // from a tail window, or drop an unreviewed player contribution to make it fit.
 export function* optionalPlannerContexts(payload) {
+    if (payload.recent_card_names) {
+        const { recent_card_names, ...rest } = payload;
+        payload = rest;
+        yield payload;
+    }
     if (payload.reconsider_horizon) {
         const { reconsider_horizon, ...rest } = payload;
         payload = { ...rest, coverage: { ...rest.coverage, omitted_reconsider_horizon: true } };

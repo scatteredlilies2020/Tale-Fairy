@@ -1,7 +1,7 @@
 // Bounded creative state, not a second continuity database. Historical evidence
 // and replaced plans belong in local archives, never in this request snapshot.
 import { conservativeTokenCount } from './token-budget.js';
-import { STORY_STRUCTURE_SCHEMA, validateStoryStructure } from './story-structure.js?story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1';
+import { STORY_STRUCTURE_SCHEMA, validateStoryStructure } from './story-structure.js?story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1';
 import { TRAJECTORIES_SCHEMA, validateTrajectories, THROUGHLINE_SCHEMA, validateThroughline, STORY_LIFE_SCHEMA, validateStoryLife } from './story-progression.js?story-progression=1&story-workshop=1&story-throughline=1&story-life=1&autonomous-life=1&relaxed-conditions=1&horizon-links=3';
 import { OUTLOOK_SCHEMA, validateOutlook, validateOutlookSelection } from './story-outlook.js?story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1';
 import { INITIATIVE_SCHEMA, INITIATIVE_RECEIPT_SCHEMA, validateInitiative } from './story-initiative.js?autonomous-life=1&relaxed-conditions=1';

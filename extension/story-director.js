@@ -1,57 +1,91 @@
-// One creative request. Continuity remains input, never a second memory ledger.
-import { storyInput, nextPlanRevision, plannerInputLimit } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1';
-import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check, validCampaignState } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1';
-import { WORKING_PLAN_VERSION, validateWorkingPlan, workingPlanProjection, planTokens } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1';
+// One creative request. Memory supplies background, not a continuity audit.
+import { storyInput, nextPlanRevision, plannerInputLimit } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1';
+import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check, validCampaignState } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1';
+import { WORKING_PLAN_VERSION, validateWorkingPlan, workingPlanProjection, planTokens } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1';
 import { STORY_SELECTION_SCHEMA, STORY_STRUCTURE_SCHEMA, previousStoryNodes,
     STORY_NODE_RESPONSE_SCHEMA, STORY_SELECTION_RESPONSE_SCHEMA, storeStoryDescription, storyNodeForPlanner,
     STORY_FOUNDATION_RESPONSE_SCHEMA, mergeStoryFoundation,
-    mergeStoryNodes, storyAncestors, validateStoryStructure, storyWriterMaterial } from './story-structure.js?story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1';
-import { fitStoryContext } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1&horizon-links=3&story-structure=1&ensemble-pressure=1&story-cards=1&player-cards=1';
+    mergeStoryNodes, ongoingStoryNodes, storyAncestors, validateStoryStructure, storyWriterMaterial } from './story-structure.js?story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1';
+import { fitStoryContext, storyInputTokens } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1&horizon-links=3&story-structure=1&ensemble-pressure=1&story-cards=1&player-cards=1&creative-planning=1';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
 
 export { nextPlanRevision, plannerInputLimit };
 export const PLANNER_OUTPUT_LIMIT = 3000;
 const text = maxLength => ({ type: 'string', minLength: 1, ...(maxLength ? { maxLength } : {}) });
 const object = properties => ({ type: 'object', additionalProperties: false, required: Object.keys(properties), properties });
-export const DIRECTOR_SCHEMA = { name: 'tale_fairy_story_director_v5', value: object({
-    direction: text(600), reviewAfter: STORY_STRUCTURE_SCHEMA.properties.reviewAfter,
+export const DIRECTOR_SCHEMA = { name: 'tale_fairy_story_director_v7', value: object({
+    reviewAfter: STORY_STRUCTURE_SCHEMA.properties.reviewAfter,
     foundation: STORY_FOUNDATION_RESPONSE_SCHEMA,
     upsert: { type: 'array', items: STORY_NODE_RESPONSE_SCHEMA },
+    retain: { type: 'array', uniqueItems: true, items: text(80) },
     retire: { type: 'array', items: text(80) }, select: { type: 'array', items: STORY_SELECTION_RESPONSE_SCHEMA },
 }) };
 
 export const DIRECTOR_SYSTEM = `${CAMPAIGN_MARKER}
-Prepare movement for this RP, not a recap, memory ledger, writer audit or scene. Read the premise, references, author instructions, accepted play and available memory.
+Be a creative story director: develop fresh present and future possibilities. Use premise, references, author instructions, recent RP and memory as background. Carry unfinished plans forward for a loose sense of continuity. Continuity Memory handles recall; do not fact-check history, reconcile memories, audit continuity, recap or write scenes.
 
-foundation.reminder is the stable RP interpretation: what sustains movement across its world and ensemble. AI-Dungeon-like sandboxes span characters, factions and places, while one-on-one RP can remain intimate. Distinguish world scope from current focus and player roles: missions for soldiers, livelihoods for civilians. Relationships, discovery, encounters and fitting tensions offer ongoing pressure. Original worlds support invention; canon is only a fallible reference. Keep open-ended scope beyond today's scene and cast.
+foundation.reminder is the stable RP interpretation: what sustains movement across its world and ensemble. AI-Dungeon-like sandboxes span characters, factions and places; one-on-one RP can remain intimate. Distinguish world scope from current focus and player roles: missions for soldiers, livelihoods for civilians. Relationships, discovery and fitting tensions offer pressure. Original worlds support invention; canon is a fallible reference. Keep scope beyond today's scene and cast.
 
-Keep the reminder verbatim on ordinary reviews, or return "" to retain it. A respite or viewpoint switch is not a new premise. Change it for author direction, corrected interpretation, changed roles or lasting circumstances; explain in foundation.changeReason, otherwise "". Check appropriateness each review. direction describes the current phase separately. Author instructions adjust emphasis and pressure. Quiet scenes can stay quiet; movement needs no quota, forced escalation or convergence.
+Keep the reminder verbatim on ordinary reviews, or return "" to retain it. A respite or viewpoint switch is not a new premise. Change it for author direction, corrected interpretation, changed roles or lasting circumstances; explain in foundation.changeReason, otherwise "". Author instructions adjust emphasis and pressure. Quiet scenes can stay quiet; movement needs no quota, forced escalation or convergence.
 
-foundation.scratchpad replaces compact private notes: relevant established changes, tentative canon dependencies and uncertain implications, labeled accordingly; "" when unnecessary. Ask what changed, what still fits and the most plausible meaningful progression. Divergence can invalidate canonical causes: do not force their events back into existence. Invent compatible people, places and pursuits beyond mentioned material. Preparation proposes; accepted play establishes enactment, including off-screen events. Existing memory supplies history.
+foundation.scratchpad replaces brief creative considerations affecting future possibilities; "" when unnecessary. Ask what still matters and what can meaningfully develop. Divergence can invalidate canonical causes: do not force their events back into existence. Invent fitting people, places and pursuits; proposals are possibilities, not past events.
 
 Read the world's particular character deeply: institutions, incentives, customs, relationships and implied forces. Star Wars can involve Sith influence, Jedi obligations, Senate patronage and trade interests; choose what fits its era and this RP. K-on's musical ambitions, school calendar and affectionate social habits differ from Baki's competitive martial world despite both being in Japan. Depth can be playful. Infer and invent boldly within established possibilities, including original NPCs and hidden motives. Give substance and causal interests, leaving prose style to the writer.
 
-Use concise saga/arc/thread cards: broad currents, arcs and local threads, with no mandatory levels or counts. description gives the concern and what it encourages in one or two sentences. effects holds up to three {label, pressure} pairs: concrete ongoing influences on opportunities, relationships, resources or choices. For example "Diplomatic strain": "Cloud's demand makes border assignments and Hyuga protection politically sensitive." These are narrative status effects, not numerical buffs or schedules; [] for none. endsWhen recognizes an end boundary with outcomes open; "" for ongoing concerns. parentId groups cards ("" for root); links connect without merging ([] for none). owner identifies the character, group or process the card concerns, including a player character. It is an organizing label, not permission to choose anyone's actions. Routine props need no cards.
+Use concise saga/arc/thread cards: broad currents, arcs and local threads, with no mandatory levels or counts. description gives the concern and what it encourages in one or two sentences. Descriptions and effects should outlast scenes; leave current actions and routine errands in chat. Rework inherited scene recaps into ongoing concerns, or retire them when none remains. effects holds up to three {label, pressure} pairs: concrete ongoing influences on opportunities, relationships, resources or choices. For example "Diplomatic strain": "Cloud's demand makes border assignments and Hyuga protection politically sensitive." These are narrative status effects, not numerical buffs or schedules; [] for none. endsWhen recognizes an end boundary with outcomes open; "" for ongoing concerns. parentId groups cards ("" for root); links connect without merging ([] for none). owner identifies the character, group or process the card concerns, including a player character. It is an organizing label, not permission to choose anyone's actions. Routine props need no cards.
 
-previous_preparation is private, not history. upsert replaces a whole card under its id; new ids use new_id_prefix. Omission preserves cards. status is proposed, active, dormant, resolved or retired. Resolve only from accepted play; retire withdraws proposals, including descendants, without claiming events occurred. Reassess completion, refusal and changed premises. Do not revive completed introductions or abandon unfinished concerns merely because focus moved. Empty updates are valid; keep the map compact.
+previous_preparation contains candidates for present and future play. upsert replaces changed cards; new ids use new_id_prefix. retain lists unchanged cards still offering current pressure or future development. Upserted and selected cards are kept automatically; other omissions drop preparation. status is proposed, active, dormant, resolved or retired. Resolve from accepted play; retire withdraws proposals and descendants without claiming events occurred. Closed cards leave the map. Keep useful unfinished concerns across focus changes; drop obsolete ideas and recaps. Empty updates are valid.
+
+recent_card_names lists earlier idea names, newest first, to vary ideas and avoid repetition. Names establish no history or outcomes.
 
 select renews writer-facing cards from scratch; [] keeps only the RP reminder. Select relevant proposed/active currents and situations, including wider pressures that remain important during respite. Supply title, context (only parentId ancestors, outermost first; links are not parents), concise description and endsWhen. To select a dormant card, explicitly update it to active first; otherwise retain it without selection. Selected nodes' effects are included automatically, so do not repeat them here. development is an optional brief opportunity ("" otherwise). The writer shares your author-level view: include useful hidden motives, Sith involvement or other secrets when compatible, even before characters discover them. It decides manifestation and revelation; character knowledge follows play. Proposals stay distinguishable from established events. Ask what can meaningfully develop, not merely be mentioned again.
 
-The writer interprets the reminder and cards, choosing manifestation, timing, prose and pacing; its preset stands alone. The player controls ALL their characters' actions, choices, thoughts and outcomes. Current play, references and explicit corrections govern compatibility; memory is fallible. Missing context proves neither absence nor resolution.
+The writer chooses manifestation, timing, prose and pacing; its preset stands alone. The player controls ALL their characters' actions, choices, thoughts and outcomes. Respect current play, references and explicit corrections while inventing freely.
 
-reviewAfter is 4 to 20 accepted AI replies, normally 12, shorter for volatile circumstances. It is a safety review horizon, not fictional time or an event schedule. Aim for 1,400 response tokens at setup and 900 on reviews; use more when needed for coherent substance. Keep the complete writer packet around 1,000 tokens including orientation, effects and framing, leaving room below its 2,400 ceiling for author notes and variation. These are not quotas: preserve distinct pressures and causal specifics, omit unchanged cards and avoid filling field limits.
+reviewAfter is 4 to 20 accepted AI replies, normally 12, shorter when plans change quickly. It sets the next planning review, not fictional time or an event schedule. Aim for 1,400 response tokens at setup and 900 on reviews; use more when needed for substance. Keep the writer packet around 1,000 tokens including orientation, effects and framing, below its 2,400 ceiling to allow author notes and variation. Preserve causal specifics without filling field limits.
 `;
 
+// Bounded title hints, never historical card contents. The host decides whether
+// the live plan still belongs to this accepted chat before requesting hints.
+export function recentCardNames(state) {
+    const current = ongoingStoryNodes(state.workingPlan?.storyStructure?.nodes || []);
+    const liveIds = new Set(current.map(node => node.id));
+    const seen = new Set(current.map(node => node.title.trim().toLowerCase()));
+    const names = [], snapshots = [state, ...(state.archive || []).slice(-12).reverse()];
+    for (const snapshot of snapshots) {
+        for (const node of [...(snapshot.workingPlan?.storyStructure?.nodes || [])].reverse()) {
+            if (liveIds.has(node.id) || typeof node.title !== 'string') continue;
+            const title = node.title.trim(), key = title.toLowerCase();
+            if (!title || seen.has(key)) continue;
+            if (names.length >= 12 || planTokens([...names, title]) > 240) return names;
+            names.push(title); seen.add(key);
+        }
+    }
+    return names;
+}
+
 export function directorInput(args, maxTokens) {
-    return storyInput(args, maxTokens, { system: DIRECTOR_SYSTEM, schema: DIRECTOR_SCHEMA, project: payload => {
+    const names = args.previousUsable && !args.resetPlan ? recentCardNames(args.state) : [];
+    const input = storyInput(args, maxTokens, { system: DIRECTOR_SYSTEM, schema: DIRECTOR_SCHEMA, project: payload => {
         const { previous_plan, prior_story_map: _map, ...context } = payload;
-        return { ...context, previous_preparation: {
-            direction: previous_plan.direction || '', nodes: previousStoryNodes(previous_plan).map(storyNodeForPlanner),
+        const { review_boundary: _boundary, omitted_context: _omitted, ...coverage } = context.coverage;
+        return { ...context, coverage: { ...coverage,
+            context_use: 'Recent RP and summaries provide creative background. Carry useful plans forward; no continuity audit is requested.' },
+        previous_preparation: {
+            nodes: ongoingStoryNodes(previousStoryNodes(previous_plan)).map(storyNodeForPlanner),
             ...(previous_plan.storyStructure?.foundation ? { foundation: previous_plan.storyStructure.foundation } : {}),
         }, ...(!args.resetPlan && !args.previousUsable && args.reconsiderHorizon ? {
-            reconsider_horizon: { nodes: previousStoryNodes(args.reconsiderHorizon).map(storyNodeForPlanner) },
+            reconsider_horizon: { nodes: ongoingStoryNodes(previousStoryNodes(args.reconsiderHorizon)).map(storyNodeForPlanner) },
         } : {}) };
     } });
+    // Add hints only after current plans, RP and memory have their allocation.
+    // Precise tokenizer fitting can also drop the whole hint list first.
+    if (names.length) {
+        const prompt = JSON.stringify({ ...JSON.parse(input.prompt), recent_card_names: names });
+        const inputTokens = storyInputTokens(prompt, DIRECTOR_SYSTEM, DIRECTOR_SCHEMA);
+        if (inputTokens <= input.inputLimit) Object.assign(input, { prompt, inputTokens });
+    }
+    return input;
 }
 
 // Repair complete JSON syntax locally. Never close a cut-off response or send
@@ -85,9 +119,11 @@ export async function directorPass({ state, input, source, generate }) {
         if (['length', 'max_tokens', 'max_output_tokens'].includes(String(result.finishReason).toLowerCase())) throw Error('Truncated story-director response');
         const raw = parseDirectorResponse(result.text);
         if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw Error('Story director requires an object');
-        for (const key of Object.keys(raw)) if (!Object.hasOwn(DIRECTOR_SCHEMA.value.properties, key)) throw Error(`Unexpected director field: ${key}`);
-        check(raw.direction, DIRECTOR_SCHEMA.value.properties.direction, '$.direction');
+        // Read older replies without carrying their scene snapshot into new plans.
+        for (const key of Object.keys(raw)) if (key !== 'direction' && !Object.hasOwn(DIRECTOR_SCHEMA.value.properties, key)) throw Error(`Unexpected director field: ${key}`);
         check(raw.reviewAfter, DIRECTOR_SCHEMA.value.properties.reviewAfter, '$.reviewAfter');
+        // Legacy replies may omit retain; updated and selected cards still survive.
+        if (raw.retain !== undefined) check(raw.retain, DIRECTOR_SCHEMA.value.properties.retain, '$.retain');
         for (const key of ['upsert', 'retire', 'select']) if (!Array.isArray(raw[key])) throw Error(`$.${key}: array required`);
         const previousNodes = previousStoryNodes(input.previousPlan), previousRows = new Map(previousNodes.map(node => [node.id, node]));
         const responseAdjustments = [];
@@ -115,10 +151,15 @@ export async function directorPass({ state, input, source, generate }) {
         const foundation = mergeStoryFoundation(input.previousPlan.storyStructure?.foundation, raw.foundation, check, notices);
         const contextOptions = { storyStructure: true, orientation: foundation?.reminder || '' };
         if (fitStoryContext([], [], contextOptions).orientationOmitted) throw Error('RP orientation exceeds the writer context budget');
-        const nodes = mergeStoryNodes(previousNodes, raw.upsert, raw.retire,
+        const merged = mergeStoryNodes(previousNodes, raw.upsert, raw.retire,
             { check, playerNames: input.playerNames, newIdPrefix: input.newIdPrefix, notices, rejectedIds });
+        const retainedIds = new Set(raw.retain ?? []);
+        for (const record of [...raw.upsert, ...raw.select]) if (record?.id) retainedIds.add(record.id);
+        const nodes = ongoingStoryNodes(merged, retainedIds), mergedRows = new Map(merged.map(node => [node.id, node]));
         const rows = new Map(nodes.map(node => [node.id, node]));
-        const plan = { direction: raw.direction, threads: raw.direction, consequences: [], developments: [],
+        // These compatibility fields are required by historical saved-state schemas.
+        const orientation = foundation?.reminder || 'Ongoing roleplay.';
+        const plan = { direction: orientation, threads: orientation, consequences: [], developments: [],
             storyStructure: { version: 1, reviewAfter: raw.reviewAfter, nodes, selection: [], ...(foundation ? { foundation } : {}) } };
         const selectedIds = new Set();
         for (const [index, supplied] of raw.select.entries()) {
@@ -127,6 +168,10 @@ export async function directorPass({ state, input, source, generate }) {
                 check(entry, STORY_SELECTION_SCHEMA, '$.select[]');
                 if (selectedIds.has(entry.id)) throw Error('Duplicate selected story');
                 const node = rows.get(entry.id);
+                if (!node && mergedRows.has(entry.id)) {
+                    responseAdjustments.push(`$.select[${index}]`);
+                    continue;
+                }
                 if (!node) throw Error('Selected story is unavailable');
                 const ancestors = storyAncestors(node, rows);
                 if ([node, ...ancestors].some(item => rejectedIds.has(item.id))) throw Error('Selection depends on a rejected story update');

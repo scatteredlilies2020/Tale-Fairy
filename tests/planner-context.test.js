@@ -23,6 +23,19 @@ const state = { ...emptyCampaign(), revision: 52, workingPlanVersion: 1, working
 } };
 const args = { reference, state, messages, previousUsable: true, reviewedMessageCount: 411 };
 
+test('past card names yield before memory, current plans and recent RP', () => {
+    const payload = { recent_card_names: ['A previous idea'], previous_preparation: { nodes: ['Current and future plans'] },
+        accepted_messages: messages, external_evidence: [{ content: 'Summary context.' }], coverage: { reviewed_before: 0 } };
+    const first = [...optionalPlannerContexts(payload)][0];
+    assert.equal(first.recent_card_names, undefined);
+    assert.deepEqual(first.previous_preparation, payload.previous_preparation);
+    assert.deepEqual(first.accepted_messages, messages);
+    assert.deepEqual(first.external_evidence, payload.external_evidence);
+    const measure = value => JSON.stringify(value).length;
+    const fitted = fitPlannerContext(payload, measure, measure(payload) - 1);
+    assert.deepEqual(fitted, first);
+});
+
 test('reconsidered old proposals yield before fresh references, trusted preparation and accepted choices', () => {
     const payload = { source_reference: reference, previous_horizon: { trajectories: [] },
         reconsider_horizon: { trajectories: [{ focus: prose(1000) }] }, accepted_messages: messages,

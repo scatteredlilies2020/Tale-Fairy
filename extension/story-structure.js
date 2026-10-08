@@ -131,6 +131,25 @@ export function previousStoryNodes(plan = {}) {
         stakes: 'Consequences remain open.', expectation: [row.next?.change, row.later?.change].filter(Boolean).join(' '), links: [] }));
 }
 
+// Planning carries current concerns and future possibilities, not closed history.
+// Reconnect surviving children and remove links to discarded cards without
+// modifying archived snapshots.
+export function ongoingStoryNodes(nodes, retainedIds) {
+    const rows = new Map(nodes.map(node => [node.id, node]));
+    const retained = new Set(nodes.filter(node => ['proposed', 'active', 'dormant'].includes(node.status)
+        && (!retainedIds || retainedIds.has(node.id))).map(node => node.id));
+    return nodes.filter(node => retained.has(node.id)).map(original => {
+        const node = structuredClone(original), seen = new Set([node.id]);
+        while (node.parentId && !retained.has(node.parentId)) {
+            if (seen.has(node.parentId)) { node.parentId = ''; break; }
+            seen.add(node.parentId);
+            node.parentId = rows.get(node.parentId)?.parentId || '';
+        }
+        node.links = node.links.filter(id => retained.has(id));
+        return node;
+    });
+}
+
 export function mergeStoryNodes(previous, upsert, retire, { check, newIdPrefix, notices, rejectedIds }) {
     const old = new Map(previous.map(node => [node.id, structuredClone(node)])), rows = new Map(old), updates = new Set();
     const counts = new Map();

@@ -48,9 +48,8 @@ for (const example of storyCardCases) test(`card lifecycle and exact writer tran
         for (const effect of node.effects) assert.ok(!closed.writerPacket.includes(effect.pressure));
     }
     const html = storyCardsHtml(closed.plan);
-    assert.match(html, /Closed stories/);
-    assert.match(html, /tf-status-resolved/);
-    assert.ok(!html.includes('data-disclosure="closed" open'));
+    assert.doesNotMatch(html, /Closed stories|tf-status-resolved|data-disclosure="closed"/);
+    if (closed.plan.storyStructure.nodes.some(node => node.status === 'dormant')) assert.match(html, /Future possibilities/);
 });
 
 for (const example of storyCardCases) test(`comfortable writer headroom preserves notes and richer cards: ${example.id}`, async () => {
@@ -134,7 +133,7 @@ test('retirement stops descendant effects without mutating the old map', () => {
     const paused = structuredClone(previous); paused[0].status = 'dormant';
     assert.deepEqual(storyWriterMaterial({ storyStructure: { ...map, nodes: paused } }), []);
     const html = storyCardsHtml({ storyStructure: { ...map, nodes: paused } });
-    assert.match(html, /Parent inactive/);
+    assert.match(html, /Possible influences · inactive/);
     assert.doesNotMatch(html, /Ongoing effects|Writer selection/);
 });
 
@@ -171,9 +170,33 @@ test('card renderer escapes every model-authored surface and labels status witho
     assert.equal(storyCardsHtml(null), '');
 });
 
+test('saved current-phase summaries disappear from the board while ongoing cards remain', () => {
+    const phase = 'Rin honors her dead at the Memorial Stone before a hospital shift; the envelope remains unopened.';
+    const plan = { direction: phase, storyStructure: { foundation: {
+        reminder: fixture.reminder, scratchpad: '', changeReason: '',
+    }, nodes: cardCaseReply(fixture).upsert.map(stored), selection: [] } };
+    const before = structuredClone(plan);
+    const html = storyCardsHtml(plan);
+    assert.doesNotMatch(html, /Current phase|Memorial Stone|envelope remains unopened/);
+    assert.ok(html.includes(fixture.reminder));
+    for (const node of plan.storyStructure.nodes) assert.ok(html.includes(node.title));
+    assert.deepEqual(plan, before, 'opening a saved board requires no state migration or model request');
+});
+
+test('legacy closed cards stay off the board while future possibilities survive', () => {
+    const [root, child] = cardCaseReply(fixture).upsert.map(stored);
+    root.status = 'resolved'; root.title = 'COMPLETED_CARD_SECRET';
+    child.status = 'dormant'; child.title = 'A future possibility'; child.links = [root.id];
+    const plan = { storyStructure: { nodes: [root, child], selection: [] } }, before = structuredClone(plan);
+    const html = storyCardsHtml(plan);
+    assert.doesNotMatch(html, /COMPLETED_CARD_SECRET|Closed stories|Connected to|tf-card-path/);
+    assert.match(html, /Future possibilities|A future possibility/);
+    assert.deepEqual(plan, before);
+});
+
 test('renderer keeps disclosure state on refresh and does not churn unchanged DOM', async () => {
     const plan = (await evaluateCardCase(fixture)).stages[2].plan;
-    const details = [{ dataset: { disclosure: 'closed' }, open: true }, { dataset: { disclosure: 'dormant' }, open: false }];
+    const details = [{ dataset: { disclosure: 'dormant' }, open: true }, { dataset: { disclosure: 'notes' }, open: false }];
     let writes = 0, html = '';
     const container = { hidden: true, querySelectorAll: selector => selector.includes('[open]') ? details.filter(d => d.open) : details,
         set innerHTML(value) { writes++; html = value; details.forEach(d => d.open = false); }, get innerHTML() { return html; } };

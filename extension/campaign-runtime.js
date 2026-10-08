@@ -1,12 +1,13 @@
-import { campaignPass, campaignPayload, campaignUsable, campaignMaterialUsable, campaignWriterUsable } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1';
+import { campaignPass, campaignPayload, campaignUsable, campaignMaterialUsable, campaignWriterUsable } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1';
 
 // Host-independent background pass lifecycle. The host supplies canonical
 // source hashes, a ONE-REQUEST provider, and a synchronous compare-and-swap
 // commit. Browser persistence, cross-tab locking and scheduling remain host
 // responsibilities; this class never starts timers, retries or repair calls.
 export class CampaignRuntime {
-    constructor({ read, prepare, generate, commit, fingerprint, onAttempt = () => {}, runPass = campaignPass }) {
-        Object.assign(this, { read, prepare, generate, commit, fingerprint, onAttempt, runPass });
+    constructor({ read, prepare, generate, commit, fingerprint, onAttempt = () => {}, runPass = campaignPass,
+        guardEvidence = true }) {
+        Object.assign(this, { read, prepare, generate, commit, fingerprint, onAttempt, runPass, guardEvidence });
         this.pending = null;
         this.lastAttemptKey = '';
     }
@@ -14,7 +15,7 @@ export class CampaignRuntime {
     key(snapshot) {
         return this.fingerprint({ chatId: snapshot.chatId, referenceHash: snapshot.referenceHash,
             messages: this.fingerprint(snapshot.messages), requestSignature: snapshot.requestSignature || '',
-            evidenceKey: snapshot.evidenceKey || '' });
+            evidenceKey: this.guardEvidence ? snapshot.evidenceKey || '' : '' });
     }
 
     payload() {
@@ -38,7 +39,7 @@ export class CampaignRuntime {
             const latest = this.read();
             if (this.key(latest) === key) return null;
             return { accepted: false, state: latest.state, skipped: 'source-changed-before-request',
-                evidenceChanged: latest.evidenceKey !== snapshot.evidenceKey };
+                evidenceChanged: this.guardEvidence && latest.evidenceKey !== snapshot.evidenceKey };
         };
         const work = async () => {
             try {
@@ -55,7 +56,7 @@ export class CampaignRuntime {
                 const result = await this.runPass({ state: snapshot.state, input, source, generate: this.generate });
                 const latest = this.read();
                 if (!result.accepted) return { ...result, state: latest.state };
-                const evidenceKey = (input.evidence?.status === 'included' || input.continuity?.status === 'included') ? snapshot.evidenceKey : '';
+                const evidenceKey = this.guardEvidence && (input.evidence?.status === 'included' || input.continuity?.status === 'included') ? snapshot.evidenceKey : '';
                 // A correction to the same chat snapshot invalidates a result
                 // using the old recall. Ordinary appended play still does not
                 // cancel paid-for work or create a memory-publication loop.

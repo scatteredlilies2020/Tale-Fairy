@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { directorInput, directorPass, DIRECTOR_SYSTEM, DIRECTOR_SCHEMA, parseDirectorResponse } from '../extension/story-director.js';
+import { directorInput, directorPass, DIRECTOR_SYSTEM, DIRECTOR_SCHEMA, parseDirectorResponse, recentCardNames } from '../extension/story-director.js';
 import { emptyCampaign, validCampaignState, campaignPayload, campaignPayloadBudget, campaignMaterialUsable, campaignWriterUsable, check } from '../extension/campaign-planner.js';
 import { storyInputTokens } from '../extension/story-budget.js';
-import { validateStoryStructure, storyReviewInterval } from '../extension/story-structure.js';
+import { validateStoryStructure, ongoingStoryNodes, storyReviewInterval } from '../extension/story-structure.js';
+import { planTokens } from '../extension/working-plan.js';
 
 const reference = { premise: 'An open RP about village life, friendships and discovering nearby communities.' };
 const messages = [{ index: 0, role: 'assistant', name: 'Jo', content: 'Jo closes the rehearsal room after the show.' },
@@ -15,8 +16,8 @@ const proposal = (id = 'r1-kitchen', extra = {}) => ({ id, kind: 'thread', paren
 const selected = (id = 'r1-kitchen', extra = {}) => ({ id, title: 'Neighborhood cooking', context: [],
     interpretation: 'Shared meals can build ties without erasing different tastes.', stakes: 'Belonging and family traditions.',
     expectation: 'Cooking, recipe exchanges and friendships developing across visits.', development: 'A communal recipe book gives the cooks a shared project.', ...extra });
-const response = () => ({ direction: 'Explore village friendships, shared interests and nearby communities.', reviewAfter: 12,
-    upsert: [proposal()], retire: [], select: [selected()] });
+const response = () => ({ reviewAfter: 12,
+    upsert: [proposal()], retain: [], retire: [], select: [selected()] });
 async function run(state = emptyCampaign(), raw = response(), extra = {}) {
     const input = directorInput({ reference, state, messages, playerNames: ['Ren'], previousUsable: state.revision > 0, ...extra });
     let requests = 0;
@@ -47,9 +48,54 @@ test('one request saves story context, not next-turn scripts, private state or a
     assert.ok(storyInputTokens('', DIRECTOR_SYSTEM, DIRECTOR_SCHEMA) < 2600, 'contract remains compact including headroom guidance');
 });
 
-test('ordinary reviews preserve unused stories and renew the public selection from scratch', async () => {
+test('phase-free preparation keeps a stable world frame and valid writer guidance', async () => {
+    const raw = { ...response(), foundation: {
+        reminder: 'Village friendships, shared interests and neighboring communities offer continuing discoveries.',
+        changeReason: '', scratchpad: '',
+    } };
+    assert.equal(Object.hasOwn(DIRECTOR_SCHEMA.value.properties, 'direction'), false);
+    assert.equal(DIRECTOR_SCHEMA.value.required.includes('direction'), false);
+    const result = await run(emptyCampaign(), raw);
+    assert.equal(result.accepted, true, result.error);
+    assert.equal(validCampaignState(result.state), true);
+    assert.deepEqual(result.plannerNotices, []);
+    assert.equal(result.state.workingPlan.storyStructure.foundation.reminder, raw.foundation.reminder);
+    assert.equal(result.state.workingPlan.direction, raw.foundation.reminder);
+    assert.equal(result.state.workingPlan.threads, raw.foundation.reminder);
+    assert.ok(campaignPayload(result.state).includes(raw.foundation.reminder));
+    assert.match(campaignPayload(result.state), /recipe book/);
+});
+
+test('legacy scene snapshots do not enter new preparation or its next review', async () => {
+    const stale = 'Rin honors her dead at the Memorial Stone before a hospital shift, with a sealed envelope unopened.';
+    const raw = { ...response(), direction: stale, foundation: {
+        reminder: 'Village relationships and independent pursuits sustain the wider RP.', changeReason: '', scratchpad: '',
+    } };
+    const first = await run(emptyCampaign(), raw);
+    assert.equal(first.accepted, true, first.error);
+    assert.ok(!JSON.stringify(first.state).includes(stale), 'older response fields are ignored');
+
+    // Simulate an existing on-disk plan; preserve it intact in the archive.
+    const legacy = structuredClone(first.state);
+    legacy.workingPlan.direction = legacy.workingPlan.threads = legacy.campaign = legacy.rpBrief = stale;
+    assert.equal(validCampaignState(legacy), true);
+    assert.ok(!campaignPayload(legacy).includes(stale));
+    const result = await run(legacy, { ...raw, upsert: [], foundation: { ...raw.foundation, reminder: '' } });
+    assert.equal(result.accepted, true, result.error);
+    assert.ok(!result.input.prompt.includes(stale), 'old scene snapshots cannot anchor a review');
+    assert.equal(Object.hasOwn(JSON.parse(result.input.prompt).previous_preparation, 'direction'), false);
+    assert.equal(result.state.workingPlan.direction, raw.foundation.reminder);
+    assert.equal(result.state.workingPlan.threads, raw.foundation.reminder);
+    assert.deepEqual(result.state.archive.at(-1).workingPlan, legacy.workingPlan);
+    const next = directorInput({ reference, state: result.state, messages, playerNames: ['Ren'], previousUsable: true });
+    assert.ok(!next.prompt.includes(stale));
+    assert.ok(!campaignPayload(result.state).includes(stale));
+    assert.deepEqual(nodes(result), nodes(first));
+});
+
+test('ordinary reviews explicitly retain useful unused stories and renew the public selection', async () => {
     const first = await run();
-    const result = await run(first.state, { ...response(), upsert: [], select: [] });
+    const result = await run(first.state, { ...response(), upsert: [], retain: ['r1-kitchen'], select: [] });
     assert.equal(result.accepted, true, result.error);
     assert.equal(validCampaignState(result.state), true);
     assert.deepEqual(nodes(result), nodes(first));
@@ -59,6 +105,122 @@ test('ordinary reviews preserve unused stories and renew the public selection fr
     assert.equal(prompt.previous_preparation.nodes[0].id, 'r1-kitchen');
     assert.equal(prompt.previous_plan, undefined);
     assert.doesNotMatch(result.input.prompt, /planEvidence|selectedMaterial|story_context|initiative_review|observations/);
+});
+
+test('reviews drop omitted concerns, retain future possibilities and use only names from past cards', async () => {
+    const first = await run(emptyCampaign(), { ...response(), upsert: [
+        proposal('r1-world', { kind: 'saga', status: 'active', title: 'Independent village interests' }),
+        proposal('r1-current', { parentId: 'r1-world', status: 'active', title: 'A continuing partnership' }),
+        proposal('r1-future', { parentId: 'r1-world', status: 'dormant', title: 'An opportunity beyond the valley' }),
+        proposal('r1-obsolete', { status: 'active', title: 'An obsolete invitation' }),
+    ], select: [] });
+    assert.equal(first.accepted, true, first.error);
+    const state = structuredClone(first.state);
+    state.workingPlan.storyStructure.nodes.push(proposal('r1-completed', { status: 'resolved', title: 'COMPLETED_CARD_SECRET' }));
+    state.archive.push({ ...structuredClone(first.state), workingPlan: { ...first.state.workingPlan, direction: 'ARCHIVE_ONLY_SECRET' } });
+    assert.equal(validCampaignState(state), true);
+    const archived = structuredClone(state.archive);
+    const result = await run(state, { ...response(), upsert: [], retain: ['r1-future'],
+        select: [selected('r1-current', { context: [{ kind: 'saga', title: 'Independent village interests' }] })] });
+    assert.equal(result.accepted, true, result.error);
+    assert.deepEqual(result.plannerNotices, []);
+    assert.deepEqual(nodes(result).map(node => node.id), ['r1-current', 'r1-future']);
+    assert.ok(nodes(result).every(node => node.parentId === ''));
+    assert.deepEqual(selections(result)[0].context, []);
+    assert.doesNotMatch(result.input.prompt, /ARCHIVE_ONLY_SECRET/);
+    assert.deepEqual(JSON.parse(result.input.prompt).recent_card_names, ['COMPLETED_CARD_SECRET']);
+    assert.ok(!JSON.stringify(JSON.parse(result.input.prompt).previous_preparation).includes('COMPLETED_CARD_SECRET'));
+    assert.deepEqual(result.state.archive.slice(0, archived.length), archived);
+    const next = await run(result.state, { ...response(), upsert: [], retain: [], select: [] });
+    assert.equal(next.accepted, true, next.error);
+    assert.deepEqual(nodes(next), []);
+    assert.doesNotMatch(next.input.prompt, /ARCHIVE_ONLY_SECRET/);
+    assert.doesNotMatch(JSON.stringify(JSON.parse(next.input.prompt).previous_preparation), /obsolete invitation|COMPLETED_CARD_SECRET/);
+    assert.ok(next.state.archive.length > result.state.archive.length, 'snapshots remain saved');
+});
+
+test('creative context carries plans without a continuity proof or historical fact ledger', async () => {
+    const first = await run();
+    const input = directorInput({ reference, state: first.state, messages, previousUsable: true, reviewedMessageCount: 2 });
+    const context = JSON.parse(input.prompt);
+    assert.match(DIRECTOR_SYSTEM, /creative story director/);
+    assert.match(DIRECTOR_SYSTEM, /Continuity Memory handles recall/);
+    assert.match(context.coverage.context_use, /creative background/);
+    assert.equal(context.coverage.omitted_context, undefined);
+    assert.equal(context.coverage.review_boundary, undefined);
+    assert.doesNotMatch(input.prompt, /prove new outcomes|observations|planEvidence/);
+    assert.match(context.previous_preparation.nodes[0].interpretation, /Shared cooking/);
+});
+
+test('recent names are unique, capped and exclude live cards and all archived details', async () => {
+    const first = await run(), state = structuredClone(first.state);
+    state.archive = Array.from({ length: 16 }, (_, i) => ({ workingPlan: { storyStructure: { nodes: [
+        proposal(`old-${i}`, { title: `Earlier idea ${i}`, owner: 'ARCHIVED_OWNER_SECRET',
+            interpretation: 'ARCHIVED_DESCRIPTION_SECRET', effects: [{ label: 'ARCHIVED_EFFECT_SECRET', pressure: 'Private old pressure.' }] }),
+        proposal('r1-kitchen', { title: 'Old name of a live card' }),
+    ] } } }));
+    const expected = Array.from({ length: 12 }, (_, i) => `Earlier idea ${15 - i}`);
+    const before = structuredClone(state);
+    assert.deepEqual(recentCardNames(state), expected);
+    const input = directorInput({ reference, state, messages, previousUsable: true });
+    assert.deepEqual(JSON.parse(input.prompt).recent_card_names, expected);
+    assert.doesNotMatch(input.prompt, /ARCHIVED_OWNER_SECRET|ARCHIVED_DESCRIPTION_SECRET|ARCHIVED_EFFECT_SECRET|old-15|Old name of a live card/);
+    assert.deepEqual(state, before);
+    const packet = campaignPayload(state);
+    assert.match(packet, /recipe book/);
+    assert.doesNotMatch(packet, /Earlier idea|recent_card_names/);
+    state.archive.push({ workingPlan: { storyStructure: { nodes: [proposal('duplicate', { title: 'earlier IDEA 15' })] } } });
+    const names = recentCardNames(state);
+    assert.equal(names[0], 'earlier IDEA 15');
+    assert.equal(names.filter(name => name.toLowerCase() === 'earlier idea 15').length, 1);
+});
+
+test('name hints stay within a token cap and do not return on source-invalid review or rebuild', async () => {
+    const first = await run(), state = structuredClone(first.state);
+    state.archive = [{ workingPlan: { storyStructure: { nodes: Array.from({ length: 12 }, (_, i) =>
+        proposal(`old-${i}`, { title: `${i}: ${'long former idea '.repeat(14)}` })) } } }];
+    const names = recentCardNames(state);
+    assert.ok(names.length > 0 && names.length < 12);
+    assert.ok(planTokens(names) <= 240);
+    for (const flags of [{ previousUsable: false }, { previousUsable: true, resetPlan: true }]) {
+        const input = directorInput({ reference, state, messages, ...flags });
+        assert.equal(JSON.parse(input.prompt).recent_card_names, undefined);
+    }
+});
+
+test('archived names use spare context without displacing memory, RP or future plans', async () => {
+    const first = await run(), state = structuredClone(first.state);
+    state.archive = [{ workingPlan: { storyStructure: { nodes: [proposal('old', { title: 'A former neighborhood project' })] } } }];
+    const args = { reference, state, messages, previousUsable: true,
+        evidence: [{ provider: 'continuity-memory', status: 'current', revision: 1,
+            summary: 'Neighbors once worked together on a community garden.', records: [] }] };
+    const baseline = directorInput({ ...args, state: { ...state, archive: [] } });
+    const roomy = JSON.parse(directorInput(args).prompt);
+    assert.deepEqual(roomy.recent_card_names, ['A former neighborhood project']);
+    assert.ok(roomy.external_evidence.length);
+    const tight = directorInput(args, baseline.inputTokens), context = JSON.parse(tight.prompt);
+    assert.equal(context.recent_card_names, undefined);
+    assert.deepEqual(context.external_evidence, roomy.external_evidence);
+    assert.deepEqual(context.previous_preparation, roomy.previous_preparation);
+    assert.deepEqual(context.accepted_messages, roomy.accepted_messages);
+    assert.equal(tight.inputTokens, baseline.inputTokens);
+});
+
+test('closed parents and cross-links disappear while surviving future cards keep a valid hierarchy', () => {
+    const previous = [proposal('r1-world', { kind: 'saga', status: 'active' }),
+        proposal('r1-finished', { kind: 'arc', parentId: 'r1-world', status: 'resolved' }),
+        proposal('r1-future', { parentId: 'r1-finished', status: 'dormant', links: ['r1-finished', 'r1-world'] }),
+        proposal('r1-withdrawn', { status: 'retired' })];
+    const before = structuredClone(previous), nodes = ongoingStoryNodes(previous);
+    assert.deepEqual(nodes.map(node => node.id), ['r1-world', 'r1-future']);
+    assert.equal(nodes[1].parentId, 'r1-world');
+    assert.deepEqual(nodes[1].links, ['r1-world']);
+    validateStoryStructure({ version: 1, reviewAfter: 12, nodes, selection: [] }, check);
+    const detached = ongoingStoryNodes(previous, new Set(['r1-future']));
+    assert.equal(detached[0].parentId, '');
+    assert.deepEqual(detached[0].links, []);
+    validateStoryStructure({ version: 1, reviewAfter: 12, nodes: detached, selection: [] }, check);
+    assert.deepEqual(previous, before);
 });
 
 test('concise descriptions save, reach the writer and return to the next review without redundant categories', async () => {
@@ -140,7 +302,7 @@ test('omitted relationships on updates preserve known parents and links', async 
     assert.equal(first.accepted, true, first.error);
     const update = proposal('r1-kitchen', { title: 'Shared cooking revisited' });
     delete update.parentId; delete update.links;
-    const result = await run(first.state, { ...raw, upsert: [update] });
+    const result = await run(first.state, { ...raw, upsert: [update], retain: ['r1-food'] });
     assert.equal(result.accepted, true, result.error);
     const changed = nodes(result).find(node => node.id === update.id);
     assert.equal(changed.parentId, 'r1-food');
@@ -253,7 +415,7 @@ test('three detailed cards keep their effects and selected opportunities within 
     assert.match(budget.payload, /Village household/);
 });
 
-test('closed and dormant stories stay private; retirement withdraws descendants without changing prior state', async () => {
+test('closed stories leave the map; dormant possibilities remain without changing prior state', async () => {
     const raw = response();
     raw.upsert = [proposal('r1-kitchen', { parentId: 'r1-food', status: 'active' }), proposal('r1-food', { kind: 'arc', status: 'active' })];
     raw.select = [selected('r1-kitchen', { context: [{ kind: 'arc', title: 'Cooking together' }] })];
@@ -261,12 +423,13 @@ test('closed and dormant stories stay private; retirement withdraws descendants 
     assert.equal(first.accepted, true, first.error);
     const retired = await run(first.state, { ...response(), upsert: [], retire: ['r1-food'], select: raw.select });
     assert.equal(retired.accepted, true, retired.error);
-    assert.ok(nodes(retired).every(node => node.status === 'retired'));
+    assert.deepEqual(nodes(retired), []);
     assert.deepEqual(selections(retired), []);
     assert.equal(nodes(first)[0].status, 'active');
     for (const status of ['resolved', 'dormant']) {
         const result = await run(emptyCampaign(), { ...response(), upsert: [proposal('r1-kitchen', { status })] });
         assert.equal(result.accepted, true, result.error); assert.deepEqual(selections(result), []);
+        assert.equal(nodes(result).length, status === 'dormant' ? 1 : 0);
     }
 });
 
@@ -279,7 +442,7 @@ test('parent closure is rolled back unless active descendants are also closed or
     const valid = await run(first.state, { ...response(), upsert: [proposal('r1-food', { kind: 'arc', status: 'resolved' }),
         proposal('r1-kitchen', { parentId: 'r1-food', status: 'resolved' })], select: [] });
     assert.equal(valid.accepted, true, valid.error);
-    assert.ok(nodes(valid).every(node => node.status === 'resolved'));
+    assert.deepEqual(nodes(valid), []);
 });
 
 test('duplicate selections and overflows are withheld while display hierarchy is corrected locally', async () => {
