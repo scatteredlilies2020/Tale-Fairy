@@ -1,5 +1,7 @@
 # Server planning and Saga hierarchy — v0.19.3
 
+In v0.19.4, these levels are renamed **Chapter → Arc → Subplot** without changing the hierarchy or server behavior. See [naming and compatibility](chapter-labels.md); the release record below retains its original terminology.
+
 ## What starts a review?
 
 - First preparation, **Guide now / Re-evaluate**, or **Full rebuild**.

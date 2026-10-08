@@ -7,7 +7,7 @@ const card = (id, kind, parentId = '') => ({ id, kind, parentId, status: 'active
     owner: 'The club', description: 'Music and friendship develop through shared club activities.', endsWhen: '', links: [], effects: [] });
 const saga = card('r1-year', 'saga'), arc = card('r1-festival', 'arc', saga.id), thread = card('r1-song', 'thread', arc.id);
 
-test('one active Saga supports connected arcs/optional threads or a quiet interval on its own', () => {
+test('one active Chapter supports connected Arcs/optional Subplots or a quiet interval on its own', () => {
     for (const nodes of [[saga], [saga, arc], [saga, arc, thread], [saga, arc, card('r1-friends', 'arc', saga.id)]]) {
         assert.doesNotThrow(() => validateSagaHierarchy(nodes));
     }
@@ -22,10 +22,10 @@ for (const [name, nodes] of [
     ['thread directly under saga', [saga, { ...thread, parentId: saga.id }]],
     ['nested arc', [saga, arc, card('r1-nested', 'arc', arc.id)]],
 ]) test(`current host hierarchy rejects ${name} without inventing content or connections`, () => {
-    assert.throws(() => validateSagaHierarchy(nodes), /Saga|Connect/);
+    assert.throws(() => validateSagaHierarchy(nodes), /Chapter|Connect/);
 });
 
-test('strict director pass preserves the saved plan on missing Saga and accepts a connected replacement in one call', async () => {
+test('strict director pass preserves the saved plan on missing Chapter and accepts a connected replacement in one call', async () => {
     const state = emptyCampaign(), snapshot = structuredClone(state);
     const input = directorInput({ state, reference: { premise: 'Light music club RP' }, messages: [],
         playerNames: [], requireSagaHierarchy: true });
@@ -36,7 +36,7 @@ test('strict director pass preserves the saved plan on missing Saga and accepts 
             upsert: nodes, retain: [], retire: [], select: [] }) }; } });
     const rejected = await run([{ ...arc, parentId: '' }]);
     assert.equal(rejected.accepted, false);
-    assert.match(rejected.error, /one active root Saga/);
+    assert.match(rejected.error, /one active root Chapter/);
     assert.deepEqual(state, snapshot);
     assert.equal(calls, 1, 'invalid output causes no paid repair loop');
     const accepted = await run([saga, arc, thread]);

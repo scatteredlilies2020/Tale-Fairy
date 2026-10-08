@@ -43,7 +43,7 @@ for (const example of storyCardCases) test(`card lifecycle and exact writer tran
     assert.doesNotMatch(first.writerPacket, /"(?:scratchpad|changeReason|owner|links|parentId)":/);
     const after = decode(closed.writerPacket);
     assert.equal(after.rp_orientation, packet.rp_orientation);
-    assert.ok(after.story_context.every(card => card.kind === 'saga'));
+    assert.ok(after.story_context.every(card => card.kind === 'chapter'));
     for (const node of closed.plan.storyStructure.nodes.filter(node => ['resolved', 'dormant'].includes(node.status))) {
         for (const effect of node.effects) assert.ok(!closed.writerPacket.includes(effect.pressure));
     }
@@ -168,7 +168,7 @@ test('card renderer escapes every model-authored surface and labels status witho
     assert.match(html, /&lt;img src=x onerror=&quot;alert\(1\)&quot;&gt;/);
     assert.match(html, /tf-card-status">Active/);
     assert.match(html, /Writer selection/);
-    assert.match(html, /Saga|Thread/);
+    assert.match(html, /tf-card-kind">Subplot/);
     assert.equal(storyCardsHtml(null), '');
 });
 

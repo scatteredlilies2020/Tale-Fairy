@@ -1,5 +1,9 @@
 // Creative organization, not accepted history. Selected cards carry author knowledge.
 export const STORY_STRUCTURE_VERSION = 1;
+export const STORY_TERMINOLOGY = 'chapter-arc-subplot';
+// Stored kind codes remain stable for saved maps, pending jobs and swipe proofs.
+const kindLabels = { saga: 'Chapter', arc: 'Arc', thread: 'Subplot' };
+export const storyKindLabel = kind => Object.hasOwn(kindLabels, kind) ? kindLabels[kind] : 'Subplot';
 const text = maxLength => ({ type: 'string', minLength: 1, maxLength });
 const emptyText = maxLength => ({ ...text(maxLength), minLength: 0 });
 const object = properties => ({ type: 'object', additionalProperties: false, required: Object.keys(properties), properties });
@@ -40,6 +44,9 @@ function conciseSchema(schema, limit) {
 }
 export const STORY_NODE_RESPONSE_SCHEMA = conciseSchema(STORY_NODE_SCHEMA, 480);
 export const STORY_SELECTION_RESPONSE_SCHEMA = conciseSchema(STORY_SELECTION_SCHEMA, 480);
+for (const schema of [STORY_NODE_RESPONSE_SCHEMA.properties.kind, STORY_SELECTION_RESPONSE_SCHEMA.properties.context.items.properties.kind]) {
+    schema.description = 'saga = Chapter; arc = Arc; thread = Subplot.';
+}
 STORY_SELECTION_RESPONSE_SCHEMA.properties.development.maxLength = 280;
 
 export function storeStoryDescription(record, schema, check, at) {
@@ -60,6 +67,9 @@ export const STORY_STRUCTURE_SCHEMA = object({
     nodes: { type: 'array', items: STORY_NODE_SCHEMA }, selection: { type: 'array', items: STORY_SELECTION_SCHEMA },
 });
 STORY_STRUCTURE_SCHEMA.properties.foundation = STORY_FOUNDATION_SCHEMA;
+// Only successful new reviews adopt public kind names. Historical writer packets
+// must remain byte-stable so authenticated regeneration can still read them.
+STORY_STRUCTURE_SCHEMA.properties.terminology = { type: 'string', enum: [STORY_TERMINOLOGY] };
 
 export function mergeStoryFoundation(previous, supplied, check, notices) {
     // Legacy replies remain readable; omission cannot erase an existing basis.
@@ -207,13 +217,16 @@ export function mergeStoryNodes(previous, upsert, retire, { check, newIdPrefix, 
 export function storyWriterMaterial(plan) {
     const structure = plan?.storyStructure;
     if (structure?.version !== STORY_STRUCTURE_VERSION) return [];
+    const currentNames = structure.terminology === STORY_TERMINOLOGY;
+    const publicKind = kind => currentNames ? storyKindLabel(kind).toLowerCase() : kind;
     const rows = new Map(structure.nodes.map(node => [node.id, node]));
     return structure.selection.filter(({ id }) => {
         const node = rows.get(id);
         return node && ['proposed', 'active'].includes(node.status)
             && storyAncestors(node, rows).every(parent => ['proposed', 'active'].includes(parent.status));
     }).map(({ id, context, title, interpretation, stakes, expectation, development, endsWhen }) => ({
-        kind: rows.get(id).kind, title, ...(context.length ? { context } : {}),
+        kind: publicKind(rows.get(id).kind), title,
+        ...(context.length ? { context: currentNames ? context.map(part => ({ ...part, kind: publicKind(part.kind) })) : context } : {}),
         // Gate new wire fields on the optional field so legacy swipe hashes stay stable.
         ...(rows.get(id).effects !== undefined ? { status: rows.get(id).status,
             ...(rows.get(id).effects.length ? { effects: structuredClone(rows.get(id).effects) } : {}) } : {}),

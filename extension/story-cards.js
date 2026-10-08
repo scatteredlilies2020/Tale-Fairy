@@ -1,9 +1,8 @@
 // Presentation only: opening the board never changes story state or calls a model.
-import { ongoingStoryNodes } from './story-structure.js?story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&world-frame=1';
+import { ongoingStoryNodes, storyKindLabel } from './story-structure.js?story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&world-frame=1&chapter-labels=1';
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 })[char]);
-const kinds = { saga: 'Saga', arc: 'Arc', thread: 'Thread' };
 const statuses = { proposed: 'Proposed', active: 'Active', dormant: 'Dormant', resolved: 'Resolved', retired: 'Retired' };
 const field = (label, value) => value ? `<div class="tf-card-detail"><span>${label}</span><p>${escape(value)}</p></div>` : '';
 const badge = (label, modifier = '') => `<span class="tf-card-badge ${modifier}">${escape(label)}</span>`;
@@ -32,7 +31,7 @@ function card(node, rows, selected, fresh) {
     const effects = node.effects || [];
     const links = (node.links || []).map(id => rows.get(id)?.title).filter(Boolean);
     return `<article class="tf-story-card tf-status-${status}">
-        <header class="tf-card-header"><span class="tf-card-kind">${escape(kinds[node.kind] || 'Thread')}</span>${badge(statuses[status], 'tf-card-status')}${parentInactive ? badge('Parent inactive') : ''}</header>
+        <header class="tf-card-header"><span class="tf-card-kind">${escape(storyKindLabel(node.kind))}</span>${badge(statuses[status], 'tf-card-status')}${parentInactive ? badge('Parent inactive') : ''}</header>
         ${ancestors.length ? `<p class="tf-card-path">${ancestors.map(escape).join(' <span aria-hidden="true">›</span> ')}</p>` : ''}
         <h6 class="tf-card-title">${escape(node.title)}</h6>
         <p class="tf-card-description">${escape(node.interpretation || node.description)}</p>
