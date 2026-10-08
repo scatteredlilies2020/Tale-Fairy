@@ -6,7 +6,7 @@ import { campaignAttemptSummary, PLANNER_RESPONSE_TIMEOUT_MS } from '../extensio
 
 const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
 test('director tracker reports one story-planning request and uses a practical timeout', () => {
-    assert.equal(PLANNER_RESPONSE_TIMEOUT_MS, 60000);
+    assert.equal(PLANNER_RESPONSE_TIMEOUT_MS, 300000);
     const summary = campaignAttemptSummary({ status: 'complete', requestCount: 1, stages: ['director'], durationMs: 14000 });
     assert.match(summary, /14s · 1 request · story planning/);
     assert.doesNotMatch(summary, /scene selection|correction/);

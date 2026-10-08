@@ -1,4 +1,5 @@
-export const PLANNER_RESPONSE_TIMEOUT_MS = 60 * 1000;
+// Allow slower providers and reasoning models to finish a complete plan.
+export const PLANNER_RESPONSE_TIMEOUT_MS = 5 * 60 * 1000;
 
 export function plannerElapsed(milliseconds) {
     const seconds = Math.max(0, Math.floor(Number(milliseconds) / 1000) || 0);
