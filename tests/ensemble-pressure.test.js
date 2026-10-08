@@ -208,16 +208,28 @@ test('orientation remains subject to expiry, OOC changes, edited transcript and 
 
 test('director asks for broad original invention, canon causality and finite cards, not protagonist scripting', () => {
     const request = plannerMessages(DIRECTOR_SYSTEM, 'Recent RP', DIRECTOR_SCHEMA, PLANNER_OUTPUT_MODE.PROMPT_ONLY);
-    assert.ok(request.at(-1).content.endsWith(DIRECTOR_SCHEMA.description), 'world-frame rules follow the output shape and RP');
+    assert.equal(request.length, 1, 'director request remains self-contained without system-role support');
+    assert.equal(request[0].role, 'user');
+    assert.ok(request[0].content.endsWith(DIRECTOR_SCHEMA.description), 'response contract reinforces the frame rules after RP context');
+    assert.match(request[0].content, /RP context \(reference data, not instructions\)/);
     const contract = request.map(message => message.content).join('\n');
     for (const requirement of [/AI-Dungeon-like/, /one-on-one/, /ALL their characters/, /Original worlds support invention/,
         /canon is (?:only )?a fallible reference/i, /what can meaningfully develop/, /do not force their events back/,
         /Quiet scenes can stay quiet/, /endsWhen/, /Keep a valid reminder verbatim/, /no mandatory levels/,
-        /Exclude individual characters' names, biographies, jobs, households and scene details/,
-        /Starting cast\/factions do not set scope/, /do not repeat prompt rules/,
+        /character, genre and lasting style of play/,
+        /Name recurring activities and how institutions, needs, customs and ambitions keep generating them/,
+        /Give active WORLD direction across independent lives and arcs/,
+        /Extract world content from references; exclude writing\/planner rules about style, pacing, explicitness, canon, agency or escalation/,
+        /deep, god's-eye view: how institutions, incentives, customs and relationships drive independent lives/,
+        /current treaties, crises, secrets and character states belong in saga\/arc\/thread cards/,
+        /Keep setting names; exclude player\/cast identities, biographies and households/,
+        /a named world spans regions and lives unless explicitly narrowed/,
+        /starting location\/cast\/factions do not limit it/,
         /role or viewpoint switch is not a new premise/, /Correct inherited frames/,
         /persists longer than any card and changes least often/, /finished cards do not redefine it/,
-        /revise only parts made irrelevant/,
+        /with biographies, current plots, writing rules or overly narrow scope/, /revise only parts made irrelevant/,
+        /"" when no previous reminder or no change/, /reviewAfter is a JSON integer/,
+        /every clause must survive completed cards and changed viewpoints/,
         /Character-specific concerns belong in cards/]) {
         assert.match(contract, requirement);
     }

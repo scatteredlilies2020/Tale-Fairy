@@ -151,7 +151,9 @@ test('effects count toward the same hard writer budget and are never clipped', a
 });
 
 test('setting substance supports secret author knowledge, original invention and playful depth', () => {
-    for (const text of ['Sith', 'Jedi', 'Senate', 'trade', 'K-on', 'Baki', 'Depth can be playful', 'Infer and invent boldly', 'character knowledge follows play']) assert.ok(DIRECTOR_SYSTEM.includes(text), text);
+    for (const text of ["god's-eye view", 'institutions', 'incentives', 'customs', 'relationships', 'independent lives',
+        'Depth can be playful', 'Infer and invent boldly', 'hidden motives', 'Original worlds support invention',
+        'character knowledge follows play']) assert.ok(DIRECTOR_SYSTEM.includes(text), text);
     assert.doesNotMatch(DIRECTOR_SYSTEM, /Redact private motives/);
 });
 

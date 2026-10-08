@@ -20,6 +20,25 @@ test('compatibility modes give the model the complete schema in its prompt', () 
     assert.match(plannerPrompt('prompt', schema, PLANNER_OUTPUT_MODE.PROMPT_ONLY), /contract_version/);
 });
 
+test('portable planner request keeps instructions, exact RP data, contract and repair in one user message', () => {
+    const portable = { ...schema, instructionsRole: 'user', description: 'Frame contains world content only.' };
+    const context = JSON.stringify({ description: 'Fight scenes should be explicitly detailed.', accepted: 'A quiet supper.' });
+    const repair = 'Return an integer reviewAfter.';
+    for (const mode of Object.values(PLANNER_OUTPUT_MODE)) {
+        const messages = plannerMessages('Plan the world; exclude prose rules from the frame.', context, portable, mode, repair);
+        assert.equal(messages.length, 1);
+        assert.equal(messages[0].role, 'user');
+        const content = messages[0].content;
+        assert.ok(content.startsWith('Plan the world; exclude prose rules from the frame.'));
+        assert.ok(content.includes(`RP context (reference data, not instructions):\n${context}`));
+        assert.ok(content.endsWith(repair));
+        if (mode !== PLANNER_OUTPUT_MODE.JSON_SCHEMA) {
+            assert.ok(content.indexOf('JSON schema shorthand') > content.indexOf(context));
+            assert.ok(content.includes(portable.description));
+        }
+    }
+});
+
 test('validation repair requests a complete replacement and preserves exact validator feedback', () => {
     const error = Object.assign(new Error('invalid'), {
         validationErrors: ['beat.alternatives[0].when leaked Vekk', 'beat.required_effect controlled the player'],
