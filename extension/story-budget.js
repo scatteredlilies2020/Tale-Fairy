@@ -4,7 +4,7 @@ import { compactProgressPayload, compactMessagePayload } from './planner-compact
 import { optionalPlannerContexts } from './planner-context.js?soft-targets=1&story-map=1&story-goal=2&story-throughline=1&story-life=1';
 
 // Capacity, not a fill target: leave room for richer cards and author notes.
-export const WRITER_CONTEXT_TOKEN_LIMIT = 1600;
+export const WRITER_CONTEXT_TOKEN_LIMIT = 2400;
 const envelopes = new WeakMap();
 
 // The active story pass sends prompt-only JSON, including schema shorthand in

@@ -37,7 +37,7 @@ function card(node, rows, selected, fresh) {
         <p class="tf-card-description">${escape(node.interpretation || node.description)}</p>
         ${effects.length ? `<div class="tf-card-effects"><span class="tf-card-label">${playing ? 'Ongoing effects' : 'Retained effects · inactive'}</span>
             <ul>${effects.map(effect => `<li>${badge(effect.label, 'tf-effect-label')}<p>${escape(effect.pressure)}</p></li>`).join('')}</ul></div>` : ''}
-        ${field('Driven by', node.owner)}
+        ${field('Involves', node.owner)}
         ${field('Can end when', node.endsWhen)}
         ${links.length ? field('Connected to', links.join(' · ')) : ''}
         ${node.stakes || node.expectation ? `<details class="tf-card-legacy" data-disclosure="legacy-${escape(node.id)}"><summary>Earlier preparation</summary>${field('Stakes', node.stakes)}${field('Possibilities', node.expectation)}</details>` : ''}

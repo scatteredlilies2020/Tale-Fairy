@@ -17,7 +17,7 @@ import { readCampaignContinuity } from '../extension/campaign-continuity.js';
 import { materialHorizons } from '../extension/selected-material.js';
 import { storyInputTokens } from '../extension/story-budget.js';
 import { originalUnderstanding } from './helpers/rp-fixtures.js';
-import { extractTaleFairyContext } from '../extension/request-injection.js';
+import { extractTaleFairyContext, ensureGuidanceInChat, chatHasCurrentGuidance } from '../extension/request-injection.js';
 import { legacyPlotInputKey, GENERATION_CONTEXT_KEY, generationContextEntries } from '../extension/generation-context.js';
 import { campaignPayload, campaignPayloadBudget, contractedCampaignPayload, objectiveGuidancePayload, legacyCampaignPayload, validCampaignState } from '../extension/campaign-planner.js';
 
@@ -220,6 +220,39 @@ const ensembleDirectorReply = prompt => {
     for (const card of [...raw.upsert, ...raw.select]) card.endsWhen = 'The current shared project is completed or set aside.';
     return raw;
 };
+
+test('player-centered cards survive planning, dependent selections, reload and writer injection', async () => {
+    const h = browser(async ({ prompt }) => {
+        const raw = ensembleDirectorReply(prompt), prefix = JSON.parse(prompt).new_id_prefix;
+        const template = raw.upsert[0];
+        raw.upsert = [
+            { ...template, id: `${prefix}life`, kind: 'saga', owner: 'Neri', title: 'Neri and the neighborhood' },
+            { ...template, id: `${prefix}music`, kind: 'arc', parentId: `${prefix}life`, owner: 'Neri', title: 'Music and friendship' },
+            { ...template, id: `${prefix}supper`, parentId: `${prefix}music`, owner: 'Mara', title: 'Shared supper',
+                links: [`${prefix}life`], effects: [{ label: 'Shared invitations', pressure: 'Neighbors offer company and music without deciding Neri’s response.' }] },
+        ];
+        raw.select = raw.upsert.map((node, index) => ({ ...raw.select[0], id: node.id, title: node.title,
+            context: raw.upsert.slice(0, index).map(parent => ({ kind: parent.kind, title: parent.title })) }));
+        return envelope(raw);
+    }, defaultState(), { director: true });
+    h.settings.fullReviewInterval = 12;
+    await h.scope.analyzeCampaignNow({ manual: true });
+    const structure = h.state().campaignPreparation.workingPlan.storyStructure;
+    assert.equal(structure.nodes.length, 3);
+    assert.equal(structure.selection.length, 3);
+    assert.equal(h.requests.length, 1);
+    assert.doesNotMatch(h.statuses.join('\n'), /withheld|unavailable|Player cannot own/);
+    const packet = h.prepare().payload;
+    assert.match(packet, /Shared invitations/);
+    assert.doesNotMatch(packet, /"owner":/);
+    h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata));
+    h.scope.campaignSession = null;
+    assert.equal(h.prepare().payload, packet);
+    const request = [{ role: 'user', content: 'I listen to the neighbors.' }];
+    ensureGuidanceInChat(request, packet, { role: 'user', depth: 0, inlineLatestUser: true });
+    assert.equal(chatHasCurrentGuidance(request, packet), true);
+});
+
 const appendPlay = (h, count = 1) => {
     for (let i = 0; i < count; i++) h.context.chat.push({ is_user: false, name: 'Mara', mes: `Quiet conversation ${h.context.chat.length}.` });
 };
@@ -1203,7 +1236,7 @@ test('empty writer preview distinguishes quiet selection, missing preparation an
 test('notebook distinguishes estimated writer cap from preserved author-only overflow', () => {
     const scope = vm.createContext({ campaignPayloadBudget });
     vm.runInContext(source.match(/function campaignBudgetSummary\([^]*?^}/m)[0], scope);
-    assert.match(scope.campaignBudgetSummary(null, []), /estimated 0\/1600/);
+    assert.match(scope.campaignBudgetSummary(null, []), /estimated 0\/2400/);
     const note = 'Explicit instruction. '.repeat(700);
     assert.match(scope.campaignBudgetSummary(null, [note]), /Author instructions alone exceed.*remain verbatim/);
 });

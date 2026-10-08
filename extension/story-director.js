@@ -1,12 +1,12 @@
 // One creative request. Continuity remains input, never a second memory ledger.
-import { storyInput, nextPlanRevision, plannerInputLimit } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1';
-import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check, validCampaignState } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1';
-import { WORKING_PLAN_VERSION, validateWorkingPlan, workingPlanProjection, planTokens } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1';
+import { storyInput, nextPlanRevision, plannerInputLimit } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1';
+import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check, validCampaignState } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1';
+import { WORKING_PLAN_VERSION, validateWorkingPlan, workingPlanProjection, planTokens } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1';
 import { STORY_SELECTION_SCHEMA, STORY_STRUCTURE_SCHEMA, previousStoryNodes,
     STORY_NODE_RESPONSE_SCHEMA, STORY_SELECTION_RESPONSE_SCHEMA, storeStoryDescription, storyNodeForPlanner,
     STORY_FOUNDATION_RESPONSE_SCHEMA, mergeStoryFoundation,
-    mergeStoryNodes, storyAncestors, validateStoryStructure, storyWriterMaterial } from './story-structure.js?story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1';
-import { fitStoryContext } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1&horizon-links=3&story-structure=1&ensemble-pressure=1&story-cards=1';
+    mergeStoryNodes, storyAncestors, validateStoryStructure, storyWriterMaterial } from './story-structure.js?story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1';
+import { fitStoryContext } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1&horizon-links=3&story-structure=1&ensemble-pressure=1&story-cards=1&player-cards=1';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
 
 export { nextPlanRevision, plannerInputLimit };
@@ -31,15 +31,15 @@ foundation.scratchpad replaces compact private notes: relevant established chang
 
 Read the world's particular character deeply: institutions, incentives, customs, relationships and implied forces. Star Wars can involve Sith influence, Jedi obligations, Senate patronage and trade interests; choose what fits its era and this RP. K-on's musical ambitions, school calendar and affectionate social habits differ from Baki's competitive martial world despite both being in Japan. Depth can be playful. Infer and invent boldly within established possibilities, including original NPCs and hidden motives. Give substance and causal interests, leaving prose style to the writer.
 
-Use concise saga/arc/thread cards: broad currents, arcs and local threads, with no mandatory levels or counts. description gives the concern and what it encourages in one or two sentences. effects holds up to three {label, pressure} pairs: concrete ongoing influences on opportunities, relationships, resources or choices. For example "Diplomatic strain": "Cloud's demand makes border assignments and Hyuga protection politically sensitive." These are narrative status effects, not numerical buffs or schedules; [] for none. endsWhen recognizes an end boundary with outcomes open; "" for ongoing concerns. parentId groups cards ("" for root); links connect without merging ([] for none). owner names NPCs, institutions or processes driving it, never the player. Routine props need no cards.
+Use concise saga/arc/thread cards: broad currents, arcs and local threads, with no mandatory levels or counts. description gives the concern and what it encourages in one or two sentences. effects holds up to three {label, pressure} pairs: concrete ongoing influences on opportunities, relationships, resources or choices. For example "Diplomatic strain": "Cloud's demand makes border assignments and Hyuga protection politically sensitive." These are narrative status effects, not numerical buffs or schedules; [] for none. endsWhen recognizes an end boundary with outcomes open; "" for ongoing concerns. parentId groups cards ("" for root); links connect without merging ([] for none). owner identifies the character, group or process the card concerns, including a player character. It is an organizing label, not permission to choose anyone's actions. Routine props need no cards.
 
 previous_preparation is private, not history. upsert replaces a whole card under its id; new ids use new_id_prefix. Omission preserves cards. status is proposed, active, dormant, resolved or retired. Resolve only from accepted play; retire withdraws proposals, including descendants, without claiming events occurred. Reassess completion, refusal and changed premises. Do not revive completed introductions or abandon unfinished concerns merely because focus moved. Empty updates are valid; keep the map compact.
 
-select renews writer-facing cards from scratch; [] keeps only the RP reminder. Select relevant proposed/active currents and situations, including wider pressures that remain important during respite. Supply title, context (ancestor kinds and titles, outermost first), concise description and endsWhen. Selected nodes' effects are included automatically, so do not repeat them here. development is an optional brief opportunity ("" otherwise). The writer shares your author-level view: include useful hidden motives, Sith involvement or other secrets when compatible, even before characters discover them. It decides manifestation and revelation; character knowledge follows play. Proposals stay distinguishable from established events. Ask what can meaningfully develop, not merely be mentioned again.
+select renews writer-facing cards from scratch; [] keeps only the RP reminder. Select relevant proposed/active currents and situations, including wider pressures that remain important during respite. Supply title, context (only parentId ancestors, outermost first; links are not parents), concise description and endsWhen. To select a dormant card, explicitly update it to active first; otherwise retain it without selection. Selected nodes' effects are included automatically, so do not repeat them here. development is an optional brief opportunity ("" otherwise). The writer shares your author-level view: include useful hidden motives, Sith involvement or other secrets when compatible, even before characters discover them. It decides manifestation and revelation; character knowledge follows play. Proposals stay distinguishable from established events. Ask what can meaningfully develop, not merely be mentioned again.
 
 The writer interprets the reminder and cards, choosing manifestation, timing, prose and pacing; its preset stands alone. The player controls ALL their characters' actions, choices, thoughts and outcomes. Current play, references and explicit corrections govern compatibility; memory is fallible. Missing context proves neither absence nor resolution.
 
-reviewAfter is 4 to 20 accepted AI replies, normally 12, shorter for volatile circumstances. It is a safety review horizon, not fictional time or an event schedule. Aim for 1,400 response tokens at setup and 900 on reviews; use more when needed for coherent substance. Keep the complete writer packet around 1,000 tokens including orientation, effects and framing, leaving room below its 1,600 ceiling for author notes and variation. These are not quotas: preserve distinct pressures and causal specifics, omit unchanged cards and avoid filling field limits.
+reviewAfter is 4 to 20 accepted AI replies, normally 12, shorter for volatile circumstances. It is a safety review horizon, not fictional time or an event schedule. Aim for 1,400 response tokens at setup and 900 on reviews; use more when needed for coherent substance. Keep the complete writer packet around 1,000 tokens including orientation, effects and framing, leaving room below its 2,400 ceiling for author notes and variation. These are not quotas: preserve distinct pressures and causal specifics, omit unchanged cards and avoid filling field limits.
 `;
 
 export function directorInput(args, maxTokens) {
@@ -121,14 +121,27 @@ export async function directorPass({ state, input, source, generate }) {
         const plan = { direction: raw.direction, threads: raw.direction, consequences: [], developments: [],
             storyStructure: { version: 1, reviewAfter: raw.reviewAfter, nodes, selection: [], ...(foundation ? { foundation } : {}) } };
         const selectedIds = new Set();
-        for (const supplied of raw.select) {
+        for (const [index, supplied] of raw.select.entries()) {
             try {
                 const entry = storeStoryDescription(supplied, STORY_SELECTION_RESPONSE_SCHEMA, check, '$.select[]');
                 check(entry, STORY_SELECTION_SCHEMA, '$.select[]');
                 if (selectedIds.has(entry.id)) throw Error('Duplicate selected story');
                 const node = rows.get(entry.id);
                 if (!node) throw Error('Selected story is unavailable');
-                if ([node, ...storyAncestors(node, rows)].some(item => rejectedIds.has(item.id))) throw Error('Selection depends on a rejected story update');
+                const ancestors = storyAncestors(node, rows);
+                if ([node, ...ancestors].some(item => rejectedIds.has(item.id))) throw Error('Selection depends on a rejected story update');
+                // Selection cannot reactivate a dormant/closed card or its parent.
+                // This is a redundant request for retained material, not a bad update.
+                if ([node, ...ancestors].some(item => !['proposed', 'active'].includes(item.status))) {
+                    responseAdjustments.push(`$.select[${index}]`);
+                    continue;
+                }
+                // Links do not make parents. Rebuild only an inconsistent display
+                // path from the validated graph, preserving the supplied story text.
+                if (entry.context.length !== ancestors.length || entry.context.some((part, i) => part.kind !== ancestors[i].kind)) {
+                    entry.context = ancestors.map(({ kind, title }) => ({ kind, title }));
+                    responseAdjustments.push(`$.select[${index}].context`);
+                }
                 const candidate = structuredClone(plan);
                 candidate.storyStructure.selection.push(structuredClone(entry));
                 validateStoryStructure(candidate.storyStructure, check, input.playerNames);

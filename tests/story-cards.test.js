@@ -142,7 +142,7 @@ test('effects count toward the same hard writer budget and are never clipped', a
     const report = await evaluateCardCase(storyCardCases[1]);
     const plan = report.stages[0].plan;
     const original = JSON.stringify(plan);
-    const budget = campaignPayloadBudget({ workingPlan: plan }, ['Author direction: ' + 'Keep the setting consistent. '.repeat(70)]);
+    const budget = campaignPayloadBudget({ workingPlan: plan }, ['Author direction: ' + 'Keep the setting consistent. '.repeat(140)]);
     assert.ok(budget.omitted > 0);
     assert.equal(JSON.stringify(plan), original);
     const packet = decode(budget.payload);

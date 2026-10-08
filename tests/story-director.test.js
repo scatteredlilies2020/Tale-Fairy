@@ -187,7 +187,7 @@ test('several active arcs and threads share a saga without fixed levels or conve
     assert.equal(result.state.episode.status, 'open');
 });
 
-test('broken hierarchy, cycles, cross-links and player ownership preserve valid siblings', async () => {
+test('broken hierarchy and cross-links preserve valid siblings and player-centered cards', async () => {
     const raw = response();
     raw.upsert.push(proposal('r1-orphan', { parentId: 'missing' }), proposal('r1-a', { kind: 'arc', parentId: 'r1-b' }),
         proposal('r1-b', { kind: 'arc', parentId: 'r1-a' }), proposal('r1-player', { owner: 'Ren' }),
@@ -196,19 +196,61 @@ test('broken hierarchy, cycles, cross-links and player ownership preserve valid 
     const result = await run(emptyCampaign(), raw);
     assert.equal(result.accepted, true, result.error);
     assert.equal(validCampaignState(result.state), true);
-    assert.deepEqual(nodes(result).map(node => node.id), ['r1-kitchen']);
-    assert.deepEqual(selections(result).map(node => node.id), ['r1-kitchen']);
+    assert.deepEqual(nodes(result).map(node => node.id), ['r1-kitchen', 'r1-player']);
+    assert.deepEqual(selections(result).map(node => node.id), ['r1-kitchen', 'r1-player']);
 });
 
 test('rejected updates retain private preparation but cannot publish dependent guidance', async () => {
     const first = await run();
-    const raw = response(); raw.upsert[0].owner = 'Ren';
-    raw.select[0].development = 'Rejected player-controlled development.';
+    const raw = response(); raw.upsert[0].links = ['missing'];
+    raw.select[0].development = 'Development from a rejected story update.';
     const result = await run(first.state, raw);
     assert.equal(result.accepted, true, result.error);
     assert.deepEqual(nodes(result), nodes(first));
     assert.deepEqual(selections(result), []);
     assert.match(result.plannerNotices[1], /rejected story/);
+});
+
+test('linked roots get their actual display path and dormant selections do not reactivate cards', async () => {
+    const raw = response();
+    raw.upsert = [proposal('r1-life', { kind: 'saga' }),
+        proposal('r1-kitchen', { owner: 'Ren', links: ['r1-life'] }),
+        proposal('r1-secret', { status: 'dormant', links: ['r1-life'] })];
+    const linkedContext = [{ kind: 'saga', title: 'A linked concern, not a parent' }];
+    raw.select = [selected('r1-life'), selected('r1-kitchen', { context: linkedContext }),
+        selected('r1-secret', { context: linkedContext })];
+    const result = await run(emptyCampaign(), raw);
+    assert.equal(result.accepted, true, result.error);
+    assert.deepEqual(result.plannerNotices, []);
+    assert.deepEqual(selections(result).map(node => node.id), ['r1-life', 'r1-kitchen']);
+    assert.deepEqual(selections(result)[1].context, []);
+    assert.equal(nodes(result).find(node => node.id === 'r1-secret').status, 'dormant');
+    assert.ok(result.responseAdjustments.includes('$.select[1].context'));
+    assert.ok(result.responseAdjustments.includes('$.select[2]'));
+    assert.equal(validCampaignState(result.state), true);
+});
+
+test('three detailed cards keep their effects and selected opportunities within the writer allowance', async () => {
+    const description = 'Village routines connect hospital work, household responsibilities and changing relationships. Neighbors and colleagues have independent needs and interests; their proposals can develop over several scenes while the player decides how to respond.';
+    const effects = [
+        { label: 'Hospital demands', pressure: 'Staff shortages create competing requests from colleagues and recovering patients. The hospital can offer meaningful work and difficult priorities without choosing the player’s actions.' },
+        { label: 'Village scrutiny', pressure: 'Officials compare testimony, medical reports and diplomatic claims. Their differing interests can affect access and resources while conclusions remain open to accepted play.' },
+        { label: 'Personal ties', pressure: 'Friends, dependents and neighbors have plans of their own. Invitations and ordinary responsibilities can sustain quiet relationship development alongside wider village concerns.' },
+    ];
+    const development = 'A colleague can bring an unresolved practical concern into an ordinary conversation. Its timing and the player’s participation stay open, and it need not interrupt a quiet moment or force a new assignment.';
+    const endsWhen = 'The participants settle or deliberately set aside this particular concern. Its outcome remains open; finishing it need not end the wider relationships, daily responsibilities or independent village activity.';
+    const raw = response();
+    raw.upsert = ['ward', 'records', 'household'].map(id => ({ id: `r1-${id}`, kind: 'thread', parentId: '', status: 'active',
+        title: `Village ${id}`, owner: 'Ren', links: [], description, effects, endsWhen }));
+    raw.select = raw.upsert.map(({ id, title }) => ({ id, title, context: [], description, development, endsWhen }));
+    const result = await run(emptyCampaign(), raw);
+    assert.equal(result.accepted, true, result.error);
+    assert.deepEqual(result.plannerNotices, []);
+    assert.equal(selections(result).length, 3);
+    const budget = campaignPayloadBudget(result.state);
+    assert.equal(budget.omitted, 0);
+    assert.match(budget.payload, /Hospital demands/);
+    assert.match(budget.payload, /Village household/);
 });
 
 test('closed and dormant stories stay private; retirement withdraws descendants without changing prior state', async () => {
@@ -240,12 +282,16 @@ test('parent closure is rolled back unless active descendants are also closed or
     assert.ok(nodes(valid).every(node => node.status === 'resolved'));
 });
 
-test('duplicate selections, wrong public hierarchy and overflows are withheld whole', async () => {
+test('duplicate selections and overflows are withheld while display hierarchy is corrected locally', async () => {
     const duplicate = await run(emptyCampaign(), { ...response(), select: [selected(), selected()] });
     assert.equal(duplicate.accepted, true, duplicate.error); assert.equal(selections(duplicate).length, 1);
     assert.match(duplicate.plannerNotices[0], /Duplicate/);
     const wrong = await run(emptyCampaign(), { ...response(), select: [selected('r1-kitchen', { context: [{ kind: 'saga', title: 'Invented parent' }] })] });
-    assert.equal(wrong.accepted, true, wrong.error); assert.deepEqual(selections(wrong), []);
+    assert.equal(wrong.accepted, true, wrong.error);
+    assert.equal(selections(wrong).length, 1);
+    assert.deepEqual(selections(wrong)[0].context, []);
+    assert.deepEqual(wrong.plannerNotices, []);
+    assert.ok(wrong.responseAdjustments.includes('$.select[0].context'));
     const oversized = await run(emptyCampaign(), { ...response(), select: [selected('r1-kitchen', {
         interpretation: '菜'.repeat(750), stakes: '旅'.repeat(550), expectation: '友'.repeat(750) })] });
     assert.equal(oversized.accepted, true, oversized.error);

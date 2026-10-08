@@ -102,12 +102,12 @@ function invalidGraph(rows) {
     return invalid;
 }
 
-export function validateStoryStructure(structure, check, playerNames = []) {
+export function validateStoryStructure(structure, check) {
     check(structure, STORY_STRUCTURE_SCHEMA, '$.storyStructure');
     const rows = new Map(structure.nodes.map(node => [node.id, node]));
     if (rows.size !== structure.nodes.length) throw Error('Duplicate story id');
-    const players = new Set(playerNames.map(name => name.trim().toLocaleLowerCase()));
-    if (structure.nodes.some(node => players.has(node.owner.trim().toLocaleLowerCase()))) throw Error('Player cannot own a planned story');
+    // A card can concern a player character. Its organizing label does not
+    // authorize the writer to choose that character's actions or outcomes.
     if (invalidGraph(rows).size) throw Error('Invalid story hierarchy or links');
     const selected = new Set();
     for (const entry of structure.selection) {
@@ -131,7 +131,7 @@ export function previousStoryNodes(plan = {}) {
         stakes: 'Consequences remain open.', expectation: [row.next?.change, row.later?.change].filter(Boolean).join(' '), links: [] }));
 }
 
-export function mergeStoryNodes(previous, upsert, retire, { check, playerNames, newIdPrefix, notices, rejectedIds }) {
+export function mergeStoryNodes(previous, upsert, retire, { check, newIdPrefix, notices, rejectedIds }) {
     const old = new Map(previous.map(node => [node.id, structuredClone(node)])), rows = new Map(old), updates = new Set();
     const counts = new Map();
     for (const node of upsert) if (typeof node?.id === 'string') counts.set(node.id, (counts.get(node.id) || 0) + 1);
@@ -150,7 +150,6 @@ export function mergeStoryNodes(previous, upsert, retire, { check, playerNames, 
             check(node, STORY_NODE_SCHEMA, '$.upsert[]');
             if (counts.get(node.id) !== 1) throw Error('Duplicate story update');
             if (!old.has(node.id) && !node.id.startsWith(newIdPrefix)) throw Error('New story requires the supplied id prefix');
-            if (playerNames.some(name => name.trim().toLocaleLowerCase() === node.owner.trim().toLocaleLowerCase())) throw Error('Player cannot own a planned story');
             rows.set(node.id, structuredClone(node)); updates.add(node.id);
         } catch (error) {
             if (typeof node?.id === 'string') rejectedIds.add(node.id);
