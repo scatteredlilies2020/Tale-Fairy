@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 const PLUGIN = 'tale-fairy';
-const VERSION = '0.19.4';
+const VERSION = '0.20.0';
 const jobs = new Map();
 const MAX_FINISHED_JOBS = 40;
 const MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
@@ -377,7 +377,7 @@ function sendError(res, error) {
 
 export async function init(router, { fetchImpl = fetch, retryDelays = [15000, 60000], requestTimeoutMs = REQUEST_TIMEOUT_MS } = {}) {
     router.get('/health', (_req, res) => {
-        res.json({ ok: true, plugin: PLUGIN, version: VERSION, detachedPlanner: true, campaignJobs: 1 });
+        res.json({ ok: true, plugin: PLUGIN, version: VERSION, detachedPlanner: true, campaignJobs: 1, futureJobs: 1 });
     });
 
     router.post('/planner-jobs/generate', async (req, res) => {
@@ -397,11 +397,13 @@ export async function init(router, { fetchImpl = fetch, retryDelays = [15000, 60
             if (suppliedMeta.campaign) {
                 const saved = suppliedMeta.campaign;
                 if (saved.version !== 1 || !isRecord(saved.input) || !isRecord(saved.source)
+                    || saved.kind !== undefined && !['current', 'future'].includes(saved.kind)
                     || saved.source.chatId !== suppliedMeta.chatId || typeof saved.stateFingerprint !== 'string'
                     || typeof saved.requestSignature !== 'string' || JSON.stringify(saved).length > 2 * 1024 * 1024) {
                     throw Object.assign(new Error('Invalid campaign recovery envelope.'), { status: 400 });
                 }
                 campaign = { version: 1, input: saved.input, source: saved.source,
+                    ...(saved.kind ? { kind: saved.kind } : {}),
                     stateFingerprint: saved.stateFingerprint, requestSignature: saved.requestSignature };
                 // Reconnecting or an uncertain POST must never buy the same
                 // pass twice. Ownership scopes run keys to one ST user.

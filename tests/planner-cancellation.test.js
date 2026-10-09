@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { FUTURE_ATTEMPT_KEY } from '../extension/future-planner.js';
 
 const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
 function harness() {
@@ -9,6 +10,7 @@ function harness() {
     const cancelled = [];
     const scope = {
         detachedPlannerEnabled: true, analysisRunId: 2, analysisStopSequence: 3,
+        FUTURE_ATTEMPT_KEY, currentContext: () => ({ chatMetadata: {} }),
         detachedPlannerJobs: () => new Promise(resolve => { finishList = resolve; }),
         plannerServerApi: async path => cancelled.push(path), console, EXTENSION_ID: 'test',
     };

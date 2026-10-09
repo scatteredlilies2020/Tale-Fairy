@@ -9,6 +9,7 @@ import * as coalescerApi from '../../extension/planner-coalescer.js';
 import * as compactionApi from '../../extension/notebook-compaction.js';
 import * as preparedApi from '../../extension/prepared-world.js';
 import * as campaignApi from '../../extension/campaign-planner.js';
+import * as futureApi from '../../extension/future-planner.js';
 import { needsEventReframe } from '../../extension/bounded-story.js';
 import { directorInput as ownedInput, directorPass as ownedPass, nextPlanRevision,
     DIRECTOR_SCHEMA as OWNED_SCHEMA, DIRECTOR_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from '../../extension/story-director.js';
@@ -36,6 +37,8 @@ export function generationHarness(messages, state = stateApi.defaultState(), met
     const names = ['GENERATION_STARTED', 'GENERATION_ENDED', 'GENERATION_STOPPED', 'MESSAGE_RECEIVED', 'MESSAGE_SENT', 'MESSAGE_EDITED', 'MESSAGE_UPDATED', 'MESSAGE_DELETED', 'MESSAGE_SWIPED', 'WORLDINFO_UPDATED', 'WORLDINFO_SETTINGS_UPDATED', 'CHARACTER_EDITED', 'PERSONA_CHANGED', 'PERSONA_UPDATED'];
     const scope = {
         activatedStoryContext: new ActivatedStoryContext(), readHostStoryEvidence,
+        ...futureApi, futureHost: null, scheduleFuturePlanning: async () => ({}), renderFutureBoard() {},
+        analysisModelOptions: () => ({ active: false }),
         ...stateApi, ...cacheApi, ...scheduleApi, ...coalescerApi, ...preparedApi, ...campaignApi, ...compactionApi,
         ownedInput, ownedPass, needsEventReframe, nextPlanRevision, OWNED_SCHEMA, OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit, CampaignSession, CAMPAIGN_ATTEMPT_KEY, campaignJobMeta, campaignReviewedCount, campaignCheckpoint, campaignReconsideration, verifiedClosedSubjects,
         getRequestHeaders: () => ({}), sha256: bytes => createHash('sha256').update(bytes).digest('hex'),

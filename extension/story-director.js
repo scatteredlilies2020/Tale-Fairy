@@ -20,6 +20,12 @@ export const DIRECTOR_SCHEMA = { name: 'tale_fairy_story_director_v7', instructi
     retain: { type: 'array', uniqueItems: true, items: text(80) },
     retire: { type: 'array', items: text(80) }, select: { type: 'array', items: STORY_SELECTION_RESPONSE_SCHEMA },
 }) };
+// Optional for historical responses and saved swipe compatibility.
+DIRECTOR_SCHEMA.value.properties.futureDecisions = { type: 'array', maxItems: 6, items: object({
+    id: text(100), action: { type: 'string', enum: ['adopt', 'retire'] },
+    chapterId: { type: 'string', maxLength: 80 }, reason: text(400),
+}) };
+DIRECTOR_SCHEMA.value.properties.reassessFuture = { type: 'boolean' };
 // Keep the request self-contained for providers with different system handling.
 // The response contract reinforces the frame boundary after the reference data.
 DIRECTOR_SCHEMA.description = 'foundation.reminder: aim 400–550 characters (maximum 600), 3–5 short sentences. Direct RP brief: setting/era, actual genre, recurring activities and concrete opportunities or pressures. Match stakes to this RP, not franchise stereotypes; light play needs no manufactured darkness. No writing rules, cast biographies, current plots or precise dates. Preserve premise scope. changeReason is "" on fresh setup. Cards: favor arcs; create, retain and select only substantial ongoing stories. Unfinished is not enough. Omit routine follow-ups without inventing their outcomes; never inflate filler into an arc.';
@@ -54,11 +60,14 @@ description gives the concern and what it encourages in one or two sentences. De
 
 On substantial time skips, review every Chapter, Arc and Subplot for explicit or clearly implied closure. A passed festival window or ended school term can close its story without inventing participation or success. Do not keep expired preparation active or replay skipped routine steps. Respect the activity named: a week working at the hospital implies ordinary rounds, care and follow-ups. Bare elapsed time does not imply specific work, a difficult cure, diagnosis, return-to-duty clearance or a settled conflict. Infer ordinary completion only when the skip supports it; preserve meaningful unresolved stories and unchosen player outcomes. Drop incidental preparation without claiming its underlying problem is solved.
 
-previous_preparation contains candidates for present and future play. upsert replaces changed cards; new ids use new_id_prefix. retain lists worthwhile unchanged cards. Upserted and selected cards are kept automatically; other omissions drop preparation. status is proposed, active, dormant, resolved or retired. Resolve stories ended explicitly or by clear implication of accepted play; retire withdraws proposals and descendants without claiming events occurred. Closed cards leave the map. Keep substantial stories across focus changes, not stale cards with only hypothetical future relevance. Dormant means a substantial future story, not indefinite storage. Empty updates are valid.
+previous_preparation is the current map, not the future Chapter outlook. upsert replaces changed cards; new ids use new_id_prefix. retain lists worthwhile unchanged cards. Upserted and selected cards are kept automatically; other omissions drop preparation. status is proposed, active, dormant, resolved or retired. Resolve stories ended explicitly or by clear implication of accepted play; retire withdraws proposals and descendants without claiming events occurred. Closed cards leave the map. Keep substantial current stories across focus changes, not stale cards with only hypothetical future relevance. Dormant suspends current unfinished business, not indefinite storage or a backlog of future Arcs/Subplots. Empty updates are valid.
 
 recent_card_names lists earlier idea names, newest first, to vary ideas and avoid repetition. Names establish no history or outcomes.
 
 select renews writer-facing cards from scratch; [] keeps only the RP reminder. Select relevant proposed/active currents and situations, including wider pressures that remain important during respite. Supply title, context (only parentId ancestors, outermost first; links are not parents), concise description and endsWhen. To select a dormant card, explicitly update it to active first; otherwise retain it without selection. Selected nodes' effects are included automatically, so do not repeat them here. development is an optional brief opportunity ("" otherwise). The writer shares your author-level view: include fitting hidden motives and secrets before characters know. It decides manifestation/revelation; character knowledge follows play. Distinguish proposals from established events. Ask what can meaningfully develop, not merely be mentioned again.
+
+private_future holds conditional Chapter possibilities, NEVER history. Begin at the actual present at any campaign stage; infer pressures, not past player actions. Canon includes adapted/adjacent stories, not inevitable events. Changed causes can prevent them. Bring only fitting seeds/pressures into current cards, never the whole outlook or forced dates/outcomes. Avoid duplicate pressures. Intervening Chapters need independent substance; transitions may follow consequences, independent events, respite, travel or accepted time skips, not a timetable.
+On adoption, expand the Chapter as active root, reconnect meaningful surviving Arcs and reconcile duplicates. Return optional futureDecisions:[{id,action:"adopt",chapterId:<active root id>,reason}]; action:"retire",chapterId:"" withdraws a contradicted/duplicate prospect without claiming an outcome. Use supplied future ids only. Other outlook revisions belong to the separate planner. Optional reassessFuture:true requests that pass after material long-range or fictional-time changes, not ordinary dialogue.
 
 The writer chooses manifestation, timing, prose and pacing; its preset stands alone. The player controls ALL their characters' actions, choices, thoughts and outcomes. Respect current play, references and explicit corrections while inventing freely.
 
@@ -96,7 +105,7 @@ export function directorInput(args, maxTokens) {
     const fresh = args.resetPlan || !args.previousUsable && !args.reconsiderHorizon;
     const names = !fresh && args.previousUsable ? recentCardNames(args.state) : [];
     const memory = args.evidence?.find(item => item.provider === 'continuity-memory') ?? args.continuity;
-    const summary = fresh && args.continuityEnabled === true ? continuityStorySummary(memory) : '';
+    const summary = (fresh || args.futurePlanning) && args.continuityEnabled === true ? continuityStorySummary(memory) : '';
     const omitRecall = args.continuityEnabled === false || Boolean(summary);
     const input = storyInput({ ...args,
         ...(omitRecall ? { evidence: args.evidence?.filter(item => item.provider !== 'continuity-memory'), continuity: undefined } : {}),
@@ -106,6 +115,9 @@ export function directorInput(args, maxTokens) {
         return { ...context, coverage: { ...coverage,
             context_use: 'Recent RP and summaries provide creative background. Carry useful plans forward; no continuity audit is requested.' },
         ...(summary ? { story_summary: { provider: 'continuity-memory', text: summary } } : {}),
+        // Allocate the bounded outlook with current preparation, before fitting
+        // older chat. Adding it only to leftover space starves long campaigns.
+        ...(args.futureCards?.length ? { private_future: args.futureCards } : {}),
         previous_preparation: {
             nodes: ongoingStoryNodes(previousStoryNodes(previous_plan)).map(storyNodeForPlanner),
             ...(previous_plan.storyStructure?.foundation ? { foundation: previous_plan.storyStructure.foundation } : {}),
@@ -126,6 +138,7 @@ export function directorInput(args, maxTokens) {
         const inputTokens = storyInputTokens(prompt, DIRECTOR_SYSTEM, DIRECTOR_SCHEMA);
         if (inputTokens <= input.inputLimit) Object.assign(input, { prompt, inputTokens });
     }
+    input.futureCards = JSON.parse(input.prompt).private_future || [];
     return { ...input, requireSagaHierarchy: args.requireSagaHierarchy === true };
 }
 
@@ -264,7 +277,19 @@ export async function directorPass({ state, input, source, generate }) {
             preparationFormat: EVENT_POINTS_FORMAT, workingPlanVersion: WORKING_PLAN_VERSION,
             workingPlan: plan, planEvidence: {}, selectedMaterial };
         if (!validCampaignState(next)) throw Error('Story preparation failed saved-state validation');
-        return { accepted: true, state: next, result, plannerNotices: notices, responseAdjustments, budget: {
+        const futureDecisions = [], futureIds = new Map((input.futureCards || []).map(c => [c.id, c]));
+        if (raw.futureDecisions !== undefined) {
+            check(raw.futureDecisions, DIRECTOR_SCHEMA.value.properties.futureDecisions, '$.futureDecisions');
+            for (const decision of raw.futureDecisions) {
+                if (!futureIds.has(decision.id) || futureDecisions.some(d => d.id === decision.id)
+                    || decision.action === 'adopt' && !nodes.some(n => n.id === decision.chapterId && n.kind === 'saga' && n.status === 'active')) {
+                    notices.push('Invalid future decision withheld'); continue;
+                }
+                futureDecisions.push({ ...decision, title: futureIds.get(decision.id).title });
+            }
+        }
+        return { accepted: true, state: next, result, futureDecisions, reassessFuture: raw.reassessFuture === true,
+            plannerNotices: notices, responseAdjustments, budget: {
             input: result.plannerInputTokens ?? input.inputTokens, plan: planTokens(plan), selected: planTokens(selectedMaterial),
         }, budgetNotices: [], outputOverrun: 0 };
     } catch (error) {

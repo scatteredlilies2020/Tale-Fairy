@@ -6,10 +6,11 @@ import * as schedule from '../extension/planner-scheduler.js';
 import * as budgets from '../extension/planner-budgets.js';
 import * as role from '../extension/injection-role.js';
 import { normalizeReasoningMode } from '../extension/reasoning-policy.js';
+import { futureInterval } from '../extension/future-planner.js';
 
 const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
 function settingsHarness(stored = {}) {
-    const scope = vm.createContext({ ...schedule, ...budgets, ...role, normalizeReasoningMode,
+    const scope = vm.createContext({ ...schedule, ...budgets, ...role, normalizeReasoningMode, futureInterval,
         extension_settings: { test: structuredClone(stored) }, EXTENSION_ID: 'test' });
     for (const name of ['INJECTION_POSITIONS', 'DEFAULT_SETTINGS']) {
         vm.runInContext(source.match(new RegExp(`const ${name} = [^\\n]+`))[0], scope);

@@ -16,7 +16,7 @@
       <div class="living-world-guide-status">Request tracker: <span data-role="attempt-status">No recorded planner request</span></div>
 
       <div class="living-world-guide-card">
-        <h4>World and future preparation</h4>
+        <h4>Current world preparation</h4>
         <small>Tale Fairy prepares story context and possible developments at the current scale. Planning runs in the background; your preset controls the writing.</small>
         <div class="living-world-guide-grid">
           <label>Scene pacing (this chat)
@@ -53,12 +53,25 @@
             <small>Reviews maintain one active Chapter, connected Arcs and optional substantial Subplots. Writer change signals, explicit direction and scene boundaries can trigger earlier review; the interval is the fallback. Expired guidance is withheld while private cards stay saved.</small>
           </label>
         </div>
-        <small data-role="campaign-budget-help">One planner request. Targets: 10,000 input tokens and 900 response tokens; 2,200 output limit; 1,000 writer context limit. A stable ensemble-aware RP reminder encourages movement without prescribing events. Selected cards stay concise and can end. Whole entries are withheld on overflow. No model repair calls.</small>
+        <small data-role="campaign-budget-help">The current guide and future outlook use separate requests. Selected current cards and the RP reminder reach the writer; provisional future cards stay private. Whole entries are withheld on overflow. No model repair calls.</small>
         <label class="checkbox_label">
           <input type="checkbox" data-setting="continuity">
           <span>Use Continuity context when available</span>
         </label>
-        <small>First guide and Full rebuild read CM's complete Story so far as creative background. Ordinary reviews use bounded context. Uses available memory without an extra memory call.</small>
+        <small>First guide, Full rebuild and future planning read CM's complete Story so far when available. Ordinary current reviews use bounded context. No extra memory call.</small>
+      </div>
+
+      <div class="living-world-guide-card">
+        <h4>Private future Chapters</h4>
+        <label class="checkbox_label"><input type="checkbox" data-setting="future-enabled"><span>Enable separate future planning</span></label>
+        <label>Future review interval (accepted assistant replies)
+          <input class="text_pole" type="number" data-setting="future-interval" min="4" max="200" step="1" value="40">
+        </label>
+        <small>First Guide now and every Full rebuild launch both planners. Afterwards, future planning runs at this interval or after meaningful long-range changes. Reply counts never advance fictional time. Explicit “Time skip:” author directions also request reassessment.</small>
+        <button class="menu_button" type="button" data-action="plan-future">Plan future now</button>
+        <span class="living-world-guide-status" data-role="future-status" role="status" aria-live="polite">Not yet planned</span>
+        <small>This button updates only the private outlook: up to six provisional Chapters, labeled Canon (including adapted/adjacent) or Original. Conditions can prevent or transform them. No future lower-level Arcs or Subplots.</small>
+        <small>Active-route requests serialize safely; direct/profile requests can run side by side.</small>
       </div>
 
       <div class="living-world-guide-card">
@@ -162,10 +175,10 @@
           <button class="menu_button" data-action="reset-settings" type="button" title="Restore default settings; keep the notebook"><i class="fa-solid fa-arrow-rotate-left"></i> Reset settings</button>
           <button class="menu_button" data-action="reset" type="button"><i class="fa-solid fa-trash-can"></i> Delete guide state</button>
         </div>
-        <small>Guide now / Re-evaluate updates existing plans. Full rebuild deletes generated plans, archives and cached guidance first, keeping pacing and author notes. Failed rebuilds leave the notebook empty.</small>
+        <small>Guide now updates current plans and checks whether future planning is due. Full rebuild clears both preparations first, preserving pacing and author notes. Calls save independently; a failed call leaves only its own preparation empty.</small>
         <small>Reset settings keeps the notebook and stored API keys, and resets the selected connection.</small>
         <small>One request updates story possibilities and selects NPC/world activity. Existing memory supplies context; the planner writes no history summary.</small>
-        <small>No automatic correction or memory-refresh calls. Requests stop after 60 seconds. Failed ordinary reviews keep previous preparation; Full rebuild clears it first. Author instructions stay preserved.</small>
+        <small>No automatic correction or memory-refresh calls. Browser waits end after five minutes; compatible server work can still finish. Failed ordinary reviews keep previous preparation; Full rebuild clears it first. Author instructions stay preserved.</small>
         <div class="living-world-guide-grid living-world-guide-note-grid">
           <label>AI-assisted instruction
             <textarea class="text_pole" data-setting="note" rows="3" placeholder="Write naturally. Tale Fairy will understand whether this is a suggestion, correction, canon detail, or hard exclusion."></textarea>
@@ -191,6 +204,10 @@
             </details>
             <div data-role="scratchpad-prepared">No prepared material yet.</div>
             <div data-role="scratchpad-archives"></div>
+            <details class="tf-future-outlook">
+              <summary>Future Chapters · private possibilities, not established events</summary>
+              <pre data-role="future-cards">No future Chapters saved.</pre>
+            </details>
           </section>
           <section>
             <details class="tf-story-diagnostics">

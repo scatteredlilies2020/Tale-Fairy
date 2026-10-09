@@ -1,4 +1,4 @@
-import { CampaignRuntime } from './campaign-runtime.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1';
+import { CampaignRuntime } from './campaign-runtime.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-chapters=1';
 import { campaignReviewInterval, campaignRefreshInterval } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1';
 import { boundedPlannerResponse, PLANNER_RESPONSE_TIMEOUT_MS } from './planner-progress.js?v=1&review-checkpoint=1&story-workshop=1&request-policy=2&story-director=1&planner-timeout=1&server-jobs=1';
 import { storyReviewInterval, storyChangeSignal } from './story-structure.js?story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&world-frame=1&chapter-labels=1';
@@ -10,8 +10,9 @@ const turns = messages => messages.filter(message => !message.is_user).length;
 // reserves one source before sending, including across reloads and failures.
 export class CampaignSession {
     constructor({ read, prepare, generate, commit, fingerprint, saveAttempt, interval = () => 12, runPass,
-        onProgress = () => {}, timeoutMs = PLANNER_RESPONSE_TIMEOUT_MS, evidenceRestart = false, guardEvidence = true }) {
-        Object.assign(this, { read, fingerprint, saveAttempt, interval });
+        onProgress = () => {}, timeoutMs = PLANNER_RESPONSE_TIMEOUT_MS, evidenceRestart = false, guardEvidence = true, isDue,
+        generateGate = task => task() }) {
+        Object.assign(this, { read, fingerprint, saveAttempt, interval, isDue });
         this.controller = null;
         this.pending = null;
         this.runtime = new CampaignRuntime({ read, fingerprint, guardEvidence, ...(runPass ? { runPass } : {}),
@@ -59,8 +60,13 @@ export class CampaignSession {
                     : correction.stage === 'director' ? 'Updating story map and public context'
                     : correction.stage === 'horizon' ? 'Preparing wider story possibilities · stage 1 of 2'
                     : correction.stage === 'scene' ? 'Preparing current scene and selecting material · stage 2 of 2' : 'Preparing planner request');
-                const result = await boundedPlannerResponse(() => generate(prompt, system, schema,
-                    { signal: this.controller.signal, snapshot: this.attemptSnapshot, attempt: this.attempt, input: this.attemptInput }), this.controller, timeoutMs);
+                // Queue time for the host's shared active route must not consume
+                // the next request's response timeout. Recheck after the grant.
+                const result = await generateGate(() => {
+                    guard();
+                    return boundedPlannerResponse(() => generate(prompt, system, schema,
+                        { signal: this.controller.signal, snapshot: this.attemptSnapshot, attempt: this.attempt, input: this.attemptInput }), this.controller, timeoutMs);
+                });
                 onProgress('Validating planner response');
                 return result;
             },
@@ -72,7 +78,7 @@ export class CampaignSession {
         });
         this.run = async () => {
             this.evidenceChanged = false;
-            let result = await this.runtime.request({ manual: true });
+            let result = await this.runtime.request({ manual: true, snapshot: this.initialSnapshot });
             // One rebase, not a retry loop. A changed memory snapshot discards
             // BOTH drafts. The fresh pass can finish its stages and corrections
             // regardless of how many requests the discarded drafts used.
@@ -99,15 +105,18 @@ export class CampaignSession {
         return '';
     }
 
-    request({ manual = false, replacementRepair = false } = {}) {
+    request({ manual = false, replacementRepair = false, snapshot: suppliedSnapshot } = {}) {
         if (this.pending) return this.pending;
-        const snapshot = this.read();
+        const snapshot = suppliedSnapshot || this.read();
         const previous = snapshot.attempt;
         if (!snapshot.enabled || !snapshot.chatId || !snapshot.messages.length
             || snapshot.replacement && !manual && !replacementRepair || replacementRepair && !snapshot.replacement) {
             return Promise.resolve({ accepted: false, state: snapshot.state, skipped: 'inactive-or-replacement' });
         }
-        if (!manual && previous?.chatId === snapshot.chatId) {
+        if (!manual && this.isDue && !this.isDue(snapshot)) {
+            return Promise.resolve({ accepted: false, state: snapshot.state, skipped: 'not-due' });
+        }
+        if (!manual && !this.isDue && previous?.chatId === snapshot.chatId) {
             const key = this.runtime.key(snapshot);
             const unchangedBasis = previous.referenceHash === snapshot.referenceHash
                 && previous.requestSignature === (snapshot.requestSignature || '')
@@ -126,6 +135,7 @@ export class CampaignSession {
             }
         }
         this.controller = new AbortController();
+        this.initialSnapshot = snapshot;
         this.detached = false;
         this.attempt = null;
         const controller = this.controller;

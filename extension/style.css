@@ -331,3 +331,10 @@
         flex: 1 1 150px;
     }
 }
+.tf-future-outlook pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font: inherit;
+    max-height: 36rem;
+    overflow-y: auto;
+}

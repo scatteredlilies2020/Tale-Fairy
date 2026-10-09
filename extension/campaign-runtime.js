@@ -25,11 +25,11 @@ export class CampaignRuntime {
             ? campaignPayload(current.state, [], { horizonsOnly: !campaignMaterialUsable(current.state, context) }) : '';
     }
 
-    request({ manual = false } = {}) {
+    request({ manual = false, snapshot: suppliedSnapshot } = {}) {
         // Appending another exchange does not discard an already-paid-for pass.
         // Edited sources are rejected at commit; a later trigger can plan them.
         if (this.pending) return this.pending;
-        const snapshot = structuredClone(this.read());
+        const snapshot = structuredClone(suppliedSnapshot || this.read());
         const key = this.key(snapshot);
         if (!manual && key === this.lastAttemptKey) {
             return Promise.resolve({ accepted: false, state: this.read().state, skipped: 'already-attempted' });
@@ -69,7 +69,8 @@ export class CampaignRuntime {
                 }
                 // The host rechecks these guards when synchronously installing
                 // metadata, before starting any asynchronous persistence work.
-                const installed = this.commit(result.state, { stateFingerprint, source, evidenceKey });
+                const installed = this.commit(result.state, { stateFingerprint, source, evidenceKey,
+                    futureDecisions: result.futureDecisions, reassessFuture: result.reassessFuture });
                 if (installed !== true) return { accepted: false, state: this.read().state, skipped: 'commit-conflict' };
                 return result;
             } catch (error) {

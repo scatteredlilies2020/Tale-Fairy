@@ -36,7 +36,8 @@ export async function recoverCampaignJob(job, { read, fingerprint, runPass, comm
         } });
     if (!result.accepted) return result;
     if (!campaignJobMatches(job, read(), fingerprint)
-        || commit(result.state, { stateFingerprint: saved.stateFingerprint, source: saved.source }) !== true) {
+        || commit(result.state, { stateFingerprint: saved.stateFingerprint, source: saved.source,
+            futureDecisions: result.futureDecisions, reassessFuture: result.reassessFuture }) !== true) {
         return { accepted: false, skipped: 'detached-commit-conflict' };
     }
     return result;

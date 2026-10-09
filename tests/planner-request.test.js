@@ -8,6 +8,7 @@ import * as output from '../extension/output-negotiation.js';
 import { claimPlannerRecoveryRepair } from '../extension/planner-lifecycle.js';
 import { fitStoryInputBudget } from '../extension/story-budget.js';
 import { plannerInputLimit } from '../extension/working-plan.js';
+import { serializeActivePlanner } from '../extension/future-host.js';
 
 const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
 const take = (start, end) => source.slice(source.indexOf(start), source.indexOf(end));
@@ -26,7 +27,7 @@ function harness(results, { route = 'direct', configured = 'low', activeEffort =
     };
     const scope = {
         ...reasoning, ...output, AnalysisValidationError, claimPlannerRecoveryRepair, WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA, fitStoryInputBudget, plannerInputLimit,
-        plannerStorage: () => null, AbortController, DOMException, console: { warn() {} },
+        plannerStorage: () => null, AbortController, DOMException, console: { warn() {} }, serializeActivePlanner,
         EXTENSION_ID: 'test', detachedPlannerReady: Promise.resolve(), detachedPlannerEnabled: false,
         PLANNER_SYSTEM_PROMPT: 'planner', INCREMENTAL_SYSTEM_PROMPT: 'routine',
         ANALYSIS_SCHEMA: { value: { type: 'object' } }, INCREMENTAL_ANALYSIS_SCHEMA: { value: { type: 'object' } },

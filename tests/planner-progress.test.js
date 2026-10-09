@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { campaignAttemptSummary, PLANNER_RESPONSE_TIMEOUT_MS } from '../extension/planner-progress.js';
+import { futureInterval } from '../extension/future-planner.js';
 
 const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
 test('director tracker reports one story-planning request and uses a practical timeout', () => {
@@ -46,7 +47,7 @@ test('campaign timer ticks, keeps total elapsed across stages and stops on compl
     const buttons = new Map();
     const root = { querySelector: selector => selector.includes('analysis-status') ? status
         : { toggleAttribute: (_name, disabled) => buttons.set(selector, disabled) } };
-    const scope = vm.createContext({ Date: { now: () => now }, EXTENSION_ID: 'test',
+    const scope = vm.createContext({ Date: { now: () => now }, EXTENSION_ID: 'test', futureHost: null,
         document: { querySelector: () => root }, analysisPhaseTimer: null, analysisRunId: 1, analysisStopSequence: 0,
         campaignHostWork: { chatId: 'chat', stopSequence: 0, runId: 1, startedAt: now },
         currentContext: () => ({ getCurrentChatId: () => 'chat' }),
@@ -91,7 +92,7 @@ test('current planner hides inactive budgets and displays its effective review i
         }
         return elements.get(selector);
     } };
-    const scope = vm.createContext({ getSettings: () => settings, campaignMode: () => true,
+    const scope = vm.createContext({ getSettings: () => settings, campaignMode: () => true, futureInterval,
         currentContext: () => ({}), loadState: () => ({ pacing: { mode: 'auto' } }),
         analysisConnectionChoice: () => 'direct', secret_state: {}, renderDirectModelOptions() {} });
     install(scope, ['refreshControls']);

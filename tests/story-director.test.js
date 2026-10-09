@@ -45,7 +45,7 @@ test('one request saves story context, not next-turn scripts, private state or a
     assert.match(payload, /recipe book/);
     assert.doesNotMatch(payload, /If |when|next|later|action|r1-kitchen|Community cooks|upsert|parentId|status|reviewAfter|possible_developments/);
     assert.doesNotMatch(DIRECTOR_SYSTEM, /\u2014/);
-    assert.ok(storyInputTokens('', DIRECTOR_SYSTEM, DIRECTOR_SCHEMA) < 4200, 'portable contract stays compact including genre calibration, arc significance, hierarchy and explicit/implied time-skip closure');
+    assert.ok(storyInputTokens('', DIRECTOR_SYSTEM, DIRECTOR_SCHEMA) < 4800, 'portable contract leaves input headroom including conditional future handoff, genre calibration, hierarchy and time-skip closure');
 });
 
 test('phase-free preparation keeps a stable world frame and valid writer guidance', async () => {
@@ -206,6 +206,17 @@ test('unchecked CM support excludes its summary and recall while regular reviews
     const missing = directorInput({ reference, state: emptyCampaign(), messages, continuityEnabled: true,
         continuity: { status: 'unavailable' } });
     assert.deepEqual(JSON.parse(missing.prompt).accepted_messages, JSON.parse(directorInput({ reference, state: emptyCampaign(), messages }).prompt).accepted_messages);
+});
+
+test('future renewals read the complete available CM story at any stage without enabling unchecked memory', async () => {
+    const text = 'Campaign past: ' + 'The treaty changed regional obligations. '.repeat(200), memory = cmStory(text);
+    const first = await run();
+    for (const enabled of [true, false]) {
+        const input = directorInput({ reference, state: first.state, messages, previousUsable: true,
+            futurePlanning: true, continuityEnabled: enabled, continuityTokens: 0, continuity: memory, evidence: [memory] }, 3000);
+        assert.equal(JSON.parse(input.prompt).story_summary?.text, enabled ? text.trim() : undefined);
+        assert.doesNotMatch(input.prompt, /CM_PRIVATE_CONSTRAINT|CM_PRIVATE_FACT|CM_PRIVATE_RECORD/);
+    }
 });
 
 test('final request fitting preserves the entire fresh CM summary and latest player choice', async () => {

@@ -302,7 +302,7 @@ test('outbound injection updates its own status without clearing planner progres
     const root = { querySelector: selector => selector === '[data-role="analysis-status"]' ? planner
         : { toggleAttribute: (_name, value) => disabled.set(selector, value) } };
     Object.assign(sandbox, {
-        EXTENSION_ID: 'test', analysisPhaseTimer: 42, injectionStatus: 'No request verified on this page',
+        EXTENSION_ID: 'test', analysisPhaseTimer: 42, injectionStatus: 'No request verified on this page', futureHost: null,
         clearInterval: timer => clearedTimers.push(timer),
         document: { querySelector: selector => !mounted ? null : selector.includes('injection-status') ? injection : root },
     });

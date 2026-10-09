@@ -102,6 +102,25 @@ test('campaign submission is acknowledged immediately; reconnect deduplicates an
     assert.equal(result.backendHeaders, undefined);
 });
 
+test('server advertises future jobs and preserves their separate owner through recovery', async () => {
+    const router = routerMock();
+    await init(router, { fetchImpl: async () => new Response(JSON.stringify({ choices: [{ message: { content: '{"upsert":[],"retain":[],"retire":[]}' } }] })) });
+    const health = responseMock();
+    router.routes.get('GET /health')(request(), health);
+    assert.equal(health.payload.futureJobs, 1);
+    const body = campaignBody('future-owner-roundtrip'); body.meta.campaign.kind = 'future';
+    const res = responseMock();
+    await router.routes.get('POST /planner-jobs/generate')(request(body), res);
+    assert.equal(res.statusCode, 202);
+    const result = await untilJob(router, res.payload.job.id, job => job.status === 'complete');
+    assert.equal(result.meta.campaign.kind, 'future');
+    assert.equal(result.meta.campaign.stateFingerprint, 'state');
+    body.meta.runKey = 'invalid-owner'; body.meta.campaign.kind = 'unrelated';
+    const invalid = responseMock();
+    await router.routes.get('POST /planner-jobs/generate')(request(body), invalid);
+    assert.equal(invalid.statusCode, 400);
+});
+
 test('server retries pending campaign after temporary failures without any browser; bounded at three requests', async () => {
     for (const succeeds of [true, false]) {
         let calls = 0;

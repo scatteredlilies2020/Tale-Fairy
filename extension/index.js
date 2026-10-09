@@ -1,13 +1,13 @@
 import { sha256 } from '/lib.js';
 import { campaignAuthorInstructions, campaignPayloadBudget, campaignUsable, campaignMaterialUsable, campaignWriterUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1';
-import { directorInput as ownedInput, directorPass as ownedPass, nextPlanRevision, DIRECTOR_SCHEMA as OWNED_SCHEMA, DIRECTOR_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './story-director.js?story-workshop=1&story-horizons=1&story-progression=1&rp-activities=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&full-rebuild=1&empty-fields=1&open-scope=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&no-phase=1&present-future=1&creative-planning=1&fresh-summary=1&world-frame=1&frame-stability=1&rp-world-frame=1&portable-frame=1&genre-frame=1&arc-focus=1&saga-hierarchy=1&chapter-labels=1';
+import { directorInput as ownedInput, directorPass as ownedPass, nextPlanRevision, DIRECTOR_SCHEMA as OWNED_SCHEMA, DIRECTOR_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './story-director.js?story-workshop=1&story-horizons=1&story-progression=1&rp-activities=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&full-rebuild=1&empty-fields=1&open-scope=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&no-phase=1&present-future=1&creative-planning=1&fresh-summary=1&world-frame=1&frame-stability=1&rp-world-frame=1&portable-frame=1&genre-frame=1&arc-focus=1&saga-hierarchy=1&chapter-labels=1&future-chapters=1';
 import { fitStoryInputBudget } from './story-budget.js?follow-through=1&compaction=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1&horizon-links=3&story-structure=1&ensemble-pressure=1&story-cards=1&player-cards=1&creative-planning=1&portable-frame=1';
 import { readCampaignContinuity } from './campaign-continuity.js';
 // Keep the public registration URL stable so external adapters share this registry.
 import { readEvidenceProviders, evidenceRevisionKey } from './evidence-providers.js?story-lifecycle=1';
 import { campaignEvidenceMessages, campaignReviewWindow } from './campaign-evidence.js?fresh-summary=1';
 import { campaignReviewedCount, campaignCheckpoint, campaignReconsideration, verifiedClosedSubjects } from './campaign-review.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1';
-import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.36&token-budget=1&rp-plot=1&progress=1&follow-through=1&working-plan=1&recovery=1&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&planner-timeout=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&server-jobs=1&chapter-labels=1';
+import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.36&token-budget=1&rp-plot=1&progress=1&follow-through=1&working-plan=1&recovery=1&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&planner-timeout=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&server-jobs=1&chapter-labels=1&future-chapters=1';
 import { campaignAttemptSummary } from './planner-progress.js?v=1&recovery=1&review-checkpoint=1&story-workshop=1&request-policy=2&story-director=1&planner-timeout=1&server-jobs=1';
 import { finalizeNotebookCompactions, writeNotebookArchive } from './notebook-compaction.js?v=0.14.22';
 import { eventSource, event_types, extension_prompt_roles, extension_prompt_types, generateRaw, Generate, setExtensionPrompt, getRequestHeaders, getCharacterCardFields, saveSettingsDebounced } from '/script.js';
@@ -51,12 +51,15 @@ import { classifyAssistantReply } from './response-usability.js?v=0.13.9';
 import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, legacyPlotInputKey, migrateCampaignBudgetKeys, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.34&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1';
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 import { ActivatedStoryContext, readHostStoryEvidence } from './rp-context.js?story-lifecycle=1';
-import { campaignJobMeta, campaignJobMatches, recoverCampaignJob } from './campaign-jobs.js?server-jobs=1';
+import { campaignJobMeta, campaignJobMatches, recoverCampaignJob } from './campaign-jobs.js?server-jobs=1&future-chapters=1';
+import { FUTURE_KEY, FUTURE_ATTEMPT_KEY, FUTURE_RECEIPTS_KEY, PLANNING_EPOCH_KEY,
+    futureInterval, futureReceipts, futureForDirector, futureSummary, usableFuture } from './future-planner.js?v=0.20.0&future-chapters=1&chapter-labels=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1';
+import { createFutureHost, serializeActivePlanner } from './future-host.js?v=0.20.0&future-chapters=1&chapter-labels=1&server-jobs=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&story-director=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1';
 
 const activatedStoryContext = new ActivatedStoryContext();
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.19.4';
+const RUNTIME_VERSION = '0.20.0';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -68,10 +71,11 @@ const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
 const INJECTION_POSITIONS = new Set(['before-main', 'after-main', 'before-character-definitions', 'after-character-definitions', 'before-example-messages', 'after-example-messages', 'before-an', 'after-an', 'before-chat-history', 'after-chat-history', 'before-jailbreak', 'after-jailbreak', 'at-depth']);
-const DEFAULT_SETTINGS = { enabled: true, mode: 'balanced', analysisProfileId: '', analysisSource: 'active', analysisProvider: 'custom', analysisModel: '', analysisUrl: '', analysisSecretId: '', analysisReasoningMode: 'auto', analysisTemperature: 1, directSettingsMigrated: false, directCustomModel: '', directCustomUrl: '', directCustomSecretId: '', directOpenRouterModel: '', directOpenRouterUrl: '', directOpenRouterSecretId: '', injectionPosition: 'at-depth', injectionDepth: 1, injectionRole: DEFAULT_INJECTION_ROLE, includeWorldInfo: false, showDirectorNotes: false, recentContextTokens: 6000, messageTokenLimit: 700, maxPromptTokens: 10000, continuityIntegration: true, summaryContextTokens: 1000, fullReviewInterval: DEFAULT_REFRESH_INTERVAL, contextSettingsVersion: 15 };
+const DEFAULT_SETTINGS = { enabled: true, futureEnabled: true, futureInterval: 40, mode: 'balanced', analysisProfileId: '', analysisSource: 'active', analysisProvider: 'custom', analysisModel: '', analysisUrl: '', analysisSecretId: '', analysisReasoningMode: 'auto', analysisTemperature: 1, directSettingsMigrated: false, directCustomModel: '', directCustomUrl: '', directCustomSecretId: '', directOpenRouterModel: '', directOpenRouterUrl: '', directOpenRouterSecretId: '', injectionPosition: 'at-depth', injectionDepth: 1, injectionRole: DEFAULT_INJECTION_ROLE, includeWorldInfo: false, showDirectorNotes: false, recentContextTokens: 6000, messageTokenLimit: 700, maxPromptTokens: 10000, continuityIntegration: true, summaryContextTokens: 1000, fullReviewInterval: DEFAULT_REFRESH_INTERVAL, contextSettingsVersion: 15 };
 let settings = null;
 let analysisPromise = null;
 let campaignSession = null;
+let futureHost = null;
 // Includes preflight, the asynchronous Web Lock grant, and lock release—not
 // just the provider/session promise, which settles before the lock is released.
 let campaignHostWork = null;
@@ -107,6 +111,7 @@ const detachedPlannerJobIds = new Map();
 const plannerNativeFetch = globalThis.fetch?.taleFairyNativeFetch || globalThis.fetch.bind(globalThis);
 let detachedPlannerEnabled = false;
 let detachedCampaignEnabled = false;
+let detachedFutureEnabled = false;
 let detachedPlannerRecovering = false;
 let replyRepairTimer = null;
 let replyRepairInFlight = false;
@@ -222,6 +227,8 @@ function getSettings() {
     if (previousContextVersion < 15 && Number(settings.fullReviewInterval) <= 4) settings.fullReviewInterval = DEFAULT_REFRESH_INTERVAL;
     settings.contextSettingsVersion = DEFAULT_SETTINGS.contextSettingsVersion;
     settings.fullReviewInterval = normalizePlannerSchedule({ refreshInterval: settings.fullReviewInterval }).refreshInterval;
+    settings.futureEnabled ??= true;
+    settings.futureInterval = futureInterval(settings.futureInterval);
     if (!settings.directSettingsMigrated) {
         const legacySource = settings.analysisSource === 'openrouter' || settings.analysisProvider === 'openrouter' ? 'openrouter' : 'direct';
         const keys = directSettingKeys(legacySource);
@@ -414,6 +421,7 @@ async function initializeDetachedPlanner() {
         const health = await plannerServerApi('/health');
         detachedPlannerEnabled = health?.detachedPlanner === true;
         detachedCampaignEnabled = health?.campaignJobs === 1;
+        detachedFutureEnabled = health?.futureJobs === 1;
         if (!detachedCampaignEnabled) console.warn(`[${EXTENSION_ID}] Pending campaign recovery requires the updated server plugin; restart SillyTavern after updating Tale Fairy.`);
     } catch (error) {
         detachedPlannerEnabled = false;
@@ -811,6 +819,80 @@ function campaignMode(context = currentContext()) {
     return loadState(context.chatMetadata).plannerContract === 15;
 }
 
+function getFutureHost() {
+    return futureHost ||= createFutureHost({
+        readBase: readCampaignSnapshot, metadata: () => currentContext().chatMetadata,
+        settings: getSettings, fingerprint: campaignFingerprint,
+        write: patch => { const c = currentContext(); c.updateChatMetadata({ ...c.chatMetadata, ...patch }); },
+        persist: async () => { await currentContext().saveMetadata?.(); },
+        sharedAttempt: chatId => { try { return JSON.parse(plannerStorage()?.getItem(`${FUTURE_ATTEMPT_KEY}:${chatId}`) || 'null'); } catch { return null; } },
+        saveSharedAttempt: a => { try { plannerStorage()?.setItem(`${FUTURE_ATTEMPT_KEY}:${a.chatId}`, JSON.stringify(a)); } catch { /* metadata fallback */ } },
+        buildCommon: snapshot => buildCampaignHostInput({ ...snapshot, futureCards: [], futurePlanning: true }),
+        generateGate: task => analysisModelOptions().active ? serializeActivePlanner(task) : task(),
+        generate: (prompt, signal, meta, spec) => requestAnalysisOnce(prompt, signal, meta, { ...spec, parseResponse: campaignCompletion }),
+        lock: (chatId, task) => withPlannerTabLock(`${chatId}:future`, task),
+        jobs: async chatId => { await detachedPlannerReady; return detachedFutureEnabled ? detachedPlannerJobs(chatId) : null; },
+        cancelJob: id => plannerServerApi(`/planner-jobs/${encodeURIComponent(id)}`, { method: 'DELETE', body: '{}' }),
+        ackJob: acknowledgeDetachedPlannerJob, ackRun: acknowledgeDetachedPlannerRun,
+        render: renderFutureBoard,
+        status: message => { const e = document.querySelector('[data-role="future-status"]'); if (e) e.textContent = message; },
+    });
+}
+
+function renderFutureBoard() {
+    const context = currentContext(), outlook = context.chatMetadata?.[FUTURE_KEY];
+    const target = document.querySelector('[data-role="future-cards"]');
+    if (target) {
+        const snapshot = readCampaignSnapshot();
+        const excluded = new Set(futureReceipts(context.chatMetadata, snapshot, campaignFingerprint).map(r => r.id));
+        const visible = outlook && { ...outlook, cards: Array.isArray(outlook.cards)
+            ? outlook.cards.filter(c => !excluded.has(c?.id)) : outlook.cards };
+        target.textContent = futureSummary(visible, context.chatMetadata?.[FUTURE_ATTEMPT_KEY],
+            Boolean(outlook?.revision && !usableFuture({ ...snapshot, state: outlook }, campaignFingerprint)));
+    }
+    const running = Boolean(futureHost?.pending);
+    const root = document.querySelector(`#${EXTENSION_ID}-settings`);
+    root?.querySelector('[data-action="plan-future"]')?.toggleAttribute('disabled', running || !getSettings().enabled || !getSettings().futureEnabled);
+    root?.querySelector('[data-action="stop"]')?.toggleAttribute('disabled', !running && !campaignHostWork && !analysisPromise);
+    const status = root?.querySelector('[data-role="future-status"]');
+    if (status) status.textContent = !getSettings().futureEnabled ? 'Disabled · saved outlook retained'
+        : running ? 'Planning future Chapters…' : context.chatMetadata?.[FUTURE_ATTEMPT_KEY]?.status || 'Not yet planned';
+}
+
+function scheduleFuturePlanning(options = {}) {
+    if (getSettings().futureEnabled !== true) return Promise.resolve({ skipped: 'disabled' });
+    return getFutureHost().run(options);
+}
+
+async function planFutureNow() {
+    const chatId = String(currentContext().getCurrentChatId?.() || '');
+    const sequence = analysisStopSequence;
+    await warmPlotWorldInputs(currentContext());
+    if (sequence !== analysisStopSequence || chatId !== String(currentContext().getCurrentChatId?.() || '')) return;
+    return scheduleFuturePlanning({ manual: true });
+}
+
+async function disableFuturePlanning() {
+    futureHost?.stop('Future planning disabled.');
+    const context = currentContext(), chatId = String(context.getCurrentChatId?.() || '');
+    const attempt = context.chatMetadata?.[FUTURE_ATTEMPT_KEY];
+    if (attempt) {
+        const stopped = { ...attempt, status: 'stopped' };
+        context.updateChatMetadata({ ...context.chatMetadata, [FUTURE_ATTEMPT_KEY]: stopped });
+        try { plannerStorage()?.setItem(`${FUTURE_ATTEMPT_KEY}:${chatId}`, JSON.stringify(stopped)); } catch { /* metadata fallback */ }
+        await context.saveMetadata?.();
+    }
+    try {
+        // Listing may finish after the user re-enables planning. Cancel only
+        // the reservation stopped above, never a newly started future call.
+        for (const job of (await detachedPlannerJobs(chatId)).filter(j => j.meta?.campaign?.kind === 'future'
+            && attempt?.runKey && j.runKey === attempt.runKey)) {
+            await plannerServerApi(`/planner-jobs/${encodeURIComponent(job.id)}`, { method: 'DELETE', body: '{}' });
+        }
+    } catch { /* Disabled/epoch guards also prevent a late commit. */ }
+    renderFutureBoard();
+}
+
 function readCampaignSnapshot() {
     const context = currentContext(), state = loadState(context.chatMetadata), s = getSettings();
     const chatId = String(context.getCurrentChatId?.() || '');
@@ -847,12 +929,12 @@ function readCampaignSnapshot() {
     if (attempt?.chatId === chatId && attempt.referenceHash === legacyPlotInputKey(chatId, [], inputs)) {
         attempt = { ...attempt, referenceHash };
     }
-    return { state: state.campaignPreparation || emptyCampaign(), messages: accepted, chatId, replacement, rebuild,
+    const snapshot = { state: state.campaignPreparation || emptyCampaign(), messages: accepted, chatId, replacement, rebuild,
         enabled: s.enabled, attempt,
         playerNames: [...new Set([context.name1, ...accepted.filter(m => m.is_user).map(m => m.name)]
             .filter(name => typeof name === 'string' && name.trim()))],
         referenceHash,
-        requestSignature: campaignFingerprint({ recovery: 1, reviewCheckpoint: 1, contract: OWNED_SCHEMA, prompt: OWNED_SYSTEM, settings: Object.fromEntries(['analysisSource', 'analysisProvider', 'analysisProfileId',
+        requestSignature: campaignFingerprint({ epoch: context.chatMetadata?.[PLANNING_EPOCH_KEY] || '', recovery: 1, reviewCheckpoint: 1, contract: OWNED_SCHEMA, prompt: OWNED_SYSTEM, settings: Object.fromEntries(['analysisSource', 'analysisProvider', 'analysisProfileId',
             'analysisModel', 'analysisUrl', 'analysisSecretId', 'analysisReasoningMode', 'analysisTemperature', 'maxPromptTokens', 'continuityIntegration', 'summaryContextTokens']
             .map(key => [key, s[key]])) }),
         reference,
@@ -862,6 +944,9 @@ function readCampaignSnapshot() {
         continuityTokens: s.summaryContextTokens ?? 1000,
         inputBudget: plannerInputLimit(Number(s.maxPromptTokens) || 10000),
     };
+    snapshot.futureCards = s.futureEnabled === true ? futureForDirector(context.chatMetadata?.[FUTURE_KEY], snapshot,
+        campaignFingerprint, futureReceipts(context.chatMetadata, snapshot, campaignFingerprint)) : [];
+    return snapshot;
 }
 
 function buildCampaignHostInput(snapshot) {
@@ -889,7 +974,8 @@ function buildCampaignHostInput(snapshot) {
         const input = ownedInput({ reference: snapshot.reference, state: planningState, playerNames: snapshot.playerNames, reviewedMessageCount: reviewedCount,
                 messages: campaignEvidenceMessages(selected, { narrative: true }), previousUsable, verifiedPlanEvidence, verifiedClosedIds, resetPlan: snapshot.rebuild, reconsiderHorizon,
                 continuity: snapshot.continuity, evidence: snapshot.evidence, continuityEnabled: snapshot.continuityEnabled,
-                continuityTokens: snapshot.continuityTokens, requireSagaHierarchy: true }, snapshot.inputBudget);
+                continuityTokens: snapshot.continuityTokens, requireSagaHierarchy: true, futurePlanning: snapshot.futurePlanning,
+                futureCards: snapshot.futureCards }, snapshot.inputBudget);
         if (!best || input.inputTokens < best.inputTokens) best = input;
         if (input.inputTokens <= input.inputLimit) return input;
     }
@@ -981,7 +1067,12 @@ async function runCampaignAnalysis(work) {
     }
     await warmPlotWorldInputs(initial);
     if (stopSequence !== analysisStopSequence || chatId !== String(currentContext().getCurrentChatId?.() || '')) return loadState(currentContext().chatMetadata);
+    const sharedSnapshot = readCampaignSnapshot();
+    // Both jobs read the same accepted source and background at startup.
+    // Neither result writes the other's preparation.
+    void scheduleFuturePlanning({ baseSnapshot: sharedSnapshot });
     campaignSession ||= new CampaignSession({ read: readCampaignSnapshot, prepare: buildCampaignHostInput,
+        generateGate: task => analysisModelOptions().active ? serializeActivePlanner(task) : task(),
         runPass: ownedPass, evidenceRestart: false,
         guardEvidence: !OWNED_SCHEMA.name.startsWith('tale_fairy_story_director_'),
         fingerprint: campaignFingerprint, saveAttempt: saveCampaignAttempt, commit: commitCampaignPreparation,
@@ -993,7 +1084,7 @@ async function runCampaignAnalysis(work) {
                 ? campaignJobMeta(snapshot, attempt, input, campaignFingerprint) : null;
             return requestAnalysisOnce(prompt, signal, meta, {
                 onProgress: showCampaignPhase,
-                singleShot: true, systemPrompt, schema, responseTokens: PLANNER_OUTPUT_LIMIT, parseResponse: campaignCompletion,
+                singleShot: true, gatedActive: true, systemPrompt, schema, responseTokens: PLANNER_OUTPUT_LIMIT, parseResponse: campaignCompletion,
                 label: 'campaign preparation', cacheNamespace: `campaign-v15:${OWNED_SCHEMA.name}`,
             });
         },
@@ -1005,12 +1096,13 @@ async function runCampaignAnalysis(work) {
         if (recovered.active || recovered.recovered) return { accepted: false, skipped: 'server-job-handled' };
         if (stopSequence !== analysisStopSequence || chatId !== String(currentContext().getCurrentChatId?.() || '')
             || !getSettings().enabled) return { accepted: false, skipped: 'cancelled-before-lock' };
-        const result = await campaignSession.request({ manual: work.manual, replacementRepair: work.replacementRepair });
+        const result = await campaignSession.request({ manual: work.manual, replacementRepair: work.replacementRepair, snapshot: sharedSnapshot });
         if (result.accepted && work.runKey) await acknowledgeDetachedPlannerRun(work.runKey, chatId);
         return result;
     });
     if (stopSequence === analysisStopSequence && chatId === String(currentContext().getCurrentChatId?.() || '')) {
         if (result.accepted) {
+            void scheduleFuturePlanning();
             const notices = [];
             if (result.evidenceRestart) notices.push('memory update incorporated from fresh context');
             if (result.recovery?.status === 'complete') notices.push('invalid response corrected automatically');
@@ -1046,14 +1138,16 @@ async function startCampaignPlanning({ rebuild = false } = {}) {
     const chatId = String(currentContext().getCurrentChatId?.() || '');
     if (!chatId || !getSettings().enabled) return loadState(currentContext().chatMetadata);
     const previousWork = campaignHostWork?.promise || campaignSession?.pending || analysisPromise;
+    const previousFuture = rebuild ? futureHost?.pending : null;
     // Clear and persist the old notebook before any replacement request, even
     // if it fails or is stopped. Ordinary Guide now retains preparation.
     const resetting = rebuild ? resetState({ rebuilding: true }) : null;
-    if (!rebuild) interruptAnalysis('Refreshing plot preparation.', 'Preparing plot events');
+    if (!rebuild) interruptAnalysis('Refreshing plot preparation.', 'Preparing plot events', { preserveFuture: true });
     const switchSequence = analysisStopSequence;
     if (resetting) await resetting;
-    await cancelDetachedPlannerJobs(chatId);
+    await cancelDetachedPlannerJobs(chatId, { preserveFuture: !rebuild });
     if (previousWork) await previousWork.catch(() => {});
+    if (previousFuture) await previousFuture.catch(() => {});
     const context = currentContext();
     if (switchSequence !== analysisStopSequence || String(context.getCurrentChatId?.() || '') !== chatId) return loadState(context.chatMetadata);
     const previous = loadState(context.chatMetadata);
@@ -1726,7 +1820,7 @@ function confirmReturnedReplyUsedGuidance() {
     return true;
 }
 
-function commitCampaignPreparation(preparation, { stateFingerprint, evidenceKey } = {}) {
+function commitCampaignPreparation(preparation, { stateFingerprint, evidenceKey, futureDecisions = [], reassessFuture = false } = {}) {
     const context = currentContext();
     const previous = loadState(context.chatMetadata);
     const messages = messagesFromChat(context.chat || []);
@@ -1747,7 +1841,12 @@ function commitCampaignPreparation(preparation, { stateFingerprint, evidenceKey 
         lastAnalysisFingerprint: fingerprintMessages(messages.slice(0, preparation.source.messageCount)),
         lastAnalyzedAt: Date.now(), lastReason: 'Campaign preparation updated in one pass.' };
     const metadata = archiveReadyPlannerContexts(context.chatMetadata, [previous, next], context);
-    context.updateChatMetadata(saveState(metadata, next));
+    const receipts = futureReceipts(metadata, { chatId, messages,
+        referenceHash: preparation.source.referenceHash }, campaignFingerprint);
+    for (const decision of futureDecisions) receipts.push({ ...decision, source: preparation.source });
+    const futurePatch = { [FUTURE_RECEIPTS_KEY]: receipts.slice(-32),
+        ...(reassessFuture ? { taleFairyFutureReassessment: { source: preparation.source } } : {}) };
+    context.updateChatMetadata({ ...saveState(metadata, next), ...futurePatch });
     // Disk/UI work follows the synchronous compare-and-swap. It cannot change
     // whether the authoritative in-memory metadata was installed successfully.
     try { scheduleVerificationPersistence(context); updatePrompt(next); renderBoard(next); }
@@ -1877,7 +1976,7 @@ function renderAnalysisActivity(message, running = false) {
     if (!root) return;
     const status = root.querySelector('[data-role="analysis-status"]');
     if (status) status.textContent = message;
-    root.querySelector('[data-action="stop"]')?.toggleAttribute('disabled', !running);
+    root.querySelector('[data-action="stop"]')?.toggleAttribute('disabled', !running && !futureHost?.pending);
     root.querySelector('[data-action="guide"]')?.toggleAttribute('disabled', running);
     root.querySelector('[data-action="rebuild"]')?.toggleAttribute('disabled', running);
 }
@@ -1911,6 +2010,7 @@ async function withPlannerTabLock(chatId, task) {
 }
 
 function cancelRunningAnalysis(reason, status, options) {
+    if (!options?.preserveFuture) { futureHost?.stop(reason, options); futureHost = null; }
     campaignSession?.stop(reason, options);
     clearQueuedAnalysis();
     if (!analysisAbortController) return false;
@@ -2106,6 +2206,13 @@ function stopAnalysis() {
     const chatId = String(context.getCurrentChatId?.() || '');
     clearPlannerPending(plannerStorage(), chatId);
     const attempt = readCampaignSnapshot().attempt;
+    const futureAttempt = context.chatMetadata?.[FUTURE_ATTEMPT_KEY];
+    if (futureAttempt) {
+        const stopped = { ...futureAttempt, status: 'stopped' };
+        context.updateChatMetadata({ ...context.chatMetadata, [FUTURE_ATTEMPT_KEY]: stopped });
+        try { plannerStorage()?.setItem(`${FUTURE_ATTEMPT_KEY}:${chatId}`, JSON.stringify(stopped)); } catch { /* metadata fallback */ }
+        void context.saveMetadata?.();
+    }
     if (campaignMode() && attempt?.runKey) void saveCampaignAttempt({ ...attempt, status: 'stopped', finishedAt: Date.now() });
     interruptAnalysis('Tale Fairy analysis stopped by the user.', 'Stopped');
     void cancelDetachedPlannerJobs(chatId);
@@ -2167,16 +2274,22 @@ async function acknowledgeDetachedPlannerRun(runKey, chatId = '') {
     detachedPlannerJobIds.delete(runKey);
 }
 
-async function cancelDetachedPlannerJobs(chatId) {
+async function cancelDetachedPlannerJobs(chatId, { preserveFuture = false } = {}) {
     if (!chatId || !detachedPlannerEnabled) return;
     const runId = analysisRunId;
     const stopSequence = analysisStopSequence;
+    const futureRunKey = currentContext().chatMetadata?.[FUTURE_ATTEMPT_KEY]?.runKey;
     try {
         const jobs = await detachedPlannerJobs(chatId);
         // A slow listing from a previous swipe must not cancel the planner
         // that has since resumed for a new turn (or a newer stop request).
         if (runId !== analysisRunId || stopSequence !== analysisStopSequence) return;
-        await Promise.allSettled(jobs
+        const latestFutureRunKey = currentContext().chatMetadata?.[FUTURE_ATTEMPT_KEY]?.runKey;
+        await Promise.allSettled(jobs.filter(job => !preserveFuture || job.meta?.campaign?.kind !== 'future')
+            // Manual future work does not advance the current planner's run id.
+            // A slow Stop must not cancel a future reservation started later.
+            .filter(job => job.meta?.campaign?.kind !== 'future' || !latestFutureRunKey
+                || latestFutureRunKey === futureRunKey || job.runKey !== latestFutureRunKey)
             .filter(job => ['queued', 'processing', 'retry_wait'].includes(job.status) || job.meta?.campaign && job.status === 'complete')
             .map(job => plannerServerApi(`/planner-jobs/${encodeURIComponent(job.id)}`, { method: 'DELETE', body: '{}' })));
     } catch (error) {
@@ -2199,7 +2312,7 @@ async function recoverDetachedCampaignJobs({ duringPreflight = false } = {}) {
     detachedPlannerRecovering = true;
     try {
         const jobs = await detachedPlannerJobs(chatId);
-        for (const job of jobs.filter(item => item.meta?.campaign)) {
+        for (const job of jobs.filter(item => item.meta?.campaign && item.meta.campaign.kind !== 'future')) {
             if (!stillHere()) return { active: false, recovered: false };
             const latest = readCampaignSnapshot();
             if (!campaignJobMatches(job, latest, campaignFingerprint)) {
@@ -2243,7 +2356,10 @@ async function recoverDetachedCampaignJobs({ duringPreflight = false } = {}) {
 }
 
 async function recoverDetachedPlannerJobs() {
-    if (campaignMode()) return recoverDetachedCampaignJobs();
+    if (campaignMode()) {
+        if (getSettings().futureEnabled === true) void getFutureHost().recover();
+        return recoverDetachedCampaignJobs();
+    }
     if (detachedPlannerRecovering || analysisPromise || !getSettings().enabled) return { active: false, recovered: false };
     const context = currentContext();
     const chatId = String(context.getCurrentChatId?.() || '');
@@ -2575,6 +2691,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
         const singleShot = requestSpec.singleShot === true;
         const compactModes = requestSpec.compactOutput ? [PLANNER_OUTPUT_MODE.PROMPT_ONLY] : null;
         const detachedMarker = detachedPlannerEnabled && detachedMeta && (!detachedMeta.campaign || detachedCampaignEnabled)
+            && (detachedMeta.campaign?.kind !== 'future' || detachedFutureEnabled)
             ? { _taleFairyPlanner: detachedMeta } : {};
         const model = analysisModelOptions();
         if (singleShot) {
@@ -2667,19 +2784,23 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
                     isolatePlannerGenerationData(generateData, activeReasoningMode, temperature, requestSamplingEnabled, mode, responseTokens);
                     Object.assign(generateData, detachedMarker);
                 };
-                eventSource.on(seedEvent, configurePlanner);
-                return waitForAbortable(generateRaw({
-                    prompt: schema.instructionsRole === 'user'
-                        ? plannerMessages(systemPrompt, prompt, schema, mode)[0].content
-                        : plannerPrompt(prompt, schema, mode),
-                    // The planner must not inherit the user's text-completion
-                    // instruct template or preset formatting.
-                    instructOverride: true,
-                    systemPrompt: schema.instructionsRole === 'user' ? '' : systemPrompt,
-                    suppressErrorToasts: true,
-                    ...(mode === PLANNER_OUTPUT_MODE.JSON_SCHEMA ? { jsonSchema: schema } : {}),
-                    trimNames: false,
-                }), controller.signal).finally(() => eventSource.removeListener(seedEvent, configurePlanner));
+                const gate = requestSpec.gatedActive ? task => task() : serializeActivePlanner;
+                return gate(async () => {
+                    controller.signal.throwIfAborted();
+                    eventSource.on(seedEvent, configurePlanner);
+                    return waitForAbortable(generateRaw({
+                        prompt: schema.instructionsRole === 'user'
+                            ? plannerMessages(systemPrompt, prompt, schema, mode)[0].content
+                            : plannerPrompt(prompt, schema, mode),
+                        // The planner must not inherit the user's text-completion
+                        // instruct template or preset formatting.
+                        instructOverride: true,
+                        systemPrompt: schema.instructionsRole === 'user' ? '' : systemPrompt,
+                        suppressErrorToasts: true,
+                        ...(mode === PLANNER_OUTPUT_MODE.JSON_SCHEMA ? { jsonSchema: schema } : {}),
+                        trimNames: false,
+                    }), controller.signal).finally(() => eventSource.removeListener(seedEvent, configurePlanner));
+                });
             };
             const runActiveCompatible = mode => retryWithoutUnsupportedTemperature(
                 () => runActive(mode),
@@ -3187,6 +3308,7 @@ function emptyGuidancePreview(state, options, context = currentContext()) {
 }
 
 function renderBoard(state = loadState(currentContext().chatMetadata)) {
+    renderFutureBoard();
     renderCampaignAttempt();
     const board = document.querySelector(`#${EXTENSION_ID}-board`);
     if (!board) return;
@@ -3404,7 +3526,10 @@ async function resetState({ rebuilding = false } = {}) {
     const chatId = String(context.getCurrentChatId?.() || '');
     try { plannerStorage()?.removeItem(`${CAMPAIGN_ATTEMPT_KEY}:${chatId}`); }
     catch { /* Chat metadata remains authoritative when shared storage is unavailable. */ }
-    context.updateChatMetadata({ ...context.chatMetadata, [GENERATION_CONTEXT_KEY]: null, [REPLACEMENT_PENDING_KEY]: null,
+    try { plannerStorage()?.removeItem(`${FUTURE_ATTEMPT_KEY}:${chatId}`); } catch { /* metadata fallback */ }
+    context.updateChatMetadata({ ...context.chatMetadata, [FUTURE_KEY]: null, [FUTURE_ATTEMPT_KEY]: null,
+        [FUTURE_RECEIPTS_KEY]: [], taleFairyFutureReassessment: null,
+        [PLANNING_EPOCH_KEY]: `${Date.now()}-${Math.random()}`, [GENERATION_CONTEXT_KEY]: null, [REPLACEMENT_PENDING_KEY]: null,
         [CAMPAIGN_ATTEMPT_KEY]: null });
     context = currentContext();
     if (rebuilding) {
@@ -3687,6 +3812,14 @@ async function mountUI() {
         save();
     });
     root.querySelector('[data-setting="continuity"]').addEventListener('change', e => { invalidatePlanner(); s.continuityIntegration = e.target.checked; save(); });
+    root.querySelector('[data-setting="future-enabled"]').addEventListener('change', e => {
+        s.futureEnabled = e.target.checked; save();
+        if (!s.futureEnabled) void disableFuturePlanning();
+        renderFutureBoard();
+    });
+    root.querySelector('[data-setting="future-interval"]').addEventListener('change', e => {
+        s.futureInterval = futureInterval(e.target.value); e.target.value = s.futureInterval; save();
+    });
     root.querySelector('[data-setting="full-review-interval"]').addEventListener('change', e => { s.fullReviewInterval = campaignMode()
         ? Math.min(20, Math.max(4, Math.floor(Number(e.target.value) || DEFAULT_REFRESH_INTERVAL)))
         : normalizePlannerSchedule({ refreshInterval: e.target.value }).refreshInterval; e.target.value = s.fullReviewInterval; save(); });
@@ -3717,6 +3850,10 @@ async function mountUI() {
     root.querySelector('[data-action="rebuild"]').addEventListener('click', async () => {
         await rebuildGuideState();
         renderBoard();
+    });
+    root.querySelector('[data-action="plan-future"]').addEventListener('click', async () => {
+        try { await planFutureNow(); }
+        catch (error) { root.querySelector('[data-role="future-status"]').textContent = `Future planning failed: ${error.message}`; }
     });
     root.querySelector('[data-action="stop"]').addEventListener('click', stopAnalysis);
     root.querySelector('[data-action="reset-settings"]').addEventListener('click', () => resetSettingsToDefaults(root));
@@ -3795,6 +3932,10 @@ function refreshControls(root = document.querySelector(`#${EXTENSION_ID}-setting
         control.disabled = campaign;
     }
     const reviewInterval = root.querySelector('[data-setting="full-review-interval"]');
+    const futureEnabled = root.querySelector('[data-setting="future-enabled"]');
+    if (futureEnabled) futureEnabled.checked = s.futureEnabled !== false;
+    const futureCadence = root.querySelector('[data-setting="future-interval"]');
+    if (futureCadence) futureCadence.value = futureInterval(s.futureInterval);
     reviewInterval.min = campaign ? '4' : '3';
     reviewInterval.max = '20';
     reviewInterval.value = s.fullReviewInterval;

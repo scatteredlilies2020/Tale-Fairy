@@ -9,6 +9,7 @@ import { buildStoryEvidence } from '../extension/analysis.js';
 import { storyInput, storyPassWithRecovery, STORY_SCHEMA, STORY_SYSTEM } from '../extension/bounded-story.js';
 import { HORIZON_SCHEMA, SCENE_SCHEMA, preparationInput, preparationPass, PREPARATION_SCHEMA, PREPARATION_SYSTEM } from '../extension/story-preparation.js';
 import { DIRECTOR_SCHEMA } from '../extension/story-director.js';
+import { createFutureHost, serializeActivePlanner } from '../extension/future-host.js';
 import { CampaignSession } from '../extension/campaign-session.js';
 import { campaignEvidenceMessages, campaignReviewWindow } from '../extension/campaign-evidence.js';
 import { completionText } from '../extension/completion-response.js';
@@ -164,11 +165,12 @@ function plannedResponse({ prompt }) {
     return { choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] };
 }
 
-function browser(send = async args => plannedResponse(args), initialState = defaultState(), { split = false, director = false } = {}) {
+function browser(send = async args => plannedResponse(args), initialState = defaultState(), { split = false, director = false, future = false } = {}) {
     const h = generationHarness([{ is_user: false, name: 'Mara', mes: 'The show ended.' }, { is_user: true, name: 'Neri', mes: 'I help pack.' }],
         initialState);
     const requests = [], shared = new Map();
     Object.assign(h.settings, { maxPromptTokens: 14000, fullReviewInterval: 3, analysisSource: 'direct', analysisModel: 'test', analysisReasoningMode: 'low' });
+    if (future) Object.assign(h.settings, { futureEnabled: true, futureInterval: 40 });
     // Historical contracts exercise their explicitly selected lifecycle. New
     // director tests use the same imports and one-request policy as the host.
     if (!director) {
@@ -192,6 +194,14 @@ function browser(send = async args => plannedResponse(args), initialState = defa
     for (const name of ['emptyGuidancePreview', 'showCampaignPhase', 'readCampaignSnapshot', 'buildCampaignHostInput', 'saveCampaignAttempt', 'campaignCompletion', 'runCampaignAnalysis', 'analyzeCampaignNow', 'startCampaignPlanning', 'applyCampaignInstruction', 'rebuildGuideState', 'analyzeNow']) {
         vm.runInContext(source.match(new RegExp(`(?:export )?(?:async )?function ${name}\\([^]*?^}`, 'm'))[0].replace(/^export /u, ''), h.scope);
     }
+    if (future) {
+        Object.assign(h.scope, { createFutureHost, serializeActivePlanner, detachedFutureEnabled: false,
+            detachedPlannerReady: Promise.resolve(false), acknowledgeDetachedPlannerJob: async () => {},
+            document: { querySelector: () => null } });
+        for (const name of ['getFutureHost', 'scheduleFuturePlanning', 'planFutureNow']) {
+            vm.runInContext(source.match(new RegExp(`(?:async )?function ${name}\\([^]*?^}`, 'm'))[0], h.scope);
+        }
+    }
     return { ...h, requests, shared };
 }
 
@@ -209,6 +219,150 @@ const directorReply = prompt => {
     retain: saga ? [saga.id] : [], retire: [], select: [{ id, title: 'An open neighborhood supper', context: [],
         description: 'Neighbors exchange recipes and develop friendships over shared suppers.', development: '' }] };
 };
+
+const futureReply = prompt => ({ upsert: [{ id: `${JSON.parse(prompt).new_id_prefix}winter`, title: 'The Missing Winter Convoys',
+    category: 'Original', premise: 'Three medicine convoys vanish before winter closes the pass.',
+    pressures: [{ label: 'Clinics', pressure: 'Border clinic stocks cannot cover the winter.' }],
+    favors: 'Deliveries remain disrupted.', prevents: 'Other carriers restore supply.', timing: 'After the current Chapter, if fitting.',
+    transition: 'Clinic requests can arrive during the aftermath.', outlook: 'Provisional.' }], retain: [], retire: [] });
+const bothReply = ({ prompt, spec }) => JSON.stringify(spec.schema.name === 'tale_fairy_future_chapters_v1' ? futureReply(prompt) : directorReply(prompt));
+
+test('first Guide starts both independent calls from the same source and never adds a merge call', async () => {
+    const gates = [];
+    const h = browser(args => new Promise(resolve => gates.push(() => resolve(bothReply(args)))), defaultPlannerState(), { director: true, future: true });
+    const work = h.scope.startCampaignPlanning();
+    for (let i = 0; i < 100 && gates.length < 2; i++) await new Promise(resolve => setImmediate(resolve));
+    assert.equal(gates.length, 2);
+    assert.equal(h.requests[0].meta.campaign.source.fingerprint, h.requests[1].meta.campaign.source.fingerprint);
+    gates.reverse().forEach(finish => finish()); await work; await h.scope.getFutureHost().pending;
+    assert.equal(h.state().campaignPreparation.revision, 1);
+    assert.equal(h.context.chatMetadata.taleFairyFuture.revision, 1);
+    assert.equal(h.requests.length, 2);
+    assert.doesNotMatch(h.scope.campaignPayload(h.state().campaignPreparation), /Winter Convoys|f1-winter/);
+});
+
+test('manual future planning does not change current preparation or cached writer guidance', async () => {
+    const h = browser(async args => bothReply(args), defaultPlannerState(), { director: true, future: true });
+    await h.scope.startCampaignPlanning(); await h.scope.getFutureHost().pending;
+    const before = JSON.stringify(h.state());
+    h.context.updateChatMetadata({ cachedWriterSentinel: 'unchanged' });
+    await h.scope.planFutureNow();
+    assert.equal(h.requests.length, 3);
+    assert.equal(JSON.stringify(h.state()), before);
+    assert.equal(h.context.chatMetadata.cachedWriterSentinel, 'unchanged');
+    assert.equal(h.context.chatMetadata.taleFairyFuture.revision, 2);
+    await h.scope.startCampaignPlanning();
+    assert.equal(h.requests.length, 4, 'ordinary Guide refreshes only current preparation');
+    assert.ok(JSON.parse(h.requests.at(-1).prompt).private_future.length > 0);
+});
+
+test('Full rebuild resets both owners and accepts partial success without resurrecting old outlook', async () => {
+    let failFuture = false;
+    const h = browser(async args => failFuture && args.spec.schema.name.includes('future_chapters') ? '{bad' : bothReply(args),
+        defaultPlannerState(), { director: true, future: true });
+    await h.scope.startCampaignPlanning(); await h.scope.getFutureHost().pending;
+    failFuture = true;
+    await h.scope.startCampaignPlanning({ rebuild: true }); await h.scope.getFutureHost().pending;
+    assert.equal(h.requests.length, 4);
+    assert.ok(h.state().campaignPreparation.revision > 0);
+    assert.equal(h.context.chatMetadata.taleFairyFuture, null);
+    assert.equal(h.context.chatMetadata.taleFairyFutureAttempt.status, 'failed');
+    assert.ok(h.context.chatMetadata.taleFairyPlanningEpoch);
+});
+
+test('Full rebuild releases the old future lock before starting both replacement calls', async () => {
+    let release, oldReply;
+    const h = browser(async args => {
+        if (!release && args.spec.schema.name.includes('future_chapters')) {
+            oldReply = bothReply(args);
+            return new Promise(resolve => { release = resolve; });
+        }
+        return bothReply(args);
+    }, defaultPlannerState(), { director: true, future: true });
+    const locks = new Set();
+    h.scope.withPlannerTabLock = async (id, task) => {
+        assert.equal(locks.has(id), false, 'replacement must not overlap its previous reservation');
+        locks.add(id);
+        try { return await task(); } finally { locks.delete(id); }
+    };
+    await h.scope.startCampaignPlanning();
+    assert.equal(h.requests.length, 2);
+    assert.ok(release);
+    assert.ok(h.scope.getFutureHost().pending);
+    await h.scope.startCampaignPlanning({ rebuild: true }); await h.scope.getFutureHost().pending;
+    assert.equal(h.requests.length, 4);
+    assert.equal(h.context.chatMetadata.taleFairyFuture.revision, 1);
+    const saved = JSON.stringify(h.context.chatMetadata.taleFairyFuture);
+    release(oldReply); await settle();
+    assert.equal(JSON.stringify(h.context.chatMetadata.taleFairyFuture), saved);
+    assert.equal(locks.size, 0);
+});
+
+test('automatic future cadence runs independently while the current guide is not due', async () => {
+    const h = browser(async args => bothReply(args), defaultPlannerState(), { director: true, future: true });
+    h.settings.futureInterval = 4;
+    h.settings.fullReviewInterval = 12;
+    await h.scope.startCampaignPlanning(); await h.scope.getFutureHost().pending;
+    for (let i = 0; i < 4; i++) h.context.chat.push({ is_user: false, name: 'Mara', mes: `Ordinary practice continues ${i}.` });
+    await h.scope.analyzeCampaignNow(); await h.scope.getFutureHost().pending;
+    assert.equal(h.requests.length, 3);
+    assert.ok(h.requests.at(-1).spec.schema.name.includes('future_chapters'));
+    assert.equal(h.state().campaignPreparation.revision, 1);
+    assert.equal(h.context.chatMetadata.taleFairyFuture.revision, 2);
+});
+
+test('disabling future planning cannot cancel a newer reservation after re-enabling', async () => {
+    const h = browser(async args => bothReply(args), defaultPlannerState(), { director: true, future: true });
+    await h.scope.startCampaignPlanning(); await h.scope.getFutureHost().pending;
+    const oldKey = h.context.chatMetadata.taleFairyFutureAttempt.runKey;
+    let list; const cancelled = [];
+    h.scope.detachedPlannerJobs = () => new Promise(resolve => { list = resolve; });
+    h.scope.plannerServerApi = async path => { cancelled.push(path); };
+    vm.runInContext(source.match(/async function disableFuturePlanning\([^]*?^}/m)[0], h.scope);
+    h.settings.futureEnabled = false;
+    const disabling = h.scope.disableFuturePlanning(); await settle();
+    assert.ok(list);
+    h.settings.futureEnabled = true;
+    h.context.chatMetadata.taleFairyFutureAttempt = { runKey: 'new-key', status: 'pending' };
+    list([{ id: 'old', runKey: oldKey, meta: { campaign: { kind: 'future' } } },
+        { id: 'new', runKey: 'new-key', meta: { campaign: { kind: 'future' } } },
+        { id: 'current', runKey: oldKey, meta: { campaign: { kind: 'current' } } }]);
+    await disabling;
+    assert.deepEqual(cancelled, ['/planner-jobs/old']);
+    assert.equal(h.context.chatMetadata.taleFairyFutureAttempt.status, 'pending');
+});
+
+test('pagehide detaches both owners without spending or marking either stopped', async () => {
+    const h = browser(() => new Promise(() => {}), defaultPlannerState(), { director: true, future: true });
+    const work = h.scope.startCampaignPlanning();
+    for (let i = 0; i < 100 && h.requests.length < 2; i++) await settle();
+    assert.equal(h.requests.length, 2);
+    const futureWork = h.scope.getFutureHost().pending;
+    let pagehide;
+    h.scope.addEventListener = (name, callback) => { if (name === 'pagehide') pagehide = callback; };
+    vm.runInContext(source.slice(source.indexOf("globalThis.addEventListener?.('pagehide'"),
+        source.indexOf("globalThis.addEventListener?.('pageshow'")), h.scope);
+    pagehide(); await work; await futureWork;
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'pending');
+    assert.equal(h.context.chatMetadata.taleFairyFutureAttempt.status, 'pending');
+    assert.equal(h.requests.length, 2);
+});
+
+test('a slow global Stop cannot cancel a newly started manual future reservation', async () => {
+    const h = browser(async args => bothReply(args), defaultPlannerState(), { director: true, future: true });
+    h.context.chatMetadata.taleFairyFutureAttempt = { runKey: 'old-key', status: 'stopped' };
+    let list; const cancelled = [];
+    Object.assign(h.scope, { detachedPlannerEnabled: true,
+        detachedPlannerJobs: () => new Promise(resolve => { list = resolve; }),
+        plannerServerApi: async path => { cancelled.push(path); } });
+    vm.runInContext(source.match(/async function cancelDetachedPlannerJobs\([^]*?^}/m)[0], h.scope);
+    const stopping = h.scope.cancelDetachedPlannerJobs('story'); await settle();
+    h.context.chatMetadata.taleFairyFutureAttempt = { runKey: 'new-key', status: 'pending' };
+    list([{ id: 'old', runKey: 'old-key', status: 'processing', meta: { campaign: { kind: 'future' } } },
+        { id: 'new', runKey: 'new-key', status: 'processing', meta: { campaign: { kind: 'future' } } }]);
+    await stopping;
+    assert.deepEqual(cancelled, ['/planner-jobs/old']);
+});
 
 test('actual pagehide handler detaches the host session without changing pending work to stopped', async () => {
     const h = browser(() => new Promise(() => {}), defaultState(), { director: true });
