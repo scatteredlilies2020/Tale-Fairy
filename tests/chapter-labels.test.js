@@ -93,7 +93,7 @@ test('failed review leaves old terminology, cards and writer packets intact', as
     const state = structuredClone(seeded.state);
     delete state.workingPlan.storyStructure.terminology;
     const before = structuredClone(state), payload = campaignPayload(state);
-    const failed = await pass(state, { ...reply([]), retain: [], select: [] });
+    const failed = await pass(state, { ...reply([{ ...nodes[0], id: 'r2-other', title: 'An unsupported replacement Chapter' }]), retain: [], select: [] });
     assert.equal(failed.accepted, false);
     assert.match(failed.error, /one active root Chapter/);
     assert.deepEqual(failed.state, before);
@@ -151,7 +151,7 @@ for (const active of [nodes.slice(0, 1), nodes]) test(`active stories keep their
         reference: { premise: 'Naruto village-life RP during the Hyuga Affair.' }, playerNames: [] });
     const reviewed = await directorPass({ state: seeded.state, input,
         source: { chatId: 'labels', messageCount: 1, referenceHash: 'ref', fingerprint: 'quiet' },
-        generate: async () => ({ text: JSON.stringify({ ...reply([]), retain: active.map(node => node.id), select: [] }), finishReason: 'stop' }),
+        generate: async () => ({ text: JSON.stringify({ ...reply([]), retain: [], select: [] }), finishReason: 'stop' }),
     });
     assert.equal(reviewed.accepted, true, reviewed.error);
     assert.deepEqual(reviewed.plannerNotices, []);
@@ -167,5 +167,46 @@ for (const active of [nodes.slice(0, 1), nodes]) test(`active stories keep their
     assert.deepEqual(material.map(card => card.status), active.map(node => node.status));
     for (let i = 1; i < material.length; i++) {
         assert.deepEqual(material[i].context.map(ancestor => ancestor.title), active.slice(0, i).map(node => node.title));
+    }
+});
+
+test('many quiet reviews cannot remove active stories by repeatedly omitting them', async () => {
+    let current = (await pass(emptyCampaign(), reply())).state;
+    const original = structuredClone(current.workingPlan.storyStructure.nodes);
+    for (let i = 0; i < 24; i++) {
+        const reviewed = await pass(current, { ...reply([]), retain: [], select: [] });
+        assert.equal(reviewed.accepted, true, reviewed.error);
+        current = reviewed.state;
+    }
+    assert.equal(current.revision, 25);
+    assert.deepEqual(current.workingPlan.storyStructure.nodes, original);
+});
+
+test('retiring a Chapter cannot silently retire unfinished descendants', async () => {
+    const state = (await pass(emptyCampaign(), reply())).state;
+    const successor = { ...nodes[0], id: 'r2-next', title: 'A new broad situation' };
+    const failed = await pass(state, { ...reply([successor]), retain: [], retire: [nodes[0].id], select: [] });
+    assert.equal(failed.accepted, false);
+    assert.match(failed.error, /finish or reconnect unfinished child stories/);
+    assert.deepEqual(failed.state, state);
+    const children = nodes.slice(1).map(node => node.kind === 'arc' ? { ...node, parentId: successor.id } : node);
+    const accepted = await pass(state, { ...reply([successor, ...children]), retire: [nodes[0].id], select: [] });
+    assert.equal(accepted.accepted, true, accepted.error);
+    assert.equal(accepted.state.workingPlan.storyStructure.nodes.find(node => node.id === nodes[1].id).parentId, successor.id);
+    assert.equal(accepted.state.workingPlan.storyStructure.nodes.find(node => node.id === nodes[2].id).status, 'active');
+});
+
+test('rejected or conflicting child endings cannot authorize cascading retirement', async () => {
+    const state = (await pass(emptyCampaign(), reply())).state;
+    const successor = { ...nodes[0], id: 'r2-next', title: 'A new broad situation' };
+    for (const child of [
+        { ...nodes[2], status: 'resolved', kind: 'invalid' },
+        { ...nodes[2], status: 'active' },
+    ]) {
+        const failed = await pass(state, { ...reply([successor, child]),
+            retire: nodes.map(node => node.id), select: [] });
+        assert.equal(failed.accepted, false);
+        assert.match(failed.error, /finish or reconnect unfinished child stories/);
+        assert.deepEqual(failed.state, state);
     }
 });

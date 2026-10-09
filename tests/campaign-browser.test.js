@@ -796,7 +796,7 @@ test('reference changes offer only private story-map reconsideration and reserve
     assert.equal(validCampaignState(h.state().campaignPreparation), true);
 });
 
-test('regeneration replans from accepted chat while archived story maps stay passive', async () => {
+test('regeneration reviews a verified pre-reply map without importing discarded-response details', async () => {
     const h = browser(async ({ prompt }) => {
         const raw = retainedDirectorReply(prompt);
         if (prompt.includes('DISCARDED_ONLY_SECRET')) raw.direction = 'DISCARDED_ONLY_SECRET';
@@ -810,13 +810,30 @@ test('regeneration replans from accepted chat while archived story maps stay pas
     h.scope.deferReplacementPlanning(h.context);
     assert.equal(h.prepare('regenerate').payload, '', 'a source-invalid live map cannot restore archived guidance');
     await h.scope.repairDeferredReplacementPlan();
-    assert.equal(h.requests.length, 3, 'replacement reviews accepted chat instead of restoring an archive');
+    assert.equal(h.requests.length, 3, 'replacement reviews the verified map against accepted chat');
     const input = JSON.parse(h.requests[2].prompt);
-    assert.deepEqual(input.previous_preparation.nodes, []);
+    assert.deepEqual(input.previous_preparation.nodes.map(n => [n.id, n.title]), before.storyStructure.nodes.map(n => [n.id, n.title]));
+    assert.equal(input.coverage.reviewed_before, 2);
     assert.equal(input.reconsider_horizon, undefined);
     assert.doesNotMatch(h.requests[2].prompt, /DISCARDED_ONLY_SECRET/);
     assert.deepEqual(h.state().campaignPreparation.archive[0].workingPlan, before);
     assert.doesNotMatch(h.prepare('regenerate').payload, /DISCARDED_ONLY_SECRET/);
+});
+
+test('replacement without a compatible earlier checkpoint keeps discarded story details out of fresh planning', async () => {
+    const h = browser(async ({ prompt }) => envelope(retainedDirectorReply(prompt)), defaultState(), { director: true });
+    h.context.chat.push({ is_user: false, name: 'Mara', mes: 'DISCARDED_ONLY_SECRET' });
+    await h.scope.analyzeCampaignNow({ manual: true });
+    const old = h.state();
+    old.campaignPreparation.workingPlan.storyStructure.nodes[0].interpretation = 'DISCARDED_ONLY_SECRET';
+    h.context.chatMetadata = saveState(h.context.chatMetadata, old);
+    h.scope.deferReplacementPlanning(h.context);
+    await h.scope.repairDeferredReplacementPlan();
+    assert.equal(h.requests.length, 2);
+    const input = JSON.parse(h.requests[1].prompt);
+    assert.deepEqual(input.previous_preparation.nodes, []);
+    assert.equal(input.coverage.reviewed_before, 0);
+    assert.doesNotMatch(h.requests[1].prompt, /DISCARDED_ONLY_SECRET/);
 });
 
 test('legacy proposals migrate whole and their old planning state remains archived', async () => {

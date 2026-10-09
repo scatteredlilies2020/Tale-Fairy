@@ -74,7 +74,7 @@ test('a substantial skip can close all expired levels, replace the Chapter and r
 test('an explicit smaller resolution closes the Subplot without closing its Arc or Chapter', async () => {
     const before = await run(emptyCampaign(), [], raw(cards));
     const next = await run(before, [{ role: 'user', content: 'We have chosen the song and submitted the program. Next week we continue rehearsing for the festival.' }],
-        raw([{ ...cards[2], status: 'resolved' }], cards.filter(card => card.id !== cards[2].id).map(card => card.id), selection(cards)));
+        raw([{ ...cards[2], status: 'resolved' }], [], selection(cards)));
     assert.deepEqual(next.workingPlan.storyStructure.nodes.map(card => card.id), [cards[0].id, cards[1].id, cards[3].id]);
     assert.doesNotMatch(campaignPayload(next), /Choosing the festival song/);
     assert.match(campaignPayload(next), /Preparing the October festival/);
@@ -85,9 +85,9 @@ test('elapsed time alone need not close a substantial unresolved story or fabric
         { ...cards[3], parentId: 'r1-year' }];
     const before = await run(emptyCampaign(), [], raw(ongoing)), snapshot = structuredClone(before);
     const next = await run(before, [{ role: 'user', content: 'Time skip: Three months later, I return to the club.' }],
-        raw([], ongoing.map(card => card.id), selection(ongoing)));
+        raw([], [], []));
     assert.deepEqual(next.workingPlan.storyStructure.nodes, snapshot.workingPlan.storyStructure.nodes);
-    assert.match(campaignPayload(next), /unresolved disagreement/);
+    assert.match(next.workingPlan.storyStructure.nodes.find(card => card.id === cards[3].id).effects[0].pressure, /unresolved disagreement/);
     assert.deepEqual(before, snapshot);
 });
 

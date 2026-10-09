@@ -10,6 +10,12 @@ A completed incident does not necessarily complete its Chapter. Stopping the abd
 
 Active Arcs and Subplots follow the same persistence rule. Keep accurate titles verbatim on the board and in writer selections and ancestor paths, even when a story is offscreen or absent from the latest guidance. A completed beat does not rename the broader ongoing story into an aftermath. Lack of recent activity is not evidence of filler, dormancy or completion; the significance filter removes actual routine-business cards. Misleading inherited titles can still be corrected, and accepted endings or author direction can change names and status.
 
+Active and dormant cards now persist in the saved map even when a review omits them from its updates, retention list and writer selection. Ending or withdrawing them requires an explicit planner update; that update may recognize genuine resolution, clearly implied completion or the passing of a relevant event window. This does not require the user to declare every routine ending. Retiring a parent cannot silently retire unfinished active children: finish them explicitly or reconnect them. A new Chapter that merely omits the existing active Chapter is rejected instead of replacing it.
+
+Replacement reviews recover an earlier plan only when its complete source prefix and references still match the accepted chat. That verified plan seeds a new review; discarded-reply descriptions and outcomes are excluded. If no compatible checkpoint exists, planning starts from accepted history and available summaries, without treating the missing preparation as a fictional Chapter transition. Full rebuild and Delete guide still clear the generated plans and archives.
+
+Regression checks cover 24 consecutive reviews omitting all ongoing cards, explicit and time-window endings, surviving child stories, rejected child endings, and replacement reviews with and without compatible checkpoints. The additional live-model check for this persistence change could not complete because the provider connection failed; no model-quality result is claimed for it.
+
 An additional synthetic review with the configured model retained the exact ids, titles and active status of a Chapter, Arc and Subplot after an uneventful hospital shift, with no fresh reports. Deterministic checks also cover withholding and restoring writer selection without changing those names or ancestor paths.
 
 ## Compatibility

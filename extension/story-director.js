@@ -28,7 +28,7 @@ DIRECTOR_SCHEMA.value.properties.futureDecisions = { type: 'array', maxItems: 6,
 DIRECTOR_SCHEMA.value.properties.reassessFuture = { type: 'boolean' };
 // Keep the request self-contained for providers with different system handling.
 // The response contract reinforces the frame boundary after the reference data.
-DIRECTOR_SCHEMA.description = 'foundation.reminder: aim 400–550 characters (maximum 600), 3–5 short sentences. Direct RP brief: setting/era, actual genre, recurring activities and concrete opportunities or pressures. Match stakes to this RP, not franchise stereotypes; light play needs no manufactured darkness. No writing rules, cast biographies, current plots or precise dates. Preserve premise scope. changeReason is "" on fresh setup. Arcs/Subplots: create, retain and select only substantial stories. Unfinished is not enough. Omit routine follow-ups without inventing their outcomes; never inflate filler into an arc.';
+DIRECTOR_SCHEMA.description = 'foundation.reminder: aim 400–550 characters (maximum 600), 3–5 short sentences. Direct RP brief: setting/era, actual genre, recurring activities and concrete opportunities or pressures. Match stakes to this RP, not franchise stereotypes; light play needs no manufactured darkness. No writing rules, cast biographies, current plots or precise dates. Preserve premise scope. changeReason is "" on fresh setup. Arcs/Subplots: create, retain and select only substantial stories. Omit routine follow-ups without inventing outcomes.';
 const WORLD_FRAME_RULES = `foundation.reminder defines this RP's character, genre and lasting style of play as a direct RP brief, not a lore survey. State the setting/era and kind of RP, then what people do, what draws them into contact and what complicates or rewards participation. Use plain declarative prose ("This is a ... RP" when fitting), concrete setting mechanisms and causal links, not vague claims about tensions or bonds, stat blocks or lists of possible plots. Match sandbox or intimate scope to the premise.
 
 Explicit RP premise and author direction determine genre and stakes; franchise tone is a default, not a veto. Use broader accepted play to clarify unspecified tone, not one recent scene to redefine it. Opportunities, curiosity, practice, celebrations and small social commitments can sustain light RP without danger. An explicitly requested darker or mixed-genre RP gets fitting pressures without making every activity threatening. Apply this calibration to cards and effects too.
@@ -40,7 +40,7 @@ Keep a valid reminder verbatim, or return "" to retain it. It persists longer th
 Check reminder before returning: every clause must survive completed cards and changed viewpoints. Illustrative contrasts, not this RP's history: Naruto mission ranks connect paid work, danger and advancement. Light K-On club RP runs on rehearsals, tea, friendships and festival preparations; an explicit K-On murder-mystery premise adds investigation and strained trust, not compulsory cheerfulness. A murder in one scene alone does not make every future story a murder mystery.`;
 
 export const DIRECTOR_SYSTEM = `${CAMPAIGN_MARKER}
-Be a creative story director. Develop present and future possibilities from premise, references, author instructions, recent RP and memory as background. Carry useful unfinished plans forward. Continuity Memory handles recall; do not fact-check, audit continuity, recap or write scenes.
+Be a creative story director. Develop possibilities from premise, references, author direction, RP and memory. Carry useful unfinished plans forward. Continuity Memory handles recall; do not fact-check, audit continuity, recap or write scenes.
 
 ${WORLD_FRAME_RULES}
 
@@ -52,7 +52,7 @@ Chapter → Arc → Subplot are RP planning levels, not book divisions. A source
 
 Keep exactly one active root Chapter: this RP's current broad period or situation, connecting its Arcs. "Our year in the light music club" needs no epic stakes. Preserve it across quiet scenes; when accepted play ends it, replace it in the same review and reconnect surviving Arcs without deciding player outcomes. Every Arc has that Chapter as parentId; every optional Subplot has an Arc as parentId. Shared scope is enough: connected stories need not converge or involve every character. Repair inherited orphan cards rather than keep disconnected roots.
 
-On setup, rebuild and review, active Chapters, Arcs and Subplots are ongoing until accepted play or author direction establishes closure or transition. They need no visible activity, fresh leads, selected effects or active children. Silence, routine life, missing updates, a finished incident or canon divergence is not closure. Keep accurate active titles verbatim, including selections and ancestor names; name the ongoing story, not its latest completed beat. Stopping the abduction alone does not end the Hyuga Affair. Correct misleading "After..." framing in place without imposing canon outcomes. Genuine closure permits successors despite routine residual consequences.
+On setup, rebuild and review, active Chapters, Arcs and Subplots are ongoing until accepted play or author direction establishes closure or transition. They need no visible activity, fresh leads, selected effects or active children. Silence, routine life, missing updates, a finished incident or canon divergence is not closure. Keep accurate active titles verbatim, including selections and ancestor names; name the ongoing story, not its latest completed beat. Stopping the abduction alone does not end the Hyuga Affair. A replacement request or missing old plan is not a story transition: recover the broad ongoing Chapter from accepted history/summary, not a generic everyday-life umbrella around recent scenes. Correct misleading titles in place without imposing canon outcomes.
 
 Plan around arcs: sustained pursuits, questions or changes across scenes; a Subplot is a distinct substantial smaller storyline, not a task or loose end. No quota for Arcs or Subplots. Significance is relative to this RP: a festival project or slowly changing friendship can qualify without danger. Routine care, errands, appointments, individual rehearsals, static conditions and incidental encounters normally stay in chat or memory. They can support an arc without becoming cards themselves. An explicitly central rehabilitation story can qualify; an incidental patient does not qualify merely because recovery is unfinished.
 
@@ -60,9 +60,9 @@ Apply this significance test to new, retained and selected Arcs/Subplots alike: 
 
 description gives the concern and what it encourages in one or two sentences. Descriptions/effects outlast scenes; current actions and errands stay in chat. effects holds up to three {label, pressure} pairs: concrete ongoing influences on opportunities, relationships, resources or choices. Narrative effects, no numbers/schedules; [] for none. endsWhen recognizes an end boundary with outcomes open; "" for ongoing concerns. parentId groups cards ("" for root); links connect without merging ([] for none). owner identifies the character, group or process concerned, including a player character; it grants no control.
 
-On substantial time skips, review every Chapter, Arc and Subplot for explicit or clearly implied closure. A passed festival window or ended school term can close its story without inventing participation or success. Do not keep expired preparation active or replay skipped routine steps. Respect the activity named: a week working at the hospital implies ordinary rounds, care and follow-ups. Bare elapsed time does not imply specific work, a difficult cure, diagnosis, return-to-duty clearance or a settled conflict. Infer ordinary completion only when the skip supports it; preserve meaningful unresolved stories and unchosen player outcomes. Drop incidental preparation without claiming its underlying problem is solved.
+As story time advances, review every Chapter, Arc and Subplot for explicit or clearly implied closure. A passed festival window or ended school term can close its story without inventing participation or success. Do not keep expired preparation active or replay skipped routine steps. Respect the activity named: a week working at the hospital implies ordinary rounds, care and follow-ups. Bare elapsed time does not imply specific work, a difficult cure, diagnosis, return-to-duty clearance or a settled conflict. Infer ordinary completion only when the skip supports it; preserve meaningful unresolved stories and unchosen player outcomes. Drop incidental preparation without claiming its underlying problem is solved.
 
-previous_preparation is the current map, not the future Chapter outlook. upsert replaces changed cards; new ids use new_id_prefix. retain lists worthwhile unchanged cards. Upserted and selected cards are kept automatically; other omissions drop preparation. status is proposed, active, dormant, resolved or retired. Resolve stories ended explicitly or by clear implication of accepted play; retire withdraws proposals and descendants without claiming events occurred. Closed cards leave the map. Keep substantial current stories across focus changes, not stale cards with only hypothetical future relevance. Dormant suspends current unfinished business, not indefinite storage or a backlog of future Arcs/Subplots. Empty updates are valid.
+previous_preparation is the current map, not the future outlook. upsert replaces changed cards; new ids use new_id_prefix. Active and dormant stories persist automatically when omitted; retain keeps unchanged proposals. Resolve stories ended explicitly or by clear implication of accepted play; use explicit retire for withdrawn proposals or actual filler, without claiming events occurred. To close a Chapter, explicitly end it, supply its successor and reconnect surviving Arcs. Never close it just to reorganize the board. Keep substantial current stories across focus changes, not stale cards with only hypothetical future relevance. Dormant suspends current unfinished business, not indefinite storage. Empty updates are valid.
 
 recent_card_names lists earlier idea names, newest first, to vary ideas and avoid repetition. Names establish no history or outcomes.
 
@@ -223,7 +223,24 @@ export async function directorPass({ state, input, source, generate }) {
         if (fitStoryContext([], [], contextOptions).orientationOmitted) throw Error('RP orientation exceeds the writer context budget');
         const merged = mergeStoryNodes(previousNodes, raw.upsert, raw.retire,
             { check, playerNames: input.playerNames, newIdPrefix: input.newIdPrefix, notices, rejectedIds });
+        const explicitEnds = new Set([
+            ...raw.retire.filter(id => !raw.upsert.some(node => node?.id === id)),
+            ...raw.upsert.filter(node => ['resolved', 'retired'].includes(node?.status)
+                && !rejectedIds.has(node.id)).map(node => node.id),
+        ]);
+        for (const previous of previousNodes) {
+            if (!['active', 'dormant'].includes(previous.status) || explicitEnds.has(previous.id)) continue;
+            if (merged.some(node => node.id === previous.id && ['resolved', 'retired'].includes(node.status))) {
+                throw Error('Explicitly finish or reconnect unfinished child stories before retiring their parent.');
+            }
+        }
         const retainedIds = new Set(raw.retain ?? []);
+        // Selection is a per-request view, not a deletion command. Forgetting
+        // an offscreen story in a response must not silently end it or detach
+        // its children. Terminal updates/retirements still leave the map below.
+        for (const node of previousNodes) {
+            if (['active', 'dormant'].includes(node.status)) retainedIds.add(node.id);
+        }
         for (const record of [...raw.upsert, ...raw.select]) if (record?.id) retainedIds.add(record.id);
         const nodes = ongoingStoryNodes(merged, retainedIds), mergedRows = new Map(merged.map(node => [node.id, node]));
         // Current host passes enforce the hierarchy; old archived formats and

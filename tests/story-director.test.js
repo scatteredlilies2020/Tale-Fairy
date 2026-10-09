@@ -107,7 +107,7 @@ test('ordinary reviews explicitly retain useful unused stories and renew the pub
     assert.doesNotMatch(result.input.prompt, /planEvidence|selectedMaterial|story_context|initiative_review|observations/);
 });
 
-test('reviews drop omitted concerns, retain future possibilities and use only names from past cards', async () => {
+test('reviews preserve omitted ongoing stories and drop only explicitly withdrawn active concerns', async () => {
     const first = await run(emptyCampaign(), { ...response(), upsert: [
         proposal('r1-world', { kind: 'saga', status: 'active', title: 'Independent village interests' }),
         proposal('r1-current', { parentId: 'r1-world', status: 'active', title: 'A continuing partnership' }),
@@ -120,23 +120,26 @@ test('reviews drop omitted concerns, retain future possibilities and use only na
     state.archive.push({ ...structuredClone(first.state), workingPlan: { ...first.state.workingPlan, direction: 'ARCHIVE_ONLY_SECRET' } });
     assert.equal(validCampaignState(state), true);
     const archived = structuredClone(state.archive);
-    const result = await run(state, { ...response(), upsert: [], retain: ['r1-future'],
+    const result = await run(state, { ...response(), upsert: [], retain: ['r1-future'], retire: ['r1-obsolete'],
         select: [selected('r1-current', { context: [{ kind: 'saga', title: 'Independent village interests' }] })] });
     assert.equal(result.accepted, true, result.error);
     assert.deepEqual(result.plannerNotices, []);
-    assert.deepEqual(nodes(result).map(node => node.id), ['r1-current', 'r1-future']);
-    assert.ok(nodes(result).every(node => node.parentId === ''));
-    assert.deepEqual(selections(result)[0].context, []);
+    assert.deepEqual(nodes(result).map(node => node.id), ['r1-world', 'r1-current', 'r1-future']);
+    assert.equal(nodes(result)[1].parentId, 'r1-world');
+    assert.deepEqual(selections(result)[0].context, [{ kind: 'saga', title: 'Independent village interests' }]);
     assert.doesNotMatch(result.input.prompt, /ARCHIVE_ONLY_SECRET/);
     assert.deepEqual(JSON.parse(result.input.prompt).recent_card_names, ['COMPLETED_CARD_SECRET']);
     assert.ok(!JSON.stringify(JSON.parse(result.input.prompt).previous_preparation).includes('COMPLETED_CARD_SECRET'));
     assert.deepEqual(result.state.archive.slice(0, archived.length), archived);
     const next = await run(result.state, { ...response(), upsert: [], retain: [], select: [] });
     assert.equal(next.accepted, true, next.error);
-    assert.deepEqual(nodes(next), []);
+    assert.deepEqual(nodes(next), nodes(result), 'omission does not finish active or dormant stories');
     assert.doesNotMatch(next.input.prompt, /ARCHIVE_ONLY_SECRET/);
     assert.doesNotMatch(JSON.stringify(JSON.parse(next.input.prompt).previous_preparation), /obsolete invitation|COMPLETED_CARD_SECRET/);
     assert.ok(next.state.archive.length > result.state.archive.length, 'snapshots remain saved');
+    const closed = await run(next.state, { ...response(), upsert: nodes(next).map(node => ({ ...node, status: 'resolved' })), retain: [], select: [] });
+    assert.equal(closed.accepted, true, closed.error);
+    assert.deepEqual(nodes(closed), [], 'explicit completion still ends the stories');
 });
 
 test('creative context carries plans without a continuity proof or historical fact ledger', async () => {
@@ -501,7 +504,7 @@ test('closed stories leave the map; dormant possibilities remain without changin
     raw.select = [selected('r1-kitchen', { context: [{ kind: 'arc', title: 'Cooking together' }] })];
     const first = await run(emptyCampaign(), raw);
     assert.equal(first.accepted, true, first.error);
-    const retired = await run(first.state, { ...response(), upsert: [], retire: ['r1-food'], select: raw.select });
+    const retired = await run(first.state, { ...response(), upsert: [], retire: ['r1-food', 'r1-kitchen'], select: raw.select });
     assert.equal(retired.accepted, true, retired.error);
     assert.deepEqual(nodes(retired), []);
     assert.deepEqual(selections(retired), []);

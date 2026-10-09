@@ -27,7 +27,7 @@ for (const fixture of arcFocusCases) test(`${fixture.id}: review can prune fille
         for (const node of fixture.nodes) assert.ok(request[0].content.includes(node.title));
         return { finishReason: 'stop', text: JSON.stringify({ reviewAfter: 12,
             foundation: { reminder: '', changeReason: '', scratchpad: '' },
-            upsert: [], retain: fixture.keep, retire: [], select: kept.map(node => ({
+            upsert: [], retain: fixture.keep, retire: fixture.drop, select: kept.map(node => ({
                 id: node.id, title: node.title, context: [], description: node.description, endsWhen: '', development: '',
             })),
         }) };
