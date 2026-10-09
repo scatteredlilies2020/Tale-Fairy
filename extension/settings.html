@@ -68,9 +68,7 @@
           <input class="text_pole" type="number" data-setting="future-interval" min="4" max="200" step="1" value="40">
         </label>
         <small>First Guide now and every Full rebuild launch both planners. Afterwards, future planning runs at this interval or after meaningful long-range changes. Reply counts never advance fictional time. Explicit “Time skip:” author directions also request reassessment.</small>
-        <button class="menu_button" type="button" data-action="plan-future">Plan future now</button>
-        <span class="living-world-guide-status" data-role="future-status" role="status" aria-live="polite">Not yet planned</span>
-        <small>This button updates only the private outlook: up to six provisional Chapters, labeled Canon (including adapted/adjacent) or Original. Conditions can prevent or transform them. No future lower-level Arcs or Subplots.</small>
+        <small>The private outlook holds up to six provisional Chapters, labeled Canon (including adapted/adjacent) or Original. Conditions can prevent or transform them. No future lower-level Arcs or Subplots.</small>
         <small>Active-route requests serialize safely; direct/profile requests can run side by side.</small>
       </div>
 
@@ -170,11 +168,14 @@
         <h4>Guide controls</h4>
         <div class="living-world-guide-button-row">
           <button class="menu_button" data-action="guide" type="button" title="Refresh context and plans"><i class="fa-solid fa-wand-magic-sparkles"></i> <span data-role="guide-label">Guide now</span></button>
+          <button class="menu_button" data-action="plan-future" type="button" title="Update only private future Chapters; leave current guidance unchanged"><i class="fa-solid fa-calendar-days"></i> Plan future now</button>
           <button class="menu_button" data-action="rebuild" type="button" title="Delete all generated plans, archives and cached guidance, then rebuild from current chat context"><i class="fa-solid fa-arrows-rotate"></i> Full rebuild</button>
           <button class="menu_button" data-action="stop" type="button" disabled><i class="fa-solid fa-stop"></i> Stop analysis</button>
           <button class="menu_button" data-action="reset-settings" type="button" title="Restore default settings; keep the notebook"><i class="fa-solid fa-arrow-rotate-left"></i> Reset settings</button>
           <button class="menu_button" data-action="reset" type="button"><i class="fa-solid fa-trash-can"></i> Delete guide state</button>
         </div>
+        <div class="living-world-guide-status">Future planner: <span data-role="future-status" role="status" aria-live="polite">Not yet planned</span></div>
+        <small>Plan future now updates only the private outlook, leaving current cards and writer guidance unchanged.</small>
         <small>Guide now updates current plans and checks whether future planning is due. Full rebuild clears both preparations first, preserving pacing and author notes. Calls save independently; a failed call leaves only its own preparation empty.</small>
         <small>Reset settings keeps the notebook and stored API keys, and resets the selected connection.</small>
         <small>One request updates story possibilities and selects NPC/world activity. Existing memory supplies context; the planner writes no history summary.</small>

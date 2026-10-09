@@ -24,6 +24,25 @@ test('settings explanations stay concise', () => {
     }
 });
 
+test('manual future planning and its status belong beside the other Guide controls', () => {
+    const controls = template.slice(template.indexOf('<h4>Guide controls</h4>'),
+        template.indexOf('<div class="living-world-guide-grid living-world-guide-note-grid">'));
+    const buttons = controls.match(/<div class="living-world-guide-button-row">([\s\S]*?)<\/div>/u)?.[1];
+    assert.ok(buttons, 'Guide controls have a shared action row');
+    for (const action of ['guide', 'plan-future', 'rebuild', 'stop']) {
+        assert.ok(buttons.includes(`data-action="${action}"`));
+    }
+    assert.match(controls, /data-role="future-status"/u);
+    assert.match(controls, /leaving current cards and writer guidance unchanged/u);
+    assert.equal([...template.matchAll(/data-action="plan-future"/gu)].length, 1);
+    assert.equal([...template.matchAll(/data-role="future-status"/gu)].length, 1);
+    const settings = template.slice(template.indexOf('<h4>Private future Chapters</h4>'),
+        template.indexOf('<h4>Prompt placement</h4>'));
+    assert.match(settings, /data-setting="future-enabled"/u);
+    assert.match(settings, /data-setting="future-interval"/u);
+    assert.doesNotMatch(settings, /data-action="plan-future"/u);
+});
+
 test('manifest, browser runtime, and detached plugin share the release version', () => {
     assert.equal(manifest.version, '0.20.0');
     assert.equal(manifest.js, 'extension/index.js?v=0.20.0&planner-input=1&episode-fields=1&token-budget=1&rp-plot=1&progress=1&response=2&history-budget=1&partial-updates=1&partial-evidence=1&creative=1&follow-through=1&compaction=1&working-plan=1&guidance-preview=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&full-rebuild=1&empty-fields=1&open-scope=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&planner-timeout=1&player-cards=1&no-phase=1&present-future=1&creative-planning=1&fresh-summary=1&world-frame=1&frame-stability=1&rp-world-frame=1&portable-frame=1&genre-frame=1&arc-focus=1&server-jobs=1&saga-hierarchy=1&chapter-labels=1&future-chapters=1&chapter-scope=2&future-cards=1');
