@@ -270,6 +270,29 @@ test('Full rebuild resets both owners and accepts partial success without resurr
     assert.ok(h.context.chatMetadata.taleFairyPlanningEpoch);
 });
 
+for (const rebuilding of [false, true]) test(`${rebuilding ? 'Full rebuild' : 'Delete guide'} clears current and future preparation, receipts and cached guidance before any new call`, async () => {
+    const h = browser(async args => bothReply(args), defaultPlannerState(), { director: true, future: true });
+    await h.scope.startCampaignPlanning(); await h.scope.getFutureHost().pending;
+    assert.ok(h.state().campaignPreparation.revision);
+    assert.ok(h.context.chatMetadata.taleFairyFuture.revision);
+    h.prepare();
+    h.context.chatMetadata.taleFairyFutureReceipts = [{ id: 'f1-old', title: 'Old future idea' }];
+    h.context.chatMetadata.taleFairyFutureReassessment = 42;
+    h.context.chatMetadata.taleFairyPlanningEpoch = 'old epoch';
+    h.context.chatMetadata.unrelated = 'Retain chat and external memory';
+    const calls = h.requests.length;
+    await h.scope.resetState({ rebuilding });
+    assert.equal(h.requests.length, calls, 'deletion itself makes no replacement request');
+    assert.equal(h.state().campaignPreparation, null);
+    for (const key of ['taleFairyFuture', 'taleFairyFutureAttempt', 'taleFairyFutureReassessment',
+        'taleFairyCampaignAttempt', 'taleFairyReplacementPending', GENERATION_CONTEXT_KEY]) {
+        assert.equal(h.context.chatMetadata[key], null, key);
+    }
+    assert.equal(h.context.chatMetadata.taleFairyFutureReceipts.length, 0);
+    assert.notEqual(h.context.chatMetadata.taleFairyPlanningEpoch, 'old epoch');
+    assert.equal(h.context.chatMetadata.unrelated, 'Retain chat and external memory');
+});
+
 test('Full rebuild releases the old future lock before starting both replacement calls', async () => {
     let release, oldReply;
     const h = browser(async args => {

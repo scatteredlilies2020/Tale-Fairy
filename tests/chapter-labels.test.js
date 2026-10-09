@@ -99,3 +99,64 @@ test('failed review leaves old terminology, cards and writer packets intact', as
     assert.deepEqual(failed.state, before);
     assert.equal(campaignPayload(failed.state), payload);
 });
+
+test('a premature aftermath Chapter can be corrected in place throughout the writer packet', async () => {
+    const oldTitle = 'After the Hyuga Abduction Attempt';
+    const oldNodes = structuredClone(nodes);
+    Object.assign(oldNodes[0], { title: oldTitle, interpretation: 'Village life resumes after the abduction.',
+        endsWhen: 'The aftermath settles.' });
+    const oldSelection = structuredClone(selection);
+    oldSelection[0].title = oldTitle;
+    for (const entry of oldSelection.slice(1)) entry.context[0].title = oldTitle;
+    const seeded = await pass(emptyCampaign(), { ...reply(oldNodes), select: oldSelection });
+    assert.equal(seeded.accepted, true, seeded.error);
+    const state = seeded.state, before = structuredClone(state);
+    const corrected = { ...nodes[0], interpretation: 'The Hyuga Affair remains underway: the rescue is complete, but the diplomatic dispute and insider inquiry continue.',
+        endsWhen: 'The diplomatic and internal-security crisis reaches a settlement or is superseded.' };
+    const correctedSelection = structuredClone(selection);
+    Object.assign(correctedSelection[0], { interpretation: corrected.interpretation, endsWhen: corrected.endsWhen });
+    const messages = [{ role: 'user', content: 'The rescue is over, but the Hyuga Affair is ongoing. The delegation dispute and insider inquiry are unresolved while I work at the hospital.' }];
+    const input = directorInput({ state, messages, previousUsable: true, requireSagaHierarchy: true,
+        reference: { premise: 'Naruto diplomatic sandbox RP.' }, playerNames: [] });
+    const reviewed = await directorPass({ state, input,
+        source: { chatId: 'labels', messageCount: 1, referenceHash: 'ref', fingerprint: 'corrected' },
+        generate: async prompt => {
+            assert.ok(prompt.includes(messages[0].content));
+            assert.ok(prompt.includes(oldTitle), 'review receives the misleading preparation to correct');
+            return { text: JSON.stringify({ ...reply([corrected]), select: correctedSelection }), finishReason: 'stop' };
+        },
+    });
+    assert.equal(reviewed.accepted, true, reviewed.error);
+    assert.deepEqual(reviewed.plannerNotices, []);
+    const map = reviewed.state.workingPlan.storyStructure;
+    assert.deepEqual(map.nodes.map(node => node.id), nodes.map(node => node.id));
+    assert.equal(map.nodes.filter(node => node.kind === 'saga' && node.status === 'active').length, 1);
+    assert.deepEqual(map.nodes.slice(1), before.workingPlan.storyStructure.nodes.slice(1));
+    const payload = campaignPayload(reviewed.state);
+    assert.ok(!payload.includes(oldTitle));
+    assert.ok(payload.includes(corrected.interpretation));
+    assert.ok(payload.includes(corrected.endsWhen));
+    assert.deepEqual(storyWriterMaterial(reviewed.state.workingPlan)[1].context,
+        [{ kind: 'chapter', title: corrected.title }]);
+    assert.deepEqual(state, before);
+    assert.deepEqual(reviewed.state.archive.at(-1).workingPlan, before.workingPlan);
+});
+
+test('an established Chapter survives review with no child stories, effects or selected activity', async () => {
+    const chapter = { ...nodes[0], interpretation: 'The Hyuga Affair is the established current Chapter.', endsWhen: '' };
+    const seeded = await pass(emptyCampaign(), { ...reply([chapter]), retain: [], select: [] });
+    assert.equal(seeded.accepted, true, seeded.error);
+    const before = structuredClone(seeded.state);
+    const messages = [{ role: 'user', content: 'I eat breakfast, water the plants and go to work. There are no new developments to report.' }];
+    const input = directorInput({ state: seeded.state, messages, previousUsable: true, requireSagaHierarchy: true,
+        reference: { premise: 'Naruto village-life RP during the Hyuga Affair.' }, playerNames: [] });
+    const reviewed = await directorPass({ state: seeded.state, input,
+        source: { chatId: 'labels', messageCount: 1, referenceHash: 'ref', fingerprint: 'quiet' },
+        generate: async () => ({ text: JSON.stringify({ ...reply([]), retain: [chapter.id], select: [] }), finishReason: 'stop' }),
+    });
+    assert.equal(reviewed.accepted, true, reviewed.error);
+    assert.deepEqual(reviewed.plannerNotices, []);
+    assert.deepEqual(reviewed.state.workingPlan.storyStructure.nodes, before.workingPlan.storyStructure.nodes);
+    assert.deepEqual(reviewed.state.workingPlan.storyStructure.selection, []);
+    assert.deepEqual(seeded.state, before);
+});

@@ -45,7 +45,7 @@ test('one request saves story context, not next-turn scripts, private state or a
     assert.match(payload, /recipe book/);
     assert.doesNotMatch(payload, /If |when|next|later|action|r1-kitchen|Community cooks|upsert|parentId|status|reviewAfter|possible_developments/);
     assert.doesNotMatch(DIRECTOR_SYSTEM, /\u2014/);
-    assert.ok(storyInputTokens('', DIRECTOR_SYSTEM, DIRECTOR_SCHEMA) < 4800, 'portable contract leaves input headroom including conditional future handoff, genre calibration, hierarchy and time-skip closure');
+    assert.ok(storyInputTokens('', DIRECTOR_SYSTEM, DIRECTOR_SCHEMA) < 5000, 'portable contract leaves input headroom including future handoff, genre calibration, hierarchy, Chapter persistence and time-skip closure');
 });
 
 test('phase-free preparation keeps a stable world frame and valid writer guidance', async () => {

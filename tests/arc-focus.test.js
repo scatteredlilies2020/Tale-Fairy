@@ -8,14 +8,14 @@ import { STORY_NODE_RESPONSE_SCHEMA } from '../extension/story-structure.js';
 test('production planner requires arc significance at creation, retention and selection, not a kind/title blacklist', () => {
     for (const rule of [/Plan around arcs/, /exactly one active root Chapter/, /a Subplot is a distinct substantial smaller storyline/,
         /No quota for Arcs or Subplots/, /Significance is relative to this RP/, /friendship can qualify without danger/,
-        /new, retained and selected cards alike/, /Unfinished alone is insufficient/, /including inherited cards/,
+        /new, retained and selected Arcs\/Subplots alike/, /Unfinished alone is insufficient/, /including inherited cards/,
         /not stale cards with only hypothetical future relevance/, /not indefinite storage/,
         /do not rename it an arc, park it as dormant/, /invent complications and grander stakes to justify keeping it/,
         /explicitly central rehabilitation story can qualify/, /Quiet play can keep just the Chapter/,
         /Respect the activity named/, /Bare elapsed time does not imply specific work/,
         /a difficult cure, diagnosis, return-to-duty clearance or a settled conflict/,
         /Drop incidental preparation without claiming its underlying problem is solved/]) assert.match(DIRECTOR_SYSTEM, rule);
-    assert.match(DIRECTOR_SCHEMA.description, /create, retain and select only substantial ongoing stories/);
+    assert.match(DIRECTOR_SCHEMA.description, /Arcs\/Subplots: create, retain and select only substantial stories/);
     assert.deepEqual(STORY_NODE_RESPONSE_SCHEMA.properties.kind.enum, ['saga', 'arc', 'thread']);
 });
 
