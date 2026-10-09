@@ -52,7 +52,7 @@ A compact **private scratchpad** holds creative considerations affecting future 
 
 ### Private future Chapters
 
-Version **0.20.0** adds a separate AI call for **up to six provisional Chapters**, not future lower-level Arcs or Subplots. Each has a concrete premise, pressures, favoring and preventing/transforming conditions, timing, transition and short outlook. The only categories are **Canon** (including adapted, adjacent and derived possibilities) and **Original**. Canon is a source label, not a promise: changed RP causes can prevent or transform its events. Original intervening Chapters should be substantive stories, not filler or compulsory setup.
+Version **0.20.0** adds a separate AI call for **up to six provisional Chapters**, not future lower-level Arcs or Subplots. Each appears as a card with a one-sentence premise and two or three short notes about useful conditions or timing. Older detailed entries have a compact preview with expandable full notes. The only categories are **Canon** (including adapted, adjacent and derived possibilities) and **Original**. Canon is a source label, not a promise: changed RP causes can prevent or transform its events. Original intervening Chapters should be substantive stories, not filler or compulsory setup.
 
 Future planning defaults to **every 40 accepted AI replies**, configurable from **4 to 200**. Explicit `Time skip:` author directions and material reassessment requested by a current review can trigger it earlier. This cadence never advances fictional time. **Plan future now** updates only the private outlook, without changing current cards or writer guidance. Disable future planning to retain its saved outlook without new future calls or supplying it to subsequent current reviews.
 

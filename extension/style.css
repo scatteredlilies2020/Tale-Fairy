@@ -189,7 +189,8 @@
 }
 
 /* Story cards share the host theme and remain readable in a narrow ST drawer. */
-.living-world-guide-board section [data-role="story-cards"] {
+.living-world-guide-board section [data-role="story-cards"],
+.living-world-guide-board section [data-role="future-cards"] {
     white-space: normal !important;
     word-break: normal !important;
     overflow-wrap: anywhere !important;
@@ -331,10 +332,11 @@
         flex: 1 1 150px;
     }
 }
-.tf-future-outlook pre {
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    font: inherit;
-    max-height: 36rem;
-    overflow-y: auto;
-}
+.tf-future-outlook { margin-top: 14px; }
+.tf-future-outlook > summary { cursor: pointer; }
+.tf-future-board { margin-top: 12px; }
+.tf-future-notes { margin: 8px 0 0; padding-left: 18px; font-size: .88em; }
+.tf-future-notes li + li { margin-top: 7px; }
+.tf-future-note-label { font-weight: 600; opacity: .8; }
+.tf-future-details { margin-top: 12px; border-top: 1px solid var(--tf-border); padding-top: 8px; }
+.tf-future-details > p { font-size: .9em; }

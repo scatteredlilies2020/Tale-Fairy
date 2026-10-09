@@ -71,6 +71,22 @@ test('retain preserves identity; retired and omitted cards have bounded exclusio
     assert.match(third.input.newIdPrefix, /^f3-/);
 });
 
+test('brief future cards can leave unused note fields empty and survive the next review', async () => {
+    const p = pure();
+    const brief = { ...card(), pressures: [], timing: '', transition: '', outlook: '' };
+    const first = await f.futurePass({ state: p.s.state, input: p.input, source: p.source, generate: async () => reply([brief]) });
+    assert.equal(first.accepted, true, first.error);
+    assert.equal(f.validFuture(first.state), true);
+    const next = pure(first.state);
+    const retained = await f.futurePass({ state: first.state, input: next.input, source: next.source,
+        generate: async () => ({ text: JSON.stringify({ upsert: [], retain: [brief.id], retire: [] }), finishReason: 'stop' }) });
+    assert.equal(retained.accepted, true, retained.error);
+    assert.deepEqual(retained.state.cards, [brief]);
+    for (const key of ['id', 'title', 'premise']) {
+        assert.equal(f.validFuture({ ...first.state, cards: [{ ...brief, [key]: '' }] }), false, key);
+    }
+});
+
 test('schema, unknown identities, truncation and lost Canon category fail without changing saved outlook', async () => {
     const p = pure();
     const first = await f.futurePass({ state: p.s.state, input: p.input, source: p.source, generate: async () => reply([card('f1-convoys', 'Canon')]) });
