@@ -142,9 +142,8 @@ test('a premature aftermath Chapter can be corrected in place throughout the wri
     assert.deepEqual(reviewed.state.archive.at(-1).workingPlan, before.workingPlan);
 });
 
-test('an established Chapter survives review with no child stories, effects or selected activity', async () => {
-    const chapter = { ...nodes[0], interpretation: 'The Hyuga Affair is the established current Chapter.', endsWhen: '' };
-    const seeded = await pass(emptyCampaign(), { ...reply([chapter]), retain: [], select: [] });
+for (const active of [nodes.slice(0, 1), nodes]) test(`active stories keep their names and status without activity or selection (${active.length} levels)`, async () => {
+    const seeded = await pass(emptyCampaign(), { ...reply(active), retain: [], select: [] });
     assert.equal(seeded.accepted, true, seeded.error);
     const before = structuredClone(seeded.state);
     const messages = [{ role: 'user', content: 'I eat breakfast, water the plants and go to work. There are no new developments to report.' }];
@@ -152,11 +151,21 @@ test('an established Chapter survives review with no child stories, effects or s
         reference: { premise: 'Naruto village-life RP during the Hyuga Affair.' }, playerNames: [] });
     const reviewed = await directorPass({ state: seeded.state, input,
         source: { chatId: 'labels', messageCount: 1, referenceHash: 'ref', fingerprint: 'quiet' },
-        generate: async () => ({ text: JSON.stringify({ ...reply([]), retain: [chapter.id], select: [] }), finishReason: 'stop' }),
+        generate: async () => ({ text: JSON.stringify({ ...reply([]), retain: active.map(node => node.id), select: [] }), finishReason: 'stop' }),
     });
     assert.equal(reviewed.accepted, true, reviewed.error);
     assert.deepEqual(reviewed.plannerNotices, []);
     assert.deepEqual(reviewed.state.workingPlan.storyStructure.nodes, before.workingPlan.storyStructure.nodes);
     assert.deepEqual(reviewed.state.workingPlan.storyStructure.selection, []);
     assert.deepEqual(seeded.state, before);
+
+    const selected = await pass(reviewed.state, { ...reply([]), retain: active.map(node => node.id), select: selection.slice(0, active.length) });
+    assert.equal(selected.accepted, true, selected.error);
+    assert.deepEqual(selected.plannerNotices, []);
+    const material = storyWriterMaterial(selected.state.workingPlan);
+    assert.deepEqual(material.map(card => card.title), active.map(node => node.title));
+    assert.deepEqual(material.map(card => card.status), active.map(node => node.status));
+    for (let i = 1; i < material.length; i++) {
+        assert.deepEqual(material[i].context.map(ancestor => ancestor.title), active.slice(0, i).map(node => node.title));
+    }
 });

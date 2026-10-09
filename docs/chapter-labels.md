@@ -8,6 +8,10 @@ The world frame remains above these cards as the lasting RP premise. A canonical
 
 A completed incident does not necessarily complete its Chapter. Stopping the abduction does not itself end the Hyuga Affair. An established Chapter remains ongoing even without visible activity, fresh leads, selected effects or active child stories: silence and routine life do not establish closure. Setup, rebuild and review require accepted play or author direction to establish an ending or transition. The Arc/Subplot significance filter does not require an established Chapter to keep proving activity. Misleading titles and descriptions can be corrected on the same card, with consistent writer selection and ancestor names. Canon supplies a fitting name, not a required outcome. The future planner likewise avoids repackaging the current affair as a later Chapter. A genuine ending still permits a successor despite routine residual consequences.
 
+Active Arcs and Subplots follow the same persistence rule. Keep accurate titles verbatim on the board and in writer selections and ancestor paths, even when a story is offscreen or absent from the latest guidance. A completed beat does not rename the broader ongoing story into an aftermath. Lack of recent activity is not evidence of filler, dormancy or completion; the significance filter removes actual routine-business cards. Misleading inherited titles can still be corrected, and accepted endings or author direction can change names and status.
+
+An additional synthetic review with the configured model retained the exact ids, titles and active status of a Chapter, Arc and Subplot after an uneventful hospital shift, with no fresh reports. Deterministic checks also cover withholding and restoring writer selection without changing those names or ancestor paths.
+
 ## Compatibility
 
 The board, settings, planner instructions and validation messages use the new labels. The stored/response kind codes remain `saga`, `arc` and `thread` for compatibility with saved maps, pending jobs and historical regeneration proofs. The response schema and planner explicitly map these codes to Chapter, Arc and Subplot.
