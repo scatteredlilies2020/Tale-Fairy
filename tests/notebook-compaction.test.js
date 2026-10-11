@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { sha256 } from '../extension/sha256.js';
 import { stageNotebookCompactions, finalizeNotebookCompactions, writeNotebookArchive } from '../extension/notebook-compaction.js';
 import { normalizePreparedWorld, preparedWorldForPrompt } from '../extension/prepared-world.js';
 import { mergeWorldPlan } from '../extension/world-planner.js';
@@ -23,6 +25,19 @@ function archiveServer() {
     };
     return { files, fetchFn, uploads: () => uploads, write: payload => writeNotebookArchive(payload, { fetchFn }) };
 }
+
+test('local SHA-256 keeps existing notebook archive names and reuses identical archives', async () => {
+    const server = archiveServer();
+    const payload = { version: 1, records: [{ id: 'winter', premise: '冬天 ❄️', knowledge: 'A quiet evening.' }] };
+    const text = JSON.stringify(payload);
+    const hash = createHash('sha256').update(text).digest('hex');
+    const receipt = await writeNotebookArchive(payload, { fetchFn: server.fetchFn, hashFn: sha256 });
+    assert.deepEqual(receipt, { file: `tale-fairy-archive-${hash}.json`, hash });
+    assert.equal(server.files.get(`/user/files/${receipt.file}`), text);
+    assert.deepEqual(await server.write(payload), receipt, 'Web Crypto and local hashes address the same archive');
+    assert.deepEqual(await writeNotebookArchive(payload, { fetchFn: server.fetchFn, hashFn: sha256 }), receipt);
+    assert.equal(server.uploads(), 1);
+});
 
 test('planner consolidation archives exact originals before reducing active stored records', async () => {
     const original = board();

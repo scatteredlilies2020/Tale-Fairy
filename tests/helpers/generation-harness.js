@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { sha256 } from '../../extension/sha256.js';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import * as stateApi from '../../extension/state.js';
@@ -41,7 +41,7 @@ export function generationHarness(messages, state = stateApi.defaultState(), met
         analysisModelOptions: () => ({ active: false }),
         ...stateApi, ...cacheApi, ...scheduleApi, ...coalescerApi, ...preparedApi, ...campaignApi, ...compactionApi,
         ownedInput, ownedPass, needsEventReframe, nextPlanRevision, OWNED_SCHEMA, OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit, CampaignSession, CAMPAIGN_ATTEMPT_KEY, campaignJobMeta, campaignReviewedCount, campaignCheckpoint, campaignReconsideration, verifiedClosedSubjects,
-        getRequestHeaders: () => ({}), sha256: bytes => createHash('sha256').update(bytes).digest('hex'),
+        getRequestHeaders: () => ({}), sha256,
         isStoryGeneration, refreshGameMasterContract, sampleDirectorSignals, selectSituationalOpenings, createSafetyFallbackState, canRetainSuccessfulPlan,
         // ST returns a new context with a snapshot reference to its metadata.
         // updateChatMetadata replaces the host object, not that reference.

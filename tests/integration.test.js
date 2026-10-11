@@ -15,6 +15,14 @@ const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.me
 const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json', import.meta.url), 'utf8'));
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
+test('fork compatibility does not require SillyTavern to export SHA-256', () => {
+    assert.doesNotMatch(source, /from\s+['"]\/lib\.js['"]/u);
+    assert.ok(source.includes(`import { sha256 } from './sha256.js?v=${manifest.version}';`));
+    assert.ok(manifest.js.startsWith(`extension/index.js?v=${manifest.version}&`));
+    assert.match(source, /return sha256\(JSON\.stringify\(value\)\)/u);
+    assert.match(source, /writeNotebookArchive\(payload, \{ headers: getRequestHeaders\(\), hashFn: sha256 \}\)/u);
+});
+
 test('settings explanations stay concise', () => {
     const explanations = [...template.matchAll(/<small>([\s\S]*?)<\/small>/gu)].map(match => match[1]);
     assert.ok(explanations.length > 20);
@@ -44,12 +52,12 @@ test('manual future planning and its status belong beside the other Guide contro
 });
 
 test('manifest, browser runtime, and detached plugin share the release version', () => {
-    assert.equal(manifest.version, '0.20.0');
-    assert.equal(manifest.js, 'extension/index.js?v=0.20.0&planner-input=1&episode-fields=1&token-budget=1&rp-plot=1&progress=1&response=2&history-budget=1&partial-updates=1&partial-evidence=1&creative=1&follow-through=1&compaction=1&working-plan=1&guidance-preview=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&full-rebuild=1&empty-fields=1&open-scope=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&planner-timeout=1&player-cards=1&no-phase=1&present-future=1&creative-planning=1&fresh-summary=1&world-frame=1&frame-stability=1&rp-world-frame=1&portable-frame=1&genre-frame=1&arc-focus=1&server-jobs=1&saga-hierarchy=1&chapter-labels=1&future-chapters=1&chapter-scope=2&future-cards=1&story-persistence=1');
-    assert.equal(manifest.css, 'extension/style.css?v=0.20.0&story-cards=1&future-cards=1');
+    assert.equal(manifest.version, '0.20.1');
+    assert.equal(manifest.js, 'extension/index.js?v=0.20.1&planner-input=1&episode-fields=1&token-budget=1&rp-plot=1&progress=1&response=2&history-budget=1&partial-updates=1&partial-evidence=1&creative=1&follow-through=1&compaction=1&working-plan=1&guidance-preview=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&full-rebuild=1&empty-fields=1&open-scope=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&planner-timeout=1&player-cards=1&no-phase=1&present-future=1&creative-planning=1&fresh-summary=1&world-frame=1&frame-stability=1&rp-world-frame=1&portable-frame=1&genre-frame=1&arc-focus=1&server-jobs=1&saga-hierarchy=1&chapter-labels=1&future-chapters=1&chapter-scope=2&future-cards=1&story-persistence=1');
+    assert.equal(manifest.css, 'extension/style.css?v=0.20.1&story-cards=1&future-cards=1');
     assert.equal(pluginPackage.version, manifest.version);
-    assert.match(pluginSource, /const VERSION = '0\.20\.0'/);
-    assert.match(source, /const RUNTIME_VERSION = '0\.20\.0'/);
+    assert.match(pluginSource, /const VERSION = '0\.20\.1'/);
+    assert.match(source, /const RUNTIME_VERSION = '0\.20\.1'/);
 });
 
 test('creative contract updates invalidate the browser entry and schema imports', async () => {

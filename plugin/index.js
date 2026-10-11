@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 const PLUGIN = 'tale-fairy';
-const VERSION = '0.20.0';
+const VERSION = '0.20.1';
 const jobs = new Map();
 const MAX_FINISHED_JOBS = 40;
 const MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
