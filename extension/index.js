@@ -1,4 +1,5 @@
-import { sha256 } from './sha256.js?v=0.20.1';
+import { sha256 } from './sha256.js?v=0.20.2';
+import { normalizePlannerContext, plannerContextLimit, plannerInputCapacity, plannerOutputCapacity, plannerModeInputTokens } from './planner-capacity.js?context-guard=1&concise-prompts=1&portable-frame=1&horizon-links=3';
 import { renderFutureCards } from './future-cards.js?future-cards=1&future-controls=1&causal-futures=1';
 import { campaignAuthorInstructions, campaignPayloadBudget, campaignUsable, campaignMaterialUsable, campaignWriterUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1';
 import { directorInput as ownedInput, directorPass as ownedPass, nextPlanRevision, DIRECTOR_SCHEMA as OWNED_SCHEMA, DIRECTOR_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './story-director.js?story-workshop=1&story-horizons=1&story-progression=1&rp-activities=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&full-rebuild=1&empty-fields=1&open-scope=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&no-phase=1&present-future=1&creative-planning=1&fresh-summary=1&world-frame=1&frame-stability=1&rp-world-frame=1&portable-frame=1&genre-frame=1&arc-focus=1&saga-hierarchy=1&chapter-labels=1&future-chapters=1&chapter-scope=2&story-persistence=1&future-controls=1&causal-futures=1';
@@ -54,13 +55,13 @@ import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, w
 import { ActivatedStoryContext, readHostStoryEvidence } from './rp-context.js?story-lifecycle=1';
 import { campaignJobMeta, campaignJobMatches, recoverCampaignJob } from './campaign-jobs.js?server-jobs=1&future-chapters=1';
 import { FUTURE_KEY, FUTURE_ATTEMPT_KEY, FUTURE_RECEIPTS_KEY, PLANNING_EPOCH_KEY,
-    futureInterval, futureCapacity, futureOptions, futureReceipts, futureForDirector, validFuture, usableFuture } from './future-planner.js?v=0.20.0&future-chapters=1&chapter-labels=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1&chapter-scope=2&future-cards=1&future-controls=1&causal-futures=1';
-import { createFutureHost, serializeActivePlanner } from './future-host.js?v=0.20.0&future-chapters=1&chapter-labels=1&server-jobs=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&story-director=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1&chapter-scope=2&future-cards=1&future-controls=1&causal-futures=1';
+    futureInterval, futureCapacity, futureOptions, futureReceipts, futureForDirector, validFuture, usableFuture } from './future-planner.js?v=0.20.0&future-chapters=1&chapter-labels=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1&chapter-scope=2&future-cards=1&future-controls=1&causal-futures=1&context-guard=1';
+import { createFutureHost, serializeActivePlanner } from './future-host.js?v=0.20.0&future-chapters=1&chapter-labels=1&server-jobs=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&story-director=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1&chapter-scope=2&future-cards=1&future-controls=1&causal-futures=1&context-guard=1';
 
 const activatedStoryContext = new ActivatedStoryContext();
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.20.1';
+const RUNTIME_VERSION = '0.20.2';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -72,7 +73,7 @@ const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
 const INJECTION_POSITIONS = new Set(['before-main', 'after-main', 'before-character-definitions', 'after-character-definitions', 'before-example-messages', 'after-example-messages', 'before-an', 'after-an', 'before-chat-history', 'after-chat-history', 'before-jailbreak', 'after-jailbreak', 'at-depth']);
-const DEFAULT_SETTINGS = { enabled: true, futureEnabled: true, futureInterval: 40, futureCanon: true, futureCapacity: 10, mode: 'balanced', analysisProfileId: '', analysisSource: 'active', analysisProvider: 'custom', analysisModel: '', analysisUrl: '', analysisSecretId: '', analysisReasoningMode: 'auto', analysisTemperature: 1, directSettingsMigrated: false, directCustomModel: '', directCustomUrl: '', directCustomSecretId: '', directOpenRouterModel: '', directOpenRouterUrl: '', directOpenRouterSecretId: '', injectionPosition: 'at-depth', injectionDepth: 1, injectionRole: DEFAULT_INJECTION_ROLE, includeWorldInfo: false, showDirectorNotes: false, recentContextTokens: 6000, messageTokenLimit: 700, maxPromptTokens: 10000, continuityIntegration: true, summaryContextTokens: 1000, fullReviewInterval: DEFAULT_REFRESH_INTERVAL, contextSettingsVersion: 15 };
+const DEFAULT_SETTINGS = { enabled: true, futureEnabled: true, futureInterval: 40, futureCanon: true, futureCapacity: 6, plannerContextTokens: 32768, mode: 'balanced', analysisProfileId: '', analysisSource: 'active', analysisProvider: 'custom', analysisModel: '', analysisUrl: '', analysisSecretId: '', analysisReasoningMode: 'low', analysisTemperature: 1, directSettingsMigrated: false, directCustomModel: '', directCustomUrl: '', directCustomSecretId: '', directOpenRouterModel: '', directOpenRouterUrl: '', directOpenRouterSecretId: '', injectionPosition: 'at-depth', injectionDepth: 1, injectionRole: DEFAULT_INJECTION_ROLE, includeWorldInfo: false, showDirectorNotes: false, recentContextTokens: 6000, messageTokenLimit: 700, maxPromptTokens: 10000, continuityIntegration: true, summaryContextTokens: 1000, fullReviewInterval: DEFAULT_REFRESH_INTERVAL, contextSettingsVersion: 16 };
 let settings = null;
 let analysisPromise = null;
 let campaignSession = null;
@@ -226,6 +227,11 @@ function getSettings() {
     // Older campaign controls forced a 3-4 reply cadence. Start the story map
     // at the wider default once, while preserving later deliberate choices.
     if (previousContextVersion < 15 && Number(settings.fullReviewInterval) <= 4) settings.fullReviewInterval = DEFAULT_REFRESH_INTERVAL;
+    if (previousContextVersion > 0 && previousContextVersion < 16) {
+        if (Number(settings.futureCapacity) === 10) settings.futureCapacity = DEFAULT_SETTINGS.futureCapacity;
+        if (settings.analysisReasoningMode === 'auto') settings.analysisReasoningMode = DEFAULT_SETTINGS.analysisReasoningMode;
+    }
+    settings.plannerContextTokens = normalizePlannerContext(settings.plannerContextTokens);
     settings.contextSettingsVersion = DEFAULT_SETTINGS.contextSettingsVersion;
     settings.fullReviewInterval = normalizePlannerSchedule({ refreshInterval: settings.fullReviewInterval }).refreshInterval;
     settings.futureEnabled ??= true;
@@ -943,7 +949,7 @@ function readCampaignSnapshot() {
             .filter(name => typeof name === 'string' && name.trim()))],
         referenceHash,
         requestSignature: campaignFingerprint({ epoch: context.chatMetadata?.[PLANNING_EPOCH_KEY] || '', recovery: 1, reviewCheckpoint: 1, contract: OWNED_SCHEMA, prompt: OWNED_SYSTEM, settings: Object.fromEntries(['analysisSource', 'analysisProvider', 'analysisProfileId',
-            'analysisModel', 'analysisUrl', 'analysisSecretId', 'analysisReasoningMode', 'analysisTemperature', 'maxPromptTokens', 'continuityIntegration', 'summaryContextTokens', 'futureEnabled', 'futureCanon', 'futureCapacity']
+            'analysisModel', 'analysisUrl', 'analysisSecretId', 'analysisReasoningMode', 'analysisTemperature', 'maxPromptTokens', 'plannerContextTokens', 'continuityIntegration', 'summaryContextTokens', 'futureEnabled', 'futureCanon', 'futureCapacity']
             .map(key => [key, s[key]])) }),
         reference,
         continuity, evidence,
@@ -2564,7 +2570,7 @@ function plannerTemperaturePayload(temperature, samplingEnabled) {
     return samplingEnabled ? { temperature: normalizePlannerTemperature(temperature) } : {};
 }
 
-function isolatePlannerGenerationData(generateData, reasoningMode, temperature = plannerTemperature(), samplingEnabled = true, outputMode = PLANNER_OUTPUT_MODE.JSON_SCHEMA, responseTokens = INCREMENTAL_RESPONSE_TOKENS) {
+function isolatePlannerGenerationData(generateData, reasoningMode, temperature = plannerTemperature(), samplingEnabled = true, outputMode = PLANNER_OUTPUT_MODE.JSON_SCHEMA, responseTokens = INCREMENTAL_RESPONSE_TOKENS, capacity = null) {
     if (!generateData || typeof generateData !== 'object') return;
     const reasoning = buildReasoningRequest({
         mode: reasoningMode,
@@ -2572,7 +2578,9 @@ function isolatePlannerGenerationData(generateData, reasoningMode, temperature =
         model: generateData.model,
         url: generateData.custom_url || generateData.reverse_proxy,
     });
+    const visibleOutput = responseTokens;
     responseTokens = plannerOutputTokenBudget(responseTokens, reasoning.payload.reasoning_effort || reasoningMode);
+    if (capacity) responseTokens = plannerOutputCapacity(responseTokens, capacity.inputTokens, visibleOutput, capacity.contextLimit);
     generateData.stream = false;
     generateData.n = 1;
     if (samplingEnabled) {
@@ -2704,20 +2712,33 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
             && (detachedMeta.campaign?.kind !== 'future' || detachedFutureEnabled)
             ? { _taleFairyPlanner: detachedMeta } : {};
         const model = analysisModelOptions();
-        if (singleShot) {
+        const selectedProfile = model.profileId ? ConnectionManagerRequestService.getProfile(model.profileId) : null;
+        const selectedPreset = selectedProfile?.preset ? openai_settings?.[openai_setting_names?.[selectedProfile.preset]] : null;
+        const hostContext = currentContext();
+        const providerContext = model.active
+            ? hostContext.chatCompletionSettings?.openai_max_context || hostContext.maxContext
+            : selectedProfile?.openai_max_context || selectedPreset?.openai_max_context;
+        const contextLimit = plannerContextLimit(getSettings().plannerContextTokens, providerContext);
+        const outputBudget = (reasoningMode, outputMode) => plannerOutputCapacity(plannerOutputTokenBudget(responseTokens, reasoningMode),
+            plannerModeInputTokens(plannerInputTokens, schema, outputMode), responseTokens, contextLimit);
+        {
             const context = currentContext();
             // The active tokenizer is not authoritative for a different direct
             // model or connection profile. Those routes use the local reserve.
             const counter = model.active && typeof context.getTokenCountAsync === 'function'
                 ? context.getTokenCountAsync.bind(context) : null;
-            const fitted = await waitForAbortable(fitStoryInputBudget(prompt, systemPrompt, schema, plannerInputLimit(Number(getSettings().maxPromptTokens) || 10000), counter, { softTarget: true }), controller.signal);
+            const inputLimit = plannerInputCapacity(plannerInputLimit(Number(getSettings().maxPromptTokens) || 10000), responseTokens, contextLimit);
+            const fitted = await waitForAbortable(fitStoryInputBudget(prompt, systemPrompt, schema, inputLimit, counter, { softTarget: true }), controller.signal);
+            // Required reference and fresh play may exceed the sizing target,
+            // but the complete input and visible output must fit the window.
+            plannerOutputCapacity(responseTokens, fitted.tokens, responseTokens, contextLimit);
             prompt = fitted.prompt;
             plannerInputTokens = fitted.tokens;
             controller.signal.throwIfAborted();
         }
         const temperature = requestSpec.temperature === undefined ? plannerTemperature() : normalizePlannerTemperature(requestSpec.temperature);
         if (model.profileId) {
-            const profile = ConnectionManagerRequestService.getProfile(model.profileId);
+            const profile = selectedProfile;
             const apiMap = ConnectionManagerRequestService.validateProfile(profile);
             const reasoningMode = requestedReasoningMode || plannerReasoningMode(profile);
             const reasoning = buildReasoningRequest({
@@ -2733,7 +2754,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
             const sendProfileRaw = mode => ConnectionManagerRequestService.sendRequest(
                 model.profileId,
                 plannerMessages(systemPrompt, prompt, schema, mode),
-                plannerOutputTokenBudget(responseTokens, reasoningPayload.reasoning_effort || reasoningBudgetMode),
+                outputBudget(reasoningPayload.reasoning_effort || reasoningBudgetMode, mode),
                 { stream: false, extractData: false, includePreset: false, includeInstruct: false, signal: controller.signal },
                 {
                     ...(mode === PLANNER_OUTPUT_MODE.JSON_SCHEMA ? { json_schema: schema } : {}),
@@ -2791,7 +2812,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
                     const requestSamplingEnabled = samplingEnabled
                         && Object.hasOwn(generateData, 'temperature')
                         && !plannerModelRejectsTemperature(generateData.model);
-                    isolatePlannerGenerationData(generateData, activeReasoningMode, temperature, requestSamplingEnabled, mode, responseTokens);
+                    isolatePlannerGenerationData(generateData, activeReasoningMode, temperature, requestSamplingEnabled, mode, responseTokens, { inputTokens: plannerModeInputTokens(plannerInputTokens, schema, mode), contextLimit });
                     Object.assign(generateData, detachedMarker);
                 };
                 const gate = requestSpec.gatedActive ? task => task() : serializeActivePlanner;
@@ -2857,7 +2878,7 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
         let samplingEnabled = !plannerModelRejectsTemperature(model.model);
         const sendRaw = async mode => {
             const modePayload = model.provider === 'custom' ? customOutputPayload(reasoningPayload, mode) : reasoningPayload;
-            const body = { chat_completion_source: model.provider, model: model.model, messages: plannerMessages(systemPrompt, prompt, schema, mode), max_tokens: plannerOutputTokenBudget(responseTokens, reasoningPayload.reasoning_effort || reasoningBudgetMode), stream: false, ...plannerTemperaturePayload(temperature, samplingEnabled), ...modePayload, ...(mode === PLANNER_OUTPUT_MODE.JSON_SCHEMA ? { json_schema: schema } : {}), ...(model.provider === 'openrouter' ? { api_url: model.url.replace(/\/$/, '') } : { custom_url: model.url.replace(/\/$/, '') }), ...detachedMarker };
+            const body = { chat_completion_source: model.provider, model: model.model, messages: plannerMessages(systemPrompt, prompt, schema, mode), max_tokens: outputBudget(reasoningPayload.reasoning_effort || reasoningBudgetMode, mode), stream: false, ...plannerTemperaturePayload(temperature, samplingEnabled), ...modePayload, ...(mode === PLANNER_OUTPUT_MODE.JSON_SCHEMA ? { json_schema: schema } : {}), ...(model.provider === 'openrouter' ? { api_url: model.url.replace(/\/$/, '') } : { custom_url: model.url.replace(/\/$/, '') }), ...detachedMarker };
             if (model.secretId) body.secret_id = model.secretId;
             requestSpec.onProgress?.('Waiting for planner response · no live token updates');
             const response = await fetch('/api/backends/chat-completions/generate', { method: 'POST', headers: currentContext().getRequestHeaders?.() || getRequestHeaders?.() || { 'Content-Type': 'application/json' }, body: JSON.stringify(body), signal: controller.signal });
@@ -2944,7 +2965,7 @@ export async function analyzeNow({ note = null, force = false, messages = null, 
         fullContextPass: pass.fullContextPass, bootstrapScan: pass.bootstrapScan,
         // UI changes do not restart a request; actual provider/budget changes do.
         settings: Object.fromEntries(['analysisSource', 'analysisProvider', 'analysisProfileId', 'analysisModel', 'analysisUrl',
-            'analysisSecretId', 'analysisReasoningMode', 'analysisTemperature', 'maxPromptTokens', 'routineInputTokens',
+            'analysisSecretId', 'analysisReasoningMode', 'analysisTemperature', 'maxPromptTokens', 'plannerContextTokens', 'routineInputTokens',
             'reviewInputTokens', 'recentContextTokens', 'summaryContextTokens', 'messageTokenLimit', 'continuityIntegration']
             .map(key => [key, s[key]])),
     });
@@ -3761,6 +3782,7 @@ async function mountUI() {
     root.querySelector('[data-setting="recent-budget"]').value = s.recentContextTokens;
     root.querySelector('[data-setting="summary-budget"]').value = s.summaryContextTokens;
     root.querySelector('[data-setting="budget"]').value = s.maxPromptTokens;
+    root.querySelector('[data-setting="planner-context"]').value = s.plannerContextTokens;
     root.querySelector('[data-setting="routine-budget"]').value = s.routineInputTokens;
     root.querySelector('[data-setting="review-budget"]').value = s.reviewInputTokens;
     root.querySelector('[data-setting="injection-position"]').value = s.injectionPosition;
@@ -3842,6 +3864,7 @@ async function mountUI() {
     root.querySelector('[data-setting="recent-budget"]').addEventListener('change', e => { invalidatePlanner(); s.recentContextTokens = Math.max(1000, Math.min(12000, Number(e.target.value) || DEFAULT_SETTINGS.recentContextTokens)); e.target.value = s.recentContextTokens; save(); });
     root.querySelector('[data-setting="summary-budget"]').addEventListener('change', e => { invalidatePlanner(); s.summaryContextTokens = Math.max(0, Math.min(1000, Number(e.target.value) || 0)); e.target.value = s.summaryContextTokens; save(); });
     root.querySelector('[data-setting="budget"]').addEventListener('change', e => { invalidatePlanner(); s.maxPromptTokens = Math.max(3000, Math.min(DEFAULT_SETTINGS.maxPromptTokens, Number(e.target.value) || DEFAULT_SETTINGS.maxPromptTokens)); e.target.value = s.maxPromptTokens; save(); });
+    root.querySelector('[data-setting="planner-context"]').addEventListener('change', e => { invalidatePlanner(); s.plannerContextTokens = normalizePlannerContext(e.target.value); e.target.value = s.plannerContextTokens; save(); });
     for (const [key, setting, fallback] of [['routine-budget', 'routineInputTokens', DEFAULT_ROUTINE_INPUT], ['review-budget', 'reviewInputTokens', DEFAULT_REVIEW_INPUT]]) {
         root.querySelector(`[data-setting="${key}"]`).addEventListener('change', e => { invalidatePlanner(); s[setting] = normalizeInputBudget(e.target.value, fallback); e.target.value = s[setting]; save(); });
     }
@@ -3968,6 +3991,7 @@ function refreshControls(root = document.querySelector(`#${EXTENSION_ID}-setting
     root.querySelector('[data-setting="recent-budget"]').value = s.recentContextTokens;
     root.querySelector('[data-setting="summary-budget"]').value = s.summaryContextTokens;
     root.querySelector('[data-setting="budget"]').value = s.maxPromptTokens;
+    root.querySelector('[data-setting="planner-context"]').value = s.plannerContextTokens;
     root.querySelector('[data-setting="routine-budget"]').value = s.routineInputTokens;
     root.querySelector('[data-setting="review-budget"]').value = s.reviewInputTokens;
     root.querySelector('[data-setting="injection-position"]').value = s.injectionPosition;

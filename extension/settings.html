@@ -38,7 +38,11 @@
           </label>
           <label>Total planner input target (tokens)
             <input class="text_pole" type="number" data-setting="budget" min="3000" max="10000" step="1000" value="10000">
-              <small>Total input limit for every pass, including instructions, conversation, evidence and response format.</small>
+              <small>Input sizing target, including instructions, conversation, evidence and response format. Required context may exceed this target only when input and output fit the planner context window.</small>
+          </label>
+          <label>Planner context window (tokens)
+            <input class="text_pole" type="number" data-setting="planner-context" min="4096" max="2000000" step="1024" value="32768">
+            <small>Includes input and output. Defaults to 32,768 tokens; active connections and profiles also respect their configured context limit. Set this to your direct endpoint's capacity.</small>
           </label>
           <label>Routine planner input target (tokens)
             <input class="text_pole" type="number" data-setting="routine-budget" min="6000" max="30000" step="1000" value="6000">
@@ -66,7 +70,7 @@
         <label class="checkbox_label"><input type="checkbox" data-setting="future-enabled"><span>Enable separate future planning</span></label>
         <label class="checkbox_label"><input type="checkbox" data-setting="future-canon"><span>Include canon-based future Chapters</span></label>
         <label>Future Chapter capacity
-          <select class="text_pole" data-setting="future-capacity"><option value="6">6</option><option value="10" selected>10 (default)</option><option value="15">15</option></select>
+          <select class="text_pole" data-setting="future-capacity"><option value="6" selected>6 (default)</option><option value="10">10</option><option value="15">15</option></select>
         </label>
         <small>Unchecked: generate Original prospects; saved Canon prospects stay inactive. Canon remains world background. Canon has no priority over Original prospects; unselected saved Canon cards wait for reassessment.</small>
         <label>Future review interval (accepted assistant replies)
@@ -128,7 +132,7 @@
             <option value="auto">Auto (selected profile)</option>
             <option value="off">Off</option>
             <option value="minimum">Minimum</option>
-            <option value="low">Low</option>
+            <option value="low" selected>Low (default)</option>
             <option value="medium">Medium</option>
             <option value="high">High</option>
             <option value="max">Maximum</option>

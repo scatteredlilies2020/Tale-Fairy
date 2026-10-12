@@ -9,7 +9,7 @@ export const FUTURE_RECEIPTS_KEY = 'taleFairyFutureReceipts';
 export const PLANNING_EPOCH_KEY = 'taleFairyPlanningEpoch';
 export const FUTURE_LIMIT = 15;
 export const FUTURE_OUTPUT_LIMIT = 6000;
-export const futureCapacity = value => [6, 10, 15].includes(Number(value)) ? Number(value) : 10;
+export const futureCapacity = value => [6, 10, 15].includes(Number(value)) ? Number(value) : 6;
 export const futureOutputLimit = value => ({ 6: 3000, 10: 4500, 15: FUTURE_OUTPUT_LIMIT })[futureCapacity(value)];
 export const futureOptions = settings => ({ capacity: futureCapacity(settings?.futureCapacity), includeCanon: settings?.futureCanon !== false });
 export const futureInterval = value => Math.max(4, Math.min(200, Math.floor(Number(value) || 40)));

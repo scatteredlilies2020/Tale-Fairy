@@ -9,10 +9,12 @@ import { claimPlannerRecoveryRepair } from '../extension/planner-lifecycle.js';
 import { fitStoryInputBudget } from '../extension/story-budget.js';
 import { plannerInputLimit } from '../extension/working-plan.js';
 import { serializeActivePlanner } from '../extension/future-host.js';
+import * as capacity from '../extension/planner-capacity.js';
+import { conservativeTokenCount } from '../extension/token-budget.js';
 
 const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
 const take = (start, end) => source.slice(source.indexOf(start), source.indexOf(end));
-function harness(results, { route = 'direct', configured = 'low', activeEffort = 'medium', profile = { preset: 'Planner' }, model = 'generic', url = 'https://example.invalid', inputBudget = 16000, tokenCounter } = {}) {
+function harness(results, { route = 'direct', configured = 'low', activeEffort = 'medium', profile = { preset: 'Planner' }, model = 'generic', url = 'https://example.invalid', inputBudget = 16000, contextBudget = 32768, providerContext, tokenCounter } = {}) {
     const requests = [];
     const listeners = new Map();
     const respond = body => {
@@ -26,7 +28,7 @@ function harness(results, { route = 'direct', configured = 'low', activeEffort =
         return result;
     };
     const scope = {
-        ...reasoning, ...output, AnalysisValidationError, claimPlannerRecoveryRepair, WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA, fitStoryInputBudget, plannerInputLimit,
+        ...reasoning, ...output, ...capacity, AnalysisValidationError, claimPlannerRecoveryRepair, WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA, fitStoryInputBudget, plannerInputLimit,
         plannerStorage: () => null, AbortController, DOMException, console: { warn() {} }, serializeActivePlanner,
         EXTENSION_ID: 'test', detachedPlannerReady: Promise.resolve(), detachedPlannerEnabled: false,
         PLANNER_SYSTEM_PROMPT: 'planner', INCREMENTAL_SYSTEM_PROMPT: 'routine',
@@ -34,11 +36,11 @@ function harness(results, { route = 'direct', configured = 'low', activeEffort =
         plannerOutputModeCache: new Map(), parseAnalysisResponse: parseResponse,
         analysisModelOptions: () => route === 'profile' ? { profileId: 'selected' }
             : route === 'active' ? { active: true } : { provider: 'custom', model, url },
-        getSettings: () => ({ analysisReasoningMode: configured, maxPromptTokens: inputBudget }),
-        openai_setting_names: { Planner: 0 }, openai_settings: [{ reasoning_effort: 'high' }],
+        getSettings: () => ({ analysisReasoningMode: configured, maxPromptTokens: inputBudget, plannerContextTokens: contextBudget }),
+        openai_setting_names: { Planner: 0 }, openai_settings: [{ reasoning_effort: 'high', openai_max_context: providerContext }],
         oai_settings: { reasoning_effort: activeEffort },
         plannerTemperature: () => 0.7, normalizePlannerTemperature: value => value,
-        currentContext: () => ({ getRequestHeaders: () => ({}), getTokenCountAsync: tokenCounter, mainApi: 'openai', chatCompletionSettings: { chat_completion_source: 'custom' } }),
+        currentContext: () => ({ getRequestHeaders: () => ({}), getTokenCountAsync: tokenCounter, mainApi: 'openai', chatCompletionSettings: { chat_completion_source: 'custom', openai_max_context: providerContext } }),
         fetch: async (_url, options) => ({ ok: true, json: async () => respond(JSON.parse(options.body)) }),
         ConnectionManagerRequestService: {
             getProfile: () => ({ model, 'api-url': url, ...profile }), validateProfile: () => ({ source: 'custom' }),
@@ -68,7 +70,7 @@ function harness(results, { route = 'direct', configured = 'low', activeEffort =
     };
 }
 
-test('irreducible single-shot input above the target is sent intact on every provider route', async () => {
+test('protected context can exceed the sizing target when the combined request fits', async () => {
     for (const route of ['direct', 'profile', 'active']) {
         const h = harness([{ valid: true }], { route, inputBudget: 40 });
         const result = await h.run({ singleShot: true });
@@ -96,13 +98,12 @@ test('tracker distinguishes preflight failure from waiting on a dispatched provi
     }
 });
 
-test('active tokenizer over-target counts are reported; another model never uses that tokenizer', async () => {
+test('active tokenizer overflow blocks dispatch; another model never uses that tokenizer', async () => {
     let calls = 0;
     const tokenCounter = async () => { calls++; return 20000; };
-    const active = harness([{ valid: true }], { route: 'active', tokenCounter });
-    const result = await active.run({ singleShot: true });
-    assert.equal(result.plannerInputTokens, 20064);
-    assert.equal(active.requests.length, 1);
+    const active = harness([{ valid: true }], { route: 'active', tokenCounter, providerContext: 16000 });
+    await assert.rejects(active.run({ singleShot: true }), /no provider request sent/);
+    assert.equal(active.requests.length, 0);
     assert.equal(calls, 1);
     for (const route of ['direct', 'profile']) {
         const h = harness([{ valid: true }], { route, tokenCounter });
@@ -112,12 +113,40 @@ test('active tokenizer over-target counts are reported; another model never uses
     assert.equal(calls, 1);
 });
 
-test('the larger input target still measures rather than rejecting protected context', async () => {
-    const h = harness([{ valid: true }], { route: 'active', inputBudget: 30000, tokenCounter: async () => 10001 });
-    const result = await h.run({ singleShot: true });
+test('a larger saved target cannot bypass the planner context ceiling', async () => {
+    const h = harness([{ valid: true }], { route: 'active', inputBudget: 30000, tokenCounter: async () => 40000 });
     assert.equal(plannerInputLimit(30000), 10000);
-    assert.equal(result.plannerInputTokens, 10065);
-    assert.equal(h.requests.length, 1);
+    await assert.rejects(h.run({ singleShot: true }), /no provider request sent/);
+    assert.equal(h.requests.length, 0);
+});
+
+test('all provider routes keep reasoning plus input inside the configured window', async () => {
+    for (const route of ['direct', 'profile', 'active']) {
+        const h = harness([{ valid: true }], { route, configured: 'high', contextBudget: 12000 });
+        const result = await h.run({ singleShot: true, responseTokens: 3000 });
+        const output = h.requests[0].max_tokens;
+        assert.ok(output >= 3000);
+        assert.ok(output < 35768);
+        assert.ok(result.plannerInputTokens + output + capacity.PLANNER_CONTEXT_RESERVE <= 12000);
+        assert.equal(h.requests.length, 1);
+    }
+});
+
+test('protected context that cannot fit the window is never dispatched or clipped', async () => {
+    const prompt = JSON.stringify({ source_reference: 'Required author reference. '.repeat(5000) });
+    for (const route of ['direct', 'profile', 'active']) {
+        const h = harness([{ valid: true }], { route });
+        await assert.rejects(h.run({ singleShot: true, prompt }), /no provider request sent/);
+        assert.equal(h.requests.length, 0);
+    }
+});
+
+test('active and profile requests respect their own smaller provider context', async () => {
+    for (const route of ['active', 'profile']) {
+        const h = harness([{ valid: true }], { route, configured: 'high', contextBudget: 32768, providerContext: 8192 });
+        const result = await h.run({ singleShot: true, responseTokens: 3000 });
+        assert.ok(result.plannerInputTokens + h.requests[0].max_tokens + capacity.PLANNER_CONTEXT_RESERVE <= 8192);
+    }
 });
 
 test('a stalled active tokenizer does not prevent cancellation or send a provider request', { timeout: 1000 }, async () => {
@@ -307,7 +336,7 @@ test('DeepSeek replacement disables optional thinking without reasoning reserve'
 test('every route reserves reasoning space after Auto inheritance and provider translation', async () => {
     for (const route of ['direct', 'profile', 'active']) {
         for (const [configured, expected] of [['off', 6144], ['low', 22528], ['medium', 38912], ['auto', 38912]]) {
-            const h = harness([{ valid: true }], { route, configured, activeEffort: 'high', model: 'deepseek-v4.1-flash' });
+            const h = harness([{ valid: true }], { route, configured, activeEffort: 'high', model: 'deepseek-v4.1-flash', contextBudget: 65536 });
             await h.run({ responseTokens: 6144 });
             assert.equal(h.requests.length, 1);
             assert.equal(h.requests[0].max_tokens, expected, `${route}: ${configured}`);
@@ -326,5 +355,22 @@ test('routine transports send the compact response shape without native schema o
         assert.ok(!sent.json_schema);
         assert.ok(!sent.response_format);
         assert.equal(sent.max_tokens, 4096);
+    }
+});
+
+
+test('native schema size is reserved on every provider route before output allocation', async () => {
+    const schema = { name: 'sized_native_schema', value: { type: 'object', additionalProperties: false,
+        required: Array.from({ length: 60 }, (_, i) => `field_${i}`),
+        properties: Object.fromEntries(Array.from({ length: 60 }, (_, i) => [`field_${i}`,
+            { type: 'string', minLength: 1, maxLength: 800, pattern: '\\S' }])),
+    } };
+    for (const route of ['direct', 'profile', 'active']) {
+        const h = harness([{ valid: true }], { route, configured: 'high', contextBudget: 16000 });
+        await h.run({ schema, responseTokens: 3000 });
+        const sent = h.requests[0];
+        const input = conservativeTokenCount(JSON.stringify({ messages: sent.messages, json_schema: schema })) + 64;
+        assert.ok(input + sent.max_tokens + capacity.PLANNER_CONTEXT_RESERVE <= 16000, route);
+        assert.equal(h.requests.length, 1, route);
     }
 });

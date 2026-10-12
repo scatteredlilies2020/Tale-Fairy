@@ -49,9 +49,9 @@ async function planned(state, cards, { capacity = 10, includeCanon = true, mode 
         generate: async () => ({ text: JSON.stringify({ upsert: cards, retain, retire, ...(order === undefined ? {} : { order }) }), finishReason: 'stop' }) });
 }
 
-test('capacity choices normalize to 10 by default and reserve output headroom without a fill quota', async () => {
-    for (const invalid of [undefined, null, '', 'bad', 7, 11, 16]) assert.equal(f.futureCapacity(invalid), 10);
-    assert.deepEqual(f.futureOptions(), { capacity: 10, includeCanon: true });
+test('capacity choices normalize to 6 by default and reserve output headroom without a fill quota', async () => {
+    for (const invalid of [undefined, null, '', 'bad', 7, 11, 16]) assert.equal(f.futureCapacity(invalid), 6);
+    assert.deepEqual(f.futureOptions(), { capacity: 6, includeCanon: true });
     for (const [capacity, tokens] of [[6, 3000], [10, 4500], [15, 6000]]) {
         assert.equal(f.futureCapacity(String(capacity)), capacity);
         const cards = Array.from({ length: capacity }, (_, i) => card(`f1-${i}`));
@@ -431,7 +431,7 @@ test('edited/swiped source, chat switch, rebuild epoch, settings and disable rej
         h => { h.b.chatId = 'other'; }, h => { h.metadata[f.PLANNING_EPOCH_KEY] = 'new rebuild'; },
         h => { h.b.requestSignature = 'different model'; }, h => { h.settings.futureEnabled = false; },
         h => { h.b.referenceHash = 'changed premise'; }, h => { h.settings.futureCanon = false; },
-        h => { h.settings.futureCapacity = 6; }]) {
+        h => { h.settings.futureCapacity = 10; }]) {
         let release; const h = harness(() => new Promise(resolve => { release = resolve; }));
         const work = h.host.run(); await until(() => release); change(h); release(reply([card()]));
         assert.equal((await work).accepted, false);

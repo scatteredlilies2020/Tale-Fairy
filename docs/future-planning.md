@@ -3,7 +3,7 @@
 ## Two owners, not two competing story directors
 
 - **Current guide** owns the world frame, one active Chapter, connected present Arcs/Subplots and selected writer guidance.
-- **Future planner** owns a separate, private outlook of up to **6, 10 (default), or 15** provisional Chapters. Capacity is a ceiling, not a quota. It cannot write current cards, advance time, inject writer context or establish historical events.
+- **Future planner** owns a separate, private outlook of up to **6 (default), 10, or 15** provisional Chapters. Capacity is a ceiling, not a quota. It cannot write current cards, advance time, inject writer context or establish historical events.
 - **Writer and player** still determine actual play. Preparation is not accepted history. Player actions, decisions and outcomes remain open.
 
 Chapter is Tale Fairy's broad story unit, including what a franchise calls an arc or saga, or a meaningful phase of a simulation. Future planning does not create unattached lower-level Arcs. A dormant current Arc remains unfinished current business, not a slot in a future itinerary.
@@ -103,3 +103,9 @@ With Continuity support enabled, every future pass can read the entire published
 Install/update the repository's server `plugin` alongside the extension, **restart SillyTavern, then reload the browser** for browser-independent future recovery (`futureJobs: 1`). Without that capability, future planning falls back to a browser-bound request rather than sending an incompatible job. Compatible server jobs can finish while the browser is closed, with bounded retries only for temporary failures before output; they do not survive a SillyTavern server restart. Recovery polling never buys new planning on its own.
 
 These safeguards constrain storage, ownership, transport, cost and what is exposed to the writer. They do not prove an AI's canon knowledge, inference quality, semantic deduplication or respect for narrative nuance. Inspect the private outlook and supply explicit author direction when needed.
+
+## Planner context capacity
+
+The default outlook capacity is six Chapters and default reasoning is Low. Existing installs using the former ten-Chapter default or Auto reasoning migrate once; other custom selections remain unchanged. A later deliberate choice of ten Chapters or Auto is preserved.
+
+**Total planner input target** is a fitting target. Complete source references, fresh play and a fresh Continuity Memory story summary can exceed it. **Planner context window** is the combined ceiling for input, output and reasoning, with a separate framing reserve. It defaults to 32,768 tokens; choose the actual capacity of your direct endpoint. A smaller context limit from the active ST connection or a selected profile preset takes precedence. Hidden reasoning headroom is capped to the remaining space. When complete required input and visible output cannot fit, Tale Fairy reports the local capacity error before sending a request. Ordinary failed reviews keep their saved preparation. Full rebuild still clears generated preparation first.

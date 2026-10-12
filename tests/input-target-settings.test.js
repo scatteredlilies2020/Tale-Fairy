@@ -7,10 +7,11 @@ import * as budgets from '../extension/planner-budgets.js';
 import * as role from '../extension/injection-role.js';
 import { normalizeReasoningMode } from '../extension/reasoning-policy.js';
 import { futureInterval, futureCapacity } from '../extension/future-planner.js';
+import { normalizePlannerContext } from '../extension/planner-capacity.js';
 
 const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
 function settingsHarness(stored = {}) {
-    const scope = vm.createContext({ ...schedule, ...budgets, ...role, normalizeReasoningMode, futureInterval, futureCapacity,
+    const scope = vm.createContext({ ...schedule, ...budgets, ...role, normalizeReasoningMode, normalizePlannerContext, futureInterval, futureCapacity,
         extension_settings: { test: structuredClone(stored) }, EXTENSION_ID: 'test' });
     for (const name of ['INJECTION_POSITIONS', 'DEFAULT_SETTINGS']) {
         vm.runInContext(source.match(new RegExp(`const ${name} = [^\\n]+`))[0], scope);
@@ -26,7 +27,7 @@ test('fresh installs and the old 8k default get the 10k ingestion target', () =>
     for (const stored of [{}, { contextSettingsVersion: 13, maxPromptTokens: 8000 }]) {
         const scope = settingsHarness(stored);
         assert.equal(scope.getSettings().maxPromptTokens, 10000);
-        assert.equal(scope.getSettings().contextSettingsVersion, 15);
+        assert.equal(scope.getSettings().contextSettingsVersion, 16);
     }
 });
 
@@ -49,11 +50,30 @@ test('custom smaller targets and later explicit 8k choices survive reload', () =
 
 test('new future defaults and deliberately chosen canon/capacity settings survive reload', () => {
     const fresh = settingsHarness().getSettings();
-    assert.equal(fresh.futureCanon, true); assert.equal(fresh.futureCapacity, 10);
+    assert.equal(fresh.futureCanon, true); assert.equal(fresh.futureCapacity, 6);
     for (const capacity of [6, 10, 15]) {
         const saved = settingsHarness({ futureCanon: false, futureCapacity: String(capacity) }).getSettings();
         assert.equal(saved.futureCanon, false); assert.equal(saved.futureCapacity, capacity);
         assert.equal(settingsHarness(saved).getSettings().futureCapacity, capacity);
     }
-    assert.equal(settingsHarness({ futureCapacity: 999 }).getSettings().futureCapacity, 10);
+    assert.equal(settingsHarness({ futureCapacity: 999 }).getSettings().futureCapacity, 6);
+});
+
+test('safer planning defaults migrate once and later deliberate choices survive', () => {
+    const fresh = settingsHarness().getSettings();
+    assert.equal(fresh.plannerContextTokens, 32768);
+    assert.equal(fresh.analysisReasoningMode, 'low');
+    const migrated = settingsHarness({ contextSettingsVersion: 15, futureCapacity: 10, analysisReasoningMode: 'auto' }).getSettings();
+    assert.equal(migrated.futureCapacity, 6);
+    assert.equal(migrated.analysisReasoningMode, 'low');
+    migrated.futureCapacity = 10;
+    migrated.analysisReasoningMode = 'auto';
+    migrated.plannerContextTokens = 65536;
+    const restored = settingsHarness(migrated).getSettings();
+    assert.equal(restored.futureCapacity, 10);
+    assert.equal(restored.analysisReasoningMode, 'auto');
+    assert.equal(restored.plannerContextTokens, 65536);
+    const custom = settingsHarness({ contextSettingsVersion: 15, futureCapacity: 15, analysisReasoningMode: 'high' }).getSettings();
+    assert.equal(custom.futureCapacity, 15);
+    assert.equal(custom.analysisReasoningMode, 'high');
 });
