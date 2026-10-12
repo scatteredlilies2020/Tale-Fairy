@@ -64,11 +64,16 @@
       <div class="living-world-guide-card">
         <h4>Private future Chapters</h4>
         <label class="checkbox_label"><input type="checkbox" data-setting="future-enabled"><span>Enable separate future planning</span></label>
+        <label class="checkbox_label"><input type="checkbox" data-setting="future-canon"><span>Include canon-based future Chapters</span></label>
+        <label>Future Chapter capacity
+          <select class="text_pole" data-setting="future-capacity"><option value="6">6</option><option value="10" selected>10 (default)</option><option value="15">15</option></select>
+        </label>
+        <small>Unchecked: generate Original prospects; saved Canon prospects stay inactive. Canon remains world background. Canon has no priority over Original prospects; unselected saved Canon cards wait for reassessment.</small>
         <label>Future review interval (accepted assistant replies)
           <input class="text_pole" type="number" data-setting="future-interval" min="4" max="200" step="1" value="40">
         </label>
         <small>First Guide now and every Full rebuild launch both planners. Afterwards, future planning runs at this interval or after meaningful long-range changes. Reply counts never advance fictional time. Explicit “Time skip:” author directions also request reassessment.</small>
-        <small>The private outlook holds up to six provisional Chapters, labeled Canon (including adapted/adjacent) or Original. Conditions can prevent or transform them. No future lower-level Arcs or Subplots.</small>
+        <small>Capacity is a ceiling, not a quota. Concise Canon (including adapted/adjacent) and Original prospects may branch, converge or develop independently. Their provisional order is not an event queue; changed causes can transform or prevent events without replacement crises.</small>
         <small>Active-route requests serialize safely; direct/profile requests can run side by side.</small>
       </div>
 
@@ -168,14 +173,17 @@
         <h4>Guide controls</h4>
         <div class="living-world-guide-button-row">
           <button class="menu_button" data-action="guide" type="button" title="Refresh context and plans"><i class="fa-solid fa-wand-magic-sparkles"></i> <span data-role="guide-label">Guide now</span></button>
-          <button class="menu_button" data-action="plan-future" type="button" title="Update only private future Chapters; leave current guidance unchanged"><i class="fa-solid fa-calendar-days"></i> Plan future now</button>
+          <span class="tf-future-actions" role="group" aria-label="Future planning">
+            <button class="menu_button" data-action="plan-future" type="button" title="Develop and reassess the private outlook; leave current guidance unchanged"><i class="fa-solid fa-calendar-days"></i> Update future plans</button>
+            <button class="menu_button" data-action="reroll-future" type="button" title="Replace Original prospects with different possibilities; preserve useful Canon prospects"><i class="fa-solid fa-dice"></i> Reroll future plans</button>
+          </span>
           <button class="menu_button" data-action="rebuild" type="button" title="Delete all generated plans, archives and cached guidance, then rebuild from current chat context"><i class="fa-solid fa-arrows-rotate"></i> Full rebuild</button>
           <button class="menu_button" data-action="stop" type="button" disabled><i class="fa-solid fa-stop"></i> Stop analysis</button>
           <button class="menu_button" data-action="reset-settings" type="button" title="Restore default settings; keep the notebook"><i class="fa-solid fa-arrow-rotate-left"></i> Reset settings</button>
           <button class="menu_button" data-action="reset" type="button"><i class="fa-solid fa-trash-can"></i> Delete guide state</button>
         </div>
         <div class="living-world-guide-status">Future planner: <span data-role="future-status" role="status" aria-live="polite">Not yet planned</span></div>
-        <small>Plan future now updates only the private outlook, leaving current cards and writer guidance unchanged.</small>
+        <small>Update develops the outlook. Reroll replaces Original ideas while preserving useful Canon prospects, leaving current cards and writer guidance unchanged. Each action uses one request.</small>
         <small>Guide now updates current plans and checks whether future planning is due. Full rebuild clears both preparations first, preserving pacing and author notes. Calls save independently; a failed call leaves only its own preparation empty.</small>
         <small>Reset settings keeps the notebook and stored API keys, and resets the selected connection.</small>
         <small>One request updates story possibilities and selects NPC/world activity. Existing memory supplies context; the planner writes no history summary.</small>

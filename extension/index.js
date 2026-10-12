@@ -1,14 +1,14 @@
 import { sha256 } from './sha256.js?v=0.20.1';
-import { renderFutureCards } from './future-cards.js?future-cards=1';
-import { campaignAuthorInstructions, campaignPayloadBudget, campaignUsable, campaignMaterialUsable, campaignWriterUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1';
-import { directorInput as ownedInput, directorPass as ownedPass, nextPlanRevision, DIRECTOR_SCHEMA as OWNED_SCHEMA, DIRECTOR_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './story-director.js?story-workshop=1&story-horizons=1&story-progression=1&rp-activities=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&full-rebuild=1&empty-fields=1&open-scope=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&no-phase=1&present-future=1&creative-planning=1&fresh-summary=1&world-frame=1&frame-stability=1&rp-world-frame=1&portable-frame=1&genre-frame=1&arc-focus=1&saga-hierarchy=1&chapter-labels=1&future-chapters=1&chapter-scope=2&story-persistence=1';
-import { fitStoryInputBudget } from './story-budget.js?follow-through=1&compaction=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1&horizon-links=3&story-structure=1&ensemble-pressure=1&story-cards=1&player-cards=1&creative-planning=1&portable-frame=1';
+import { renderFutureCards } from './future-cards.js?future-cards=1&future-controls=1&causal-futures=1';
+import { campaignAuthorInstructions, campaignPayloadBudget, campaignUsable, campaignMaterialUsable, campaignWriterUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1';
+import { directorInput as ownedInput, directorPass as ownedPass, nextPlanRevision, DIRECTOR_SCHEMA as OWNED_SCHEMA, DIRECTOR_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './story-director.js?story-workshop=1&story-horizons=1&story-progression=1&rp-activities=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&full-rebuild=1&empty-fields=1&open-scope=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&no-phase=1&present-future=1&creative-planning=1&fresh-summary=1&world-frame=1&frame-stability=1&rp-world-frame=1&portable-frame=1&genre-frame=1&arc-focus=1&saga-hierarchy=1&chapter-labels=1&future-chapters=1&chapter-scope=2&story-persistence=1&future-controls=1&causal-futures=1';
+import { fitStoryInputBudget } from './story-budget.js?follow-through=1&compaction=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1&horizon-links=3&story-structure=1&ensemble-pressure=1&story-cards=1&player-cards=1&creative-planning=1&portable-frame=1&future-controls=1';
 import { readCampaignContinuity } from './campaign-continuity.js';
 // Keep the public registration URL stable so external adapters share this registry.
 import { readEvidenceProviders, evidenceRevisionKey } from './evidence-providers.js?story-lifecycle=1';
 import { campaignEvidenceMessages, campaignReviewWindow } from './campaign-evidence.js?fresh-summary=1';
-import { campaignReviewedCount, campaignCheckpoint, campaignReconsideration, verifiedClosedSubjects } from './campaign-review.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1';
-import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.36&token-budget=1&rp-plot=1&progress=1&follow-through=1&working-plan=1&recovery=1&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&planner-timeout=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&server-jobs=1&chapter-labels=1&future-chapters=1';
+import { campaignReviewedCount, campaignCheckpoint, campaignReconsideration, verifiedClosedSubjects } from './campaign-review.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1';
+import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.36&token-budget=1&rp-plot=1&progress=1&follow-through=1&working-plan=1&recovery=1&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&planner-timeout=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&server-jobs=1&chapter-labels=1&future-chapters=1&future-controls=1';
 import { campaignAttemptSummary } from './planner-progress.js?v=1&recovery=1&review-checkpoint=1&story-workshop=1&request-policy=2&story-director=1&planner-timeout=1&server-jobs=1';
 import { finalizeNotebookCompactions, writeNotebookArchive } from './notebook-compaction.js?v=0.14.22';
 import { eventSource, event_types, extension_prompt_roles, extension_prompt_types, generateRaw, Generate, setExtensionPrompt, getRequestHeaders, getCharacterCardFields, saveSettingsDebounced } from '/script.js';
@@ -17,8 +17,8 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, buildStoryEvidence, storyEvidenceQuery, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.22&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultPlannerState as defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadPlannerState as loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.23&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1';
+import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, buildStoryEvidence, storyEvidenceQuery, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.22&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultPlannerState as defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadPlannerState as loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.23&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1';
 import { isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.22';
 import { selectSituationalOpenings } from './situations.js?v=0.13.9';
 import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.14.22';
@@ -44,18 +44,18 @@ import { hasUsableCausalContext } from './causal-context.js?v=0.14.22';
 import { formatHiddenMotives } from './scratchpad-format.js?v=0.13.9';
 import { renderStoryCards } from './story-cards.js?story-cards=1&player-cards=1&no-phase=1&present-future=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&world-frame=1&saga-hierarchy=1&chapter-labels=1';
 import { WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA } from './world-planner.js?v=0.14.22';
-import { buildWorldPlannerPrompt } from './analysis.js?v=0.14.22&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1';
+import { buildWorldPlannerPrompt } from './analysis.js?v=0.14.22&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1';
 import { defaultPreparedWorld, preparedWorldUsable, unchangedSourcePrefix, stampPreparedWorld } from './prepared-world.js?v=0.14.22';
 import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.9';
-import { canRetainSuccessfulPlan, createSafetyFallbackState } from './fallback-direction.js?v=0.14.22&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1';
+import { canRetainSuccessfulPlan, createSafetyFallbackState } from './fallback-direction.js?v=0.14.22&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1';
 import { classifyAssistantReply } from './response-usability.js?v=0.13.9';
-import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, legacyPlotInputKey, migrateCampaignBudgetKeys, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.34&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1';
+import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, legacyPlotInputKey, migrateCampaignBudgetKeys, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.34&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1';
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 import { ActivatedStoryContext, readHostStoryEvidence } from './rp-context.js?story-lifecycle=1';
 import { campaignJobMeta, campaignJobMatches, recoverCampaignJob } from './campaign-jobs.js?server-jobs=1&future-chapters=1';
 import { FUTURE_KEY, FUTURE_ATTEMPT_KEY, FUTURE_RECEIPTS_KEY, PLANNING_EPOCH_KEY,
-    futureInterval, futureReceipts, futureForDirector, validFuture, usableFuture } from './future-planner.js?v=0.20.0&future-chapters=1&chapter-labels=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1&chapter-scope=2&future-cards=1';
-import { createFutureHost, serializeActivePlanner } from './future-host.js?v=0.20.0&future-chapters=1&chapter-labels=1&server-jobs=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&story-director=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1&chapter-scope=2&future-cards=1';
+    futureInterval, futureCapacity, futureOptions, futureReceipts, futureForDirector, validFuture, usableFuture } from './future-planner.js?v=0.20.0&future-chapters=1&chapter-labels=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1&chapter-scope=2&future-cards=1&future-controls=1&causal-futures=1';
+import { createFutureHost, serializeActivePlanner } from './future-host.js?v=0.20.0&future-chapters=1&chapter-labels=1&server-jobs=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&story-director=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1&chapter-scope=2&future-cards=1&future-controls=1&causal-futures=1';
 
 const activatedStoryContext = new ActivatedStoryContext();
 
@@ -72,7 +72,7 @@ const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
 const INJECTION_POSITIONS = new Set(['before-main', 'after-main', 'before-character-definitions', 'after-character-definitions', 'before-example-messages', 'after-example-messages', 'before-an', 'after-an', 'before-chat-history', 'after-chat-history', 'before-jailbreak', 'after-jailbreak', 'at-depth']);
-const DEFAULT_SETTINGS = { enabled: true, futureEnabled: true, futureInterval: 40, mode: 'balanced', analysisProfileId: '', analysisSource: 'active', analysisProvider: 'custom', analysisModel: '', analysisUrl: '', analysisSecretId: '', analysisReasoningMode: 'auto', analysisTemperature: 1, directSettingsMigrated: false, directCustomModel: '', directCustomUrl: '', directCustomSecretId: '', directOpenRouterModel: '', directOpenRouterUrl: '', directOpenRouterSecretId: '', injectionPosition: 'at-depth', injectionDepth: 1, injectionRole: DEFAULT_INJECTION_ROLE, includeWorldInfo: false, showDirectorNotes: false, recentContextTokens: 6000, messageTokenLimit: 700, maxPromptTokens: 10000, continuityIntegration: true, summaryContextTokens: 1000, fullReviewInterval: DEFAULT_REFRESH_INTERVAL, contextSettingsVersion: 15 };
+const DEFAULT_SETTINGS = { enabled: true, futureEnabled: true, futureInterval: 40, futureCanon: true, futureCapacity: 10, mode: 'balanced', analysisProfileId: '', analysisSource: 'active', analysisProvider: 'custom', analysisModel: '', analysisUrl: '', analysisSecretId: '', analysisReasoningMode: 'auto', analysisTemperature: 1, directSettingsMigrated: false, directCustomModel: '', directCustomUrl: '', directCustomSecretId: '', directOpenRouterModel: '', directOpenRouterUrl: '', directOpenRouterSecretId: '', injectionPosition: 'at-depth', injectionDepth: 1, injectionRole: DEFAULT_INJECTION_ROLE, includeWorldInfo: false, showDirectorNotes: false, recentContextTokens: 6000, messageTokenLimit: 700, maxPromptTokens: 10000, continuityIntegration: true, summaryContextTokens: 1000, fullReviewInterval: DEFAULT_REFRESH_INTERVAL, contextSettingsVersion: 15 };
 let settings = null;
 let analysisPromise = null;
 let campaignSession = null;
@@ -229,6 +229,8 @@ function getSettings() {
     settings.contextSettingsVersion = DEFAULT_SETTINGS.contextSettingsVersion;
     settings.fullReviewInterval = normalizePlannerSchedule({ refreshInterval: settings.fullReviewInterval }).refreshInterval;
     settings.futureEnabled ??= true;
+    settings.futureCanon ??= true;
+    settings.futureCapacity = futureCapacity(settings.futureCapacity);
     settings.futureInterval = futureInterval(settings.futureInterval);
     if (!settings.directSettingsMigrated) {
         const legacySource = settings.analysisSource === 'openrouter' || settings.analysisProvider === 'openrouter' ? 'openrouter' : 'direct';
@@ -846,9 +848,11 @@ function renderFutureBoard() {
     if (target) {
         const snapshot = readCampaignSnapshot();
         const excluded = new Set(futureReceipts(context.chatMetadata, snapshot, campaignFingerprint).map(r => r.id));
-        const visible = outlook && { ...outlook, cards: Array.isArray(outlook.cards)
+        const visible = outlook && { ...outlook, parkedCanon: Array.isArray(outlook.parkedCanon)
+            ? outlook.parkedCanon.filter(c => !excluded.has(c?.id)) : outlook.parkedCanon, cards: Array.isArray(outlook.cards)
             ? outlook.cards.filter(c => !excluded.has(c?.id)) : outlook.cards };
         renderFutureCards(target, visible, context.chatMetadata?.[FUTURE_ATTEMPT_KEY], {
+            ...futureOptions(getSettings()),
             invalid: Boolean(outlook && !validFuture(outlook)),
             stale: Boolean(outlook?.revision && !usableFuture({ ...snapshot, state: outlook }, campaignFingerprint)),
         });
@@ -856,6 +860,7 @@ function renderFutureBoard() {
     const running = Boolean(futureHost?.pending);
     const root = document.querySelector(`#${EXTENSION_ID}-settings`);
     root?.querySelector('[data-action="plan-future"]')?.toggleAttribute('disabled', running || !getSettings().enabled || !getSettings().futureEnabled);
+    root?.querySelector('[data-action="reroll-future"]')?.toggleAttribute('disabled', running || !getSettings().enabled || !getSettings().futureEnabled);
     root?.querySelector('[data-action="stop"]')?.toggleAttribute('disabled', !running && !campaignHostWork && !analysisPromise);
     const status = root?.querySelector('[data-role="future-status"]');
     if (status) status.textContent = !getSettings().futureEnabled ? 'Disabled · saved outlook retained'
@@ -867,12 +872,12 @@ function scheduleFuturePlanning(options = {}) {
     return getFutureHost().run(options);
 }
 
-async function planFutureNow() {
+async function planFutureNow(mode = 'update') {
     const chatId = String(currentContext().getCurrentChatId?.() || '');
     const sequence = analysisStopSequence;
     await warmPlotWorldInputs(currentContext());
     if (sequence !== analysisStopSequence || chatId !== String(currentContext().getCurrentChatId?.() || '')) return;
-    return scheduleFuturePlanning({ manual: true });
+    return scheduleFuturePlanning({ manual: true, mode });
 }
 
 async function disableFuturePlanning() {
@@ -938,7 +943,7 @@ function readCampaignSnapshot() {
             .filter(name => typeof name === 'string' && name.trim()))],
         referenceHash,
         requestSignature: campaignFingerprint({ epoch: context.chatMetadata?.[PLANNING_EPOCH_KEY] || '', recovery: 1, reviewCheckpoint: 1, contract: OWNED_SCHEMA, prompt: OWNED_SYSTEM, settings: Object.fromEntries(['analysisSource', 'analysisProvider', 'analysisProfileId',
-            'analysisModel', 'analysisUrl', 'analysisSecretId', 'analysisReasoningMode', 'analysisTemperature', 'maxPromptTokens', 'continuityIntegration', 'summaryContextTokens']
+            'analysisModel', 'analysisUrl', 'analysisSecretId', 'analysisReasoningMode', 'analysisTemperature', 'maxPromptTokens', 'continuityIntegration', 'summaryContextTokens', 'futureEnabled', 'futureCanon', 'futureCapacity']
             .map(key => [key, s[key]])) }),
         reference,
         continuity, evidence,
@@ -948,7 +953,7 @@ function readCampaignSnapshot() {
         inputBudget: plannerInputLimit(Number(s.maxPromptTokens) || 10000),
     };
     snapshot.futureCards = s.futureEnabled === true ? futureForDirector(context.chatMetadata?.[FUTURE_KEY], snapshot,
-        campaignFingerprint, futureReceipts(context.chatMetadata, snapshot, campaignFingerprint)) : [];
+        campaignFingerprint, futureReceipts(context.chatMetadata, snapshot, campaignFingerprint), futureOptions(s)) : [];
     return snapshot;
 }
 
@@ -3736,7 +3741,7 @@ async function mountUI() {
     uiMountPromise = (async () => {
     // Load the template relative to this module so the extension works from
     // third-party/Tale-Fairy as well as any legacy installation directory.
-    const response = await fetch(new URL(`./settings.html?v=${RUNTIME_VERSION}&progress=1&working-plan=1&soft-targets=1&story-map=1&story-goal=2&full-rebuild=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&fresh-summary=1&future-cards=1`, import.meta.url));
+    const response = await fetch(new URL(`./settings.html?v=${RUNTIME_VERSION}&progress=1&working-plan=1&soft-targets=1&story-map=1&story-goal=2&full-rebuild=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&fresh-summary=1&future-cards=1&future-controls=1&causal-futures=1`, import.meta.url));
     if (!response.ok) {
         throw new Error(`Could not load Tale Fairy settings: ${response.status} ${response.statusText}`);
     }
@@ -3825,6 +3830,12 @@ async function mountUI() {
     root.querySelector('[data-setting="future-interval"]').addEventListener('change', e => {
         s.futureInterval = futureInterval(e.target.value); e.target.value = s.futureInterval; save();
     });
+    root.querySelector('[data-setting="future-canon"]').addEventListener('change', e => {
+        s.futureCanon = e.target.checked; save(); renderFutureBoard();
+    });
+    root.querySelector('[data-setting="future-capacity"]').addEventListener('change', e => {
+        s.futureCapacity = futureCapacity(e.target.value); e.target.value = s.futureCapacity; save(); renderFutureBoard();
+    });
     root.querySelector('[data-setting="full-review-interval"]').addEventListener('change', e => { s.fullReviewInterval = campaignMode()
         ? Math.min(20, Math.max(4, Math.floor(Number(e.target.value) || DEFAULT_REFRESH_INTERVAL)))
         : normalizePlannerSchedule({ refreshInterval: e.target.value }).refreshInterval; e.target.value = s.fullReviewInterval; save(); });
@@ -3859,6 +3870,10 @@ async function mountUI() {
     root.querySelector('[data-action="plan-future"]').addEventListener('click', async () => {
         try { await planFutureNow(); }
         catch (error) { root.querySelector('[data-role="future-status"]').textContent = `Future planning failed: ${error.message}`; }
+    });
+    root.querySelector('[data-action="reroll-future"]').addEventListener('click', async () => {
+        try { await planFutureNow('reroll'); }
+        catch (error) { root.querySelector('[data-role="future-status"]').textContent = `Future reroll failed: ${error.message}`; }
     });
     root.querySelector('[data-action="stop"]').addEventListener('click', stopAnalysis);
     root.querySelector('[data-action="reset-settings"]').addEventListener('click', () => resetSettingsToDefaults(root));
@@ -3939,6 +3954,10 @@ function refreshControls(root = document.querySelector(`#${EXTENSION_ID}-setting
     const reviewInterval = root.querySelector('[data-setting="full-review-interval"]');
     const futureEnabled = root.querySelector('[data-setting="future-enabled"]');
     if (futureEnabled) futureEnabled.checked = s.futureEnabled !== false;
+    const futureCanon = root.querySelector('[data-setting="future-canon"]');
+    if (futureCanon) futureCanon.checked = s.futureCanon !== false;
+    const futureCount = root.querySelector('[data-setting="future-capacity"]');
+    if (futureCount) futureCount.value = futureCapacity(s.futureCapacity);
     const futureCadence = root.querySelector('[data-setting="future-interval"]');
     if (futureCadence) futureCadence.value = futureInterval(s.futureInterval);
     reviewInterval.min = campaign ? '4' : '3';

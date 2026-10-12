@@ -3,13 +3,55 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 import { futureCardsHtml, renderFutureCards } from '../extension/future-cards.js';
-import { validFuture } from '../extension/future-planner.js';
+import { validFuture, futureOptions } from '../extension/future-planner.js';
 
 const card = () => ({ id: 'f1-winter', title: 'The Missing Winter Convoys', category: 'Original',
     premise: 'Medicine convoys disappear before snow closes the mountain pass.', pressures: [],
     timing: 'A possible winter Chapter.', favors: 'Clinics ask for help if shipments remain missing.',
     prevents: 'Restored deliveries could prevent the crisis.', transition: '', outlook: '' });
 const saved = cards => ({ version: 1, revision: 1, cards });
+
+test('canon-off and overflow prospects remain visibly saved but inactive', () => {
+    const canon = { ...card(), id: 'f1-canon', category: 'Canon', title: 'Canon possibility' };
+    const state = { ...saved([card(), canon]), parkedCanon: [{ ...canon, id: 'f1-parked', title: 'Parked possibility' }] };
+    const before = structuredClone(state);
+    const html = futureCardsHtml(state, undefined, { includeCanon: false, capacity: 6 });
+    assert.equal((html.match(/Future Chapter · Inactive/g) || []).length, 2);
+    assert.equal((html.match(/<article /g) || []).length, 3);
+    assert.match(html, /Inactive prospects stay saved/);
+    assert.deepEqual(state, before);
+    const crowded = saved(Array.from({ length: 15 }, (_, i) => ({ ...card(), id: `f1-${i}` })));
+    assert.equal((futureCardsHtml(crowded, undefined, { capacity: 6 }).match(/Future Chapter · Inactive/g) || []).length, 9);
+});
+
+test('board preserves mixed active order and shows held Canon separately without changing storage', () => {
+    const state = { ...saved([{ ...card(), id: 'f1-near', title: 'Near Original' },
+        { ...card(), id: 'f1-canon', title: 'Later Canon', category: 'Canon' },
+        { ...card(), id: 'f1-other', title: 'Independent Original' }]),
+        parkedCanon: [{ ...card(), id: 'f1-held', title: 'Held Canon', category: 'Canon' }] };
+    const before = structuredClone(state), html = futureCardsHtml(state);
+    assert.ok(html.indexOf('Near Original') < html.indexOf('Later Canon'));
+    assert.ok(html.indexOf('Later Canon') < html.indexOf('Independent Original'));
+    assert.ok(html.indexOf('Independent Original') < html.indexOf('Held Canon'));
+    assert.equal((html.match(/Future Chapter · Inactive/g) || []).length, 1);
+    assert.match(html, /Provisional order, not an event queue/);
+    assert.deepEqual(state, before);
+});
+
+test('Update and Reroll are adjacent in one nonwrapping action group with independent handlers', () => {
+    const html = readFileSync(new URL('../extension/settings.html', import.meta.url), 'utf8');
+    const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
+    const css = readFileSync(new URL('../extension/style.css', import.meta.url), 'utf8');
+    const group = html.match(/<span class="tf-future-actions"[^]*?<\/span>/)[0];
+    assert.equal((group.match(/<button /g) || []).length, 2);
+    assert.ok(group.indexOf('data-action="plan-future"') < group.indexOf('data-action="reroll-future"'));
+    assert.match(group, /Update future plans/); assert.match(group, /Reroll future plans/);
+    assert.match(css, /\.tf-future-actions\s*\{[^}]*display:\s*inline-flex/);
+    const handler = source.slice(source.indexOf("root.querySelector('[data-action=\"reroll-future\"]').addEventListener"));
+    assert.ok(handler.slice(0, handler.indexOf('\n    });')).includes("await planFutureNow('reroll')"));
+    assert.match(html, /data-setting="future-canon"/);
+    assert.match(html, /value="6"[^]*value="10" selected[^]*value="15"/);
+});
 
 test('future cards show a short premise and a few notes without changing saved preparation', () => {
     const state = saved([card(), { ...card(), id: 'f1-canon', title: 'A Canon Possibility', category: 'Canon' }]);
@@ -78,7 +120,7 @@ test('host renders cards after excluding adopted prospects and withholds corrupt
     const scope = { currentContext: () => context, FUTURE_KEY: 'future', FUTURE_ATTEMPT_KEY: 'attempt',
         document: { querySelector: selector => selector.includes('data-role="future-cards"') ? target : null },
         readCampaignSnapshot: () => ({}), futureReceipts: () => [{ id: 'f1-adopted' }],
-        campaignFingerprint() {}, usableFuture: () => true, validFuture, renderFutureCards,
+        campaignFingerprint() {}, usableFuture: () => true, validFuture, renderFutureCards, futureOptions, getSettings: () => ({}),
         futureHost: null, EXTENSION_ID: 'test' };
     vm.createContext(scope);
     vm.runInContext(source.match(/function renderFutureBoard\([^]*?^}/m)[0], scope);

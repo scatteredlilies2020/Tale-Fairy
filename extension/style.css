@@ -85,6 +85,17 @@
     margin: 8px 0;
 }
 
+.tf-future-actions {
+    display: inline-flex;
+    gap: 6px;
+    max-width: 100%;
+}
+.tf-future-actions > button {
+    flex: 1 1 0;
+    min-width: 0;
+    white-space: normal;
+}
+
 .living-world-guide-temperature {
     display: flex;
     align-items: center;

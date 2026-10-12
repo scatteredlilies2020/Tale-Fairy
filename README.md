@@ -26,7 +26,9 @@ Cards describe what a story is about and how it influences the world. Several st
 
 Tale Fairy can also prepare possible future Chapters in a separate, private outlook. These can draw from canon or introduce original ideas.
 
-They are possibilities, not a fixed itinerary. Plans can change or be dropped as play develops, and future cards are not sent directly to the writing AI. You can refresh this outlook with **Plan future now** or turn future planning off.
+They are possibilities, not a fixed itinerary, and are not sent directly to the writing AI. Choose a capacity of **6, 10 (default), or 15** and whether to include canon-based prospects. **Update future plans** develops the outlook; the adjacent **Reroll future plans** replaces Original ideas while preserving useful Canon prospects. Disabling canon keeps saved canon prospects inactive, not deleted. You can also turn future planning off.
+
+Future planning follows the RP or simulation's own premise, scale and rules. Possibilities can branch, converge, coexist or develop independently. Different causes may support a similar event, but preventing it does not require a replacement crisis. Canon and Original prospects share a revisable order with no Canon-first priority; saved Canon cards can wait inactive without occupying every active slot.
 
 ## Getting started
 

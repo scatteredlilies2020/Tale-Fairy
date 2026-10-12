@@ -9,7 +9,7 @@ function preview(value, limit = 170) {
     return head.slice(0, boundary > limit / 2 ? boundary : limit).trimEnd() + '…';
 }
 const noteHtml = ([label, text]) => `<li><span class="tf-future-note-label">${escape(label)}</span> ${escape(text)}</li>`;
-function cardHtml(card) {
+function cardHtml(card, inactive = false) {
     const notes = [
         ['Timing', card.timing], ['Favors', card.favors], ['Could change', card.prevents],
         ...(card.pressures || []).map(p => [p.label, p.pressure]),
@@ -20,7 +20,7 @@ function cardHtml(card) {
     const hasMore = notes.length > brief.length || shortPremise !== card.premise
         || brief.some(([, text], i) => text !== notes[i][1]);
     return `<article class="tf-story-card tf-status-proposed tf-future-card">
-        <header class="tf-card-header"><span class="tf-card-kind">Future Chapter</span><span class="tf-card-badge">${escape(card.category)}</span></header>
+        <header class="tf-card-header"><span class="tf-card-kind">Future Chapter${inactive ? ' · Inactive' : ''}</span><span class="tf-card-badge">${escape(card.category)}</span></header>
         <h6 class="tf-card-title">${escape(card.title)}</h6>
         <p class="tf-card-description">${escape(shortPremise)}</p>
         ${brief.length ? `<ul class="tf-future-notes">${brief.map(noteHtml).join('')}</ul>` : ''}
@@ -29,15 +29,19 @@ function cardHtml(card) {
     </article>`;
 }
 
-export function futureCardsHtml(outlook, attempt, { stale = false, invalid = false } = {}) {
+export function futureCardsHtml(outlook, attempt, { stale = false, invalid = false, includeCanon = true, capacity = 10 } = {}) {
     const cards = Array.isArray(outlook?.cards) ? outlook.cards : [];
-    const status = attempt?.status || (cards.length ? 'saved' : 'not yet planned');
+    const parked = Array.isArray(outlook?.parkedCanon) ? outlook.parkedCanon : [];
+    const active = cards.filter(c => c && (includeCanon || c.category !== 'Canon')).slice(0, capacity);
+    const status = attempt?.status || (cards.length || parked.length ? 'saved' : 'not yet planned');
     return `<div class="tf-story-board tf-future-board">
         <div class="tf-board-topline"><span class="tf-card-label">Private possibilities</span><span>${escape(status)}</span></div>
+        <p class="tf-board-empty">Provisional order, not an event queue. Possibilities may change, coexist or never happen.</p>
         ${stale ? '<p class="tf-board-warning">Source changed. These saved possibilities await review.</p>' : ''}
         ${attempt?.error ? `<p class="tf-board-warning">Last request: ${escape(attempt.error)}</p>` : ''}
-        ${invalid ? '<p class="tf-board-warning">Saved outlook is invalid and withheld. Use Plan future now to replace it.</p>'
-            : cards.length ? `<div class="tf-story-grid">${cards.map(cardHtml).join('')}</div>`
+        ${parked.length || !includeCanon && cards.some(c => c?.category === 'Canon') || active.length < cards.length ? '<p class="tf-board-warning">Inactive prospects stay saved. Update to reassess their place; canon and capacity settings still apply.</p>' : ''}
+        ${invalid ? '<p class="tf-board-warning">Saved outlook is invalid and withheld. Use Update future plans to replace it.</p>'
+            : cards.length || parked.length ? `<div class="tf-story-grid">${[...cards, ...parked].map(c => cardHtml(c, !active.includes(c))).join('')}</div>`
                 : '<p class="tf-board-empty">No future Chapters saved.</p>'}
     </div>`;
 }

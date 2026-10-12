@@ -37,9 +37,9 @@ for (const example of ensemblePressureCases) test(`exact writer packet: ${exampl
     assert.doesNotMatch(report.writerPacket, /"(?:scratchpad|changeReason|owner|links|parentId)":/);
     assert.equal(packet.story_context[0].status, 'proposed');
     assert.ok(!report.writerPacket.includes(example.scratchpad));
-    assert.match(packet.movement_basis, /not a schedule of events/);
-    assert.match(packet.movement_basis, /Quiet scenes need no interruption/);
-    assert.match(packet.movement_basis, /Broader awareness is not character knowledge/);
+    assert.equal(packet.movement_basis, 'World frame: The RP’s enduring character and sources of activity. Pressure the world to continually produce the activities, opportunities, and tensions described here.');
+    assert.equal(packet.preparation_basis, 'Story cards: Ongoing stories and intended developments. Pressure the NPCs and world to bring these developments into play and advance them through concrete actions, events, and consequences.');
+    assert.equal(packet.effect_basis, undefined, 'do not spend writer space on unused effect framing');
     const request = JSON.stringify(report.plannerRequest);
     for (const player of example.playerNames) assert.ok(request.includes(player));
     assert.ok(request.includes(example.premise));

@@ -1,8 +1,8 @@
-import { CampaignSession } from './campaign-session.js?future-chapters=1&chapter-labels=1&server-jobs=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&story-director=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1';
+import { CampaignSession } from './campaign-session.js?future-chapters=1&chapter-labels=1&server-jobs=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&story-director=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1&future-controls=1';
 import { campaignJobMeta, campaignJobMatches, recoverCampaignJob } from './campaign-jobs.js?future-chapters=1&server-jobs=1';
-import { campaignUsable } from './campaign-planner.js?chapter-labels=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1';
-import { FUTURE_KEY, FUTURE_ATTEMPT_KEY, PLANNING_EPOCH_KEY, FUTURE_SCHEMA, FUTURE_OUTPUT_LIMIT,
-    emptyFuture, validFuture, futureDue, futureInput, futurePass, futureReceipts } from './future-planner.js?future-chapters=1&chapter-labels=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1&chapter-scope=2&future-cards=1';
+import { campaignUsable } from './campaign-planner.js?chapter-labels=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1&future-controls=1';
+import { FUTURE_KEY, FUTURE_ATTEMPT_KEY, PLANNING_EPOCH_KEY, FUTURE_SCHEMA, FUTURE_SYSTEM, futureOutputLimit, futureOptions,
+    emptyFuture, validFuture, futureDue, futureInput, futurePass, futureReceipts } from './future-planner.js?future-chapters=1&chapter-labels=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1&chapter-scope=2&future-cards=1&future-controls=1&causal-futures=1';
 
 // Only this owner writes future state. Current planning and future planning may
 // finish in either order; their revisions and compare-and-swap guards differ.
@@ -14,9 +14,10 @@ export function createFutureHost(api) {
         let attempt = metadata[FUTURE_ATTEMPT_KEY];
         const shared = api.sharedAttempt?.(base.chatId);
         if (shared?.chatId === base.chatId && (!attempt || shared.at >= attempt.at)) attempt = shared;
-        const snapshot = { ...base, baseState: base.state, state, attempt,
+        const options = futureOptions(api.settings());
+        const snapshot = { ...base, baseState: base.state, state, attempt, futureOptions: options,
             enabled: base.enabled && api.settings().futureEnabled !== false,
-            requestSignature: api.fingerprint({ base: base.requestSignature, schema: FUTURE_SCHEMA,
+            requestSignature: api.fingerprint({ base: base.requestSignature, schema: FUTURE_SCHEMA, system: FUTURE_SYSTEM, options,
                 epoch: metadata[PLANNING_EPOCH_KEY] || '' }) };
         snapshot.receipts = futureReceipts(metadata, snapshot, api.fingerprint);
         const reassessment = metadata.taleFairyFutureReassessment;
@@ -39,7 +40,8 @@ export function createFutureHost(api) {
         // A current review may have adopted a candidate while this call ran.
         // Filter receipts at commit, without invalidating the paid future pass.
         const excluded = new Set(latest.receipts.map(r => r.id));
-        api.write({ [FUTURE_KEY]: { ...state, cards: state.cards.filter(c => !excluded.has(c.id)) } });
+        api.write({ [FUTURE_KEY]: { ...state, cards: state.cards.filter(c => !excluded.has(c.id)),
+            parkedCanon: (state.parkedCanon || []).filter(c => !excluded.has(c.id)) } });
         void api.persist().catch(() => {});
         api.render();
         return true;
@@ -84,9 +86,10 @@ export function createFutureHost(api) {
             return { active: true, recovered: false };
         } finally { collecting = false; }
     };
-    const run = ({ manual = false, baseSnapshot } = {}) => {
+    const run = ({ manual = false, mode = 'update', baseSnapshot } = {}) => {
         if (pending) return pending;
         const initial = read(baseSnapshot);
+        initial.futureMode = manual && mode === 'reroll' ? 'reroll' : 'update';
         const startingStop = stopRevision;
         if (!initial.enabled || !initial.chatId || !initial.messages.length || initial.replacement
             || !manual && !futureDue(initial, api.fingerprint, api.settings().futureInterval)) return Promise.resolve({ accepted: false, skipped: 'not-due' });
@@ -103,7 +106,7 @@ export function createFutureHost(api) {
                     const meta = campaignJobMeta(snapshot, attempt, input, api.fingerprint);
                     meta.campaign.kind = 'future';
                     return api.generate(prompt, signal, meta, { singleShot: true, gatedActive: true, systemPrompt: system, schema,
-                        responseTokens: FUTURE_OUTPUT_LIMIT, label: 'future Chapters', cacheNamespace: 'future-chapters-v1' });
+                        responseTokens: futureOutputLimit(input.options?.capacity), label: 'future Chapters', cacheNamespace: 'future-chapters-v3' });
                 } });
             // Use the shared accepted snapshot even when current planning has
             // already saved; its state is deliberately not a future CAS guard.

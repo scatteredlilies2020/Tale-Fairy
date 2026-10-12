@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
 import { campaignAttemptSummary, PLANNER_RESPONSE_TIMEOUT_MS } from '../extension/planner-progress.js';
-import { futureInterval } from '../extension/future-planner.js';
+import { futureInterval, futureCapacity } from '../extension/future-planner.js';
 
 const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
 test('director tracker reports one story-planning request and uses a practical timeout', () => {
@@ -92,7 +92,7 @@ test('current planner hides inactive budgets and displays its effective review i
         }
         return elements.get(selector);
     } };
-    const scope = vm.createContext({ getSettings: () => settings, campaignMode: () => true, futureInterval,
+    const scope = vm.createContext({ getSettings: () => settings, campaignMode: () => true, futureInterval, futureCapacity,
         currentContext: () => ({}), loadState: () => ({ pacing: { mode: 'auto' } }),
         analysisConnectionChoice: () => 'direct', secret_state: {}, renderDirectModelOptions() {} });
     install(scope, ['refreshControls']);

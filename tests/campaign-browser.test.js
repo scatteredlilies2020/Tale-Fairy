@@ -224,8 +224,9 @@ const futureReply = prompt => ({ upsert: [{ id: `${JSON.parse(prompt).new_id_pre
     category: 'Original', premise: 'Three medicine convoys vanish before winter closes the pass.',
     pressures: [{ label: 'Clinics', pressure: 'Border clinic stocks cannot cover the winter.' }],
     favors: 'Deliveries remain disrupted.', prevents: 'Other carriers restore supply.', timing: 'After the current Chapter, if fitting.',
-    transition: 'Clinic requests can arrive during the aftermath.', outlook: 'Provisional.' }], retain: [], retire: [] });
-const bothReply = ({ prompt, spec }) => JSON.stringify(spec.schema.name === 'tale_fairy_future_chapters_v1' ? futureReply(prompt) : directorReply(prompt));
+    transition: 'Clinic requests can arrive during the aftermath.', outlook: 'Provisional.' }], retain: [], retire: [],
+    order: [`${JSON.parse(prompt).new_id_prefix}winter`] });
+const bothReply = ({ prompt, spec }) => JSON.stringify(spec.schema.name === 'tale_fairy_future_chapters_v3' ? futureReply(prompt) : directorReply(prompt));
 
 test('first Guide starts both independent calls from the same source and never adds a merge call', async () => {
     const gates = [];
@@ -254,6 +255,70 @@ test('manual future planning does not change current preparation or cached write
     await h.scope.startCampaignPlanning();
     assert.equal(h.requests.length, 4, 'ordinary Guide refreshes only current preparation');
     assert.ok(JSON.parse(h.requests.at(-1).prompt).private_future.length > 0);
+});
+
+test('host reroll changes only private originals and sends them through the next current review, never straight to the writer', async () => {
+    const h = browser(async args => {
+        if (args.spec.schema.name.includes('future_chapters') && JSON.parse(args.prompt).planning_options.mode === 'reroll') {
+            const result = futureReply(args.prompt);
+            Object.assign(result.upsert[0], { title: 'The Clockmakers Exhibition',
+                premise: 'Local artisans and young apprentices prepare competing mechanical gardens for a public exhibition.' });
+            return JSON.stringify(result);
+        }
+        return bothReply(args);
+    }, defaultPlannerState(), { director: true, future: true });
+    await h.scope.startCampaignPlanning(); await h.scope.getFutureHost().pending;
+    const before = JSON.stringify(h.state()), writer = h.prepare().payload;
+    await h.scope.planFutureNow('reroll');
+    assert.equal(h.requests.length, 3);
+    assert.equal(JSON.parse(h.requests.at(-1).prompt).planning_options.mode, 'reroll');
+    assert.equal(h.context.chatMetadata.taleFairyFuture.cards[0].title, 'The Clockmakers Exhibition');
+    assert.equal(JSON.stringify(h.state()), before);
+    assert.equal(h.prepare().payload, writer);
+    assert.doesNotMatch(writer, /Clockmakers|mechanical gardens|Winter Convoys/);
+    await h.scope.startCampaignPlanning();
+    assert.equal(h.requests.length, 4);
+    assert.equal(JSON.parse(h.requests.at(-1).prompt).private_future[0].title, 'The Clockmakers Exhibition');
+});
+
+test('mixed causal order and inactive Canon reach only the next current review, not the writer', async () => {
+    let futureCalls = 0, prospects;
+    const h = browser(async args => {
+        if (!args.spec.schema.name.includes('future_chapters')) return JSON.stringify(directorReply(args.prompt));
+        futureCalls++;
+        if (futureCalls === 1) {
+            const original = futureReply(args.prompt).upsert[0];
+            prospects = [{ ...original, id: 'f1-distant', category: 'Canon', title: 'Distant conditional possibility' },
+                { ...original, title: 'An independent near-term opportunity', prevents: 'Peaceful prevention needs no replacement crisis.' },
+                { ...original, id: 'f1-alternate', category: 'Canon', title: 'A surviving alternate route' }];
+            return JSON.stringify({ upsert: prospects, retain: [], retire: [], order: prospects.map(c => c.id) });
+        }
+        return JSON.stringify({ upsert: [], retain: [prospects[1].id], retire: [], order: [prospects[1].id, prospects[2].id] });
+    }, defaultPlannerState(), { director: true, future: true });
+    await h.scope.startCampaignPlanning(); await h.scope.getFutureHost().pending;
+    const before = JSON.stringify(h.state()), writer = h.prepare().payload;
+    await h.scope.planFutureNow();
+    assert.equal(futureCalls, 2);
+    assert.deepEqual(h.context.chatMetadata.taleFairyFuture.cards, [prospects[1], prospects[2]]);
+    assert.deepEqual(h.context.chatMetadata.taleFairyFuture.parkedCanon, [prospects[0]]);
+    assert.equal(JSON.stringify(h.state()), before); assert.equal(h.prepare().payload, writer);
+    assert.doesNotMatch(writer, /independent near-term|surviving alternate|replacement crisis/i);
+    await h.scope.startCampaignPlanning();
+    assert.equal(futureCalls, 2, 'no extra causal integration or repair call');
+    assert.deepEqual(JSON.parse(h.requests.at(-1).prompt).private_future, [prospects[1], prospects[2]]);
+});
+
+test('future preference changes invalidate an in-flight current review of the old outlook', async () => {
+    for (const [key, value] of [['futureCanon', false], ['futureCapacity', 6]]) {
+        let finish;
+        const h = browser(args => new Promise(resolve => { finish = () => resolve(bothReply(args)); }), defaultPlannerState(), { director: true });
+        const before = h.state().campaignPreparation;
+        const work = h.scope.analyzeCampaignNow({ manual: true });
+        for (let i = 0; i < 100 && !finish; i++) await settle();
+        assert.ok(finish); h.settings[key] = value; finish(); await work;
+        assert.deepEqual(h.state().campaignPreparation, before);
+        assert.equal(h.requests.length, 1);
+    }
 });
 
 test('Full rebuild resets both owners and accepts partial success without resurrecting old outlook', async () => {
@@ -669,7 +734,7 @@ test('host persists card effects without per-turn calls and stops them when the 
     await h.scope.analyzeCampaignNow();
     const packet = h.prepare().payload;
     assert.match(packet, /Shared kitchen/);
-    assert.match(packet, /author-level pressures/);
+    assert.match(packet, /Pressure the affected NPCs and world conditions/);
     for (let i = 0; i < 10; i++) {
         appendPlay(h); await h.scope.analyzeCampaignNow();
         assert.equal(h.prepare().payload, packet);

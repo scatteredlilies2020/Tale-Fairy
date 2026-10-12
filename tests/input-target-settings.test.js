@@ -6,11 +6,11 @@ import * as schedule from '../extension/planner-scheduler.js';
 import * as budgets from '../extension/planner-budgets.js';
 import * as role from '../extension/injection-role.js';
 import { normalizeReasoningMode } from '../extension/reasoning-policy.js';
-import { futureInterval } from '../extension/future-planner.js';
+import { futureInterval, futureCapacity } from '../extension/future-planner.js';
 
 const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
 function settingsHarness(stored = {}) {
-    const scope = vm.createContext({ ...schedule, ...budgets, ...role, normalizeReasoningMode, futureInterval,
+    const scope = vm.createContext({ ...schedule, ...budgets, ...role, normalizeReasoningMode, futureInterval, futureCapacity,
         extension_settings: { test: structuredClone(stored) }, EXTENSION_ID: 'test' });
     for (const name of ['INJECTION_POSITIONS', 'DEFAULT_SETTINGS']) {
         vm.runInContext(source.match(new RegExp(`const ${name} = [^\\n]+`))[0], scope);
@@ -45,4 +45,15 @@ test('custom smaller targets and later explicit 8k choices survive reload', () =
     scope.getSettings().maxPromptTokens = 8000;
     assert.equal(scope.getSettings().maxPromptTokens, 8000);
     assert.equal(settingsHarness(scope.getSettings()).getSettings().maxPromptTokens, 8000);
+});
+
+test('new future defaults and deliberately chosen canon/capacity settings survive reload', () => {
+    const fresh = settingsHarness().getSettings();
+    assert.equal(fresh.futureCanon, true); assert.equal(fresh.futureCapacity, 10);
+    for (const capacity of [6, 10, 15]) {
+        const saved = settingsHarness({ futureCanon: false, futureCapacity: String(capacity) }).getSettings();
+        assert.equal(saved.futureCanon, false); assert.equal(saved.futureCapacity, capacity);
+        assert.equal(settingsHarness(saved).getSettings().futureCapacity, capacity);
+    }
+    assert.equal(settingsHarness({ futureCapacity: 999 }).getSettings().futureCapacity, 10);
 });

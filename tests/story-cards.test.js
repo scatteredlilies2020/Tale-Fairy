@@ -38,7 +38,7 @@ for (const example of storyCardCases) test(`card lifecycle and exact writer tran
         assert.deepEqual(packet.story_context[i].effects, card.effects);
         assert.equal(packet.story_context[i].status, card.status);
     }
-    assert.match(packet.effect_basis, /author-level pressures/);
+    assert.equal(packet.effect_basis, 'Effects: Continuing influences attached to story cards. Pressure the affected NPCs and world conditions in each effect’s stated direction, making its influence tangible in behavior, relationships, and opportunities.');
     assert.match(packet.review_signal, /<!--tf-review-->/);
     assert.doesNotMatch(first.writerPacket, /"(?:scratchpad|changeReason|owner|links|parentId)":/);
     const after = decode(closed.writerPacket);
@@ -141,7 +141,7 @@ test('effects count toward the same hard writer budget and are never clipped', a
     const report = await evaluateCardCase(storyCardCases[1]);
     const plan = report.stages[0].plan;
     const original = JSON.stringify(plan);
-    const budget = campaignPayloadBudget({ workingPlan: plan }, ['Author direction: ' + 'Keep the setting consistent. '.repeat(140)]);
+    const budget = campaignPayloadBudget({ workingPlan: plan }, ['Author direction: ' + 'Keep the setting consistent. '.repeat(190)]);
     assert.ok(budget.omitted > 0);
     assert.equal(JSON.stringify(plan), original);
     const packet = decode(budget.payload);
