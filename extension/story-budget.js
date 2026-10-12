@@ -3,7 +3,8 @@ import { plannerMessages, PLANNER_OUTPUT_MODE } from './output-negotiation.js?v=
 import { compactProgressPayload, compactMessagePayload } from './planner-compaction.js';
 import { optionalPlannerContexts } from './planner-context.js?soft-targets=1&story-map=1&story-goal=2&story-throughline=1&story-life=1&creative-planning=1';
 
-// Capacity, not a fill target: leave room for richer cards and author notes.
+// Public output has a hard quota; private planning may be richer. Reserve
+// framing and author instructions before allocating selected story prose.
 export const WRITER_CONTEXT_TOKEN_LIMIT = 2400;
 const envelopes = new WeakMap();
 
@@ -125,6 +126,17 @@ export function storyContextPayload(material, authored, { legacyContracts = fals
 export function fitStoryContext(material, authored, options = {}) {
     const selected = [];
     const authorTokens = conservativeTokenCount(storyContextPayload([], authored, { ...options, orientation: '' }));
+    if (options.strictBudget) {
+        const payload = storyContextPayload(material, authored, options);
+        const tokens = conservativeTokenCount(payload);
+        const blocked = tokens > WRITER_CONTEXT_TOKEN_LIMIT;
+        // Never send an over-quota or silently partial packet. The director
+        // can rewrite public prose while keeping complete private story cards.
+        return { payload: blocked ? '' : payload, tokens: blocked ? 0 : tokens,
+            requiredTokens: tokens, limit: WRITER_CONTEXT_TOKEN_LIMIT, blocked,
+            omitted: 0, authorTokens, authorOverflow: authorTokens > WRITER_CONTEXT_TOKEN_LIMIT,
+            orientationOmitted: false };
+    }
     let fittedOptions = options;
     let payload = storyContextPayload(selected, authored, fittedOptions);
     const orientationOmitted = Boolean(options.orientation && conservativeTokenCount(payload) > WRITER_CONTEXT_TOKEN_LIMIT);

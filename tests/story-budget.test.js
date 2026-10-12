@@ -73,6 +73,33 @@ test('oversized integrated packets are omitted whole, not separated from their p
     assert.deepEqual(material, before);
 });
 
+test('strict writer quota refuses partial or overflowing packets without mutating complete material', () => {
+    const material = Array.from({ length: 4 }, (_, id) => ({ kind: 'arc', title: `Story ${id}`,
+        description: '故事'.repeat(200), development: 'Only after an invitation, they may collaborate.',
+        ends_when: 'The outcome remains open.', status: 'active',
+        effects: [{ label: 'Shared access', pressure: 'Resources remain limited until the bridge opens.' }] }));
+    const authored = ['Preserve <my instruction> exactly. '.repeat(250)];
+    const options = { storyStructure: true, orientation: '世界'.repeat(250), strictBudget: true };
+    const before = structuredClone({ material, authored, options });
+    const report = fitStoryContext(material, authored, options);
+    assert.equal(report.payload, ''); assert.equal(report.blocked, true);
+    assert.ok(report.requiredTokens > report.limit);
+    assert.equal(report.tokens, conservativeTokenCount(report.payload));
+    assert.equal(report.omitted, 0);
+    assert.equal(report.orientationOmitted, false);
+    assert.equal(report.authorOverflow, true);
+    assert.deepEqual({ material, authored, options }, before);
+    assert.doesNotMatch(report.payload, /<my instruction>/);
+    const smallMaterial = [{ description: 'A small concern.', effects: material[0].effects }];
+    const small = fitStoryContext(smallMaterial, ['Preserve <my instruction> exactly.'], { storyStructure: true, orientation: 'Village life.', strictBudget: true });
+    const packet = JSON.parse(small.payload.replace(/<\/?tale-fairy-context>/g, ''));
+    assert.equal(small.blocked, false); assert.ok(small.tokens <= small.limit);
+    assert.deepEqual(packet.story_context, smallMaterial);
+    assert.deepEqual(packet.author_instructions, ['Preserve <my instruction> exactly.']);
+    assert.equal(packet.rp_orientation, 'Village life.');
+    assert.equal(fitStoryContext([], [], { strictBudget: true }).payload, '');
+});
+
 test('explicit author instructions and selected story material fit as one indivisible packet', () => {
     const entry = { story_goal: { aim: 'Share the new tune.', reached_when: 'Both arrangements have been heard.' },
         available_circumstances: 'At rehearsal, Jo brings contrasting arrangements.' };

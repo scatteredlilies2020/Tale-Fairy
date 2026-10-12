@@ -175,15 +175,19 @@ test('end boundaries round-trip without leaking private descriptions on omitted 
     assert.equal(next.state.workingPlan.storyStructure.nodes[0].endsWhen, fixture.card.endsWhen);
 });
 
-test('orientation and cards share the writer budget; author instructions take precedence', async () => {
+test('over-quota writer content is blocked intact and fitting content keeps all orientation, effects and instructions', async () => {
     const first = await run();
     const budget = campaignPayloadBudget(first.state, ['Explicit instruction. '.repeat(500)]);
     assert.equal(budget.authorOverflow, true);
-    assert.equal(budget.orientationOmitted, true);
-    const packet = decode(budget.payload);
-    assert.equal(packet.rp_orientation, undefined);
-    assert.equal(packet.story_context, undefined);
-    assert.equal(packet.author_instructions[0], 'Explicit instruction. '.repeat(500));
+    assert.equal(budget.orientationOmitted, false);
+    assert.equal(budget.omitted, 0);
+    assert.equal(budget.blocked, true); assert.equal(budget.payload, '');
+    const fitted = campaignPayloadBudget(first.state, ['Explicit instruction.']);
+    assert.equal(fitted.blocked, false); assert.ok(fitted.tokens <= fitted.limit);
+    const packet = decode(fitted.payload);
+    assert.equal(packet.rp_orientation, fixture.reminder);
+    assert.equal(packet.story_context.length, first.state.workingPlan.storyStructure.selection.length);
+    assert.equal(packet.author_instructions[0], 'Explicit instruction.');
     const report = fitStoryContext(Array.from({ length: 20 }, () => ({ description: 'A useful independent concern. '.repeat(10) })), [],
         { storyStructure: true, orientation: fixture.reminder });
     assert.ok(report.omitted > 0);

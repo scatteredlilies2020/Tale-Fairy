@@ -28,7 +28,7 @@ export async function recoverCampaignJob(job, { read, fingerprint, runPass, comm
     }
     const saved = job.meta.campaign;
     let reads = 0;
-    const result = await runPass({ state: structuredClone(read().state), input: structuredClone(saved.input),
+    const result = await runPass({ state: structuredClone(read().state), input: structuredClone(saved.input), allowWriterFit: false,
         source: saved.source, generate: async () => {
             // A future multi-stage planner must not reuse one response twice.
             if (++reads !== 1) throw Error('Detached recovery supports one director response only.');

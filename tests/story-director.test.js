@@ -23,10 +23,13 @@ async function run(state = emptyCampaign(), raw = response(), extra = {}) {
     let requests = 0;
     const result = await directorPass({ state, input, source, generate: async (_prompt, system, schema, meta) => {
         requests++;
-        assert.equal(system, DIRECTOR_SYSTEM); assert.equal(schema, DIRECTOR_SCHEMA); assert.equal(meta.stage, 'director');
-        return typeof raw === 'string' ? { text: raw } : { text: JSON.stringify(raw), finishReason: 'stop' };
+        assert.equal(system, DIRECTOR_SYSTEM); assert.equal(schema, DIRECTOR_SCHEMA);
+        assert.equal(meta.stage, requests === 1 ? 'director' : 'writer-fit');
+        const reply = requests === 1 ? raw : extra.fitReply(JSON.parse(_prompt).writer_fit.draft);
+        if (requests > 1) assert.equal(meta.input.prompt, _prompt);
+        return typeof reply === 'string' ? { text: reply } : { text: JSON.stringify(reply), finishReason: 'stop' };
     } });
-    assert.equal(requests, 1);
+    assert.equal(requests, extra.fitReply ? 2 : 1);
     return { ...result, input };
 }
 const nodes = result => result.state.workingPlan.storyStructure.nodes;
@@ -528,7 +531,7 @@ test('parent closure is rolled back unless active descendants are also closed or
     assert.deepEqual(nodes(valid), []);
 });
 
-test('duplicate selections and overflows are withheld while display hierarchy is corrected locally', async () => {
+test('duplicate selections are withheld, display hierarchy is corrected and oversized prose is fitted without losing cards', async () => {
     const duplicate = await run(emptyCampaign(), { ...response(), select: [selected(), selected()] });
     assert.equal(duplicate.accepted, true, duplicate.error); assert.equal(selections(duplicate).length, 1);
     assert.match(duplicate.plannerNotices[0], /Duplicate/);
@@ -539,15 +542,102 @@ test('duplicate selections and overflows are withheld while display hierarchy is
     assert.deepEqual(wrong.plannerNotices, []);
     assert.ok(wrong.responseAdjustments.includes('$.select[0].context'));
     const oversized = await run(emptyCampaign(), { ...response(), select: [selected('r1-kitchen', {
-        interpretation: '菜'.repeat(750), stakes: '旅'.repeat(550), expectation: '友'.repeat(750) })] });
+        interpretation: '菜'.repeat(750), stakes: '旅'.repeat(550), expectation: '友'.repeat(750) })] }, {
+        fitReply: draft => ({ ...draft, select: [selected()] }),
+    });
     assert.equal(oversized.accepted, true, oversized.error);
-    assert.deepEqual(selections(oversized), []); assert.equal(nodes(oversized).length, 1);
-    assert.match(oversized.plannerNotices[0], /budget/);
+    assert.equal(selections(oversized).length, 1); assert.equal(nodes(oversized).length, 1);
+    assert.deepEqual(oversized.plannerNotices, []);
+    assert.match(campaignPayload(oversized.state), /recipe book/);
+    assert.equal(oversized.recovery.status, 'shortened');
+    assert.equal(campaignPayloadBudget(oversized.state).omitted, 0);
+    assert.ok(campaignPayloadBudget(oversized.state).requiredTokens <= 2400);
     const result = await run();
     const budget = campaignPayloadBudget(result.state, ['author '.repeat(1200)]);
-    assert.equal(budget.authorOverflow, true); assert.equal(budget.omitted, 1);
-    assert.match(budget.payload, /author_instructions/); assert.doesNotMatch(budget.payload, /story_context/);
+    assert.equal(budget.authorOverflow, true); assert.equal(budget.omitted, 0);
+    assert.equal(budget.blocked, true); assert.equal(budget.payload, '');
 });
+
+test('aggregate card and inherited effect size does not discard later selections', async () => {
+    const first = await run(emptyCampaign(), { ...response(), upsert: [proposal('r1-kitchen', {
+        effects: [{ label: 'Community ties', pressure: '共'.repeat(200) }],
+    })] });
+    const raw = { ...response(), upsert: [proposal(), proposal('r2-travel'), proposal('r2-music')],
+        foundation: { reminder: '世界'.repeat(80), changeReason: '', scratchpad: '' },
+        select: ['r1-kitchen', 'r2-travel', 'r2-music'].map(id => selected(id, {
+            interpretation: '菜'.repeat(470), stakes: '', expectation: '',
+        })) };
+    const before = structuredClone({ state: first.state, raw });
+    const result = await run(first.state, raw, { fitReply: draft => ({ ...draft,
+        select: draft.select.map(card => ({ ...card, interpretation: '菜'.repeat(30), development: 'Share recipes.' })),
+    }) });
+    assert.equal(result.accepted, true, result.error);
+    assert.deepEqual(selections(result).map(entry => entry.id), raw.select.map(entry => entry.id));
+    assert.deepEqual(result.plannerNotices, []);
+    const budget = campaignPayloadBudget(result.state, ['Preserve author direction.']);
+    assert.ok(budget.requiredTokens <= 2400);
+    assert.equal(budget.omitted, 0);
+    assert.equal(budget.orientationOmitted, false);
+    const packet = JSON.parse(budget.payload.replace(/<\/?tale-fairy-context>/g, ''));
+    assert.equal(packet.story_context.length, 3);
+    assert.deepEqual(packet.story_context[0].effects, before.state.workingPlan.storyStructure.nodes[0].effects);
+    assert.equal(packet.rp_orientation, raw.foundation.reminder);
+    assert.deepEqual({ state: first.state, raw }, before);
+    assert.deepEqual(result.state.archive.at(-1).workingPlan, first.state.workingPlan);
+});
+
+test('writer allocation reserves complete author instructions and orientation before public prose', async () => {
+    const first = await run(emptyCampaign(), { ...response(), foundation: {
+        reminder: 'Neighborhood interests sustain ongoing play.', changeReason: '', scratchpad: '',
+    } });
+    const instructions = ['Preserve <secret author knowledge> and player choices.'];
+    const input = directorInput({ reference: { ...reference, authorInstructions: instructions }, state: first.state, messages });
+    const allocation = JSON.parse(input.prompt).writer_budget;
+    const fixed = campaignPayloadBudget({ workingPlan: { storyStructure: {
+        ...first.state.workingPlan.storyStructure, selection: [],
+    } } }, instructions);
+    assert.equal(allocation.limit, 2400);
+    assert.equal(allocation.reserved_tokens, fixed.requiredTokens);
+    assert.equal(allocation.available_tokens, 2400 - fixed.requiredTokens);
+    assert.deepEqual(input.writerInstructions, instructions);
+    assert.throws(() => directorInput({ reference: { ...reference, authorInstructions: ['Author '.repeat(1500)] },
+        state: first.state, messages }), /no provider request sent.*saved preparation is intact/);
+});
+
+test('unfittable protected content preserves previous preparation without requesting a rewrite or omitting cards', async () => {
+    const first = await run(), before = structuredClone(first.state);
+    const raw = { ...response(), foundation: { reminder: '世界'.repeat(250), changeReason: '', scratchpad: '' },
+        upsert: [proposal('r1-kitchen', { effects: [{ label: 'Community access', pressure: '共'.repeat(200) }] })] };
+    const result = await run(first.state, raw);
+    assert.equal(result.accepted, false);
+    assert.match(result.error, /Protected writer content requires.*No cards were cut/);
+    assert.equal(result.state, first.state);
+    assert.deepEqual(first.state, before);
+});
+
+for (const change of ['still-large', 'private-story', 'orientation', 'effects', 'remove-card', 'end-condition']) {
+    test(`one writer fitting attempt cannot bypass quota or protected ${change}`, async () => {
+        const first = await run(), before = structuredClone(first.state);
+        const raw = { ...response(), foundation: { reminder: 'Neighborhood life.', changeReason: '', scratchpad: '' },
+            select: [selected('r1-kitchen', { interpretation: '菜'.repeat(750), stakes: '旅'.repeat(550),
+                expectation: '友'.repeat(750), endsWhen: 'The cooks publish or abandon the book.' })] };
+        const result = await run(first.state, raw, { fitReply: draft => {
+            if (change === 'still-large') return draft;
+            draft.select[0].interpretation = 'Shared recipes connect neighbors.';
+            draft.select[0].stakes = ''; draft.select[0].expectation = '';
+            if (change === 'private-story') draft.upsert[0].interpretation = 'A different private story.';
+            if (change === 'orientation') draft.foundation.reminder = 'A different world.';
+            if (change === 'effects') draft.upsert[0].effects = [{ label: 'Changed', pressure: 'New influence.' }];
+            if (change === 'remove-card') draft.select = [];
+            if (change === 'end-condition') draft.select[0].endsWhen = 'A different ending.';
+            return draft;
+        } });
+        assert.equal(result.accepted, false, change);
+        assert.match(result.error, change === 'still-large' ? /concise selection must fit/ : /Writer fitting.*changed/);
+        assert.equal(result.state, first.state);
+        assert.deepEqual(first.state, before);
+    });
+}
 
 test('guidance expires at the wider horizon or immediately on explicit direction and scene changes', async () => {
     const result = await run();

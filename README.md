@@ -45,4 +45,5 @@ For planning that can finish after you close the browser, see [background planni
 - You stay in control of your characters. Plans do not decide their actions or make proposed events part of established history.
 - Tale Fairy plans stories. It does not write replies or replace factual memory. It can use Continuity Memory's context when available.
 - Planning uses additional AI requests. Results depend on the model you choose.
+- Private plans can be richer than the writer-facing output. The writer packet must fit its 2,400-token quota including instructions, orientation, effects and framing. An oversized selection gets one concise rewrite without dropping cards; if protected content cannot fit, the previous preparation stays intact rather than sending partial or over-quota output.
 - Planner defaults use Low reasoning, six future Chapters, and a 32,768-token context window. Input, output and reasoning share that window. Set **Planner context window** to your endpoint’s actual capacity; smaller active-connection or profile limits also apply. Required references stay complete, and a request that cannot fit stops before contacting the provider.
