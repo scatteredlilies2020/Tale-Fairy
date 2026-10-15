@@ -639,15 +639,16 @@ for (const change of ['still-large', 'private-story', 'orientation', 'effects', 
     });
 }
 
-test('guidance expires at the wider horizon or immediately on explicit direction and scene changes', async () => {
+test('completed guidance remains usable across review horizons and new direction while source checks still apply', async () => {
     const result = await run();
     const context = { ...source, fingerprint: () => 'accepted', messages: [{ is_user: false, mes: 'Prior.' }, { is_user: true, mes: 'Prior input.' }] };
     const usable = messages => campaignWriterUsable(result.state, { ...context, messages }, 12);
     assert.equal(storyReviewInterval(20, result.state), 12);
     assert.equal(usable([...context.messages, ...Array.from({ length: 11 }, () => ({ is_user: false, mes: 'Ordinary conversation.' }))]), true);
-    assert.equal(usable([...context.messages, ...Array.from({ length: 12 }, () => ({ is_user: false, mes: 'Ordinary conversation.' }))]), false);
-    assert.equal(usable([...context.messages, { is_user: true, mes: 'OOC: Drop the cooking story.' }]), false);
-    assert.equal(usable([...context.messages, { is_user: false, mes: '***\nA different scene.' }]), false);
+    assert.equal(usable([...context.messages, ...Array.from({ length: 24 }, () => ({ is_user: false, mes: 'Ordinary conversation.' }))]), true);
+    assert.equal(usable([...context.messages, { is_user: true, mes: 'OOC: Drop the cooking story.' }]), true);
+    assert.equal(usable([...context.messages, { is_user: false, mes: '***\nA different scene.' }]), true);
+    assert.match(campaignPayload(result.state), /Current play takes precedence|Current play and explicit user direction take precedence/);
     assert.equal(usable([...context.messages, { is_user: true, mes: '"If we cook, I want soup," Ren says.' }]), true);
     assert.equal(campaignMaterialUsable(result.state, { ...context, referenceHash: 'changed' }, 12), false);
     assert.equal(campaignWriterUsable(result.state, { ...context, fingerprint: () => 'edited' }, 12), false);

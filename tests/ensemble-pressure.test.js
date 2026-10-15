@@ -195,13 +195,13 @@ test('over-quota writer content is blocked intact and fitting content keeps all 
     assert.equal(decode(report.payload).rp_orientation, fixture.reminder);
 });
 
-test('orientation remains subject to expiry, OOC changes, edited transcript and reference guards', async () => {
+test('orientation persists across reviews and OOC changes while edited transcript and reference guards still apply', async () => {
     const first = await run();
     const messages = [{ is_user: false, mes: 'Prior.' }, { is_user: true, mes: 'Prior input.' }];
     const context = { ...source, messages, fingerprint: () => 'accepted' };
     assert.equal(campaignWriterUsable(first.state, context, 12), true);
-    assert.equal(campaignWriterUsable(first.state, { ...context, messages: [...messages, ...Array.from({ length: 12 }, () => ({ is_user: false, mes: 'Quiet play.' }))] }, 12), false);
-    assert.equal(campaignWriterUsable(first.state, { ...context, messages: [...messages, { is_user: true, mes: 'OOC: Change the overall RP.' }] }, 12), false);
+    assert.equal(campaignWriterUsable(first.state, { ...context, messages: [...messages, ...Array.from({ length: 12 }, () => ({ is_user: false, mes: 'Quiet play.' }))] }, 12), true);
+    assert.equal(campaignWriterUsable(first.state, { ...context, messages: [...messages, { is_user: true, mes: 'OOC: Change the overall RP.' }] }, 12), true);
     assert.equal(campaignWriterUsable(first.state, { ...context, fingerprint: () => 'edited' }, 12), false);
     assert.equal(campaignWriterUsable(first.state, { ...context, referenceHash: 'different' }, 12), false);
     assert.equal(campaignPayload(first.state, [], { horizonsOnly: true }), '');

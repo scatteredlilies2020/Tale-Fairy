@@ -62,7 +62,7 @@ export function storyCardsHtml(plan, { fresh = true, omitted = 0, orientationOmi
             <p class="tf-world-reminder">${escape(map.foundation.reminder)}</p></article>` : ''}
         <p class="tf-board-note${fresh ? '' : ' tf-board-warning'}">${fresh
             ? 'Author-level view. Selected cards guide the writer; revelation and timing stay with the story.'
-            : 'Review needed. This saved board is retained, but its expired or changed guidance is withheld from the writer.'}</p>
+            : 'Review needed. This saved board no longer matches the current story context. Its guidance is withheld until new preparation is ready.'}</p>
         ${omitted || orientationOmitted ? '<p class="tf-board-warning">The writer budget omits some selected material. The exact writer guidance preview shows what fits.</p>' : ''}
         ${live.length ? grid(live) : '<p class="tf-board-empty">Room for new stories. No open cards; the world frame can support quiet play.</p>'}
         ${collection('Future possibilities', 'dormant', resting)}

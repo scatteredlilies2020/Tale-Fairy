@@ -641,6 +641,90 @@ const appendPlay = (h, count = 1) => {
     for (let i = 0; i < count; i++) h.context.chat.push({ is_user: false, name: 'Mara', mes: `Quiet conversation ${h.context.chat.length}.` });
 };
 
+test('first generation and a pending first director pass send nothing until preparation is ready', async t => {
+    let finish;
+    const h = browser(({ prompt }) => new Promise(resolve => { finish = () => resolve(envelope(directorReply(prompt))); }),
+        defaultState(), { director: true });
+    t.after(() => finish?.());
+    assert.equal(h.prepare().payload, '', 'no generated guidance before the first planner pass');
+    assert.equal(h.requests.length, 0);
+    const work = h.scope.analyzeCampaignNow(); await settle();
+    assert.equal(h.requests.length, 1);
+    assert.ok(h.scope.campaignSession.pending);
+    const packet = h.prepare();
+    assert.equal(packet.payload, '');
+    assert.equal(generationContextEntries(h.context.chatMetadata[GENERATION_CONTEXT_KEY]).length, 1);
+    h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata));
+    assert.equal(h.prepare().payload, '');
+    const outgoing = [{ role: 'user', content: 'I help pack.' }];
+    const before = structuredClone(outgoing);
+    ensureGuidanceInChat(outgoing, packet.payload, { role: 'user', inlineLatestUser: true });
+    assert.deepEqual(outgoing, before, 'an unprepared request gets no injected placeholder');
+    assert.equal(extractTaleFairyContext(outgoing), '');
+    finish(); await work;
+    const options = h.scope.guideSelectionOptions(h.state(), h.context);
+    assert.equal(h.scope.buildPromptPayload(h.state(), options), '', 'completed planning leaves the current request frozen');
+    assert.equal(packet.payload, '');
+    assert.match(h.prepare().payload, /neighborhood supper/);
+    assert.equal(h.requests.length, 1, 'generation never starts an extra planner request');
+});
+
+test('deleting preparation leaves generation empty until a new director pass completes', async t => {
+    let finish;
+    const h = browser(({ prompt }) => h.requests.length === 1 ? envelope(ensembleDirectorReply(prompt))
+        : new Promise(resolve => { finish = () => resolve(envelope(ensembleDirectorReply(prompt))); }),
+        defaultState(), { director: true });
+    t.after(() => finish?.());
+    await h.scope.analyzeCampaignNow();
+    assert.match(h.prepare().payload, /rp_orientation/);
+    const transcript = structuredClone(h.context.chat);
+    await h.scope.resetState();
+    assert.equal(h.state().campaignPreparation, null);
+    assert.equal(h.context.chatMetadata[GENERATION_CONTEXT_KEY], null);
+    assert.deepEqual(h.context.chat, transcript);
+    assert.equal(h.prepare().payload, '', 'deleting guidance does not create a scene placeholder');
+    h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata));
+    assert.equal(h.prepare().payload, '', 'reload cannot revive deleted preparation');
+    const work = h.scope.analyzeCampaignNow(); await settle();
+    assert.equal(h.requests.length, 2);
+    const packet = h.prepare();
+    assert.equal(packet.payload, '', 'a pending replacement has no completed guidance to send');
+    finish(); await work;
+    assert.equal(packet.payload, '');
+    assert.match(h.prepare().payload, /rp_orientation/);
+});
+
+test('pending director refresh keeps completed guidance in outgoing requests beyond the review limit', async t => {
+    let finish;
+    const h = browser(({ prompt }) => h.requests.length === 1 ? envelope(ensembleDirectorReply(prompt))
+        : new Promise(resolve => {
+            const updated = ensembleDirectorReply(prompt);
+            updated.select[0].description = 'Reviewed neighborhood plans support a new shared workshop.';
+            finish = () => resolve(envelope(updated));
+        }), defaultState(), { director: true });
+    t.after(() => finish?.());
+    h.settings.fullReviewInterval = 4;
+    await h.scope.analyzeCampaignNow();
+    const original = h.prepare().payload;
+    appendPlay(h, 8);
+    const work = h.scope.analyzeCampaignNow(); await settle();
+    assert.equal(h.requests.length, 2);
+    assert.ok(h.scope.campaignSession.pending);
+    const packet = h.prepare();
+    assert.equal(packet.payload, original);
+    assert.match(packet.payload, /rp_orientation|neighborhood supper/);
+    assert.match(packet.payload, /Current play and explicit user direction take precedence/);
+    const outgoing = [{ role: 'user', content: 'Continue the scene.' }];
+    ensureGuidanceInChat(outgoing, packet.payload, { role: 'user', inlineLatestUser: true });
+    assert.equal(chatHasCurrentGuidance(outgoing, original), true);
+    finish(); await work;
+    const options = h.scope.guideSelectionOptions(h.state(), h.context);
+    assert.equal(h.scope.buildPromptPayload(h.state(), options), original, 'the active request retains its selected guidance');
+    assert.equal(packet.payload, original);
+    assert.match(h.prepare().payload, /new shared workshop/);
+    assert.equal(h.requests.length, 2);
+});
+
 test('host sends the stable orientation even without cards, never private notes, and preserves it on reload', async () => {
     const h = browser(async ({ prompt }) => envelope({ ...ensembleDirectorReply(prompt), select: [] }), defaultState(), { director: true });
     h.settings.fullReviewInterval = 12;
@@ -659,7 +743,7 @@ test('host sends the stable orientation even without cards, never private notes,
     assert.equal(h.prepare().payload, before, 'a quiet refresh retains the reminder verbatim');
 });
 
-test('host expires orientation after a failed review; a cached packet or reload cannot keep it alive', async () => {
+test('host retains completed orientation after a failed review and reload', async () => {
     let fail = false;
     const h = browser(async ({ prompt }) => { if (fail) throw Error('offline'); return envelope(ensembleDirectorReply(prompt)); }, defaultState(), { director: true });
     h.settings.fullReviewInterval = 12;
@@ -669,19 +753,19 @@ test('host expires orientation after a failed review; a cached packet or reload 
     await h.scope.analyzeCampaignNow();
     assert.match(h.prepare().payload, /rp_orientation/);
     appendPlay(h);
-    assert.equal(h.prepare().payload, '');
+    assert.match(h.prepare().payload, /rp_orientation/);
     h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata)); h.scope.campaignSession = null;
-    assert.equal(h.prepare().payload, '');
+    assert.match(h.prepare().payload, /rp_orientation/);
     assert.match(h.state().campaignPreparation.workingPlan.storyStructure.foundation.scratchpad, /PRIVATE divergence/);
 });
 
-test('host blocks old orientation immediately on OOC changes and full rebuild clears its private basis', async () => {
+test('host retains orientation during a requested review and full rebuild clears its private basis', async () => {
     let fail = false;
     const h = browser(async ({ prompt }) => { if (fail) throw Error('offline'); return envelope(ensembleDirectorReply(prompt)); }, defaultState(), { director: true });
     await h.scope.analyzeCampaignNow();
     assert.match(h.prepare().payload, /rp_orientation/);
     h.context.chat.push({ is_user: true, name: 'Neri', mes: 'OOC: Shift to an intimate two-person RP.' });
-    assert.equal(h.prepare().payload, '');
+    assert.match(h.prepare().payload, /rp_orientation/);
     fail = true;
     await h.scope.rebuildGuideState();
     assert.equal(h.prepare().payload, '');
@@ -713,7 +797,7 @@ test('story map reviews on a wider horizon and retains private stories across qu
     await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 1, 'reload spends no request');
     appendPlay(h); await h.scope.analyzeCampaignNow();
-    assert.equal(h.requests.length, 2, 'refresh begins one reply before public guidance expires');
+    assert.equal(h.requests.length, 2, 'refresh begins one reply before the configured review interval');
     assert.equal(h.state().campaignPreparation.revision, 2);
     assert.deepEqual(h.state().campaignPreparation.workingPlan.storyStructure.nodes, nodes);
     assert.equal(JSON.parse(h.requests[1].prompt).previous_preparation.nodes[0].id, nodes[0].id);
@@ -766,7 +850,7 @@ test('accepted writer signal schedules one early review without deciding closure
     await h.scope.analyzeCampaignNow();
     assert.match(h.prepare().payload, /review_signal/);
     h.context.chat.push({ is_user: false, name: 'Mara', mes: 'The group settles its immediate arrangements.\n<!--tf-review-->' });
-    assert.equal(h.prepare().payload, '', 'old guidance is withheld pending the signaled review');
+    assert.match(h.prepare().payload, /Shared kitchen/, 'completed guidance remains available pending the signaled review');
     assert.equal(h.state().campaignPreparation.workingPlan.storyStructure.nodes[0].status, 'proposed', 'signal alone cannot resolve anything');
     await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 2);
@@ -792,16 +876,17 @@ test('AI review horizon can shorten the configured maximum without next-turn pol
 for (const change of [
     { is_user: true, name: 'Neri', mes: 'OOC: The supper idea is declined. Follow the harbor story.' },
     { is_user: false, name: 'Mara', mes: '***\nAt the harbor, the morning shift begins.' },
-]) test(`story map withholds cached guidance immediately after ${change.is_user ? 'explicit direction' : 'a scene boundary'}`, async () => {
+]) test(`story map retains completed guidance while reviewing ${change.is_user ? 'explicit direction' : 'a scene boundary'}`, async () => {
     const h = browser(async ({ prompt }) => h.requests.length === 1 ? envelope(directorReply(prompt))
         : envelope({ ...retainedDirectorReply(prompt), upsert: [], retire: [JSON.parse(prompt).previous_preparation.nodes[0].id], select: [] }), defaultState(), { director: true });
     h.settings.fullReviewInterval = 12;
     await h.scope.analyzeCampaignNow();
     assert.match(h.prepare().payload, /neighborhood supper/);
     h.context.chat.push(change);
-    assert.equal(h.prepare().payload, '', 'new direction takes priority before a paid review finishes');
+    assert.match(h.prepare().payload, /neighborhood supper/, 'last completed guidance remains available until reviewed');
+    assert.match(h.prepare().payload, /Current play takes precedence|Current play and explicit user direction take precedence/);
     h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata)); h.scope.campaignSession = null;
-    assert.equal(h.prepare().payload, '', 'reload cannot restore the old packet');
+    assert.match(h.prepare().payload, /neighborhood supper/, 'reload preserves completed guidance');
     await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 2, 'explicit changes bypass the long cadence');
     assert.deepEqual(h.state().campaignPreparation.workingPlan.storyStructure.nodes.map(node => node.kind), ['saga']);
@@ -810,7 +895,7 @@ for (const change of [
     assert.equal(h.requests.length, 2, 'the accepted change is reviewed once');
 });
 
-test('failed story-map reviews keep private state but expired public guidance stays absent after reload and retry', async () => {
+test('failed story-map reviews retain completed writer guidance after reload and retry', async () => {
     let fail = false;
     const h = browser(async ({ prompt }) => { if (fail) throw Error('provider unavailable'); return envelope(retainedDirectorReply(prompt)); }, defaultState(), { director: true });
     h.settings.fullReviewInterval = 12;
@@ -827,15 +912,15 @@ test('failed story-map reviews keep private state but expired public guidance st
     await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 2, 'neither reload nor user-only input retries a failed request');
     appendPlay(h);
-    assert.equal(h.prepare().payload, '', 'public guidance expires even when the provider is unavailable');
+    assert.match(h.prepare().payload, /neighborhood supper/, 'completed guidance remains available when the provider is unavailable');
     await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 3, 'new accepted assistant play permits one recovery attempt');
     assert.deepEqual(h.state().campaignPreparation, before);
     h.scope.campaignSession = null;
-    assert.equal(h.prepare().payload, '');
+    assert.match(h.prepare().payload, /neighborhood supper/);
     assert.equal(h.prepare('regenerate').payload.includes('neighborhood supper'), true, 'retry uses its actual pre-reply source, still inside the horizon');
     appendPlay(h);
-    assert.equal(h.prepare('regenerate').payload, '', 'a retry beyond that horizon cannot resurrect the cached packet');
+    assert.match(h.prepare('regenerate').payload, /neighborhood supper/, 'review cadence does not remove completed retry guidance');
     fail = false; await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 4);
     assert.equal(h.state().campaignPreparation.revision, 2);
@@ -940,7 +1025,7 @@ test('story-map inspector shows private organization and separates the actual wr
     assert.doesNotMatch(summary, /Interpretation:|Stakes:|Expectation:|Owner:/);
     assert.match(summary, /PUBLIC CONTEXT.*actual writer packet/);
     assert.match(summary, /REVIEW HORIZON.*12 accepted AI replies/);
-    assert.match(summary, /Expired guidance is withheld/);
+    assert.match(summary, /Last completed guidance remains available while preparation updates/);
     assert.doesNotMatch(summary, /stage [12]|STORY GOALS|PRIVATE PROGRESSION|Reached when/);
 });
 
@@ -1044,6 +1129,7 @@ test('old hard-limit story-card caches authenticate but over-quota packets are b
     packet.plannerState.campaignPreparation.workingPlan.storyStructure.nodes[0].effects = [{ label: 'Access', pressure: '橋'.repeat(190) }];
     metadata[STATE_KEY] = saveState({}, packet.plannerState)[STATE_KEY];
     packet.payload = boundedCampaignPayload(packet.plannerState.campaignPreparation);
+    assert.doesNotMatch(packet.payload, /current_play_basis/, 'historical packets preserve their original framing');
     assert.doesNotMatch(packet.payload, /story_context/);
     const oldBytes = JSON.stringify(metadata);
     assert.equal(generationContextEntries(metadata[GENERATION_CONTEXT_KEY]).length, 1);

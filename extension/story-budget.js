@@ -103,7 +103,7 @@ export const STORY_MOVEMENT_BASIS = 'World frame: The RP’s enduring character 
 export const STORY_CARD_BASIS = 'Story cards: Ongoing stories and intended developments. Pressure the NPCs and world to bring these developments into play and advance them through concrete actions, events, and consequences.';
 export const STORY_EFFECT_BASIS = 'Effects: Continuing influences attached to story cards. Pressure the affected NPCs and world conditions in each effect’s stated direction, making its influence tangible in behavior, relationships, and opportunities.';
 
-export function storyContextPayload(material, authored, { legacyContracts = false, followThrough = true, storyStructure = false, orientation = '' } = {}) {
+export function storyContextPayload(material, authored, { legacyContracts = false, followThrough = true, storyStructure = false, orientation = '', currentPlayBasis = true } = {}) {
     if (!material.length && !authored.length && !orientation) return '';
     return `<tale-fairy-context>\n${storyContextJson({
         ...(storyStructure && (material.length || orientation) ? { preparation_basis: orientation || material.some(entry => entry.status !== undefined)
@@ -116,6 +116,9 @@ export function storyContextPayload(material, authored, { legacyContracts = fals
             review_signal: 'When play completes or materially changes a card or world frame, end with a separate line: <!--tf-review-->. Otherwise omit. This requests review, not an outcome.',
         } : {}),
         ...(orientation ? { rp_orientation: orientation, movement_basis: STORY_MOVEMENT_BASIS } : {}),
+        ...(currentPlayBasis && storyStructure && (material.some(entry => entry.status !== undefined) || orientation) ? {
+            current_play_basis: 'Current play and explicit user direction take precedence over this preparation. Disregard completed, declined or contradicted developments.',
+        } : {}),
         ...(material.length ? { ...(legacyContracts && followThrough ? { development_contract: DEVELOPMENT_CONTRACT } : {}), [storyStructure ? 'story_context' : 'possible_developments']: material } : {}),
         ...(legacyContracts && material.some(entry => entry.story_goal) ? { story_goal_contract: STORY_GOAL_CONTRACT } : {}),
         ...(legacyContracts && material.some(entry => entry.story_goals?.length) ? { story_goals_contract: STORY_GOALS_CONTRACT } : {}),
