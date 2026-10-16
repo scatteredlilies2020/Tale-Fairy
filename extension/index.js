@@ -97,6 +97,8 @@ let transcriptRefreshTimer = null;
 let lastAnalysisError = '';
 let pendingRequestVerification = null;
 let generationGuideSelection = null;
+let boardRenderPending = false;
+let storyGenerationInProgress = false;
 let activeGenerationType = '';
 // Page-local only: synced request history is not proof of a new request.
 let injectionStatus = 'No request verified on this page';
@@ -1603,8 +1605,10 @@ function prepareAuthorContract(state, type = '') {
 function updatePrompt(state) {
     const context = currentContext();
     const s = getSettings();
-    const selection = guideSelectionOptions(state, context);
-    const payload = buildPromptPayload(state, { enabled: s.enabled, generationType: activeGenerationType, ...selection });
+    const preparedPayload = preparedGuidancePayload(context, activeGenerationType);
+    const payload = preparedPayload ?? buildPromptPayload(state, {
+        enabled: s.enabled, generationType: activeGenerationType, ...guideSelectionOptions(state, context),
+    });
     const placement = resolveInjectionPlacement(s, extension_prompt_types, extension_prompt_roles);
     const managerApplied = context.mainApi === 'openai' && configurePromptManagerInjection(promptManager, s, payload);
     if (!managerApplied) clearPromptManagerInjection(promptManager);
@@ -1618,8 +1622,17 @@ function updatePrompt(state) {
     );
 }
 
+function preparedGuidancePayload(context, generationType) {
+    if (!storyGenerationInProgress || !getSettings().enabled || !isStoryGeneration(generationType)) return null;
+    const chatId = String(context.getCurrentChatId?.() || '');
+    return generationGuideSelection?.chatId === chatId && typeof generationGuideSelection.payload === 'string'
+        ? generationGuideSelection.payload : null;
+}
+
 function currentGuidancePayload(generationType = activeGenerationType) {
     const context = currentContext();
+    const preparedPayload = preparedGuidancePayload(context, generationType);
+    if (preparedPayload !== null) return preparedPayload;
     const state = loadState(context.chatMetadata);
     return buildPromptPayload(state, { enabled: getSettings().enabled, generationType, ...guideSelectionOptions(state, context) });
 }
@@ -3361,6 +3374,12 @@ function emptyGuidancePreview(state, options, context = currentContext()) {
 }
 
 function renderBoard(state = loadState(currentContext().chatMetadata)) {
+    // Settings-panel painting must not hold up a roleplay request. The
+    // selected payload stays frozen; the board catches up after the reply.
+    if (storyGenerationInProgress) {
+        boardRenderPending = true;
+        return;
+    }
     renderFutureBoard();
     renderCampaignAttempt();
     const board = document.querySelector(`#${EXTENSION_ID}-board`);
@@ -4117,6 +4136,7 @@ if (event_types.WORLD_INFO_ACTIVATED) eventSource.on(event_types.WORLD_INFO_ACTI
 });
 eventSource.on(event_types.GENERATION_STARTED, (type, _options, dryRun) => {
     if (dryRun) return;
+    storyGenerationInProgress = isStoryGeneration(type);
     if (isStoryGeneration(type)) activatedStoryContext.clear();
     clearAutomaticReplyRepair();
     activeGenerationType = String(type || '');
@@ -4139,11 +4159,16 @@ eventSource.on(event_types.GENERATION_STARTED, (type, _options, dryRun) => {
             void queueLatestAnalysis({ chatId: String(context.getCurrentChatId?.() || ''), allowStaleContinuity: true });
         }
     }
-    updatePrompt(loadState(currentContext().chatMetadata));
+    if (!isStoryGeneration(type)) updatePrompt(loadState(currentContext().chatMetadata));
     recordRuntimeStage('generation-started', { generationType: activeGenerationType });
 });
 eventSource.on(event_types.GENERATION_ENDED, () => {
     activeGenerationType = '';
+    storyGenerationInProgress = false;
+    if (boardRenderPending) {
+        boardRenderPending = false;
+        setTimeout(() => renderBoard(), 0);
+    }
     recordRuntimeStage('generation-ended');
     // MESSAGE_RECEIVED is the primary successor trigger, but some stopped or
     // empty generations do not emit it consistently. Recheck after the host
@@ -4168,6 +4193,7 @@ eventSource.on(event_types.GENERATION_ENDED, () => {
 });
 
 if (event_types.GENERATION_STOPPED) eventSource.on(event_types.GENERATION_STOPPED, () => {
+    storyGenerationInProgress = false;
     clearAutomaticReplyRepair();
     activeGenerationType = '';
     recordRuntimeStage('generation-stopped');
@@ -4267,9 +4293,13 @@ if (event_types.MESSAGE_SENT) eventSource.on(event_types.MESSAGE_SENT, () => {
         if (!runningSourceHasOnlyAppends(context)) generationRevision++;
         void queueLatestAnalysis({ chatId: String(context.getCurrentChatId?.() || '') });
     }
-    const state = prepareAuthorContract(loadState(context.chatMetadata));
-    updatePrompt(state);
-    renderBoard(state);
+    // The generation interceptor prepares the packet after the user message
+    // has been appended. Do not build it once here and then repeat the work.
+    if (!storyGenerationInProgress) {
+        const state = prepareAuthorContract(loadState(context.chatMetadata));
+        updatePrompt(state);
+        renderBoard(state);
+    }
 });
 for (const event of [event_types.MESSAGE_EDITED, event_types.MESSAGE_UPDATED, event_types.MESSAGE_DELETED]) {
     if (event) eventSource.on(event, () => {

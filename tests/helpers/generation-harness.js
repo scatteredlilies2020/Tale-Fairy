@@ -52,6 +52,7 @@ export function generationHarness(messages, state = stateApi.defaultState(), met
         extension_settings: {},
         getWorldInfoSettings: () => ({ world_info: {}, world_info_depth: 2 }), bootstrapContext: () => context.card || {},
         generationGuideSelection: null, activeGenerationType: '', pendingRequestVerification: null,
+        storyGenerationInProgress: false, boardRenderPending: false,
         analysisPromise: null, activeAnalysisIntent: null, activeAnalysisMessageCount: 0,
         campaignSession: null, campaignHostWork: null, analyzeCampaignNow: async options => { calls.push({ campaign: true, ...options }); },
         queuedAnalysisIntent: null, analysisAbortController: null, analysisRunId: 0,
