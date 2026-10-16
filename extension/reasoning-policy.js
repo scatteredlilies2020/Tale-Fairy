@@ -57,8 +57,9 @@ function identifyGemini({ source = '', model = '', url = '', profileName = '' } 
     const minor = Number(version?.[2] || 0);
     return {
         knownThinkingModel: major > 2 || (major === 2 && minor >= 5),
+        usesGemini4Levels: major === 4,
         canDisableThinking: major === 2 && minor === 5 && /flash/.test(identity) && !/pro/.test(identity),
-        supportsMinimalThinking: major >= 3 && /flash/.test(identity) && !/pro/.test(identity),
+        supportsMinimalThinking: major === 3 && /flash/.test(identity) && !/pro/.test(identity),
     };
 }
 
@@ -109,7 +110,7 @@ export function buildReasoningRequest({ mode, source = '', model = '', url = '',
     }
     const nativeGoogle = /^(?:google|makersuite|vertexai|vertex-ai)$/i.test(String(source));
     const minimalGemini = nativeGoogle ? 'min' : 'minimal';
-    const requested = mode === 'minimum' ? minimumReasoningEffort(model) : mode;
+    const requested = mode === 'minimum' ? minimumReasoningEffort(model) : gemini?.usesGemini4Levels && mode === 'max' ? 'high' : mode;
     const effort = gemini
         ? (mode === 'off' && gemini.canDisableThinking ? 'none'
             : mode === 'off' || mode === 'minimum' ? (gemini.supportsMinimalThinking ? minimalGemini : 'low')

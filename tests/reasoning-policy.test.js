@@ -76,6 +76,23 @@ test('Google and Gemini variants receive model-compatible thinking levels', () =
     assert.deepEqual(JSON.parse(compatible.payload.custom_include_body), { reasoning_effort: 'low' });
 });
 
+test('Gemini 4 variants use Low, Medium and High through native and compatible connections', () => {
+    const levels = { off: 'low', minimum: 'low', low: 'low', medium: 'medium', high: 'high', max: 'high' };
+    for (const model of ['gemini-4-argon', 'gemini-4.1-flash', 'gemini-4.2-pro', 'gemini-4-future-variant']) {
+        for (const [mode, effort] of Object.entries(levels)) {
+            for (const source of ['google', 'makersuite', 'vertexai', 'openrouter', 'custom']) {
+                const result = buildReasoningRequest({ mode, source, model });
+                assert.equal(result.payload.reasoning_effort, effort, `${source} ${model} ${mode}`);
+                assert.equal(result.payload.include_reasoning, mode !== 'off');
+                if (source === 'custom') assert.deepEqual(JSON.parse(result.payload.custom_include_body), { reasoning_effort: effort });
+            }
+            const proxy = buildReasoningRequest({ mode, source: 'custom', model: `google/${model}`, url: 'https://openrouter.ai/api/v1' });
+            assert.equal(proxy.payload.reasoning_effort, effort);
+            assert.deepEqual(JSON.parse(proxy.payload.custom_include_body), { reasoning: { effort, exclude: true } });
+        }
+    }
+});
+
 test('GLM and other native SillyTavern sources use normalized reasoning controls', () => {
     assert.deepEqual(
         buildReasoningRequest({ mode: 'low', source: 'zai', model: 'glm-5.3' }).payload,
