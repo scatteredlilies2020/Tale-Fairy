@@ -171,6 +171,30 @@ export function cachedGenerationContext(cache, inputKey, chatId) {
     return generationContextEntries(cache).find(item => item.chatId === chatId && item.inputKey === inputKey) || null;
 }
 
+// Retry packets need the plan selected for that input, not every plan that
+// preceded it. Keep the complete archive once in the live campaign state.
+// Copy on write so compacting a packet cannot erase the live planner's history.
+export function compactGenerationPacket(packet) {
+    if (packet?.plannerState?.plannerContract !== 15) return packet;
+    const compact = preparation => Array.isArray(preparation?.archive) && preparation.archive.length
+        ? { ...preparation, archive: [] } : preparation;
+    const preparation = compact(packet.plannerState.campaignPreparation);
+    const selected = compact(packet.selection?.campaignPreparation);
+    if (preparation === packet.plannerState.campaignPreparation && selected === packet.selection?.campaignPreparation) return packet;
+    return { ...packet,
+        plannerState: preparation === packet.plannerState.campaignPreparation ? packet.plannerState
+            : { ...packet.plannerState, campaignPreparation: preparation },
+        selection: selected === packet.selection?.campaignPreparation ? packet.selection
+            : { ...packet.selection, campaignPreparation: selected },
+    };
+}
+
+export function compactGenerationContextCache(cache) {
+    if (!Array.isArray(cache?.entries)) return compactGenerationPacket(cache);
+    const entries = cache.entries.map(compactGenerationPacket);
+    return entries.some((entry, index) => entry !== cache.entries[index]) ? { ...cache, entries } : cache;
+}
+
 export function generationContextEntries(cache) {
     const entries = Array.isArray(cache?.entries) ? cache.entries : [cache];
     return entries.filter(item => item?.version === 1 && item.selection && typeof item.payload === 'string'
@@ -181,7 +205,8 @@ export function generationContextEntries(cache) {
 }
 
 export function rememberGenerationContext(history, packet) {
-    return { version: 1, entries: [...generationContextEntries(history).filter(item => item.inputKey !== packet.inputKey), packet].slice(-GENERATION_CACHE_LIMIT) };
+    return { version: 1, entries: [...generationContextEntries(history).filter(item => item.inputKey !== packet.inputKey), packet]
+        .slice(-GENERATION_CACHE_LIMIT).map(compactGenerationPacket) };
 }
 
 // The pending replacement is still the same input with either no reply yet,

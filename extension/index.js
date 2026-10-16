@@ -50,7 +50,7 @@ import { defaultPreparedWorld, preparedWorldUsable, unchangedSourcePrefix, stamp
 import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.9';
 import { canRetainSuccessfulPlan, createSafetyFallbackState } from './fallback-direction.js?v=0.14.22&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=1&writer-fit=1';
 import { classifyAssistantReply } from './response-usability.js?v=0.13.9';
-import { buildPlotAnchor, cachedGenerationContext, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, legacyPlotInputKey, migrateCampaignBudgetKeys, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.34&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=1&writer-fit=1&continuous-guidance=2';
+import { buildPlotAnchor, cachedGenerationContext, compactGenerationContextCache, compactGenerationPacket, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, legacyPlotInputKey, migrateCampaignBudgetKeys, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.34&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=1&writer-fit=1&continuous-guidance=2&compact-cache=1';
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
 import { ActivatedStoryContext, readHostStoryEvidence } from './rp-context.js?story-lifecycle=1';
 import { campaignJobMeta, campaignJobMatches, recoverCampaignJob } from './campaign-jobs.js?server-jobs=1&future-chapters=1&writer-fit=1';
@@ -774,8 +774,11 @@ function replacementPlanningDeferred(context = currentContext()) {
 }
 
 function migrateCampaignReferences(context = currentContext()) {
-    const state = loadState(context.chatMetadata);
-    const next = migrateCampaignBudgetKeys(context.chatMetadata, {
+    const previous = context.chatMetadata;
+    const cache = compactGenerationContextCache(previous?.[GENERATION_CONTEXT_KEY]);
+    const metadata = cache === previous?.[GENERATION_CONTEXT_KEY] ? previous : { ...previous, [GENERATION_CONTEXT_KEY]: cache };
+    const state = loadState(metadata);
+    const next = migrateCampaignBudgetKeys(metadata, {
         chatId: String(context.getCurrentChatId?.() || ''), messages: messagesFromChat(context.chat || []),
         inputs: generationInputs(context, state),
     });
@@ -1275,7 +1278,7 @@ function buildGenerationPacket(state, messages, context, type = 'normal', curren
     if (state.plannerContract === 15) selection.writerBudgetBlocked = campaignPayloadBudget(
         selection.preparedUsable ? state.campaignPreparation : null, campaignAuthorInstructions(state),
         { horizonsOnly: selection.horizonsOnly }).blocked === true;
-    return JSON.parse(JSON.stringify({ version: 1, anchorVersion: PLOT_ANCHOR_VERSION, chatId, inputKey,
+    return JSON.parse(JSON.stringify(compactGenerationPacket({ version: 1, anchorVersion: PLOT_ANCHOR_VERSION, chatId, inputKey,
         sourceFingerprint: fingerprintMessages(messages), sourceKey: plotInputKey(chatId, messages), payload, selection,
         // A compatible notebook does not make old scene facts current. Retry
         // rollback may rebind this snapshot, so retain only a factual fallback
@@ -1286,7 +1289,7 @@ function buildGenerationPacket(state, messages, context, type = 'normal', curren
                 messages, chatId, fingerprint: fingerprintMessages(messages),
                 turnCount: assistantTurnNumber(messages), reason: 'conditional preparation only',
             }), preparedWorld: state.preparedWorld, pacing: state.pacing } : null,
-    }));
+    })));
 }
 
 function archiveReadyPlannerContexts(metadata, states, context = currentContext()) {
@@ -3713,6 +3716,7 @@ async function upgradeLegacyPlanIfNeeded() {
 
 async function refreshCurrentPlanIfNeeded() {
     let context = currentContext();
+    if (migrateCampaignReferences(context)) context = currentContext();
     if (campaignMode(context)) return analyzeCampaignNow();
     const loadedChatId = String(context.getCurrentChatId?.() || '');
     await warmPlotWorldInputs(context);

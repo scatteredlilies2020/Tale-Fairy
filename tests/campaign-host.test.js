@@ -6,7 +6,7 @@ import { emptyCampaign, mergeCampaign, campaignPayload, preFollowThroughCampaign
 import { CampaignRuntime } from '../extension/campaign-runtime.js';
 import * as injection from '../extension/request-injection.js';
 import { defaultState, saveState, loadState, buildPromptPayload, guidanceSnapshot, isDirectionCurrent } from '../extension/state.js';
-import { generationContextEntries, GENERATION_CONTEXT_KEY, legacyPlotInputKey, plotInputKey } from '../extension/generation-context.js';
+import { compactGenerationContextCache, generationContextEntries, GENERATION_CONTEXT_KEY, legacyPlotInputKey, plotInputKey, rememberGenerationContext } from '../extension/generation-context.js';
 import { generationHarness } from './helpers/generation-harness.js';
 
 const messages = () => [{ is_user: false, name: 'Mara', mes: 'The public bill is finished.' },
@@ -40,6 +40,84 @@ test('campaign preparation round-trips through actual metadata without clipping 
     assert.deepEqual(metadata.unrelated, { intact: true });
     assert.equal(state.campaignPreparation.archive[0].episode.boundary, design.episode.boundary);
     assert.equal(isDirectionCurrent(state, h.context.chat, 'story'), false);
+});
+
+function attachArchivedCampaign(h) {
+    const state = attach(h);
+    for (let revision = 1; revision <= 60; revision++) {
+        state.campaignPreparation = mergeCampaign(state.campaignPreparation,
+            { ...design, episode: { ...design.episode, subject: `Engagement ${revision}`, status: 'open' } },
+            { basisRevision: state.campaignPreparation.revision, source: state.campaignPreparation.source, evidenceIndices: [0, 1] });
+    }
+    h.context.chatMetadata = saveState(h.context.chatMetadata, state);
+    return state;
+}
+
+test('twelve retry snapshots stay the same size as campaign history grows', () => {
+    const h = generationHarness(messages());
+    const state = attachArchivedCampaign(h);
+    const original = JSON.stringify(state);
+    const packet = h.scope.buildGenerationPacket(state, h.context.chat, h.context);
+    const withoutHistory = h.scope.buildGenerationPacket({ ...state,
+        campaignPreparation: { ...state.campaignPreparation, archive: [] } }, h.context.chat, h.context);
+    assert.equal(JSON.stringify(packet), JSON.stringify(withoutHistory));
+    assert.equal(packet.payload, campaignPayload(state.campaignPreparation));
+    let cache;
+    for (let index = 0; index < 12; index++) cache = rememberGenerationContext(cache, { ...packet, inputKey: `turn-${index}` });
+    assert.equal(generationContextEntries(cache).length, 12);
+    assert.equal(JSON.stringify(state), original, 'making snapshots preserves every live checkpoint');
+    assert.equal(h.state().campaignPreparation.archive.length, state.campaignPreparation.archive.length);
+});
+
+test('loading oversized retry metadata preserves guidance, proofs, messages and live campaign history', async () => {
+    const h = generationHarness(messages());
+    const state = attachArchivedCampaign(h);
+    const packet = h.scope.buildGenerationPacket(state, h.context.chat, h.context);
+    const oversized = { ...packet,
+        selection: { ...packet.selection, campaignPreparation: state.campaignPreparation },
+        plannerState: { ...packet.plannerState, campaignPreparation: state.campaignPreparation } };
+    const cache = { version: 1, entries: Array.from({ length: 12 }, (_, index) => ({ ...oversized,
+        inputKey: index === 11 ? packet.inputKey : `old-${index}` })) };
+    const metadata = { ...h.context.chatMetadata, [GENERATION_CONTEXT_KEY]: cache };
+    const original = JSON.stringify(metadata);
+    const freeze = value => {
+        if (!value || typeof value !== 'object' || Object.isFrozen(value)) return;
+        Object.values(value).forEach(freeze);
+        Object.freeze(value);
+    };
+    freeze(metadata);
+    const reopened = generationHarness(structuredClone(messages()), state, metadata);
+    await reopened.scope.refreshCurrentPlanIfNeeded();
+    const compact = reopened.context.chatMetadata[GENERATION_CONTEXT_KEY];
+    assert.ok(JSON.stringify(compact).length < JSON.stringify(cache).length / 5);
+    assert.equal(generationContextEntries(compact).length, 12);
+    assert.deepEqual(reopened.state().campaignPreparation, state.campaignPreparation);
+    assert.deepEqual(reopened.context.chat, messages());
+    for (let index = 0; index < cache.entries.length; index++) {
+        const before = cache.entries[index], after = compact.entries[index];
+        assert.deepEqual({ ...after,
+            selection: { ...after.selection, campaignPreparation: before.selection.campaignPreparation },
+            plannerState: { ...after.plannerState, campaignPreparation: before.plannerState.campaignPreparation } }, before);
+    }
+    assert.equal(JSON.stringify(metadata), original, 'migration never mutates saved inputs');
+    assert.equal(reopened.scope.migrateCampaignReferences(), false);
+    const persisted = JSON.parse(JSON.stringify(reopened.context.chatMetadata));
+    const retry = generationHarness([...messages(), { is_user: false, mes: 'Discarded response.' }], persisted.livingWorldGuide, persisted);
+    retry.scope.deferReplacementPlanning(retry.context);
+    assert.equal(retry.prepare('swipe').payload, packet.payload);
+    assert.equal(retry.calls.length, 0);
+    assert.equal(retry.state().campaignPreparation.archive.length, state.campaignPreparation.archive.length);
+    const tampered = structuredClone(compact);
+    tampered.entries.at(-1).payload += 'Invented guidance';
+    assert.equal(generationContextEntries(tampered).length, 11, 'compaction preserves payload validation');
+});
+
+test('compacting retry metadata preserves legacy rollback archives', () => {
+    const packet = { version: 1, payload: '<plot-anchor>Legacy</plot-anchor>', selection: {},
+        plannerState: { plannerContract: 14, campaignPreparation: { archive: [{ retained: true }] } } };
+    const cache = { version: 1, entries: [packet] };
+    assert.equal(compactGenerationContextCache(cache), cache);
+    assert.deepEqual(rememberGenerationContext(null, packet).entries[0], packet);
 });
 
 test('actual generation uses the complete campaign, without old scene directives or closed leads', () => {
