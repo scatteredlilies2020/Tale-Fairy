@@ -1,4 +1,4 @@
-import { sha256 } from './sha256.js?v=0.20.2';
+import { sha256 } from './sha256.js?v=0.20.3';
 import { normalizePlannerContext, plannerContextLimit, plannerInputCapacity, plannerOutputCapacity, plannerModeInputTokens } from './planner-capacity.js?context-guard=1&concise-prompts=1&portable-frame=1&horizon-links=3';
 import { renderFutureCards } from './future-cards.js?future-cards=1&future-controls=1&causal-futures=1';
 import { campaignAuthorInstructions, campaignPayloadBudget, campaignUsable, campaignMaterialUsable, campaignWriterUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=1&writer-fit=1&continuous-guidance=2';
@@ -10,7 +10,7 @@ import { readEvidenceProviders, evidenceRevisionKey } from './evidence-providers
 import { campaignEvidenceMessages, campaignReviewWindow } from './campaign-evidence.js?fresh-summary=1';
 import { campaignReviewedCount, campaignCheckpoint, campaignReconsideration, verifiedClosedSubjects } from './campaign-review.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=1&writer-fit=1';
 import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.36&token-budget=1&rp-plot=1&progress=1&follow-through=1&working-plan=1&recovery=1&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&planner-timeout=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&server-jobs=1&chapter-labels=1&future-chapters=1&future-controls=1&writer-target=1&writer-fit=1';
-import { campaignAttemptSummary } from './planner-progress.js?v=1&recovery=1&review-checkpoint=1&story-workshop=1&request-policy=2&story-director=1&planner-timeout=1&server-jobs=1';
+import { campaignAttemptSummary, serverPlannerProgress } from './planner-progress.js?v=1&recovery=1&review-checkpoint=1&story-workshop=1&request-policy=2&story-director=1&planner-timeout=1&server-jobs=1&bounded-retries=1';
 import { finalizeNotebookCompactions, writeNotebookArchive } from './notebook-compaction.js?v=0.14.22';
 import { eventSource, event_types, extension_prompt_roles, extension_prompt_types, generateRaw, Generate, setExtensionPrompt, getRequestHeaders, getCharacterCardFields, saveSettingsDebounced } from '/script.js';
 import { getContext } from '/scripts/st-context.js';
@@ -61,7 +61,7 @@ import { createFutureHost, serializeActivePlanner } from './future-host.js?v=0.2
 const activatedStoryContext = new ActivatedStoryContext();
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.20.2';
+const RUNTIME_VERSION = '0.20.3';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -295,19 +295,31 @@ function messagesFromChat(chat = []) { return chat.map(m => ({ mes: m?.mes || ''
 function currentContext() { return getContext(); }
 
 async function plannerServerApi(path, options = {}) {
-    const response = await plannerNativeFetch(`${PLANNER_SERVER_BASE}${path}`, {
-        ...options,
-        headers: options.body
-            ? (currentContext().getRequestHeaders?.() || getRequestHeaders?.() || { 'Content-Type': 'application/json' })
-            : options.headers,
-        cache: 'no-store',
-    });
-    const text = await response.text();
-    let payload;
-    try { payload = text ? JSON.parse(text) : {}; }
-    catch { payload = { error: text || response.statusText }; }
-    if (!response.ok) throw new Error(payload.error || `${response.status} ${response.statusText}`);
-    return payload;
+    const controller = new AbortController();
+    const forwardAbort = () => controller.abort(options.signal.reason);
+    if (options.signal?.aborted) forwardAbort();
+    else options.signal?.addEventListener('abort', forwardAbort, { once: true });
+    const timer = setTimeout(() => controller.abort(new DOMException('Planner server status request timed out after 15s.', 'TimeoutError')), 15000);
+    try {
+        controller.signal.throwIfAborted();
+        const response = await waitForAbortable(plannerNativeFetch(`${PLANNER_SERVER_BASE}${path}`, {
+            ...options,
+            signal: controller.signal,
+            headers: options.body
+                ? (currentContext().getRequestHeaders?.() || getRequestHeaders?.() || { 'Content-Type': 'application/json' })
+                : options.headers,
+            cache: 'no-store',
+        }), controller.signal);
+        const text = await waitForAbortable(response.text(), controller.signal);
+        let payload;
+        try { payload = text ? JSON.parse(text) : {}; }
+        catch { payload = { error: text || response.statusText }; }
+        if (!response.ok) throw new Error(payload.error || `${response.status} ${response.statusText}`);
+        return payload;
+    } finally {
+        clearTimeout(timer);
+        options.signal?.removeEventListener('abort', forwardAbort);
+    }
 }
 
 function rememberDetachedPlannerJob(runKey, id) {
@@ -405,8 +417,9 @@ function installDetachedPlannerTransport() {
             let { job } = await response.json();
             rememberDetachedPlannerJob(meta.runKey, job.id);
             while (['queued', 'processing', 'retry_wait'].includes(job.status)) {
+                if (meta.campaign.kind !== 'future') showCampaignPhase(serverPlannerProgress(job));
                 await waitForAbortable(new Promise(resolve => setTimeout(resolve, 2000)), init.signal);
-                ({ job } = await plannerServerApi(`/planner-jobs/${encodeURIComponent(job.id)}`));
+                ({ job } = await plannerServerApi(`/planner-jobs/${encodeURIComponent(job.id)}`, { signal: init.signal }));
             }
             if (job.status !== 'complete') throw Error(job.error || 'Server planning did not complete.');
             const attempt = readCampaignSnapshot().attempt;
@@ -2372,9 +2385,7 @@ async function recoverDetachedCampaignJobs({ duringPreflight = false } = {}) {
                 continue;
             }
             if (['queued', 'processing', 'retry_wait'].includes(job.status)) {
-                renderAnalysisActivity(job.status === 'retry_wait'
-                    ? `Server planner waiting to retry · attempt ${job.attempts}/3 · safe to close this page`
-                    : `Server planner running · attempt ${job.attempts}/3 · safe to close this page`, true);
+                renderAnalysisActivity(serverPlannerProgress(job), true);
                 return { active: true, recovered: false };
             }
             const result = job.status === 'complete' ? await recoverCampaignJob(job, {

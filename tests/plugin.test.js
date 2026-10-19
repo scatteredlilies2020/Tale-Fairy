@@ -192,6 +192,93 @@ test('server timeout can retry before output; auth, invalid output and partial s
     }
 });
 
+test('timeout retries an adapter that ignores abort, and its late response cannot replace the new attempt', async () => {
+    const router = routerMock(), releases = [], signals = [];
+    await init(router, { retryDelays: [1, 1], requestTimeoutMs: 80, fetchImpl: (_url, { signal }) => {
+        signals.push(signal);
+        return new Promise(resolve => releases.push(resolve));
+    } });
+    const res = responseMock();
+    await router.routes.get('POST /planner-jobs/generate')(request(campaignBody('ignores-abort')), res);
+    const id = res.payload.job.id;
+    await untilJob(router, id, job => job.status === 'processing' && job.attempts === 2);
+    assert.equal(signals[0].reason.name, 'TimeoutError');
+    releases[0](new Response('{"choices":[{"message":{"content":"obsolete draft"}}]}'));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(inspectJob(router, id).status, 'processing');
+    assert.equal(inspectJob(router, id).text, '');
+    releases[1](new Response('{"choices":[{"message":{"content":"fresh draft"}}]}'));
+    const job = await untilJob(router, id, job => job.status === 'complete');
+    assert.equal(job.text, 'fresh draft');
+    assert.equal(job.attempts, 2);
+    assert.equal(job.maxAttempts, 3);
+    assert.ok(Date.parse(job.attemptDeadlineAt) > Date.parse(job.attemptStartedAt));
+});
+
+for (const kind of ['partial-stream', 'partial-json', 'heartbeat']) {
+    test(`a stalled ${kind} is discarded and retried within the hard deadline`, async t => {
+        const router = routerMock();
+        let calls = 0, body, heartbeat;
+        t.after(() => {
+            clearInterval(heartbeat);
+            try { body?.close(); } catch { /* Aborted iterators may already have cancelled the body. */ }
+        });
+        await init(router, { retryDelays: [1, 1], requestTimeoutMs: kind === 'heartbeat' ? 1000 : 20,
+            attemptTimeoutMs: 60, fetchImpl: async (_url, { signal }) => {
+                if (++calls > 1) return new Response('{"choices":[{"message":{"content":"complete replacement"}}]}');
+                return new Response(new ReadableStream({ start(controller) {
+                    body = controller;
+                    const fragment = kind === 'partial-json' ? '{"choices":['
+                        : kind === 'partial-stream' ? 'data: {"choices":[{"delta":{"content":"discard me"}}]}\n\n' : ': keepalive\n\n';
+                    controller.enqueue(new TextEncoder().encode(fragment));
+                    if (kind === 'heartbeat') heartbeat = setInterval(() => {
+                        if (signal.aborted) clearInterval(heartbeat);
+                        else controller.enqueue(new TextEncoder().encode(': ping\n\n'));
+                    }, 5);
+                } }), { headers: { 'Content-Type': kind === 'partial-json' ? 'application/json' : 'text/event-stream' } });
+            } });
+        const payload = campaignBody(`stalled-${kind}`);
+        if (kind === 'partial-json') payload.backendPath = '/api/backends/text-completions/generate';
+        const res = responseMock();
+        await router.routes.get('POST /planner-jobs/generate')(request(payload), res);
+        const job = await untilJob(router, res.payload.job.id, job => job.status === 'complete');
+        assert.equal(job.attempts, 2);
+        assert.equal(calls, 2);
+        assert.equal(job.text, 'complete replacement');
+    });
+}
+
+test('unresponsive attempts exhaust three tries and a deduplicated submission cannot start more', async () => {
+    const router = routerMock();
+    let calls = 0;
+    await init(router, { retryDelays: [1, 1], requestTimeoutMs: 10, fetchImpl: () => { calls++; return new Promise(() => {}); } });
+    const body = campaignBody('hung-exhausted'), res = responseMock();
+    await router.routes.get('POST /planner-jobs/generate')(request(body), res);
+    const job = await untilJob(router, res.payload.job.id, job => job.status === 'error');
+    assert.equal(job.attempts, 3);
+    assert.equal(calls, 3);
+    assert.match(job.error, /timed out/);
+    const repeated = responseMock();
+    await router.routes.get('POST /planner-jobs/generate')(request(body), repeated);
+    assert.equal(repeated.payload.job.id, job.id);
+    assert.equal(repeated.payload.job.status, 'error');
+    assert.equal(calls, 3);
+});
+
+test('Stop releases an unresponsive active request without retrying', async () => {
+    const router = routerMock();
+    let calls = 0;
+    await init(router, { retryDelays: [1, 1], requestTimeoutMs: 10, fetchImpl: () => { calls++; return new Promise(() => {}); } });
+    const res = responseMock();
+    await router.routes.get('POST /planner-jobs/generate')(request(campaignBody('hung-stop')), res);
+    const id = res.payload.job.id;
+    router.routes.get('DELETE /planner-jobs/:id')(request({}, { params: { id } }), responseMock());
+    const job = await untilJob(router, id, job => job.status === 'cancelled' && job.completedAt);
+    assert.equal(job.attempts, 1);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    assert.equal(calls, 1);
+});
+
 test('partial non-stream responses are not retried', async () => {
     const router = routerMock();
     let calls = 0;

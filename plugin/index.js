@@ -2,11 +2,12 @@ import crypto from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 const PLUGIN = 'tale-fairy';
-const VERSION = '0.20.2';
+const VERSION = '0.20.3';
 const jobs = new Map();
 const MAX_FINISHED_JOBS = 40;
 const MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
-const REQUEST_TIMEOUT_MS = 10 * 60 * 1000;
+const REQUEST_TIMEOUT_MS = 2 * 60 * 1000;
+const ATTEMPT_TIMEOUT_MS = 5 * 60 * 1000;
 const ALLOWED_BACKENDS = new Set([
     '/api/backends/chat-completions/generate',
     '/api/backends/text-completions/generate',
@@ -38,6 +39,9 @@ function publicJob(job) {
         createdAt: job.createdAt,
         completedAt: job.completedAt || null,
         attempts: job.attempts || 0,
+        maxAttempts: job.meta.campaign ? job.retryDelays.length + 1 : 1,
+        attemptStartedAt: job.attemptStartedAt || null,
+        attemptDeadlineAt: job.attemptDeadlineAt || null,
         retryAt: job.retryAt || null,
     };
 }
@@ -249,90 +253,117 @@ async function runAttempt(job, res) {
     job.status = 'processing';
     job.attempts++;
     job.retryAt = null;
-    job.receivedBytes = 0;
-    job.text = '';
-    let timer;
+    job.attemptStartedAt = new Date().toISOString();
+    job.attemptDeadlineAt = new Date(Date.now() + job.attemptTimeoutMs).toISOString();
+    // Isolate each attempt: adapters can ignore abort or resolve after a retry
+    // has started. Late reads must never alter the live job or its controller.
+    const attempt = { ...job, receivedBytes: 0, text: '' };
+    const { controller } = attempt;
+    const { signal } = controller;
+    let timer, deadline, onAbort;
+    const timeout = message => controller.abort(Object.assign(new Error(message), { name: 'TimeoutError' }));
     const touchTimeout = () => {
         clearTimeout(timer);
-        timer = setTimeout(() => job.controller.abort(Object.assign(new Error('Tale Fairy planner request timed out without data.'), { name: 'TimeoutError' })), job.requestTimeoutMs);
+        if (!signal.aborted) timer = setTimeout(() => timeout('Tale Fairy planner request timed out waiting for data.'), job.requestTimeoutMs);
     };
+    const aborted = new Promise((_, reject) => {
+        onAbort = () => reject(signal.reason);
+        signal.addEventListener('abort', onAbort, { once: true });
+    });
     touchTimeout();
+    deadline = setTimeout(() => timeout('Tale Fairy planner request exceeded its time limit without completing.'), job.attemptTimeoutMs);
     try {
-        const upstream = await job.fetchImpl(job.backendUrl, {
-            method: 'POST',
-            headers: job.backendHeaders,
-            body: JSON.stringify(job.request),
-            signal: job.controller.signal,
-        });
-        job.controller.signal.throwIfAborted();
-        const contentType = upstream.headers.get('content-type') || 'application/json';
-        if (!upstream.ok) {
-            const bytes = await readResponseBytes(upstream, job, touchTimeout, false);
-            const raw = bytes.toString('utf8');
-            throw Object.assign(new Error(`Planner backend returned HTTP ${upstream.status}: ${raw.slice(0, 500)}`), { status: upstream.status });
-        }
+        signal.throwIfAborted();
+        // Race the work itself, rather than relying on fetch/body cancellation
+        // to settle. Even a non-cooperative upstream releases the retry loop.
+        await Promise.race([collectAttempt(attempt, res, touchTimeout), aborted]);
+        signal.throwIfAborted();
+        job.status = attempt.status;
+        job.text = attempt.text;
+    } finally {
+        job.receivedBytes = attempt.receivedBytes;
+        if (!signal.aborted) job.text = attempt.text;
+        clearTimeout(timer);
+        clearTimeout(deadline);
+        signal.removeEventListener('abort', onAbort);
+    }
+}
 
-        if (job.request.stream || /text\/event-stream/i.test(contentType)) {
-            const streamed = await readEventStream(upstream, job, touchTimeout);
-            job.controller.signal.throwIfAborted();
-            job.text = streamed.text;
-            let responseBytes;
-            if (!job.text && streamed.fallbackRaw.trim()) {
-                let payload;
-                try { payload = JSON.parse(streamed.fallbackRaw); }
-                catch { throw new Error('Planner backend returned neither an event stream nor JSON.'); }
-                if (payload?.error) throw new Error(payload.error?.message || payload.error);
-                job.text = completionText(payload);
-                if (completionIsTruncated(payload)) throw new Error('Planner returned a truncated response.');
-                responseBytes = Buffer.from(streamed.fallbackRaw);
-            }
-            if (!job.text && streamed.exhaustedOutputBudget) throw new Error('Planner exhausted its output budget before producing final content.');
-            if (streamed.exhaustedOutputBudget) throw new Error('Planner returned a truncated response.');
-            if (!job.text && streamed.sawReasoning) throw new Error('Planner stream produced reasoning but completed without final content.');
-            if (!job.text) throw new Error('Planner stream completed without final content.');
-            job.status = 'complete';
-            const bytes = responseBytes || jsonCompletionResponse(job.text);
-            if (!res.destroyed && !res.headersSent) {
-                res.status(upstream.status);
-                res.setHeader('Content-Type', responseBytes ? contentType : 'application/json; charset=utf-8');
-                res.setHeader('Cache-Control', 'no-store');
-                res.setHeader('X-Tale-Fairy-Job-Id', job.id);
-                res.setHeader('Access-Control-Expose-Headers', 'X-Tale-Fairy-Job-Id');
-            }
-            if (!res.destroyed && !res.writableEnded) res.end(bytes);
-            return;
-        }
-
-        const bytes = await readResponseBytes(upstream, job, touchTimeout);
-        job.controller.signal.throwIfAborted();
+async function collectAttempt(job, res, touchTimeout) {
+    job.receivedBytes = 0;
+    job.text = '';
+    const upstream = await job.fetchImpl(job.backendUrl, {
+        method: 'POST',
+        headers: job.backendHeaders,
+        body: JSON.stringify(job.request),
+        signal: job.controller.signal,
+    });
+    job.controller.signal.throwIfAborted();
+    const contentType = upstream.headers.get('content-type') || 'application/json';
+    if (!upstream.ok) {
+        const bytes = await readResponseBytes(upstream, job, touchTimeout, false);
         const raw = bytes.toString('utf8');
-        let payload;
-        try { payload = raw ? JSON.parse(raw) : {}; }
-        catch { throw new Error('Planner backend returned a non-JSON response.'); }
-        if (payload?.error) throw new Error(payload.error?.message || payload.error);
-        job.text = completionText(payload);
-        if (completionIsTruncated(payload)) throw new Error('Planner returned a truncated response.');
-        if (!job.text) throw new Error('Planner completed without final content.');
+        throw Object.assign(new Error(`Planner backend returned HTTP ${upstream.status}: ${raw.slice(0, 500)}`), { status: upstream.status });
+    }
+
+    if (job.request.stream || /text\/event-stream/i.test(contentType)) {
+        const streamed = await readEventStream(upstream, job, touchTimeout);
+        job.controller.signal.throwIfAborted();
+        job.text = streamed.text;
+        let responseBytes;
+        if (!job.text && streamed.fallbackRaw.trim()) {
+            let payload;
+            try { payload = JSON.parse(streamed.fallbackRaw); }
+            catch { throw new Error('Planner backend returned neither an event stream nor JSON.'); }
+            if (payload?.error) throw new Error(payload.error?.message || payload.error);
+            job.text = completionText(payload);
+            if (completionIsTruncated(payload)) throw new Error('Planner returned a truncated response.');
+            responseBytes = Buffer.from(streamed.fallbackRaw);
+        }
+        if (!job.text && streamed.exhaustedOutputBudget) throw new Error('Planner exhausted its output budget before producing final content.');
+        if (streamed.exhaustedOutputBudget) throw new Error('Planner returned a truncated response.');
+        if (!job.text && streamed.sawReasoning) throw new Error('Planner stream produced reasoning but completed without final content.');
+        if (!job.text) throw new Error('Planner stream completed without final content.');
         job.status = 'complete';
+        const bytes = responseBytes || jsonCompletionResponse(job.text);
         if (!res.destroyed && !res.headersSent) {
             res.status(upstream.status);
-            res.setHeader('Content-Type', contentType);
+            res.setHeader('Content-Type', responseBytes ? contentType : 'application/json; charset=utf-8');
             res.setHeader('Cache-Control', 'no-store');
             res.setHeader('X-Tale-Fairy-Job-Id', job.id);
             res.setHeader('Access-Control-Expose-Headers', 'X-Tale-Fairy-Job-Id');
         }
         if (!res.destroyed && !res.writableEnded) res.end(bytes);
-    } finally {
-        clearTimeout(timer);
+        return;
     }
+
+    const bytes = await readResponseBytes(upstream, job, touchTimeout);
+    job.controller.signal.throwIfAborted();
+    const raw = bytes.toString('utf8');
+    let payload;
+    try { payload = raw ? JSON.parse(raw) : {}; }
+    catch { throw new Error('Planner backend returned a non-JSON response.'); }
+    if (payload?.error) throw new Error(payload.error?.message || payload.error);
+    job.text = completionText(payload);
+    if (completionIsTruncated(payload)) throw new Error('Planner returned a truncated response.');
+    if (!job.text) throw new Error('Planner completed without final content.');
+    job.status = 'complete';
+    if (!res.destroyed && !res.headersSent) {
+        res.status(upstream.status);
+        res.setHeader('Content-Type', contentType);
+        res.setHeader('Cache-Control', 'no-store');
+        res.setHeader('X-Tale-Fairy-Job-Id', job.id);
+        res.setHeader('Access-Control-Expose-Headers', 'X-Tale-Fairy-Job-Id');
+    }
+    if (!res.destroyed && !res.writableEnded) res.end(bytes);
 }
 
 function transientFailure(error, job) {
-    // No semantic/JSON/auth/configuration retry and no retry after partial
-    // output: the server may already have completed a billable response.
+    // An unfinished timed-out draft is discarded, including partial output.
+    // Other partial/invalid responses still stop instead of buying a repair.
+    if (job.controller.signal.reason?.name === 'TimeoutError') return true;
     if (job.receivedBytes || job.text) return false;
     return [408, 429, 502, 503, 504].includes(Number(error.status))
-        || job.controller.signal.reason?.name === 'TimeoutError'
         || error.name === 'TypeError' && /fetch failed|network|terminated/i.test(error.message)
         || ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN'].includes(error.cause?.code || error.code);
 }
@@ -375,7 +406,8 @@ function sendError(res, error) {
     res.status(status).json({ ok: false, error: error.message || String(error) });
 }
 
-export async function init(router, { fetchImpl = fetch, retryDelays = [15000, 60000], requestTimeoutMs = REQUEST_TIMEOUT_MS } = {}) {
+export async function init(router, { fetchImpl = fetch, retryDelays = [15000, 60000], requestTimeoutMs = REQUEST_TIMEOUT_MS,
+    attemptTimeoutMs = ATTEMPT_TIMEOUT_MS } = {}) {
     router.get('/health', (_req, res) => {
         res.json({ ok: true, plugin: PLUGIN, version: VERSION, detachedPlanner: true, campaignJobs: 1, futureJobs: 1 });
     });
@@ -444,6 +476,7 @@ export async function init(router, { fetchImpl = fetch, retryDelays = [15000, 60
                 fetchImpl,
                 retryDelays,
                 requestTimeoutMs,
+                attemptTimeoutMs,
                 attempts: 0,
                 controller: new AbortController(),
                 status: 'queued',

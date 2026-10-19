@@ -6,6 +6,17 @@ export function plannerElapsed(milliseconds) {
     return seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${String(seconds % 60).padStart(2, '0')}s`;
 }
 
+export function serverPlannerProgress(job, now = Date.now()) {
+    const attempt = `attempt ${job.attempts || 1}/${job.maxAttempts || 3}`;
+    if (job.status === 'retry_wait') {
+        const seconds = Math.max(0, Math.ceil((Date.parse(job.retryAt) - now) / 1000) || 0);
+        return `Server planner retrying in ${seconds}s · ${attempt}${job.error ? ` · ${job.error}` : ''}`;
+    }
+    const deadline = Date.parse(job.attemptDeadlineAt);
+    const remaining = Number.isFinite(deadline) ? ` · time limit in ${plannerElapsed(Math.max(0, deadline - now))}` : '';
+    return `Server planner running · ${attempt}${remaining} · safe to close this page`;
+}
+
 export function campaignAttemptSummary(attempt, active = false) {
     if (!attempt) return 'No recorded planner request';
     if (attempt.requestCount === 0) {

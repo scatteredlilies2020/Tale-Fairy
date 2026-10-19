@@ -5,12 +5,45 @@ import vm from 'node:vm';
 import { campaignJobMeta, campaignJobMatches, recoverCampaignJob } from '../extension/campaign-jobs.js';
 import { emptyCampaign } from '../extension/campaign-planner.js';
 import { directorInput, directorPass } from '../extension/story-director.js';
+import { serverPlannerProgress } from '../extension/planner-progress.js';
 
 const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
 function install(scope, ...names) {
     vm.createContext(scope);
     for (const name of names) vm.runInContext(source.match(new RegExp(`(?:async )?function ${name}\\([^]*?^}`, 'm'))[0], scope);
 }
+
+for (const phase of ['headers', 'body']) test(`server status timeout releases a hung ${phase} without submitting another job`, async () => {
+    let timeout, calls = 0, cleared = 0;
+    const scope = { AbortController, DOMException, PLANNER_SERVER_BASE: '/server',
+        setTimeout: callback => { timeout = callback; return 1; }, clearTimeout: () => { cleared++; },
+        plannerNativeFetch: async () => {
+            calls++;
+            if (phase === 'headers') return new Promise(() => {});
+            return { text: () => new Promise(() => {}) };
+        } };
+    install(scope, 'waitForAbortable', 'plannerServerApi');
+    const pending = scope.plannerServerApi('/planner-jobs');
+    await new Promise(resolve => setImmediate(resolve));
+    timeout();
+    await assert.rejects(pending, error => error.name === 'TimeoutError' && /15s/.test(error.message));
+    assert.equal(calls, 1);
+    assert.equal(cleared, 1);
+});
+
+test('server status request honours caller cancellation and cleans up the timeout', async () => {
+    let signal, cleared = 0;
+    const scope = { AbortController, DOMException, PLANNER_SERVER_BASE: '/server',
+        setTimeout: () => 1, clearTimeout: () => { cleared++; },
+        plannerNativeFetch: (_path, options) => { signal = options.signal; return new Promise(() => {}); } };
+    install(scope, 'waitForAbortable', 'plannerServerApi');
+    const controller = new AbortController();
+    const pending = scope.plannerServerApi('/planner-jobs', { signal: controller.signal });
+    controller.abort(new DOMException('Page closed', 'AbortError'));
+    await assert.rejects(pending, /Page closed/);
+    assert.equal(signal.aborted, true);
+    assert.equal(cleared, 1);
+});
 function recovery(status = 'complete') {
     const current = { enabled: true, chatId: 'chat', referenceHash: 'ref', requestSignature: 'settings',
         state: emptyCampaign(), messages: [{ is_user: false, mes: 'A new year at the music club.' }],
@@ -33,7 +66,7 @@ function recovery(status = 'complete') {
         saveCampaignAttempt: async attempt => { current.attempt = attempt; },
         acknowledgeDetachedPlannerJob: async id => acknowledgements.push(id),
         plannerServerApi: async (path, options) => requests.push({ path, ...options }),
-        renderAnalysisActivity() {}, loadState: () => current.state,
+        serverPlannerProgress, renderAnalysisActivity() {}, loadState: () => current.state,
     };
     install(scope, 'recoverDetachedCampaignJobs');
     return { current, job, scope, requests, commits, acknowledgements, run: () => scope.recoverDetachedCampaignJobs() };
@@ -97,7 +130,7 @@ function transport() {
     const job = { id: 'job', runKey: 'run', status: 'processing', attempts: 1 };
     const scope = { URL, Response, DOMException,
         PLANNER_BACKEND_PATHS: new Set(['/api/backends/chat-completions/generate']), PLANNER_SERVER_BASE: '/server',
-        detachedPlannerEnabled: true,
+        detachedPlannerEnabled: true, serverPlannerProgress, showCampaignPhase() {},
         plannerNativeFetch: async (path, options) => { requests.push({ path, ...options }); return new Response(JSON.stringify({ job }), { status: 202 }); },
         rememberDetachedPlannerJob() {}, setTimeout: callback => waits.push(callback),
         plannerServerApi: async path => { requests.push({ path, method: 'GET' }); return { job: { ...job, status: 'complete', text: 'original result', attempts: 2 } }; },

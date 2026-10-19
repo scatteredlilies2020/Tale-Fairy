@@ -21,7 +21,11 @@ Recovery neither buys a correction call nor extends guidance freshness. The exis
 
 ## Bounded retries, not an idle loop
 
-A pending server job gets at most **three total attempts**, with **15 seconds** before the second and **60 seconds** before the third. Retries are limited to temporary HTTP 408/429/502/503/504, recognized network failures and inactivity timeouts **before any response output**. Each attempt has a **10-minute inactivity timeout**. Authentication/configuration errors, malformed model output, truncation and partial responses do not retry. Repeated submission of the same retained run key returns the same job.
+A pending server job gets at most **three total attempts**, with **15 seconds** before the second and **60 seconds** before the third. In v0.20.3, each attempt has a **two-minute inactivity timeout** and a **five-minute absolute deadline**, so heartbeat traffic cannot keep it running indefinitely. A timeout discards the unfinished draft and retries even after partial output. Temporary HTTP 408/429/502/503/504 and recognized network failures before response output also retry. Authentication/configuration errors, malformed model output, truncation and other partial-response failures stop. Repeated submission of the same retained run key returns the same job.
+
+The timeout races the upstream operation itself, so an adapter that ignores cancellation cannot hold the job open. Each attempt has isolated state; a late response cannot replace a newer attempt. The browser shows the attempt count, remaining time limit, and retry countdown with the preceding error. The previous saved plan stays available throughout, and retrying a timed-out draft can incur another provider charge.
+
+Browser health and job-status checks also stop after 15 seconds, including a stalled response body. An unavailable status endpoint still does not authorize a duplicate model request; the browser reports the failure and can collect the original job on a later poll.
 
 **Tale Fairy Stop** cancels the request or retry wait. SillyTavern's ordinary story-generation Stop is separate. Disabling Tale Fairy prevents recovery; obsolete-source checks prevent a discarded draft from being installed. No timer starts a fresh logical review after bounded retries are exhausted.
 
@@ -36,6 +40,8 @@ The SillyTavern process must remain running. Jobs are held in server memory, not
 Successful current-format host reviews require **one active root Saga → connected Arcs → optional connected Threads**. Every Arc names the Saga as its parent; every Thread names an Arc. Missing or broken hierarchy rejects the draft without paid repair or invented links. Legacy preparation remains readable until its next successful review. Quiet scenes do not require Arcs or Threads, and the Saga's scale follows the RP's genre rather than imposing epic stakes.
 
 ## Verification and deployment
+
+On 2026-10-19, **1,568 automated tests passed** for v0.20.3, including stalled fetches that ignore abort, incomplete JSON and event streams, heartbeat traffic reaching the absolute deadline, late-response isolation, retry exhaustion, explicit Stop, and browser status timeouts. Live read-only inspection found no registered jobs and a stopped saved attempt; it did not establish which browser wait had remained visible. No live story or planner generation was sent for this fix.
 
 On 2026-10-09, **1,428 automated tests passed**, including server retry/cancellation, partial-output guards, deduplication, actual pagehide handling, regeneration independence, browser transport, recovery source checks and strict hierarchy validation.
 

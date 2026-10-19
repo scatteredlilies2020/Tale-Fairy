@@ -2,10 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { readFileSync } from 'node:fs';
-import { campaignAttemptSummary, PLANNER_RESPONSE_TIMEOUT_MS } from '../extension/planner-progress.js';
+import { campaignAttemptSummary, serverPlannerProgress, PLANNER_RESPONSE_TIMEOUT_MS } from '../extension/planner-progress.js';
 import { futureInterval, futureCapacity } from '../extension/future-planner.js';
 
 const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
+test('server progress displays attempt limits, retry countdown and the failure reason', () => {
+    const now = Date.now();
+    assert.match(serverPlannerProgress({ status: 'processing', attempts: 2, maxAttempts: 3,
+        attemptDeadlineAt: new Date(now + 65000).toISOString() }, now), /attempt 2\/3 · time limit in 1m 05s/);
+    assert.match(serverPlannerProgress({ status: 'retry_wait', attempts: 1, maxAttempts: 3,
+        retryAt: new Date(now + 15000).toISOString(), error: 'Request timed out' }, now), /retrying in 15s · attempt 1\/3 · Request timed out/);
+    assert.doesNotMatch(serverPlannerProgress({ status: 'processing' }, now), /NaN|undefined/);
+});
 test('director tracker reports one story-planning request and uses a practical timeout', () => {
     assert.equal(PLANNER_RESPONSE_TIMEOUT_MS, 300000);
     const summary = campaignAttemptSummary({ status: 'complete', requestCount: 1, stages: ['director'], durationMs: 14000 });
