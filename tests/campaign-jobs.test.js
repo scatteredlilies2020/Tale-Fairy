@@ -65,26 +65,18 @@ test('recovery checks its guards again after validation and never repairs invali
     assert.equal(invalid.commits(), 0);
 });
 
-test('detached oversized draft cannot install partial preparation, but its fitted response can recover once', async () => {
+test('detached oversized draft recovers complete preparation without another provider call', async () => {
     const f = fixture();
     const draft = JSON.parse(f.job.text);
     draft.select = [{ id: draft.upsert[0].id, title: draft.upsert[0].title, context: [],
         description: '歌'.repeat(480), development: '友'.repeat(280), endsWhen: '' }];
     f.job.text = JSON.stringify(draft);
-    const oversized = await recoverCampaignJob(f.job, f.options);
-    assert.equal(oversized.accepted, false); assert.equal(f.commits(), 0);
-    assert.match(oversized.error, /concise selection must fit/);
-    const fitted = { ...structuredClone(draft), select: [{ ...draft.select[0],
-        description: 'The club explores contrasting arrangements while sharing the school year.',
-        development: 'Rehearsals and performances develop friendships.' }] };
-    f.job.meta.campaign.input.writerFitDraft = draft;
-    f.job.text = JSON.stringify(fitted);
     const recovered = await recoverCampaignJob(f.job, f.options);
     assert.equal(recovered.accepted, true, recovered.error);
     assert.equal(f.commits(), 1);
     const budget = campaignPayloadBudget(f.current.state);
-    assert.equal(budget.blocked, false); assert.ok(budget.tokens <= budget.limit);
-    assert.equal(f.current.state.workingPlan.storyStructure.nodes[0].interpretation, draft.upsert[0].description);
+    assert.equal(budget.blocked, false); assert.ok(budget.overTarget > 0);
+    assert.equal(f.current.state.workingPlan.storyStructure.selection[0].interpretation, draft.select[0].description);
     assert.equal((await recoverCampaignJob(f.job, f.options)).accepted, false);
     assert.equal(f.commits(), 1);
 });

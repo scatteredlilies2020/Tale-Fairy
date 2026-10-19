@@ -137,12 +137,13 @@ test('retirement stops descendant effects without mutating the old map', () => {
     assert.doesNotMatch(html, /Ongoing effects|Writer selection/);
 });
 
-test('effects count toward the hard writer quota without clipping or dropping saved cards', async () => {
+test('effects count toward the soft writer target without clipping or dropping saved cards', async () => {
     const report = await evaluateCardCase(storyCardCases[1]);
     const plan = report.stages[0].plan;
     const original = JSON.stringify(plan);
     const budget = campaignPayloadBudget({ workingPlan: plan }, ['Author direction: ' + 'Keep the setting consistent. '.repeat(190)]);
-    assert.equal(budget.blocked, true); assert.equal(budget.payload, '');
+    assert.equal(budget.blocked, false); assert.ok(budget.overTarget > 0);
+    assert.equal(decode(budget.payload).story_context.length, plan.storyStructure.selection.length);
     assert.equal(budget.omitted, 0);
     assert.equal(JSON.stringify(plan), original);
     const fitted = campaignPayloadBudget({ workingPlan: plan }, ['Keep the setting consistent.']);

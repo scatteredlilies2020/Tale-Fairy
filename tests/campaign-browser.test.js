@@ -1066,7 +1066,7 @@ test('active director withholds an unavailable selection and still saves useful 
     assert.doesNotMatch(h.statuses.join('\n'), /Campaign preparation ready/);
 });
 
-test('active director fits public prose and preserves complete private plans after save, reload and retry', async () => {
+test('active director keeps oversized public prose complete after save, reload and retry', async () => {
     const notes = ['Follow <the author direction> without changing player choices. '.repeat(10)];
     let reply;
     const h = browser(async ({ prompt }) => {
@@ -1082,26 +1082,22 @@ test('active director fits public prose and preserves complete private plans aft
         return envelope(raw);
     }, { ...defaultState(), campaignInstructions: notes.map(text => ({ text })) }, { director: true });
     await h.scope.analyzeCampaignNow();
-    assert.equal(h.requests.length, 2, 'one bounded fitting request instead of dropping whole cards');
-    assert.deepEqual(Array.from(h.context.chatMetadata.taleFairyCampaignAttempt.stages), ['director', 'writer-fit']);
-    assert.deepEqual(h.requests[1].meta.campaign.input.writerFitDraft.upsert,
-        reply.upsert.map(card => ({ ...card, links: card.links || [], endsWhen: card.endsWhen || '' })));
-    assert.equal(h.requests[1].meta.campaign.input.prompt, h.requests[1].prompt);
-    assert.equal(JSON.parse(h.requests[1].prompt).recent_chat, undefined, 'fitting does not duplicate the completed planning context');
+    assert.equal(h.requests.length, 1, 'no additional paid rewrite for a token target');
+    assert.deepEqual(Array.from(h.context.chatMetadata.taleFairyCampaignAttempt.stages), ['director']);
     assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
     const preparation = h.state().campaignPreparation;
     assert.equal(preparation.workingPlan.storyStructure.selection.length, 1);
     const budget = campaignPayloadBudget(preparation, notes);
-    assert.equal(budget.blocked, false); assert.ok(budget.requiredTokens <= budget.limit);
+    assert.equal(budget.blocked, false); assert.ok(budget.overTarget > 0);
     assert.equal(budget.omitted, 0);
     assert.equal(budget.orientationOmitted, false);
     assert.match(h.statuses.at(-1), /Campaign preparation ready/);
     assert.doesNotMatch(h.statuses.at(-1), /withheld/);
-    assert.match(h.statuses.at(-1), /shortened automatically/);
+    assert.match(h.statuses.at(-1), /soft target/);
     const payload = h.prepare().payload;
     const packet = JSON.parse(payload.replace(/<\/?tale-fairy-context>/g, ''));
     assert.equal(packet.rp_orientation, reply.foundation.reminder);
-    assert.match(packet.story_context[0].description, /shared recipes/);
+    assert.equal(packet.story_context[0].description, reply.select[0].description);
     assert.equal(preparation.workingPlan.storyStructure.nodes[0].interpretation, reply.upsert[0].description);
     assert.deepEqual(packet.story_context[0].effects, reply.upsert[0].effects);
     assert.deepEqual(packet.author_instructions, notes);
@@ -1116,7 +1112,7 @@ test('active director fits public prose and preserves complete private plans aft
     }
 });
 
-test('old hard-limit story-card caches authenticate but over-quota packets are blocked without partial output', async () => {
+test('old hard-limit caches authenticate and restore complete content above the new soft target', async () => {
     const h = browser(async ({ prompt }) => {
         const raw = directorReply(prompt);
         return envelope(raw);
@@ -1135,8 +1131,9 @@ test('old hard-limit story-card caches authenticate but over-quota packets are b
     assert.equal(generationContextEntries(metadata[GENERATION_CONTEXT_KEY]).length, 1);
     const reopened = browser(undefined, h.state(), { director: true });
     reopened.context.chatMetadata = structuredClone(metadata);
-    assert.equal(reopened.prepare('swipe').payload, '');
-    assert.match(reopened.statuses.at(-1), /blocked by quota/);
+    const restored = reopened.prepare('swipe').payload;
+    assert.match(restored, /story_context/);
+    assert.match(restored, /橋/);
     assert.equal(reopened.requests.length, 0);
     assert.equal(JSON.stringify(metadata), oldBytes);
     const tampered = structuredClone(metadata[GENERATION_CONTEXT_KEY]);
@@ -1160,42 +1157,40 @@ test('retaining an existing orientation reports readiness, not falsely withheld 
     assert.match(h.prepare().payload, /Neighborhood activities and shared projects/);
 });
 
-test('author instructions that cannot fit stop before sending and preserve the saved preparation', async () => {
+test('large author instructions are preserved without preventing a valid preparation', async () => {
     const h = browser(async ({ prompt }) => envelope(directorReply(prompt)), defaultState(), { director: true });
     await h.scope.analyzeCampaignNow({ manual: true });
-    const preparation = structuredClone(h.state().campaignPreparation);
-    h.context.chatMetadata = saveState(h.context.chatMetadata, { ...h.state(),
-        campaignInstructions: [{ text: 'Preserve author direction. '.repeat(600) }] });
+    const note = 'Preserve author direction. '.repeat(600);
+    h.context.chatMetadata = saveState(h.context.chatMetadata, { ...h.state(), campaignInstructions: [{ text: note }] });
     await h.scope.analyzeCampaignNow({ manual: true });
-    assert.equal(h.requests.length, 1, 'no request for protected content already larger than the quota');
-    assert.deepEqual(h.state().campaignPreparation, preparation);
-    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'failed');
-    assert.match(h.statuses.at(-1), /no provider request sent/);
-    assert.equal(h.prepare().payload, '');
-    assert.match(h.statuses.at(-1), /blocked by quota/);
+    assert.equal(h.requests.length, 2);
+    assert.equal(h.state().campaignPreparation.revision, 2);
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
+    const packet = JSON.parse(h.prepare().payload.replace(/<\/?tale-fairy-context>/g, ''));
+    assert.deepEqual(packet.author_instructions, [note]);
+    assert.ok(packet.story_context.length);
 });
 
-test('unsuccessful writer fitting never commits a partial or over-quota preparation', async () => {
-    let fitting = false;
+test('a valid oversized result replaces the old preparation without paid fitting', async () => {
+    let oversized = false;
     const h = browser(async ({ prompt }) => {
-        const fit = JSON.parse(prompt).writer_fit;
-        if (fit) return envelope(fit.draft);
         const raw = directorReply(prompt);
-        if (fitting) {
+        if (oversized) {
             raw.select[0].description = '歌'.repeat(480);
             raw.select[0].development = '友'.repeat(280);
         }
         return envelope(raw);
     }, defaultState(), { director: true });
     await h.scope.analyzeCampaignNow({ manual: true });
-    const preparation = structuredClone(h.state().campaignPreparation), payload = h.prepare().payload;
-    fitting = true;
+    oversized = true;
     await h.scope.analyzeCampaignNow({ manual: true });
-    assert.equal(h.requests.length, 3, 'one planning request and at most one fitting request per attempt');
-    assert.deepEqual(h.state().campaignPreparation, preparation);
-    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'failed');
-    assert.match(h.statuses.at(-1), /concise selection must fit/);
-    assert.equal(h.prepare().payload, payload);
+    assert.equal(h.requests.length, 2);
+    assert.equal(h.state().campaignPreparation.revision, 2);
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
+    const packet = JSON.parse(h.prepare().payload.replace(/<\/?tale-fairy-context>/g, ''));
+    assert.equal(packet.story_context[0].description, '歌'.repeat(480));
+    assert.equal(packet.story_context[0].development, '友'.repeat(280));
+    assert.match(h.statuses.join('\n'), /soft target/);
 });
 
 test('active director accepts the omitted empty fields reported by ordinary planner providers', async () => {
@@ -1857,21 +1852,21 @@ test('empty writer preview distinguishes quiet selection, missing preparation an
     assert.equal(emptyPreview(h), 'Injection inactive for this request.');
 });
 
-test('notebook reports a hard quota block rather than claiming over-quota content is ready', () => {
+test('notebook reports the soft target while preserving complete oversized content', () => {
     const scope = vm.createContext({ campaignPayloadBudget });
     vm.runInContext(source.match(/function campaignBudgetSummary\([^]*?^}/m)[0], scope);
     assert.match(scope.campaignBudgetSummary(null, []), /estimated 0\/2400/);
     const note = 'Explicit instruction. '.repeat(700);
-    assert.match(scope.campaignBudgetSummary(null, [note]), /WRITER OUTPUT BLOCKED.*No partial or over-quota/);
+    assert.match(scope.campaignBudgetSummary(null, [note]), /WRITER TOKEN TARGET.*Above the soft target; complete content retained/);
     const cardState = { workingPlan: { storyStructure: { version: 1,
         foundation: { reminder: 'Neighborhood life.' }, nodes: [], selection: [] } } };
     const summary = scope.campaignBudgetSummary(cardState, [note]);
-    assert.match(summary, /WRITER OUTPUT BLOCKED.*protected instructions, orientation and effects/);
-    assert.doesNotMatch(summary, /remain included|ready/);
+    assert.match(summary, /WRITER TOKEN TARGET.*complete content retained/);
+    assert.doesNotMatch(summary, /BLOCKED|shorten them/);
 });
 
 for (const [size, requests, outcome] of [[400, 2, 'unsuccessful'], [800, 1, 'input-limited']]) {
-test(`valid oversized writer material survives ${outcome} shortening without bypassing the writer budget`, async () => {
+test(`legacy valid oversized writer material remains available after ${outcome} shortening`, async () => {
     const value = structuredClone(design);
     for (const key of ['available', 'developing', 'lasting']) value.selected_material[0][key] = '音'.repeat(size);
     const h = browser(async () => ({ choices: [{ message: { content: JSON.stringify(value) }, finish_reason: 'stop' }] }));
@@ -1879,7 +1874,7 @@ test(`valid oversized writer material survives ${outcome} shortening without byp
     assert.equal(h.requests.length, requests);
     assert.deepEqual(h.state().campaignPreparation.selectedMaterial, value.selected_material);
     assert.match(h.statuses.at(-1), /600 token target; kept intact/);
-    assert.equal(h.prepare().payload, '');
+    assert.match(h.prepare().payload, /音/);
 });
 }
 
@@ -3123,7 +3118,7 @@ test('input preparation sends required source whole even when it alone exceeds t
     assert.match(h.statuses.join('\n'), /token target; kept intact/);
 });
 
-test('normal startup migrates legacy data automatically and Rebuild stays single-pass', async () => {
+test('passive startup waits for explicit planning to migrate legacy data', async () => {
     const h = browser(async ({ prompt }) => envelope(directorReply(prompt)), defaultState(), { director: true });
     const legacy = { ...defaultState(), contextLedger: 'Old factual ledger retained for inspection.',
         userNotes: [{ kind: 'forbid', text: 'No forced public solo.', at: 1 }] };
@@ -3131,6 +3126,8 @@ test('normal startup migrates legacy data automatically and Rebuild stays single
     const legacyPayload = h.prepare().payload;
     assert.doesNotMatch(legacyPayload, /<plot-anchor>/, 'old guidance cannot leak before the first new pass');
     await h.scope.refreshCurrentPlanIfNeeded();
+    assert.equal(h.requests.length, 0);
+    await h.scope.analyzeCampaignNow({ manual: true });
     assert.equal(h.requests.length, 1);
     assert.equal(h.state().plannerContract, 15);
     assert.equal(h.state().contextLedger, legacy.contextLedger);
@@ -3157,26 +3154,27 @@ test('the live entry defaults to event planning and has no separate mode control
     assert.match(html, /data-action="rebuild"/);
 });
 
-test('fresh chat startup and ordinary Guide now use one request each without a mode selection', async () => {
+test('fresh chat startup spends no request and Guide now starts one pass', async () => {
     const h = browser();
     h.context.chatMetadata = { unrelated: 'keep' };
     assert.equal(h.state().plannerContract, 15);
     await h.scope.refreshCurrentPlanIfNeeded();
-    assert.equal(h.requests.length, 1);
-    assert.equal(h.context.chatMetadata[STATE_KEY].plannerContract, 15);
+    assert.equal(h.requests.length, 0);
     assert.equal(h.context.chatMetadata.unrelated, 'keep');
     await h.scope.reevaluateGuideState();
-    assert.equal(h.requests.length, 2);
+    assert.equal(h.requests.length, 1);
     assert.ok(h.requests.every(request => request.spec.singleShot));
 });
 
-test('failed automatic migration keeps the notebook and notes, suppresses legacy injection, and does not retry on reload', async () => {
+test('failed explicit migration preserves notes and does not retry on reload', async () => {
     const legacy = { ...defaultState(), plannerContract: 14,
         userNotes: [{ text: 'Keep the voyage open-ended.', kind: 'suggest', at: 1 }] };
     legacy.preparedWorld.approach = 'OLD NOTEBOOK';
     const h = browser(async () => { throw Error('Provider unavailable'); }, legacy);
     const preserved = structuredClone(h.state().legacyPreparedWorld);
     await h.scope.refreshCurrentPlanIfNeeded();
+    assert.equal(h.requests.length, 0);
+    await h.scope.analyzeCampaignNow({ manual: true });
     assert.equal(h.requests.length, 1);
     assert.equal(h.context.chatMetadata[STATE_KEY].plannerContract, 15);
     assert.deepEqual(h.state().legacyPreparedWorld, preserved);
@@ -3202,12 +3200,12 @@ test('disabled or chatless startup does not migrate stored metadata or spend a r
     assert.equal(h.requests.length, 0);
 });
 
-test('Stop or switching chats during automatic migration prevents a late planning call', async () => {
+test('Stop or switching chats during explicit migration prevents a late planning call', async () => {
     for (const action of ['stop', 'switch']) {
         const h = browser();
         let release;
         h.scope.cancelDetachedPlannerJobs = () => new Promise(resolve => { release = resolve; });
-        const pending = h.scope.refreshCurrentPlanIfNeeded();
+        const pending = h.scope.analyzeCampaignNow({ manual: true });
         await settle();
         assert.equal(h.context.chatMetadata[STATE_KEY].plannerContract, 15);
         if (action === 'stop') h.scope.interruptAnalysis('Stop migration', 'Stopped');

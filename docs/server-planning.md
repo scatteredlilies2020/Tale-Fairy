@@ -4,7 +4,7 @@ In v0.19.4, these levels are renamed **Chapter → Arc → Subplot** without cha
 
 ## What starts a review?
 
-- First preparation, **Guide now / Re-evaluate**, or **Full rebuild**.
+- Accepted roleplay replies (including Continue), **Guide now / Re-evaluate**, or **Full rebuild**. Opening a card, `/random`, a displayed first-message greeting, page restoration and settings mounting never start a paid review.
 - Accepted AI play approaching the preparation's horizon: normally 12 replies, adjustable within 4–20; refresh starts one reply before expiry.
 - Explicit OOC direction, scene boundaries, the writer's hidden `<!--tf-review-->` signal, or changed planning inputs can warrant an earlier review.
 - Routine generation checks whether work is due. It does not buy a new review on every reply or swipe. After terminal failure, new accepted AI play can make another automatic pass eligible.
@@ -21,9 +21,9 @@ Recovery neither buys a correction call nor extends guidance freshness. The exis
 
 ## Bounded retries, not an idle loop
 
-A pending server job gets at most **three total attempts**, with **15 seconds** before the second and **60 seconds** before the third. In v0.20.3, each attempt has a **two-minute inactivity timeout** and a **five-minute absolute deadline**, so heartbeat traffic cannot keep it running indefinitely. A timeout discards the unfinished draft and retries even after partial output. Temporary HTTP 408/429/502/503/504 and recognized network failures before response output also retry. Authentication/configuration errors, malformed model output, truncation and other partial-response failures stop. Repeated submission of the same retained run key returns the same job.
+A pending server job gets at most **three total attempts**, with **15 seconds** before the second and **60 seconds** before the third. In v0.20.4, each attempt has a **two-minute inactivity timeout** for meaningful output. Content and reasoning reset this timer; heartbeat/comment traffic alone does not. There is no absolute server response deadline, so a slow response can finish while it is making progress. A timeout discards the unfinished draft and retries even after partial output. Temporary HTTP 408/429/502/503/504 and recognized network failures before response output also retry. Authentication/configuration errors, malformed model output, truncation and other partial-response failures stop. Repeated submission of the same retained run key returns the same job.
 
-The timeout races the upstream operation itself, so an adapter that ignores cancellation cannot hold the job open. Each attempt has isolated state; a late response cannot replace a newer attempt. The browser shows the attempt count, remaining time limit, and retry countdown with the preceding error. The previous saved plan stays available throughout, and retrying a timed-out draft can incur another provider charge.
+The timeout races the upstream operation itself, so an adapter that ignores cancellation cannot hold the job open. Each attempt has isolated state; a late response cannot replace a newer attempt. The browser shows the attempt count, inactivity policy, and retry countdown with the preceding error. The previous saved plan stays available throughout, and retrying a timed-out draft can incur another provider charge.
 
 Browser health and job-status checks also stop after 15 seconds, including a stalled response body. An unavailable status endpoint still does not authorize a duplicate model request; the browser reports the failure and can collect the original job on a later poll.
 
@@ -39,7 +39,15 @@ The SillyTavern process must remain running. Jobs are held in server memory, not
 
 Successful current-format host reviews require **one active root Saga → connected Arcs → optional connected Threads**. Every Arc names the Saga as its parent; every Thread names an Arc. Missing or broken hierarchy rejects the draft without paid repair or invented links. Legacy preparation remains readable until its next successful review. Quiet scenes do not require Arcs or Threads, and the Saga's scale follows the RP's genre rather than imposing epic stakes.
 
+## Soft writer target and passive browsing — v0.20.4
+
+The writer's 2,400-token target guides concise authoring but never rejects or cuts a complete valid preparation. Instructions, orientation, cards and effects remain whole even above target. Crossing it does not buy an automatic shortening request. Old packet authentication remains available; new outgoing packets use complete content. Actual endpoint context capacity and response validity still apply.
+
+Chat changes, startup and page restoration collect existing work and display saved guidance. They do not migrate by generating, repair a missing plan, or start current/future jobs. The host's `first_message` event and unplayed greetings are excluded; a real Continue reply is still eligible without typed user text. Accepted play and explicit Guide/Rebuild still use normal cadence and reservation deduplication. An existing server job may finish and be recovered without a new model call.
+
 ## Verification and deployment
+
+On 2026-10-19, **1,574 automated tests passed** for v0.20.4. Thirty rapid card switches and repeated page restoration produced zero new planner invocations. First-message greetings stayed passive, while Guide, accepted play and Continue remained eligible. Oversized instructions, orientation, effects and cards survived save, reload, regeneration and detached recovery without a size-only provider rewrite. An active stream outlasted its inactivity allowance without cancellation; heartbeat-only stalls still retried. No live story or planner generation was sent for these changes.
 
 On 2026-10-19, **1,568 automated tests passed** for v0.20.3, including stalled fetches that ignore abort, incomplete JSON and event streams, heartbeat traffic reaching the absolute deadline, late-response isolation, retry exhaustion, explicit Stop, and browser status timeouts. Live read-only inspection found no registered jobs and a stopped saved attempt; it did not establish which browser wait had remained visible. No live story or planner generation was sent for this fix.
 

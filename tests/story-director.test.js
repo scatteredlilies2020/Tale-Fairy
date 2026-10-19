@@ -29,7 +29,7 @@ async function run(state = emptyCampaign(), raw = response(), extra = {}) {
         if (requests > 1) assert.equal(meta.input.prompt, _prompt);
         return typeof reply === 'string' ? { text: reply } : { text: JSON.stringify(reply), finishReason: 'stop' };
     } });
-    assert.equal(requests, extra.fitReply ? 2 : 1);
+    assert.equal(requests, 1, 'writer size never buys a second model request');
     return { ...result, input };
 }
 const nodes = result => result.state.workingPlan.storyStructure.nodes;
@@ -531,7 +531,7 @@ test('parent closure is rolled back unless active descendants are also closed or
     assert.deepEqual(nodes(valid), []);
 });
 
-test('duplicate selections are withheld, display hierarchy is corrected and oversized prose is fitted without losing cards', async () => {
+test('duplicate selections are withheld, display hierarchy is corrected and oversized prose remains complete without losing cards', async () => {
     const duplicate = await run(emptyCampaign(), { ...response(), select: [selected(), selected()] });
     assert.equal(duplicate.accepted, true, duplicate.error); assert.equal(selections(duplicate).length, 1);
     assert.match(duplicate.plannerNotices[0], /Duplicate/);
@@ -549,13 +549,13 @@ test('duplicate selections are withheld, display hierarchy is corrected and over
     assert.equal(selections(oversized).length, 1); assert.equal(nodes(oversized).length, 1);
     assert.deepEqual(oversized.plannerNotices, []);
     assert.match(campaignPayload(oversized.state), /recipe book/);
-    assert.equal(oversized.recovery.status, 'shortened');
+    assert.equal(oversized.recovery, undefined);
     assert.equal(campaignPayloadBudget(oversized.state).omitted, 0);
-    assert.ok(campaignPayloadBudget(oversized.state).requiredTokens <= 2400);
+    assert.ok(campaignPayloadBudget(oversized.state).overTarget > 0);
     const result = await run();
     const budget = campaignPayloadBudget(result.state, ['author '.repeat(1200)]);
     assert.equal(budget.authorOverflow, true); assert.equal(budget.omitted, 0);
-    assert.equal(budget.blocked, true); assert.equal(budget.payload, '');
+    assert.equal(budget.blocked, false); assert.ok(budget.payload);
 });
 
 test('aggregate card and inherited effect size does not discard later selections', async () => {
@@ -575,7 +575,7 @@ test('aggregate card and inherited effect size does not discard later selections
     assert.deepEqual(selections(result).map(entry => entry.id), raw.select.map(entry => entry.id));
     assert.deepEqual(result.plannerNotices, []);
     const budget = campaignPayloadBudget(result.state, ['Preserve author direction.']);
-    assert.ok(budget.requiredTokens <= 2400);
+    assert.ok(budget.overTarget > 0);
     assert.equal(budget.omitted, 0);
     assert.equal(budget.orientationOmitted, false);
     const packet = JSON.parse(budget.payload.replace(/<\/?tale-fairy-context>/g, ''));
@@ -596,46 +596,45 @@ test('writer allocation reserves complete author instructions and orientation be
     const fixed = campaignPayloadBudget({ workingPlan: { storyStructure: {
         ...first.state.workingPlan.storyStructure, selection: [],
     } } }, instructions);
-    assert.equal(allocation.limit, 2400);
+    assert.equal(allocation.target, 2400); assert.equal(allocation.soft_target, true);
     assert.equal(allocation.reserved_tokens, fixed.requiredTokens);
     assert.equal(allocation.available_tokens, 2400 - fixed.requiredTokens);
     assert.deepEqual(input.writerInstructions, instructions);
-    assert.throws(() => directorInput({ reference: { ...reference, authorInstructions: ['Author '.repeat(1500)] },
-        state: first.state, messages }), /no provider request sent.*saved preparation is intact/);
+    const largeInput = directorInput({ reference: { ...reference, authorInstructions: ['Author '.repeat(1500)] }, state: first.state, messages });
+    assert.equal(JSON.parse(largeInput.prompt).writer_budget.available_tokens, 0);
+
 });
 
-test('unfittable protected content preserves previous preparation without requesting a rewrite or omitting cards', async () => {
+test('protected content above the target saves complete preparation in one request', async () => {
     const first = await run(), before = structuredClone(first.state);
     const raw = { ...response(), foundation: { reminder: '世界'.repeat(250), changeReason: '', scratchpad: '' },
         upsert: [proposal('r1-kitchen', { effects: [{ label: 'Community access', pressure: '共'.repeat(200) }] })] };
     const result = await run(first.state, raw);
-    assert.equal(result.accepted, false);
-    assert.match(result.error, /Protected writer content requires.*No cards were cut/);
-    assert.equal(result.state, first.state);
+    assert.equal(result.accepted, true, result.error);
+    assert.equal(result.state.revision, first.state.revision + 1);
     assert.deepEqual(first.state, before);
+    const packet = JSON.parse(campaignPayload(result.state).replace(/<\/?tale-fairy-context>/g, ''));
+    assert.equal(packet.rp_orientation, raw.foundation.reminder);
+    assert.deepEqual(packet.story_context[0].effects, raw.upsert[0].effects);
+    assert.ok(campaignPayloadBudget(result.state).overTarget > 0);
+    assert.match(result.budgetNotices.join(' '), /soft target.*complete preparation saved/);
 });
 
-for (const change of ['still-large', 'private-story', 'orientation', 'effects', 'remove-card', 'end-condition']) {
-    test(`one writer fitting attempt cannot bypass quota or protected ${change}`, async () => {
-        const first = await run(), before = structuredClone(first.state);
-        const raw = { ...response(), foundation: { reminder: 'Neighborhood life.', changeReason: '', scratchpad: '' },
-            select: [selected('r1-kitchen', { interpretation: '菜'.repeat(750), stakes: '旅'.repeat(550),
-                expectation: '友'.repeat(750), endsWhen: 'The cooks publish or abandon the book.' })] };
-        const result = await run(first.state, raw, { fitReply: draft => {
-            if (change === 'still-large') return draft;
-            draft.select[0].interpretation = 'Shared recipes connect neighbors.';
-            draft.select[0].stakes = ''; draft.select[0].expectation = '';
-            if (change === 'private-story') draft.upsert[0].interpretation = 'A different private story.';
-            if (change === 'orientation') draft.foundation.reminder = 'A different world.';
-            if (change === 'effects') draft.upsert[0].effects = [{ label: 'Changed', pressure: 'New influence.' }];
-            if (change === 'remove-card') draft.select = [];
-            if (change === 'end-condition') draft.select[0].endsWhen = 'A different ending.';
-            return draft;
-        } });
+for (const change of ['private-story', 'orientation', 'effects', 'remove-card', 'end-condition']) {
+    test(`legacy in-flight fitting still validates protected ${change}`, async () => {
+        const state = emptyCampaign(), input = directorInput({ reference, state, messages });
+        const draft = { ...response(), foundation: { reminder: 'Neighborhood life.', changeReason: '', scratchpad: '' } };
+        const raw = structuredClone(draft);
+        if (change === 'private-story') raw.upsert[0].interpretation = 'A different private story.';
+        if (change === 'orientation') raw.foundation.reminder = 'A different world.';
+        if (change === 'effects') raw.upsert[0].effects = [{ label: 'Changed', pressure: 'New influence.' }];
+        if (change === 'remove-card') raw.select = [];
+        if (change === 'end-condition') raw.select[0].endsWhen = 'A different ending.';
+        input.writerFitDraft = draft;
+        const result = await directorPass({ state, input, source, generate: async () => ({ text: JSON.stringify(raw) }) });
         assert.equal(result.accepted, false, change);
-        assert.match(result.error, change === 'still-large' ? /concise selection must fit/ : /Writer fitting.*changed/);
-        assert.equal(result.state, first.state);
-        assert.deepEqual(first.state, before);
+        assert.match(result.error, /Writer fitting.*changed/);
+        assert.equal(result.state, state);
     });
 }
 

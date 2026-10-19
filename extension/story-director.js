@@ -1,12 +1,12 @@
 // One creative request. Memory supplies background, not a continuity audit.
-import { storyInput, nextPlanRevision, plannerInputLimit } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&fresh-summary=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=1&writer-fit=1';
-import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check, validCampaignState } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=1&writer-fit=1&continuous-guidance=2';
+import { storyInput, nextPlanRevision, plannerInputLimit } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&fresh-summary=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=2&writer-fit=1';
+import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check, validCampaignState } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=2&writer-fit=1&continuous-guidance=2';
 import { WORKING_PLAN_VERSION, validateWorkingPlan, workingPlanProjection, planTokens } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&world-frame=1&chapter-labels=1';
 import { STORY_SELECTION_SCHEMA, STORY_STRUCTURE_SCHEMA, STORY_TERMINOLOGY, previousStoryNodes,
     STORY_NODE_RESPONSE_SCHEMA, STORY_SELECTION_RESPONSE_SCHEMA, storeStoryDescription, storyNodeForPlanner,
     STORY_FOUNDATION_RESPONSE_SCHEMA, mergeStoryFoundation,
     mergeStoryNodes, ongoingStoryNodes, storyAncestors, validateStoryStructure, storyWriterMaterial } from './story-structure.js?story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&world-frame=1&chapter-labels=1';
-import { fitStoryContext, WRITER_CONTEXT_TOKEN_LIMIT, storyInputTokens } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1&horizon-links=3&story-structure=1&ensemble-pressure=1&story-cards=1&player-cards=1&creative-planning=1&portable-frame=1&future-controls=1&writer-target=1&writer-fit=1&continuous-guidance=2';
+import { fitStoryContext, WRITER_CONTEXT_TOKEN_LIMIT, storyInputTokens } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1&horizon-links=3&story-structure=1&ensemble-pressure=1&story-cards=1&player-cards=1&creative-planning=1&portable-frame=1&future-controls=1&writer-target=2&writer-fit=1&continuous-guidance=2';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
 import { FUTURE_CAUSAL_RULES } from './future-causality.js?causal-futures=1';
 
@@ -75,7 +75,7 @@ On adoption, expand the active root and reconnect meaningful surviving Arcs. Opt
 
 The writer chooses manifestation, timing, prose and pacing; its preset stands alone. The player controls ALL their characters' actions, choices, thoughts and outcomes. Respect current play, references and explicit corrections while inventing freely.
 
-reviewAfter is a JSON integer (4 to 20 accepted AI replies), normally 12; never quote it. It schedules review, not fictional events. Aim for 1,400 response tokens at setup, 900 on reviews. Private plans may be richer; public output must fit writer_budget including instructions, orientation, effects and framing. Aim for 1,000 writer tokens. Shorten wording, not causal specifics, conditions or effects; do not fill field limits.
+reviewAfter is a JSON integer (4 to 20 accepted AI replies), normally 12; never quote it. It schedules review, not fictional events. Aim for 1,400 response tokens at setup, 900 on reviews. Private plans may be richer; Aim for 1,000 writer tokens including instructions, orientation, effects and framing. writer_budget is a soft target; preserve useful content above it. Shorten wording, not causal specifics, conditions or effects; do not fill field limits.
 `;
 
 // Bounded title hints, never historical card contents. The host decides whether
@@ -117,12 +117,11 @@ export function directorInput(args, maxTokens) {
         const { previous_plan, prior_story_map: _map, ...context } = payload;
         const { review_boundary: _boundary, omitted_context: _omitted, ...coverage } = context.coverage;
         const authored = (args.reference?.authorInstructions || []).filter(text => typeof text === 'string' && text.trim());
-        const fixed = fitStoryContext([], authored, { storyStructure: true, strictBudget: true,
+        const fixed = fitStoryContext([], authored, { storyStructure: true, softTarget: true,
             orientation: previous_plan.storyStructure?.foundation?.reminder || '' });
-        if (fixed.blocked) throw Error(`Author instructions and RP orientation require ${fixed.requiredTokens}/${fixed.limit} writer tokens; no provider request sent. Revise their content explicitly; saved preparation is intact.`);
-        return { ...context, writer_budget: { limit: WRITER_CONTEXT_TOKEN_LIMIT,
-            reserved_tokens: fixed.requiredTokens, available_tokens: fixed.limit - fixed.requiredTokens,
-            includes: 'Author instructions, orientation, effects, selected stories and JSON framing. Use concise public descriptions; keep richer detail in private nodes.' }, coverage: { ...coverage,
+        return { ...context, writer_budget: { target: WRITER_CONTEXT_TOKEN_LIMIT, soft_target: true,
+            reserved_tokens: fixed.requiredTokens, available_tokens: Math.max(0, fixed.limit - fixed.requiredTokens),
+            includes: 'Author instructions, orientation, effects, selected stories and JSON framing. Aim for concise public descriptions; keep richer detail in private nodes. Preserve useful content even when it exceeds the target.' }, coverage: { ...coverage,
             context_use: 'Recent RP and summaries provide creative background. Carry useful plans forward; no continuity audit is requested.' },
         ...(summary ? { story_summary: { provider: 'continuity-memory', text: summary } } : {}),
         // Allocate the bounded outlook with current preparation, before fitting
@@ -205,7 +204,7 @@ export function parseDirectorResponse(raw) {
     return JSON.parse(jsonrepair(source));
 }
 
-export async function directorPass({ state, input, source, generate, allowWriterFit = true }) {
+export async function directorPass({ state, input, source, generate }) {
     let result;
     const basisRevision = state.revision;
     try {
@@ -320,28 +319,8 @@ export async function directorPass({ state, input, source, generate, allowWriter
             throw Error('Writer fitting removed or changed selected cards or end conditions; saved preparation is intact.');
         }
         const authored = input.writerInstructions || JSON.parse(input.prompt).source_reference?.authorInstructions || [];
-        const options = { storyStructure: true, strictBudget: true, orientation: foundation?.reminder || '' };
+        const options = { storyStructure: true, softTarget: true, orientation: foundation?.reminder || '' };
         const material = storyWriterMaterial(plan), writerBudget = fitStoryContext(material, authored, options);
-        if (writerBudget.blocked) {
-            // Keep identity, access/end conditions, inherited effects and the
-            // orientation fixed. Only public descriptions/development can shrink.
-            const fixed = fitStoryContext(material.map(card => Object.fromEntries(Object.entries(card)
-                .filter(([key]) => !['description', 'interpretation', 'stakes', 'expectation', 'development'].includes(key)))), authored, options);
-            if (fixed.blocked) throw Error(`Protected writer content requires ${fixed.requiredTokens}/${fixed.limit} tokens. No cards were cut or partial preparation saved; revise instructions, orientation or effects explicitly.`);
-            if (input.writerFitDraft || !allowWriterFit) throw Error(`Writer output requires ${writerBudget.requiredTokens}/${writerBudget.limit} tokens; concise selection must fit before preparation can be saved. Existing preparation is intact.`);
-            const draft = { ...structuredClone(raw), select: structuredClone(plan.storyStructure.selection) };
-            const fittedInput = { ...input, writerFitDraft: draft, writerFitNotices: notices, writerFitWithheld: rejectedIds.size > 0 || withheldSelections > 0 };
-            // This is a wording pass over a validated draft, not another story
-            // review. Do not resend the full transcript, references and private
-            // outlook alongside that same draft and consume the fitting budget.
-            fittedInput.prompt = JSON.stringify({ author_instructions: authored, writer_fit: {
-                instruction: 'Return the draft unchanged except rewriting select interpretation/stakes/expectation or description and development more concisely. Keep every selected id, title, context and endsWhen, all private upserts, foundation, effects and other fields unchanged. Preserve story substance, causal/access conditions, hidden motives and intended developments. Do not truncate sentences or remove cards. The complete writer packet must fit the hard quota; aim below the available prose allocation.',
-                required_tokens: writerBudget.requiredTokens, limit: fixed.limit,
-                available_prose_tokens: fixed.limit - fixed.requiredTokens, draft,
-            } });
-            fittedInput.inputTokens = storyInputTokens(fittedInput.prompt, DIRECTOR_SYSTEM, DIRECTOR_SCHEMA);
-            return directorPass({ state, input: fittedInput, source, generate, allowWriterFit: false });
-        }
         const projection = workingPlanProjection(plan), selectedMaterial = [];
         if (state.revision !== basisRevision) throw Error('Preparation changed during planning');
         const archive = input.resetPlan ? [] : structuredClone(state.archive || []);
@@ -368,7 +347,7 @@ export async function directorPass({ state, input, source, generate, allowWriter
             withheldMaterial: input.writerFitWithheld || rejectedIds.size > 0 || withheldSelections > 0,
             ...(input.writerFitDraft ? { recovery: { status: 'shortened' } } : {}), responseAdjustments, budget: {
             input: result.plannerInputTokens ?? input.inputTokens, plan: planTokens(plan), selected: planTokens(selectedMaterial),
-        }, budgetNotices: [], outputOverrun: 0 };
+        }, budgetNotices: writerBudget.overTarget ? [`Writer context above soft target · ${writerBudget.tokens}/${writerBudget.target} tokens · complete preparation saved`] : [], outputOverrun: writerBudget.overTarget };
     } catch (error) {
         return { accepted: false, state, error: error.message, ...(result ? { result } : {}) };
     }

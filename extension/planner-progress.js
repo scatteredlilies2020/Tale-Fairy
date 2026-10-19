@@ -13,7 +13,8 @@ export function serverPlannerProgress(job, now = Date.now()) {
         return `Server planner retrying in ${seconds}s · ${attempt}${job.error ? ` · ${job.error}` : ''}`;
     }
     const deadline = Date.parse(job.attemptDeadlineAt);
-    const remaining = Number.isFinite(deadline) ? ` · time limit in ${plannerElapsed(Math.max(0, deadline - now))}` : '';
+    const remaining = Number.isFinite(deadline) ? ` · time limit in ${plannerElapsed(Math.max(0, deadline - now))}`
+        : job.inactivityTimeoutMs ? ` · retries after ${plannerElapsed(job.inactivityTimeoutMs)} without progress` : '';
     return `Server planner running · ${attempt}${remaining} · safe to close this page`;
 }
 

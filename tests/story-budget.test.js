@@ -100,6 +100,24 @@ test('strict writer quota refuses partial or overflowing packets without mutatin
     assert.equal(fitStoryContext([], [], { strictBudget: true }).payload, '');
 });
 
+test('soft writer target preserves every card, effect, orientation and instruction above target', () => {
+    const material = Array.from({ length: 4 }, (_, index) => ({ kind: 'arc', title: `Story ${index}`,
+        description: '故事'.repeat(200), effects: [{ label: 'Access', pressure: '共'.repeat(200) }] }));
+    const instructions = ['Preserve this instruction. '.repeat(500)];
+    const options = { softTarget: true, storyStructure: true, orientation: '世界'.repeat(250) };
+    const before = structuredClone({ material, instructions, options });
+    const report = fitStoryContext(material, instructions, options);
+    assert.equal(report.blocked, false);
+    assert.ok(report.overTarget > 0);
+    assert.equal(report.omitted, 0);
+    assert.equal(report.orientationOmitted, false);
+    const packet = JSON.parse(report.payload.replace(/<\/?tale-fairy-context>/g, ''));
+    assert.deepEqual(packet.story_context, material);
+    assert.deepEqual(packet.author_instructions, instructions);
+    assert.equal(packet.rp_orientation, options.orientation);
+    assert.deepEqual({ material, instructions, options }, before);
+});
+
 test('explicit author instructions and selected story material fit as one indivisible packet', () => {
     const entry = { story_goal: { aim: 'Share the new tune.', reached_when: 'Both arrangements have been heard.' },
         available_circumstances: 'At rehearsal, Jo brings contrasting arrangements.' };

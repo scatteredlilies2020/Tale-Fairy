@@ -212,19 +212,19 @@ test('timeout retries an adapter that ignores abort, and its late response canno
     assert.equal(job.text, 'fresh draft');
     assert.equal(job.attempts, 2);
     assert.equal(job.maxAttempts, 3);
-    assert.ok(Date.parse(job.attemptDeadlineAt) > Date.parse(job.attemptStartedAt));
+    assert.equal(job.attemptDeadlineAt, undefined, 'active responses have no total-duration cutoff');
+    assert.equal(job.inactivityTimeoutMs, 80);
 });
 
 for (const kind of ['partial-stream', 'partial-json', 'heartbeat']) {
-    test(`a stalled ${kind} is discarded and retried within the hard deadline`, async t => {
+    test(`a stalled ${kind} is discarded and retried after inactivity`, async t => {
         const router = routerMock();
         let calls = 0, body, heartbeat;
         t.after(() => {
             clearInterval(heartbeat);
             try { body?.close(); } catch { /* Aborted iterators may already have cancelled the body. */ }
         });
-        await init(router, { retryDelays: [1, 1], requestTimeoutMs: kind === 'heartbeat' ? 1000 : 20,
-            attemptTimeoutMs: 60, fetchImpl: async (_url, { signal }) => {
+        await init(router, { retryDelays: [1, 1], requestTimeoutMs: 20, fetchImpl: async (_url, { signal }) => {
                 if (++calls > 1) return new Response('{"choices":[{"message":{"content":"complete replacement"}}]}');
                 return new Response(new ReadableStream({ start(controller) {
                     body = controller;
@@ -263,6 +263,29 @@ test('unresponsive attempts exhaust three tries and a deduplicated submission ca
     assert.equal(repeated.payload.job.id, job.id);
     assert.equal(repeated.payload.job.status, 'error');
     assert.equal(calls, 3);
+});
+
+test('ongoing content can take longer than the inactivity timeout without being cut off or retried', async t => {
+    const router = routerMock();
+    let calls = 0, interval;
+    t.after(() => clearInterval(interval));
+    await init(router, { requestTimeoutMs: 60, retryDelays: [1, 1], fetchImpl: async () => {
+        calls++;
+        return new Response(new ReadableStream({ start(controller) {
+            let fragments = 0;
+            interval = setInterval(() => {
+                controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"part "}}]}\n\n'));
+                if (++fragments === 6) { clearInterval(interval); controller.close(); }
+            }, 20);
+        } }), { headers: { 'Content-Type': 'text/event-stream' } });
+    } });
+    const res = responseMock();
+    await router.routes.get('POST /planner-jobs/generate')(request(campaignBody('healthy-long-stream')), res);
+    const job = await untilJob(router, res.payload.job.id, job => job.status === 'complete');
+    assert.equal(calls, 1);
+    assert.equal(job.attempts, 1);
+    assert.equal(job.text, 'part '.repeat(6).trim());
+    assert.equal(job.attemptDeadlineAt, undefined);
 });
 
 test('Stop releases an unresponsive active request without retrying', async () => {

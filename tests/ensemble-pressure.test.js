@@ -175,13 +175,14 @@ test('end boundaries round-trip without leaking private descriptions on omitted 
     assert.equal(next.state.workingPlan.storyStructure.nodes[0].endsWhen, fixture.card.endsWhen);
 });
 
-test('over-quota writer content is blocked intact and fitting content keeps all orientation, effects and instructions', async () => {
+test('writer content above the target keeps all orientation, effects and instructions', async () => {
     const first = await run();
     const budget = campaignPayloadBudget(first.state, ['Explicit instruction. '.repeat(500)]);
     assert.equal(budget.authorOverflow, true);
     assert.equal(budget.orientationOmitted, false);
     assert.equal(budget.omitted, 0);
-    assert.equal(budget.blocked, true); assert.equal(budget.payload, '');
+    assert.equal(budget.blocked, false); assert.ok(budget.overTarget > 0);
+    assert.equal(decode(budget.payload).author_instructions[0], 'Explicit instruction. '.repeat(500));
     const fitted = campaignPayloadBudget(first.state, ['Explicit instruction.']);
     assert.equal(fitted.blocked, false); assert.ok(fitted.tokens <= fitted.limit);
     const packet = decode(fitted.payload);

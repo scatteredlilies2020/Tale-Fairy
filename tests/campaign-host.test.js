@@ -453,14 +453,14 @@ test('campaign cache authenticates old bounded packets while new packets contain
     assert.equal(h.calls.length, 0);
 });
 
-test('campaign cache authenticates old large designs but rebuilds bounded writer packets', () => {
+test('campaign cache authenticates old large designs and restores complete writer packets', () => {
     const h = generationHarness(messages());
     const state = attach(h);
     state.campaignPreparation.developments = Array.from({ length: 4 }, (_, i) => ({ id: `subject-${i}`,
         premise: '"'.repeat(1600), progression: '"'.repeat(2400), outcomes: '"'.repeat(1600), access: '"'.repeat(900) }));
     h.context.chatMetadata = saveState(h.context.chatMetadata, state);
     const payload = h.prepare().payload;
-    assert.equal(payload, '', 'oversized story blocks stay saved, not injected');
+    assert.match(payload, /possible_developments/, 'oversized story blocks remain available to the writer');
     assert.deepEqual(h.state().campaignPreparation.developments, state.campaignPreparation.developments);
     const entries = generationContextEntries(h.context.chatMetadata[GENERATION_CONTEXT_KEY]);
     assert.equal(entries.length, 1);
@@ -471,7 +471,7 @@ test('campaign cache authenticates old large designs but rebuilds bounded writer
     assert.equal(generationContextEntries(archive).length, 1);
     h.context.chatMetadata[GENERATION_CONTEXT_KEY] = archive;
     h.scope.generationGuideSelection = null;
-    assert.equal(h.prepare('swipe').payload, '', 'an authenticated old snapshot cannot bypass the new cap');
+    assert.equal(h.prepare('swipe').payload, payload, 'an authenticated old snapshot rebuilds complete current material');
     assert.equal(archive.entries[0].payload, oldPayload, 'immutable archived bytes are preserved');
     assert.equal(generationContextEntries({ entries: [{ ...entries[0], payload: '<tale-fairy-context>fabricated</tale-fairy-context>' }] }).length, 0);
 });

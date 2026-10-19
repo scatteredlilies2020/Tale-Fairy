@@ -3,9 +3,10 @@ import { plannerMessages, PLANNER_OUTPUT_MODE } from './output-negotiation.js?v=
 import { compactProgressPayload, compactMessagePayload } from './planner-compaction.js';
 import { optionalPlannerContexts } from './planner-context.js?soft-targets=1&story-map=1&story-goal=2&story-throughline=1&story-life=1&creative-planning=1';
 
-// Public output has a hard quota; private planning may be richer. Reserve
-// framing and author instructions before allocating selected story prose.
-export const WRITER_CONTEXT_TOKEN_LIMIT = 2400;
+// Current packets use a soft target. Keep the old limit for authenticating
+// historical packets without changing their saved bytes.
+export const WRITER_CONTEXT_TOKEN_TARGET = 2400;
+export const WRITER_CONTEXT_TOKEN_LIMIT = WRITER_CONTEXT_TOKEN_TARGET;
 const envelopes = new WeakMap();
 
 // The active story pass sends prompt-only JSON, including schema shorthand in
@@ -129,6 +130,14 @@ export function storyContextPayload(material, authored, { legacyContracts = fals
 export function fitStoryContext(material, authored, options = {}) {
     const selected = [];
     const authorTokens = conservativeTokenCount(storyContextPayload([], authored, { ...options, orientation: '' }));
+    if (options.softTarget) {
+        const payload = storyContextPayload(material, authored, options);
+        const tokens = conservativeTokenCount(payload);
+        return { payload, tokens, requiredTokens: tokens, target: WRITER_CONTEXT_TOKEN_TARGET,
+            limit: WRITER_CONTEXT_TOKEN_TARGET, overTarget: Math.max(0, tokens - WRITER_CONTEXT_TOKEN_TARGET),
+            blocked: false, omitted: 0, orientationOmitted: false, authorTokens,
+            authorOverflow: authorTokens > WRITER_CONTEXT_TOKEN_TARGET };
+    }
     if (options.strictBudget) {
         const payload = storyContextPayload(material, authored, options);
         const tokens = conservativeTokenCount(payload);

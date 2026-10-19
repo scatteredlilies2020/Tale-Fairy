@@ -122,6 +122,7 @@ test('a stranded retry gets one source-bound repair, not a new evaluation on eve
     h.context.chat.push({ is_user: false, mes: 'Discarded: Mira burns the letter.' });
     await h.emit('GENERATION_STARTED', 'regenerate');
     const frozen = h.prepare('regenerate');
+    await h.flush();
     await h.scope.refreshCurrentPlanIfNeeded();
     assert.equal(h.calls.length, 1);
     assert.deepEqual(h.calls[0].messages, input());
@@ -196,7 +197,7 @@ test('a retry repair queues a normal continuation without carrying its discarded
     assert.equal(h.calls[0].allowOneUserAppend, true);
 });
 
-test('normal startup retains matching input proof but refreshes real changed card dependencies', async () => {
+test('passive startup preserves input proof without buying a refresh for changed card dependencies', async () => {
     const h = generationHarness(input(), readyPlan());
     const state = h.state();
     state.analysisModel.plotInputsKey = plotInputKey('story', [], h.scope.generationInputs(h.context, state));
@@ -205,8 +206,8 @@ test('normal startup retains matching input proof but refreshes real changed car
     assert.equal(h.calls.length, 0);
     h.context.card = { scenario: 'The sender identity has changed.' };
     await h.scope.refreshCurrentPlanIfNeeded();
-    assert.equal(h.calls.length, 1);
-    assert.notEqual(h.calls[0].rebuild, true);
+    assert.equal(h.calls.length, 0);
+    assert.equal(h.scope.plannerInputsMatch(h.state(), input(), h.context), false);
 });
 
 test('warming unchanged lore after a page reload reuses saved context without planner calls', async () => {
@@ -833,7 +834,7 @@ test('Tale Fairy Stop analysis and chat changes prevent deferred generation call
 });
 
 
-test('an older failed repair gets one attempt with blank-update recovery, then remains bounded', async () => {
+test('an older failed repair waits for actual play before one bounded recovery attempt', async () => {
     const h = generationHarness(input());
     h.context.chat.push({ is_user: false, mes: 'Discarded future.' });
     await h.emit('GENERATION_STARTED', 'regenerate');
@@ -842,6 +843,9 @@ test('an older failed repair gets one attempt with blank-update recovery, then r
     delete h.context.chatMetadata[REPLACEMENT_PENDING_KEY].repairPolicyVersion;
     const restored = generationHarness(structuredClone(h.context.chat), h.state(), structuredClone(h.context.chatMetadata));
     await restored.scope.refreshCurrentPlanIfNeeded();
+    assert.equal(restored.calls.length, 0);
+    await restored.emit('GENERATION_STARTED', 'regenerate');
+    await restored.flush();
     assert.equal(restored.calls.length, 1);
     await restored.scope.refreshCurrentPlanIfNeeded();
     assert.equal(restored.calls.length, 1);

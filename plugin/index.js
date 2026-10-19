@@ -2,12 +2,11 @@ import crypto from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 const PLUGIN = 'tale-fairy';
-const VERSION = '0.20.3';
+const VERSION = '0.20.4';
 const jobs = new Map();
 const MAX_FINISHED_JOBS = 40;
 const MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
 const REQUEST_TIMEOUT_MS = 2 * 60 * 1000;
-const ATTEMPT_TIMEOUT_MS = 5 * 60 * 1000;
 const ALLOWED_BACKENDS = new Set([
     '/api/backends/chat-completions/generate',
     '/api/backends/text-completions/generate',
@@ -41,7 +40,7 @@ function publicJob(job) {
         attempts: job.attempts || 0,
         maxAttempts: job.meta.campaign ? job.retryDelays.length + 1 : 1,
         attemptStartedAt: job.attemptStartedAt || null,
-        attemptDeadlineAt: job.attemptDeadlineAt || null,
+        inactivityTimeoutMs: job.requestTimeoutMs,
         retryAt: job.retryAt || null,
     };
 }
@@ -177,6 +176,7 @@ async function readEventStream(upstream, job, touchTimeout) {
     let sawReasoning = false;
     let exhaustedOutputBudget = false;
     let totalBytes = 0;
+    const eventStream = /text\/event-stream/i.test(upstream.headers.get('content-type') || '');
 
     const consume = (event) => {
         const dataLines = event.split(/\r?\n/).filter(line => line.startsWith('data:'));
@@ -194,12 +194,16 @@ async function readEventStream(upstream, job, touchTimeout) {
         const choice = payload?.choices?.[0];
         const finishReason = String(choice?.finish_reason || payload?.finish_reason || '').toLowerCase();
         const incompleteReason = String(payload?.incomplete_details?.reason || payload?.response?.incomplete_details?.reason || '').toLowerCase();
-        sawReasoning ||= Boolean(choice?.delta?.reasoning_content || choice?.delta?.reasoning)
+        const reasoning = Boolean(choice?.delta?.reasoning_content || choice?.delta?.reasoning)
             || isReasoningBlock(payload)
             || (Array.isArray(payload?.response?.output) && payload.response.output.some(isReasoningBlock));
+        sawReasoning ||= reasoning;
         exhaustedOutputBudget ||= completionIsTruncated(payload) || ['length', 'max_tokens', 'max_output_tokens'].includes(finishReason)
             || /(?:max.*(?:token|output)|token.*limit)/u.test(incompleteReason);
         const fragment = streamCompletionText(payload);
+        // Provider output and reasoning are progress. Heartbeat/comment bytes
+        // alone must not keep a stalled request alive indefinitely.
+        if (fragment || reasoning) touchTimeout();
         if (fragment) output += fragment;
         else if (!output && /(?:completed|done)$/iu.test(String(payload?.type || ''))) output = completionText(payload);
     };
@@ -211,7 +215,7 @@ async function readEventStream(upstream, job, touchTimeout) {
         if (totalBytes > MAX_RESPONSE_BYTES) throw new Error('Tale Fairy planner response exceeded the 32 MB safety limit.');
         job.receivedBytes = totalBytes;
         job.lastActivityAt = new Date().toISOString();
-        touchTimeout();
+        if (!eventStream) touchTimeout();
         const decoded = decoder.decode(bytes, { stream: true });
         if (!sawEventData) fallbackRaw += decoded;
         pending += decoded;
@@ -254,13 +258,12 @@ async function runAttempt(job, res) {
     job.attempts++;
     job.retryAt = null;
     job.attemptStartedAt = new Date().toISOString();
-    job.attemptDeadlineAt = new Date(Date.now() + job.attemptTimeoutMs).toISOString();
     // Isolate each attempt: adapters can ignore abort or resolve after a retry
     // has started. Late reads must never alter the live job or its controller.
     const attempt = { ...job, receivedBytes: 0, text: '' };
     const { controller } = attempt;
     const { signal } = controller;
-    let timer, deadline, onAbort;
+    let timer, onAbort;
     const timeout = message => controller.abort(Object.assign(new Error(message), { name: 'TimeoutError' }));
     const touchTimeout = () => {
         clearTimeout(timer);
@@ -271,7 +274,6 @@ async function runAttempt(job, res) {
         signal.addEventListener('abort', onAbort, { once: true });
     });
     touchTimeout();
-    deadline = setTimeout(() => timeout('Tale Fairy planner request exceeded its time limit without completing.'), job.attemptTimeoutMs);
     try {
         signal.throwIfAborted();
         // Race the work itself, rather than relying on fetch/body cancellation
@@ -284,7 +286,6 @@ async function runAttempt(job, res) {
         job.receivedBytes = attempt.receivedBytes;
         if (!signal.aborted) job.text = attempt.text;
         clearTimeout(timer);
-        clearTimeout(deadline);
         signal.removeEventListener('abort', onAbort);
     }
 }
@@ -406,8 +407,7 @@ function sendError(res, error) {
     res.status(status).json({ ok: false, error: error.message || String(error) });
 }
 
-export async function init(router, { fetchImpl = fetch, retryDelays = [15000, 60000], requestTimeoutMs = REQUEST_TIMEOUT_MS,
-    attemptTimeoutMs = ATTEMPT_TIMEOUT_MS } = {}) {
+export async function init(router, { fetchImpl = fetch, retryDelays = [15000, 60000], requestTimeoutMs = REQUEST_TIMEOUT_MS } = {}) {
     router.get('/health', (_req, res) => {
         res.json({ ok: true, plugin: PLUGIN, version: VERSION, detachedPlanner: true, campaignJobs: 1, futureJobs: 1 });
     });
@@ -476,7 +476,6 @@ export async function init(router, { fetchImpl = fetch, retryDelays = [15000, 60
                 fetchImpl,
                 retryDelays,
                 requestTimeoutMs,
-                attemptTimeoutMs,
                 attempts: 0,
                 controller: new AbortController(),
                 status: 'queued',
