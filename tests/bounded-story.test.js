@@ -523,13 +523,13 @@ test('structural plan bounds remain mandatory but token estimates are soft targe
 
 test('complete request target includes schema and instructions without rejecting protected input', () => {
     assert.equal(plannerInputLimit(), 10000);
-    assert.equal(plannerInputLimit(100000), 10000);
+    assert.equal(plannerInputLimit(100000), 100000);
     assert.equal(plannerInputLimit(5000), 5000);
     assert.throws(() => plannerInputLimit(Infinity), /finite/);
     const reference = { rules: 'Required rule. '.repeat(6000) };
     const large = storyInput({ reference, state: emptyCampaign(), messages }, 100000);
-    assert.ok(large.inputOverTarget > 0);
-    assert.equal(large.inputLimit, 10000);
+    assert.equal(large.inputOverTarget, Math.max(0, large.inputTokens - 100000));
+    assert.equal(large.inputLimit, 100000);
     assert.deepEqual(JSON.parse(large.prompt).source_reference, reference);
     assert.ok(storyInput({ reference: {}, state: emptyCampaign(), messages }, 1).inputOverTarget > 0);
     assert.equal(STORY_SCHEMA.name, 'tale_fairy_story_progression_v6');

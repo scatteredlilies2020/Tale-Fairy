@@ -17,8 +17,16 @@
 
       <div class="living-world-guide-card">
         <h4>Current world preparation</h4>
+        <label class="checkbox_label"><input type="checkbox" data-setting="automatic-planning"><span>Plan automatically after accepted play</span></label>
+        <label class="checkbox_label"><input type="checkbox" data-setting="early-reviews"><span>Allow early reviews for story-change signals</span></label>
+        <small>Off by default for early signals. Automatic reviews follow your interval; failed passes also wait that interval. Guide now and Rebuild remain immediate. Early reviews, when enabled, wait at least four replies.</small>
         <small>Tale Fairy prepares story context and possible developments at the current scale. Planning runs in the background; your preset controls the writing.</small>
         <div class="living-world-guide-grid">
+          <label>Writer context target (tokens)<input class="text_pole" type="number" data-setting="writer-target" min="1" step="100" value="2400"></label>
+          <label>Setup response target (tokens)<input class="text_pole" type="number" data-setting="setup-output-target" min="1" step="100" value="1400"></label>
+          <label>Review response target (tokens)<input class="text_pole" type="number" data-setting="review-output-target" min="1" step="100" value="900"></label>
+          <label>Future response target per card (tokens)<input class="text_pole" type="number" data-setting="future-card-target" min="1" step="50" value="150"></label>
+          <small>Size targets guide concise planning. Complete valid responses can exceed them; no extra request is spent merely to shrink them. The endpoint's actual context capacity still applies.</small>
           <label>Scene pacing (this chat)
             <select class="text_pole" data-setting="pacing">
               <option value="auto">Follow preset (default)</option>
@@ -33,11 +41,11 @@
             <small>Recent-message limit: up to 3,000 tokens for routine updates, 4,500 for reviews, and this setting for rebuilds. Earlier context comes from retrieval and summaries.</small>
           </label>
           <label>Optional memory context (tokens)
-            <input class="text_pole" type="number" data-setting="summary-budget" min="0" max="1000" step="250" value="1000">
+            <input class="text_pole" type="number" data-setting="summary-budget" min="0" step="250" value="1000">
             <small>Limits extra memory context on reviews. Fresh preparation reads CM's complete Story so far outside this allowance when CM support is enabled.</small>
           </label>
           <label>Total planner input target (tokens)
-            <input class="text_pole" type="number" data-setting="budget" min="3000" max="10000" step="1000" value="10000">
+            <input class="text_pole" type="number" data-setting="budget" min="1" step="1000" value="10000">
               <small>Input sizing target, including instructions, conversation, evidence and response format. Required context may exceed this target only when input and output fit the planner context window.</small>
           </label>
           <label>Planner context window (tokens)
@@ -53,11 +61,11 @@
               <small>Input target within the total limit. Review output is capped at 6,144 tokens.</small>
           </label>
           <label>Broad story review interval (assistant replies)
-            <input class="text_pole" type="number" data-setting="full-review-interval" min="4" max="20" step="1" value="12">
-            <small>Reviews maintain Chapters, Arcs and Subplots. Story changes can trigger earlier review. The last completed guidance stays available while planning updates; current play and your latest direction take precedence.</small>
+            <input class="text_pole" type="number" data-setting="full-review-interval" min="1" step="1" value="12">
+            <small>Reviews maintain Chapters, Arcs and Subplots. Your chosen interval controls automatic review. Early signals are optional. The last completed guidance stays available while planning updates; current play and your latest direction take precedence.</small>
           </label>
         </div>
-        <small data-role="campaign-budget-help">The current guide and future outlook use separate requests. Selected current cards and the RP reminder reach the writer; provisional future cards stay private. Whole entries are withheld on overflow. No model repair calls.</small>
+        <small data-role="campaign-budget-help">The current guide and future outlook use separate requests. Selected current cards and the RP reminder reach the writer; provisional future cards stay private. Size targets do not discard valid output or buy shortening calls.</small>
         <label class="checkbox_label">
           <input type="checkbox" data-setting="continuity">
           <span>Use Continuity context when available</span>
@@ -69,15 +77,15 @@
         <h4>Private future Chapters</h4>
         <label class="checkbox_label"><input type="checkbox" data-setting="future-enabled"><span>Enable separate future planning</span></label>
         <label class="checkbox_label"><input type="checkbox" data-setting="future-canon"><span>Include canon-based future Chapters</span></label>
-        <label>Future Chapter capacity
-          <select class="text_pole" data-setting="future-capacity"><option value="6" selected>6 (default)</option><option value="10">10</option><option value="15">15</option></select>
+        <label>Future Chapter count target
+          <input class="text_pole" type="number" data-setting="future-capacity" min="1" step="1" value="6">
         </label>
         <small>Unchecked: generate Original prospects; saved Canon prospects stay inactive. Canon remains world background. Canon has no priority over Original prospects; unselected saved Canon cards wait for reassessment.</small>
         <label>Future review interval (accepted assistant replies)
-          <input class="text_pole" type="number" data-setting="future-interval" min="4" max="200" step="1" value="40">
+          <input class="text_pole" type="number" data-setting="future-interval" min="1" step="1" value="40">
         </label>
-        <small>First Guide now and every Full rebuild launch both planners. Afterwards, future planning runs at this interval or after meaningful long-range changes. Reply counts never advance fictional time. Explicit “Time skip:” author directions also request reassessment.</small>
-        <small>Capacity is a ceiling, not a quota. Concise Canon (including adapted/adjacent) and Original prospects may branch, converge or develop independently. Their provisional order is not an event queue; changed causes can transform or prevent events without replacement crises.</small>
+        <small>Guide now and Full rebuild can launch both planners. Future reviews follow this interval; optional early signals wait at least four replies. Counts never advance fictional time.</small>
+        <small>Card count is a soft target; complete outlooks may exceed it. Canon and Original prospects may branch, converge or develop independently. Their order is provisional; changed causes can transform or prevent events without replacement crises.</small>
         <small>Active-route requests serialize safely; direct/profile requests can run side by side.</small>
       </div>
 

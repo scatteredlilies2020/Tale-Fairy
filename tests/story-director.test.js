@@ -642,7 +642,7 @@ test('completed guidance remains usable across review horizons and new direction
     const result = await run();
     const context = { ...source, fingerprint: () => 'accepted', messages: [{ is_user: false, mes: 'Prior.' }, { is_user: true, mes: 'Prior input.' }] };
     const usable = messages => campaignWriterUsable(result.state, { ...context, messages }, 12);
-    assert.equal(storyReviewInterval(20, result.state), 12);
+    assert.equal(storyReviewInterval(20, result.state), 20);
     assert.equal(usable([...context.messages, ...Array.from({ length: 11 }, () => ({ is_user: false, mes: 'Ordinary conversation.' }))]), true);
     assert.equal(usable([...context.messages, ...Array.from({ length: 24 }, () => ({ is_user: false, mes: 'Ordinary conversation.' }))]), true);
     assert.equal(usable([...context.messages, { is_user: true, mes: 'OOC: Drop the cooking story.' }]), true);
@@ -679,4 +679,24 @@ test('saved graph tampering fails validation without normalizing it away', async
     changed.workingPlan.storyStructure.nodes[0].parentId = 'missing';
     assert.equal(validCampaignState(changed), false);
     assert.throws(() => validateStoryStructure(changed.workingPlan.storyStructure, check), /hierarchy/);
+});
+
+test('adjustable writer and response targets preserve complete prose above historical field lengths', async () => {
+    const reminder = 'Independent communities develop through shared interests and changing circumstances. '.repeat(25);
+    const description = 'Shared recipes support friendships without deciding player participation. '.repeat(30);
+    const effects = Array.from({ length: 5 }, (_, i) => ({ label: `Continuing influence ${i}`, pressure: description }));
+    const raw = { ...response(), foundation: { reminder, changeReason: '', scratchpad: description },
+        upsert: [proposal('r1-kitchen', { interpretation: description, effects })],
+        select: [selected('r1-kitchen', { interpretation: description })] };
+    const result = await run(emptyCampaign(), raw, { writerTarget: 512, outputTarget: 6500 });
+    assert.equal(result.accepted, true, result.error);
+    const prompt = JSON.parse(result.input.prompt);
+    assert.equal(prompt.response_target_tokens, 6500);
+    assert.equal(prompt.writer_budget.target, 512);
+    const budget = campaignPayloadBudget(result.state);
+    assert.equal(budget.target, 512); assert.ok(budget.overTarget > 0);
+    const packet = JSON.parse(budget.payload.replace(/<\/?tale-fairy-context>/g, ''));
+    assert.equal(packet.rp_orientation, reminder);
+    assert.deepEqual(packet.story_context[0].effects, effects);
+    assert.equal(packet.story_context[0].interpretation, description);
 });

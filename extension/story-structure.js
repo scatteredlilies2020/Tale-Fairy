@@ -4,7 +4,7 @@ export const STORY_TERMINOLOGY = 'chapter-arc-subplot';
 // Stored kind codes remain stable for saved maps, pending jobs and swipe proofs.
 const kindLabels = { saga: 'Chapter', arc: 'Arc', thread: 'Subplot' };
 export const storyKindLabel = kind => Object.hasOwn(kindLabels, kind) ? kindLabels[kind] : 'Subplot';
-const text = maxLength => ({ type: 'string', minLength: 1, maxLength });
+const text = _target => ({ type: 'string', minLength: 1 });
 const emptyText = maxLength => ({ ...text(maxLength), minLength: 0 });
 const object = properties => ({ type: 'object', additionalProperties: false, required: Object.keys(properties), properties });
 const kinds = { type: 'string', enum: ['saga', 'arc', 'thread'] };
@@ -26,7 +26,7 @@ STORY_NODE_SCHEMA.properties.endsWhen = emptyText(240);
 STORY_SELECTION_SCHEMA.properties.endsWhen = emptyText(240);
 // Optional on disk for old maps/swipes. A selected card carries its effects once,
 // directly from the node, rather than asking the planner to repeat them in select.
-export const STORY_EFFECTS_SCHEMA = { type: 'array', maxItems: 3, items: object({
+export const STORY_EFFECTS_SCHEMA = { type: 'array', items: object({
     label: text(56), pressure: text(200),
 }) };
 STORY_NODE_SCHEMA.properties.effects = STORY_EFFECTS_SCHEMA;
@@ -47,7 +47,7 @@ export const STORY_SELECTION_RESPONSE_SCHEMA = conciseSchema(STORY_SELECTION_SCH
 for (const schema of [STORY_NODE_RESPONSE_SCHEMA.properties.kind, STORY_SELECTION_RESPONSE_SCHEMA.properties.context.items.properties.kind]) {
     schema.description = 'saga = Chapter; arc = Arc; thread = Subplot.';
 }
-STORY_SELECTION_RESPONSE_SCHEMA.properties.development.maxLength = 280;
+// Prose length is guided by the response target, never a validation failure.
 
 export function storeStoryDescription(record, schema, check, at) {
     if (!record || typeof record !== 'object' || !Object.hasOwn(record, 'description')) return record;
@@ -237,8 +237,7 @@ export function storyWriterMaterial(plan) {
 }
 
 export function storyReviewInterval(value = 12, state) {
-    const configured = Math.min(20, Math.max(4, Math.floor(Number(value) || 12)));
-    return Math.min(configured, state?.workingPlan?.storyStructure?.reviewAfter || configured);
+    return Number.isFinite(Number(value)) && Number(value) > 0 ? Math.max(1, Math.floor(Number(value))) : 12;
 }
 
 // A writer may request review, but cannot close cards or establish outcomes by

@@ -64,3 +64,15 @@ test('an actual continuation can start planning without a typed user message', a
     await h.scope.analyzeCampaignNow({ acceptedPlay: true });
     assert.equal(runs, 1);
 });
+
+test('manual-only planning ignores accepted play and remains available through Guide', async () => {
+    const h = generationHarness([{ is_user: true, mes: 'I enter.' }, { is_user: false, mes: 'They answer.' }]);
+    vm.runInContext(source.match(/function analyzeCampaignNow\([^]*?^}/m)[0], h.scope);
+    h.settings.automaticPlanning = false;
+    let runs = 0;
+    Object.assign(h.scope, { runCampaignAnalysis: async () => { runs++; return h.state(); }, showCampaignPhase() {} });
+    for (let i = 0; i < 30; i++) await h.scope.analyzeCampaignNow({ acceptedPlay: true });
+    assert.equal(runs, 0);
+    await h.scope.analyzeCampaignNow({ manual: true });
+    assert.equal(runs, 1);
+});

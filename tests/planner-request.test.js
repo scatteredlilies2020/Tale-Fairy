@@ -115,7 +115,7 @@ test('active tokenizer overflow blocks dispatch; another model never uses that t
 
 test('a larger saved target cannot bypass the planner context ceiling', async () => {
     const h = harness([{ valid: true }], { route: 'active', inputBudget: 30000, tokenCounter: async () => 40000 });
-    assert.equal(plannerInputLimit(30000), 10000);
+    assert.equal(plannerInputLimit(30000), 30000);
     await assert.rejects(h.run({ singleShot: true }), /no provider request sent/);
     assert.equal(h.requests.length, 0);
 });
@@ -372,5 +372,16 @@ test('native schema size is reserved on every provider route before output alloc
         const input = conservativeTokenCount(JSON.stringify({ messages: sent.messages, json_schema: schema })) + 64;
         assert.ok(input + sent.max_tokens + capacity.PLANNER_CONTEXT_RESERVE <= 16000, route);
         assert.equal(h.requests.length, 1, route);
+    }
+});
+
+test('current planner response targets do not impose a provider output cutoff below remaining context', async () => {
+    for (const route of ['direct', 'profile', 'active']) {
+        const h = harness([{ valid: true }], { route, contextBudget: 32768 });
+        await h.run({ singleShot: true, responseTokens: 300,
+            schema: { name: 'tale_fairy_story_director_v7', value: { type: 'object' } } });
+        assert.equal(h.requests.length, 1);
+        assert.ok(h.requests[0].max_tokens > 3000, route);
+        assert.ok(h.requests[0].max_tokens < 32768, route);
     }
 });

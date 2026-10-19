@@ -50,7 +50,7 @@ test('Update and Reroll are adjacent in one nonwrapping action group with indepe
     const handler = source.slice(source.indexOf("root.querySelector('[data-action=\"reroll-future\"]').addEventListener"));
     assert.ok(handler.slice(0, handler.indexOf('\n    });')).includes("await planFutureNow('reroll')"));
     assert.match(html, /data-setting="future-canon"/);
-    assert.match(html, /value="6" selected[^]*value="10"[^]*value="15"/);
+    assert.match(html, /type="number" data-setting="future-capacity" min="1"/);
 });
 
 test('future cards show a short premise and a few notes without changing saved preparation', () => {

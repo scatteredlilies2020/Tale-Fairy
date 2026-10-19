@@ -1,8 +1,8 @@
-import { CampaignSession } from './campaign-session.js?future-chapters=1&chapter-labels=1&server-jobs=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&story-director=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1&future-controls=1&writer-target=2&writer-fit=1';
+import { CampaignSession } from './campaign-session.js?future-chapters=1&chapter-labels=1&server-jobs=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&story-director=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1&future-controls=1&writer-target=2&writer-fit=1&resource-policy=1';
 import { campaignJobMeta, campaignJobMatches, recoverCampaignJob } from './campaign-jobs.js?future-chapters=1&server-jobs=1&writer-fit=1';
-import { campaignUsable } from './campaign-planner.js?chapter-labels=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1&future-controls=1&writer-target=2&writer-fit=1';
+import { campaignUsable } from './campaign-planner.js?chapter-labels=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1&future-controls=1&writer-target=2&writer-fit=1&resource-policy=1';
 import { FUTURE_KEY, FUTURE_ATTEMPT_KEY, PLANNING_EPOCH_KEY, FUTURE_SCHEMA, FUTURE_SYSTEM, futureOutputLimit, futureOptions,
-    emptyFuture, validFuture, futureDue, futureInput, futurePass, futureReceipts } from './future-planner.js?future-chapters=1&chapter-labels=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1&chapter-scope=2&future-cards=1&future-controls=1&causal-futures=1&context-guard=1&writer-target=2&writer-fit=1';
+    emptyFuture, validFuture, futureDue, futureInput, futurePass, futureReceipts } from './future-planner.js?future-chapters=1&chapter-labels=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1&chapter-scope=2&future-cards=1&future-controls=1&causal-futures=1&context-guard=1&writer-target=2&writer-fit=1&resource-policy=1';
 
 // Only this owner writes future state. Current planning and future planning may
 // finish in either order; their revisions and compare-and-swap guards differ.
@@ -17,8 +17,9 @@ export function createFutureHost(api) {
         const options = futureOptions(api.settings());
         const snapshot = { ...base, baseState: base.state, state, attempt, futureOptions: options,
             enabled: base.enabled && api.settings().futureEnabled !== false,
-            requestSignature: api.fingerprint({ base: base.requestSignature, schema: FUTURE_SCHEMA, system: FUTURE_SYSTEM, options,
+            requestSignature: api.fingerprint({ base: base.requestSignature, schema: FUTURE_SCHEMA, system: FUTURE_SYSTEM, options: { includeCanon: options.includeCanon },
                 epoch: metadata[PLANNING_EPOCH_KEY] || '' }) };
+        snapshot.futureCardTarget = api.settings().futureCardTokens || 150;
         snapshot.receipts = futureReceipts(metadata, snapshot, api.fingerprint);
         const reassessment = metadata.taleFairyFutureReassessment;
         snapshot.reassessmentCount = reassessment && campaignUsable(reassessment, { ...snapshot, fingerprint: api.fingerprint })
@@ -92,13 +93,13 @@ export function createFutureHost(api) {
         initial.futureMode = manual && mode === 'reroll' ? 'reroll' : 'update';
         const startingStop = stopRevision;
         if (!initial.enabled || !initial.chatId || !initial.messages.length || initial.replacement
-            || !manual && !futureDue(initial, api.fingerprint, api.settings().futureInterval)) return Promise.resolve({ accepted: false, skipped: 'not-due' });
+            || !manual && (api.settings().automaticPlanning === false || !futureDue(initial, api.fingerprint, api.settings().futureInterval, api.settings().earlyReviews === true))) return Promise.resolve({ accepted: false, skipped: 'not-due' });
         pending = api.lock(initial.chatId, async () => {
             const recovered = await recover({ preflight: true });
             if (recovered.active || recovered.recovered) return { accepted: false, skipped: 'server-job-handled' };
             if (startingStop !== stopRevision || read().chatId !== initial.chatId || read().requestSignature !== initial.requestSignature) return { accepted: false, skipped: 'source-changed' };
             session ||= new CampaignSession({ read, fingerprint: api.fingerprint, saveAttempt, commit, guardEvidence: false,
-                isDue: s => futureDue(s, api.fingerprint, api.settings().futureInterval), runPass: futurePass,
+                isDue: s => futureDue(s, api.fingerprint, api.settings().futureInterval, api.settings().earlyReviews === true), runPass: futurePass,
                 generateGate: api.generateGate,
                 prepare: s => futureInput(api.buildCommon({ ...s, state: s.baseState }), s, api.fingerprint),
                 onProgress: message => api.status?.(message),

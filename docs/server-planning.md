@@ -5,9 +5,9 @@ In v0.19.4, these levels are renamed **Chapter → Arc → Subplot** without cha
 ## What starts a review?
 
 - Accepted roleplay replies (including Continue), **Guide now / Re-evaluate**, or **Full rebuild**. Opening a card, `/random`, a displayed first-message greeting, page restoration and settings mounting never start a paid review.
-- Accepted AI play approaching the preparation's horizon: normally 12 replies, adjustable within 4–20; refresh starts one reply before expiry.
-- Explicit OOC direction, scene boundaries, the writer's hidden `<!--tf-review-->` signal, or changed planning inputs can warrant an earlier review.
-- Routine generation checks whether work is due. It does not buy a new review on every reply or swipe. After terminal failure, new accepted AI play can make another automatic pass eligible.
+- Accepted AI play at the configured interval: normally 12 replies for current planning and 40 for futures. Both are adjustable. Model review suggestions never shorten the chosen interval.
+- Early review signals are opt-in and wait at least four replies (or the shorter configured interval). Repeated scene separators, writer markers and variable updates cannot create per-reply planning.
+- Routine generation checks whether work is due. It does not buy a new review on every reply or swipe. Terminal failures reserve the same full interval; a new reply alone does not buy another pass. Guide and manual future updates remain immediate.
 
 There is no clock that generates fresh plans while unchanged RP sits idle. Status polling only collects work; it makes no model calls and does not advance fictional time.
 
@@ -45,7 +45,17 @@ The writer's 2,400-token target guides concise authoring but never rejects or cu
 
 Chat changes, startup and page restoration collect existing work and display saved guidance. They do not migrate by generating, repair a missing plan, or start current/future jobs. The host's `first_message` event and unplayed greetings are excluded; a real Continue reply is still eligible without typed user text. Accepted play and explicit Guide/Rebuild still use normal cadence and reservation deduplication. An existing server job may finish and be recovered without a new model call.
 
+## Adjustable resource policy — v0.20.5
+
+Automatic planning can be disabled independently of writer guidance. Current and future reviews follow their configured accepted-reply intervals after both success and failure. Early signals are off by default and rate-limited when enabled. Repeated host notifications, changing references, model-selected short horizons, and failed responses cannot bypass the interval. Metadata edit notifications and generation-end callbacks do not start current-planner jobs.
+
+Settings expose total input, optional memory, setup/review response, writer-context and per-future-card response targets, plus an arbitrary positive future-card count. There is no hidden 10,000-token input clamp or fixed 6/10/15 count menu. Prose lengths and generated card counts are advisory; complete valid responses are retained above them. Changing a size target does not cancel or invalidate paid work. Endpoint input/output context capacity, types, identities, hierarchy and source guards remain real constraints. Provider output headroom comes from remaining context rather than the soft response target.
+
+The live diagnostic at inspection still reported v0.20.3; reload pages to load this release. Backend retry/watchdog updates additionally require restarting SillyTavern. No user conversations or provider settings are rewritten.
+
 ## Verification and deployment
+
+On 2026-10-19, **1,586 automated tests passed** for v0.20.5. Forty accepted replies with repeated host notifications, changing references, model-shortened review suggestions, reloads and provider failures produced four current-planner attempts at a 12-reply interval. Future failures stayed reserved until their configured interval. Manual-only mode blocked automatic current and future calls while retaining explicit actions. Tests also covered settings round trips, custom input/writer/response/card targets, complete long prose and above-target card counts, retained paid work after target changes, and response headroom bounded by actual context capacity. No live provider generation was sent.
 
 On 2026-10-19, **1,574 automated tests passed** for v0.20.4. Thirty rapid card switches and repeated page restoration produced zero new planner invocations. First-message greetings stayed passive, while Guide, accepted play and Continue remained eligible. Oversized instructions, orientation, effects and cards survived save, reload, regeneration and detached recovery without a size-only provider rewrite. An active stream outlasted its inactivity allowance without cancellation; heartbeat-only stalls still retried. No live story or planner generation was sent for these changes.
 

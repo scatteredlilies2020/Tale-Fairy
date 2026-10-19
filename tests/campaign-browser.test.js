@@ -316,7 +316,8 @@ test('future preference changes invalidate an in-flight current review of the ol
         const work = h.scope.analyzeCampaignNow({ manual: true });
         for (let i = 0; i < 100 && !finish; i++) await settle();
         assert.ok(finish); h.settings[key] = value; finish(); await work;
-        assert.deepEqual(h.state().campaignPreparation, before);
+        if (key === 'futureCanon') assert.deepEqual(h.state().campaignPreparation, before);
+        else assert.equal(h.state().campaignPreparation.revision, 1, 'count targets do not discard a paid result');
         assert.equal(h.requests.length, 1);
     }
 });
@@ -736,7 +737,7 @@ test('host sends the stable orientation even without cards, never private notes,
     h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata));
     h.scope.campaignSession = null;
     assert.equal(h.prepare().payload, before);
-    appendPlay(h, 11);
+    appendPlay(h, 12);
     await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 2);
     assert.match(JSON.parse(h.requests[1].prompt).previous_preparation.foundation.scratchpad, /PRIVATE divergence/);
@@ -788,7 +789,7 @@ test('story map reviews on a wider horizon and retains private stories across qu
     h.settings.fullReviewInterval = 12;
     await h.scope.analyzeCampaignNow();
     const nodes = structuredClone(h.state().campaignPreparation.workingPlan.storyStructure.nodes);
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 11; i++) {
         appendPlay(h); await h.scope.analyzeCampaignNow();
         assert.equal(h.requests.length, 1);
         assert.match(h.prepare().payload, /neighborhood supper/);
@@ -797,7 +798,7 @@ test('story map reviews on a wider horizon and retains private stories across qu
     await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 1, 'reload spends no request');
     appendPlay(h); await h.scope.analyzeCampaignNow();
-    assert.equal(h.requests.length, 2, 'refresh begins one reply before the configured review interval');
+    assert.equal(h.requests.length, 2, 'refresh follows the configured review interval');
     assert.equal(h.state().campaignPreparation.revision, 2);
     assert.deepEqual(h.state().campaignPreparation.workingPlan.storyStructure.nodes, nodes);
     assert.equal(JSON.parse(h.requests[1].prompt).previous_preparation.nodes[0].id, nodes[0].id);
@@ -819,7 +820,7 @@ test('host persists card effects without per-turn calls and stops them when the 
     const packet = h.prepare().payload;
     assert.match(packet, /Shared kitchen/);
     assert.match(packet, /Pressure the affected NPCs and world conditions/);
-    for (let i = 0; i < 10; i++) {
+    for (let i = 0; i < 11; i++) {
         appendPlay(h); await h.scope.analyzeCampaignNow();
         assert.equal(h.prepare().payload, packet);
         assert.equal(h.requests.length, 1, 'ordinary turns reuse the prepared effects');
@@ -830,7 +831,7 @@ test('host persists card effects without per-turn calls and stops them when the 
     assert.equal(h.requests.length, 2, 'one periodic refresh');
     assert.equal(h.prepare().payload, packet, 'an omitted update retains the effects verbatim');
     assert.deepEqual(JSON.parse(h.requests[1].prompt).previous_preparation.nodes[0].effects, [effect]);
-    appendPlay(h, 10);
+    appendPlay(h, 11);
     h.context.chat.push({ is_user: false, name: 'Mara', mes: 'The supper project is finished; the neighbors clear away the final preparations.' });
     await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 3);
@@ -846,9 +847,10 @@ test('accepted writer signal schedules one early review without deciding closure
         for (const node of raw.upsert) node.effects = [{ label: 'Shared kitchen', pressure: 'Neighbors exchange practical help.' }];
         return envelope(raw);
     }, defaultState(), { director: true });
-    h.settings.fullReviewInterval = 20;
+    h.settings.fullReviewInterval = 20; h.settings.earlyReviews = true;
     await h.scope.analyzeCampaignNow();
     assert.match(h.prepare().payload, /review_signal/);
+    appendPlay(h, 3);
     h.context.chat.push({ is_user: false, name: 'Mara', mes: 'The group settles its immediate arrangements.\n<!--tf-review-->' });
     assert.match(h.prepare().payload, /Shared kitchen/, 'completed guidance remains available pending the signaled review');
     assert.equal(h.state().campaignPreparation.workingPlan.storyStructure.nodes[0].status, 'proposed', 'signal alone cannot resolve anything');
@@ -862,15 +864,15 @@ test('accepted writer signal schedules one early review without deciding closure
     assert.equal(h.requests.length, 2, 'no per-turn evaluator or signal polling call');
 });
 
-test('AI review horizon can shorten the configured maximum without next-turn polling', async () => {
+test('AI review suggestions cannot shorten the user-configured interval', async () => {
     const h = browser(async ({ prompt }) => envelope({ ...retainedDirectorReply(prompt), reviewAfter: 4 }), defaultState(), { director: true });
     h.settings.fullReviewInterval = 20;
     await h.scope.analyzeCampaignNow();
-    appendPlay(h, 2); await h.scope.analyzeCampaignNow();
-    assert.equal(h.requests.length, 1);
+    for (let i = 0; i < 19; i++) { appendPlay(h); await h.scope.analyzeCampaignNow(); assert.equal(h.requests.length, 1); }
     appendPlay(h); await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 2);
     assert.equal(h.state().campaignPreparation.workingPlan.storyStructure.reviewAfter, 4);
+
 });
 
 for (const change of [
@@ -879,9 +881,10 @@ for (const change of [
 ]) test(`story map retains completed guidance while reviewing ${change.is_user ? 'explicit direction' : 'a scene boundary'}`, async () => {
     const h = browser(async ({ prompt }) => h.requests.length === 1 ? envelope(directorReply(prompt))
         : envelope({ ...retainedDirectorReply(prompt), upsert: [], retire: [JSON.parse(prompt).previous_preparation.nodes[0].id], select: [] }), defaultState(), { director: true });
-    h.settings.fullReviewInterval = 12;
+    h.settings.fullReviewInterval = 12; h.settings.earlyReviews = true;
     await h.scope.analyzeCampaignNow();
     assert.match(h.prepare().payload, /neighborhood supper/);
+    appendPlay(h, 4);
     h.context.chat.push(change);
     assert.match(h.prepare().payload, /neighborhood supper/, 'last completed guidance remains available until reviewed');
     assert.match(h.prepare().payload, /Current play takes precedence|Current play and explicit user direction take precedence/);
@@ -901,7 +904,7 @@ test('failed story-map reviews retain completed writer guidance after reload and
     h.settings.fullReviewInterval = 12;
     await h.scope.analyzeCampaignNow();
     const before = structuredClone(h.state().campaignPreparation);
-    h.prepare(); fail = true; appendPlay(h, 11);
+    h.prepare(); fail = true; appendPlay(h, 12);
     await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 2);
     assert.match(h.prepare().payload, /neighborhood supper/, 'the remaining safety horizon is still available');
@@ -911,7 +914,7 @@ test('failed story-map reviews retain completed writer guidance after reload and
     h.context.chat.push({ is_user: true, name: 'Neri', mes: 'We keep talking.' });
     await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 2, 'neither reload nor user-only input retries a failed request');
-    appendPlay(h);
+    appendPlay(h, 12);
     assert.match(h.prepare().payload, /neighborhood supper/, 'completed guidance remains available when the provider is unavailable');
     await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 3, 'new accepted assistant play permits one recovery attempt');
@@ -919,7 +922,7 @@ test('failed story-map reviews retain completed writer guidance after reload and
     h.scope.campaignSession = null;
     assert.match(h.prepare().payload, /neighborhood supper/);
     assert.equal(h.prepare('regenerate').payload.includes('neighborhood supper'), true, 'retry uses its actual pre-reply source, still inside the horizon');
-    appendPlay(h);
+    appendPlay(h, 12);
     assert.match(h.prepare('regenerate').payload, /neighborhood supper/, 'review cadence does not remove completed retry guidance');
     fail = false; await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 4);
@@ -929,11 +932,11 @@ test('failed story-map reviews retain completed writer guidance after reload and
 
 test('reference changes offer only private story-map reconsideration and reserve new ids', async () => {
     const h = browser(async ({ prompt }) => envelope(directorReply(prompt)), defaultState(), { director: true });
-    await h.scope.analyzeCampaignNow();
+    await h.scope.analyzeCampaignNow({ manual: true });
     const old = structuredClone(h.state().campaignPreparation);
     h.context.card = { scenario: 'The harbor community, not the earlier concert premise.' };
     assert.equal(h.prepare().payload, '');
-    await h.scope.analyzeCampaignNow();
+    await h.scope.analyzeCampaignNow({ manual: true });
     const input = JSON.parse(h.requests[1].prompt);
     assert.deepEqual(input.previous_preparation.nodes, []);
     assert.equal(input.reconsider_horizon.nodes[0].id, old.workingPlan.storyStructure.nodes[0].id);
@@ -1001,7 +1004,7 @@ test('legacy proposals migrate whole and their old planning state remains archiv
     assert.equal(old.revision, 1);
     const h = browser(async ({ prompt }) => envelope(retainedDirectorReply(prompt)), legacy.state(), { director: true });
     h.context.chatMetadata = structuredClone(legacy.context.chatMetadata);
-    await h.scope.analyzeCampaignNow();
+    await h.scope.analyzeCampaignNow({ manual: true });
     assert.equal(h.requests.length, 1);
     const saved = h.state().campaignPreparation;
     assert.equal(saved.revision, 2, h.statuses.join('\n'));
@@ -1024,7 +1027,7 @@ test('story-map inspector shows private organization and separates the actual wr
     assert.match(summary, /Shared cooking and a communal recipe book connect neighboring households\./);
     assert.doesNotMatch(summary, /Interpretation:|Stakes:|Expectation:|Owner:/);
     assert.match(summary, /PUBLIC CONTEXT.*actual writer packet/);
-    assert.match(summary, /REVIEW HORIZON.*12 accepted AI replies/);
+    assert.match(summary, /REVIEW INTERVAL.*12 accepted AI replies/);
     assert.match(summary, /Last completed guidance remains available while preparation updates/);
     assert.doesNotMatch(summary, /stage [12]|STORY GOALS|PRIVATE PROGRESSION|Reached when/);
 });
@@ -1273,11 +1276,11 @@ function splitResponse({ prompt, spec }) {
 
 test('active host reconsiders reference-invalidated futures without restoring facts or coverage', async () => {
     const h = browser(splitResponse, defaultState(), { split: true });
-    await h.scope.analyzeCampaignNow();
+    await h.scope.analyzeCampaignNow({ manual: true });
     const old = h.state().campaignPreparation;
     assert.equal(old.revision, 1);
     h.context.card = { scenario: 'Newly clarified music-club premise.' };
-    await h.scope.analyzeCampaignNow();
+    await h.scope.analyzeCampaignNow({ manual: true });
     assert.equal(h.requests.length, 4);
     const workshop = JSON.parse(h.requests[2].prompt), selection = JSON.parse(h.requests[3].prompt);
     assert.deepEqual(workshop.reconsider_horizon.trajectories, old.workingPlan.trajectories);
@@ -1763,7 +1766,7 @@ test('notebook exposes RP understanding and uncertainty without claiming verifie
     assert.match(scope.workingPlanSummary({ workingPlan: old, archive: [] }), /Not yet analyzed; added on the next planning pass/);
     delete old.goal;
     assert.match(scope.workingPlanSummary({ workingPlan: old, archive: [] }), /STORY GOALS · Chosen on the next planning pass/);
-    assert.match(source, /workingPlanSummary\(preparation\),/);
+    assert.match(source, /workingPlanSummary\(preparation, getSettings\(\)\),/);
     assert.match(source, /element\.textContent = content/);
 });
 
@@ -1865,7 +1868,7 @@ test('notebook reports the soft target while preserving complete oversized conte
     assert.doesNotMatch(summary, /BLOCKED|shorten them/);
 });
 
-for (const [size, requests, outcome] of [[400, 2, 'unsuccessful'], [800, 1, 'input-limited']]) {
+for (const [size, requests, outcome] of [[400, 2, 'unsuccessful'], [800, 2, 'input-limited']]) {
 test(`legacy valid oversized writer material remains available after ${outcome} shortening`, async () => {
     const value = structuredClone(design);
     for (const key of ['available', 'developing', 'lasting']) value.selected_material[0][key] = '音'.repeat(size);
@@ -1924,7 +1927,7 @@ test('initial protected input above target still produces a plan without a false
     assert.equal(h.requests.length, 1);
     assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
     assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.requestCount, 1);
-    assert.match(h.statuses.at(-1), /input .*10000 token target; kept intact/);
+    assert.match(h.statuses.at(-1), /input .*14000 token target; kept intact/);
     assert.equal(JSON.parse(h.requests[0].prompt).accepted_messages.at(-1).spans.map(s => Array.isArray(s) ? s[1] : s.text).join(''), h.context.chat.at(-1).mes);
     h.prepare();
     assert.match(h.statuses.at(-1), /Plot preparation ready|Cached conditional preparation ready/);
@@ -1953,7 +1956,7 @@ for (const reset of [false, true]) test(`rewound long chat reuses only verified 
         messages: campaignEvidenceMessages(campaignReviewWindow(snapshot.messages.map((m, index) => ({ index,
             role: m.is_user ? 'user' : 'assistant', name: m.name, content: m.mes })), 2), { narrative: true }) }).inputOverTarget > 0);
     const built = h.scope.buildCampaignHostInput(snapshot), payload = JSON.parse(built.prompt);
-    assert.ok(built.inputTokens <= 10000);
+    assert.ok(built.inputTokens <= snapshot.inputBudget);
     assert.equal(payload.coverage.reviewed_before, 397);
     assert.equal(payload.new_id_prefix, 'r51-');
     assert.equal(payload.rebuild, true);

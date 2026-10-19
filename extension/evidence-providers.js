@@ -1,4 +1,4 @@
-import { readCampaignContinuity, fitCampaignContinuity } from './campaign-continuity.js';
+import { readCampaignContinuity, fitCampaignContinuity } from './campaign-continuity.js?resource-policy=1';
 import { conservativeTokenCount } from './token-budget.js?story-budget=1';
 import { registeredEvidenceProviders } from './evidence-registry.js';
 export { registerEvidenceProvider } from './evidence-registry.js';
@@ -56,7 +56,7 @@ export function readEvidenceProviders(context, { continuityBridge, continuityEna
     return result;
 }
 export function fitEvidenceProviders(evidence, tokenLimit, fits) {
-    const limit = Math.max(0, Math.min(12000, Number(tokenLimit) || 0));
+    const limit = Math.max(0, Number(tokenLimit) || 0);
     const result = [];
     const seen = new Set();
     for (const snapshot of evidence || []) {

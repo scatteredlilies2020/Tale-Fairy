@@ -1,12 +1,12 @@
 // One creative request. Memory supplies background, not a continuity audit.
-import { storyInput, nextPlanRevision, plannerInputLimit } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&fresh-summary=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=2&writer-fit=1';
-import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check, validCampaignState } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=2&writer-fit=1&continuous-guidance=2';
-import { WORKING_PLAN_VERSION, validateWorkingPlan, workingPlanProjection, planTokens } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&world-frame=1&chapter-labels=1';
+import { storyInput, nextPlanRevision, plannerInputLimit } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&fresh-summary=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=2&writer-fit=1&resource-policy=1';
+import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check, validCampaignState } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=2&writer-fit=1&continuous-guidance=2&resource-policy=1';
+import { WORKING_PLAN_VERSION, validateWorkingPlan, workingPlanProjection, planTokens } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&world-frame=1&chapter-labels=1&resource-policy=1';
 import { STORY_SELECTION_SCHEMA, STORY_STRUCTURE_SCHEMA, STORY_TERMINOLOGY, previousStoryNodes,
     STORY_NODE_RESPONSE_SCHEMA, STORY_SELECTION_RESPONSE_SCHEMA, storeStoryDescription, storyNodeForPlanner,
     STORY_FOUNDATION_RESPONSE_SCHEMA, mergeStoryFoundation,
-    mergeStoryNodes, ongoingStoryNodes, storyAncestors, validateStoryStructure, storyWriterMaterial } from './story-structure.js?story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&world-frame=1&chapter-labels=1';
-import { fitStoryContext, WRITER_CONTEXT_TOKEN_LIMIT, storyInputTokens } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1&horizon-links=3&story-structure=1&ensemble-pressure=1&story-cards=1&player-cards=1&creative-planning=1&portable-frame=1&future-controls=1&writer-target=2&writer-fit=1&continuous-guidance=2';
+    mergeStoryNodes, ongoingStoryNodes, storyAncestors, validateStoryStructure, storyWriterMaterial } from './story-structure.js?story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&world-frame=1&chapter-labels=1&resource-policy=1';
+import { fitStoryContext, WRITER_CONTEXT_TOKEN_LIMIT, storyInputTokens } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1&horizon-links=3&story-structure=1&ensemble-pressure=1&story-cards=1&player-cards=1&creative-planning=1&portable-frame=1&future-controls=1&writer-target=2&writer-fit=1&continuous-guidance=2&resource-policy=1';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
 import { FUTURE_CAUSAL_RULES } from './future-causality.js?causal-futures=1';
 
@@ -22,14 +22,14 @@ export const DIRECTOR_SCHEMA = { name: 'tale_fairy_story_director_v7', instructi
     retire: { type: 'array', items: text(80) }, select: { type: 'array', items: STORY_SELECTION_RESPONSE_SCHEMA },
 }) };
 // Optional for historical responses and saved swipe compatibility.
-DIRECTOR_SCHEMA.value.properties.futureDecisions = { type: 'array', maxItems: 15, items: object({
+DIRECTOR_SCHEMA.value.properties.futureDecisions = { type: 'array', items: object({
     id: text(100), action: { type: 'string', enum: ['adopt', 'retire'] },
     chapterId: { type: 'string', maxLength: 80 }, reason: text(400),
 }) };
 DIRECTOR_SCHEMA.value.properties.reassessFuture = { type: 'boolean' };
 // Keep the request self-contained for providers with different system handling.
 // The response contract reinforces the frame boundary after the reference data.
-DIRECTOR_SCHEMA.description = 'foundation.reminder: aim 400–550 characters (maximum 600), 3–5 short sentences. Direct RP brief: setting/era, actual genre, recurring activities and concrete opportunities or pressures. Match stakes to this RP, not franchise stereotypes; light play needs no manufactured darkness. No writing rules, cast biographies, current plots or precise dates. Preserve premise scope. changeReason is "" on fresh setup. Arcs/Subplots: create, retain and select only substantial stories. Omit routine follow-ups without inventing outcomes.';
+DIRECTOR_SCHEMA.description = 'foundation.reminder: aim 400–550 characters (soft target 600), 3–5 short sentences. Direct RP brief: setting/era, actual genre, recurring activities and concrete opportunities or pressures. Match stakes to this RP, not franchise stereotypes; light play needs no manufactured darkness. No writing rules, cast biographies, current plots or precise dates. Preserve premise scope. changeReason is "" on fresh setup. Arcs/Subplots: create, retain and select only substantial stories. Omit routine follow-ups without inventing outcomes.';
 const WORLD_FRAME_RULES = `foundation.reminder defines this RP's character, genre and lasting style of play as a direct RP brief, not a lore survey. State the setting/era and kind of RP, then what people do, what draws them into contact and what complicates or rewards participation. Use plain declarative prose ("This is a ... RP" when fitting), concrete setting mechanisms and causal links, not vague claims about tensions or bonds, stat blocks or lists of possible plots. Match sandbox or intimate scope to the premise.
 
 Explicit RP premise and author direction determine genre and stakes; franchise tone is a default, not a veto. Use broader accepted play to clarify unspecified tone, not one recent scene to redefine it. Opportunities, curiosity, practice, celebrations and small social commitments can sustain light RP without danger. An explicitly requested darker or mixed-genre RP gets fitting pressures without making every activity threatening. Apply this calibration to cards and effects too.
@@ -75,7 +75,7 @@ On adoption, expand the active root and reconnect meaningful surviving Arcs. Opt
 
 The writer chooses manifestation, timing, prose and pacing; its preset stands alone. The player controls ALL their characters' actions, choices, thoughts and outcomes. Respect current play, references and explicit corrections while inventing freely.
 
-reviewAfter is a JSON integer (4 to 20 accepted AI replies), normally 12; never quote it. It schedules review, not fictional events. Aim for 1,400 response tokens at setup, 900 on reviews. Private plans may be richer; Aim for 1,000 writer tokens including instructions, orientation, effects and framing. writer_budget is a soft target; preserve useful content above it. Shorten wording, not causal specifics, conditions or effects; do not fill field limits.
+reviewAfter is a JSON integer (4 to 20 accepted AI replies), normally 12; never quote it. Advisory: user cadence governs reviews. Follow response_target_tokens as a soft size target. Private plans may be richer; keep writer output concise using writer_budget.target, including instructions, orientation, effects and framing. Preserve useful content above it. Shorten wording, not causal specifics, conditions or effects; do not fill field limits.
 `;
 
 // Bounded title hints, never historical card contents. The host decides whether
@@ -117,9 +117,9 @@ export function directorInput(args, maxTokens) {
         const { previous_plan, prior_story_map: _map, ...context } = payload;
         const { review_boundary: _boundary, omitted_context: _omitted, ...coverage } = context.coverage;
         const authored = (args.reference?.authorInstructions || []).filter(text => typeof text === 'string' && text.trim());
-        const fixed = fitStoryContext([], authored, { storyStructure: true, softTarget: true,
+        const fixed = fitStoryContext([], authored, { storyStructure: true, softTarget: true, writerTarget: args.writerTarget,
             orientation: previous_plan.storyStructure?.foundation?.reminder || '' });
-        return { ...context, writer_budget: { target: WRITER_CONTEXT_TOKEN_LIMIT, soft_target: true,
+        return { ...context, response_target_tokens: args.outputTarget || (fresh ? 1400 : 900), writer_budget: { target: fixed.target, soft_target: true,
             reserved_tokens: fixed.requiredTokens, available_tokens: Math.max(0, fixed.limit - fixed.requiredTokens),
             includes: 'Author instructions, orientation, effects, selected stories and JSON framing. Aim for concise public descriptions; keep richer detail in private nodes. Preserve useful content even when it exceeds the target.' }, coverage: { ...coverage,
             context_use: 'Recent RP and summaries provide creative background. Carry useful plans forward; no continuity audit is requested.' },
@@ -149,7 +149,7 @@ export function directorInput(args, maxTokens) {
     }
     input.futureCards = JSON.parse(input.prompt).private_future || [];
     return { ...input, writerInstructions: (args.reference?.authorInstructions || []).filter(text => typeof text === 'string' && text.trim()),
-        requireSagaHierarchy: args.requireSagaHierarchy === true };
+        requireSagaHierarchy: args.requireSagaHierarchy === true, writerTarget: args.writerTarget || WRITER_CONTEXT_TOKEN_LIMIT };
 }
 
 function stableJson(value) {
@@ -275,7 +275,10 @@ export async function directorPass({ state, input, source, generate }) {
         const rows = new Map(nodes.map(node => [node.id, node]));
         // These compatibility fields are required by historical saved-state schemas.
         const orientation = foundation?.reminder || 'Ongoing roleplay.';
-        const plan = { direction: orientation, threads: orientation, consequences: [], developments: [],
+        // Legacy projection fields have historical bounds; the complete reminder
+        // remains authoritative in foundation and is sent whole to the writer.
+        const projectionOrientation = orientation.length <= 600 ? orientation : 'See the complete RP orientation in storyStructure.foundation.';
+        const plan = { direction: projectionOrientation, threads: projectionOrientation, consequences: [], developments: [],
             storyStructure: { version: 1, terminology: STORY_TERMINOLOGY, reviewAfter: raw.reviewAfter, nodes, selection: [], ...(foundation ? { foundation } : {}) } };
         const selectedIds = new Set();
         let withheldSelections = 0;
@@ -319,7 +322,7 @@ export async function directorPass({ state, input, source, generate }) {
             throw Error('Writer fitting removed or changed selected cards or end conditions; saved preparation is intact.');
         }
         const authored = input.writerInstructions || JSON.parse(input.prompt).source_reference?.authorInstructions || [];
-        const options = { storyStructure: true, softTarget: true, orientation: foundation?.reminder || '' };
+        const options = { storyStructure: true, softTarget: true, writerTarget: input.writerTarget, orientation: foundation?.reminder || '' };
         const material = storyWriterMaterial(plan), writerBudget = fitStoryContext(material, authored, options);
         const projection = workingPlanProjection(plan), selectedMaterial = [];
         if (state.revision !== basisRevision) throw Error('Preparation changed during planning');
@@ -327,7 +330,7 @@ export async function directorPass({ state, input, source, generate }) {
         if (!input.resetPlan && state.revision) archive.push({ revision: state.revision, source: structuredClone(state.source),
             workingPlan: structuredClone(state.workingPlan), planEvidence: structuredClone(state.planEvidence),
             selectedMaterial: structuredClone(state.selectedMaterial), replaced: true });
-        const next = { revision: input.nextRevision, ...projection, archive, source: structuredClone(source),
+        const next = { revision: input.nextRevision, writerTokenTarget: writerBudget.target, ...projection, archive, source: structuredClone(source),
             preparationFormat: EVENT_POINTS_FORMAT, workingPlanVersion: WORKING_PLAN_VERSION,
             workingPlan: plan, planEvidence: {}, selectedMaterial };
         if (!validCampaignState(next)) throw Error('Story preparation failed saved-state validation');

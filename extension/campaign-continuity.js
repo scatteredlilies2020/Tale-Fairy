@@ -61,7 +61,7 @@ export function readCampaignContinuity(context, bridge, { enabled = true, replac
 // Do not cut a sentence and accidentally remove a condition or negation.
 export function fitCampaignContinuity(memory, tokenLimit, fits) {
     if (memory?.status !== 'current') return null;
-    const limit = Math.max(0, Math.min(12000, Number(tokenLimit) || 0));
+    const limit = Math.max(0, Number(tokenLimit) || 0);
     const records = memory.records || [];
     let result = { chatId: memory.chatId, revision: memory.revision, freshness: memory.freshness, coverage: memory.coverage,
         summary: '', records: [], omittedSummary: Boolean(memory.summary), omittedRecords: records.length };

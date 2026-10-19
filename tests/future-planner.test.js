@@ -50,7 +50,7 @@ async function planned(state, cards, { capacity = 10, includeCanon = true, mode 
 }
 
 test('capacity choices normalize to 6 by default and reserve output headroom without a fill quota', async () => {
-    for (const invalid of [undefined, null, '', 'bad', 7, 11, 16]) assert.equal(f.futureCapacity(invalid), 6);
+    for (const invalid of [undefined, null, '', 'bad', Infinity, -1]) assert.equal(f.futureCapacity(invalid), 6);
     assert.deepEqual(f.futureOptions(), { capacity: 6, includeCanon: true });
     for (const [capacity, tokens] of [[6, 3000], [10, 4500], [15, 6000]]) {
         assert.equal(f.futureCapacity(String(capacity)), capacity);
@@ -61,7 +61,8 @@ test('capacity choices normalize to 6 by default and reserve output headroom wit
         assert.equal(h.calls[0][3].responseTokens, tokens);
         assert.equal(JSON.parse(h.calls[0][0]).planning_options.capacity, capacity);
         const over = await planned(undefined, [...cards, card('f1-excess')], { capacity });
-        assert.equal(over.accepted, false, 'reject rather than silently trim a paid result');
+        assert.equal(over.accepted, true, over.error);
+        assert.equal(over.state.cards.length, capacity + 1, 'preserve a complete result above the target');
         assert.equal((await planned(undefined, [], { capacity })).accepted, true, 'empty is valid');
     }
 });
@@ -118,7 +119,7 @@ test('lowering capacity parks overflow canon without losing it or feeding it to 
     assert.equal(restored.accepted, true, restored.error);
     assert.deepEqual(restored.state.cards, cards);
     assert.deepEqual(restored.state.parkedCanon, []);
-    assert.equal(f.validFuture({ ...restored.state, parkedCanon: [card('f1-extra', 'Canon')] }), false);
+    assert.equal(f.validFuture({ ...restored.state, parkedCanon: [card('f1-extra', 'Canon')] }), true);
     assert.equal(f.validFuture({ ...smaller.state, parkedCanon: [card()] }), false);
 });
 
@@ -183,7 +184,8 @@ test('a full active and inactive outlook can be reassessed and explicitly retire
     assert.equal(full.accepted, true, full.error);
     assert.equal(full.state.cards.length, 15); assert.equal(full.state.parkedCanon.length, 15);
     const over = await planned(full.state, [card('f3-extra', 'Canon')], { order: ['f3-extra'] });
-    assert.equal(over.accepted, false, 'saved Canon remains bounded even with spare active slots');
+    assert.equal(over.accepted, true, over.error);
+    assert.equal(over.state.parkedCanon.length, 15, 'useful Canon is preserved above the soft count target');
     const empty = await planned(full.state, [], { order: [], retire: [...originals, ...canon].map(c => c.id) });
     assert.equal(empty.accepted, true, empty.error);
     assert.deepEqual(empty.state.cards, []); assert.deepEqual(empty.state.parkedCanon, []);
@@ -213,8 +215,8 @@ test('invalid arrangements keep the complete prior outlook without another model
     }
     const tooMany = Array.from({ length: 7 }, (_, i) => card(`f2-${i}`, i % 2 ? 'Canon' : 'Original'));
     const over = await planned(first.state, tooMany, { capacity: 6, order: tooMany.map(c => c.id) });
-    assert.equal(over.accepted, false);
-    assert.equal(over.state, first.state);
+    assert.equal(over.accepted, true, over.error);
+    assert.equal(over.state.cards.length, tooMany.length);
 });
 
 test('reroll separates prior ideas from history and uses varied creative axes, not random forced events', async () => {
@@ -336,7 +338,7 @@ test('schema, unknown identities, truncation and lost Canon category fail withou
     const first = await f.futurePass({ state: p.s.state, input: p.input, source: p.source, generate: async () => reply([card('f1-convoys', 'Canon')]) });
     const next = pure(first.state);
     for (const response of [reply([card('f1-convoys', 'Original')]), reply([card('old-invented')]),
-        reply([card('f2-new', 'Canon-adjacent')]), reply(Array.from({ length: 11 }, (_, i) => card(`f2-${i}`))),
+        reply([card('f2-new', 'Canon-adjacent')]),
         { ...reply([card('f2-new')]), finishReason: 'length' }, { text: '{"upsert":[' },
         { text: '{"upsert":[],"retain":["unknown"],"retire":[]}' },
         { text: '{"upsert":[],"retain":[],"retire":["unknown"]}' }]) {
@@ -358,20 +360,23 @@ test('reply cadence is independent of RP years; failures and reloads do not caus
     turn(h); assert.equal((await h.host.run()).accepted, true);
     assert.equal(h.calls.length, 2);
     h.b.messages.push({ is_user: true, mes: 'Time skip: two years of routine work pass.' });
-    assert.equal((await h.host.run()).accepted, true);
+    assert.equal((await h.host.run()).skipped, 'not-due');
     const fail = harness(async () => { throw Error('provider unavailable'); });
     assert.equal((await fail.host.run()).accepted, false);
     fail.b.messages.push({ is_user: true, mes: 'Time skip: three years.' });
     assert.equal((await fail.host.run()).skipped, 'not-due');
     const reloaded = createFutureHost(fail.api);
     assert.equal((await reloaded.run()).skipped, 'not-due');
-    turn(fail); await reloaded.run(); assert.equal(fail.calls.length, 2);
+    turn(fail); await reloaded.run(); assert.equal(fail.calls.length, 1);
+    for (let i = 1; i < 4; i++) turn(fail);
+    await reloaded.run(); assert.equal(fail.calls.length, 2);
     await reloaded.run({ manual: true }); assert.equal(fail.calls.length, 3);
-    assert.equal(f.futureInterval(0), 40); assert.equal(f.futureInterval(500), 200); assert.equal(f.futureInterval(1), 4);
+    assert.equal(f.futureInterval(0), 40); assert.equal(f.futureInterval(500), 500); assert.equal(f.futureInterval(1), 1);
 });
 
 test('material reassessment runs once and cannot bypass an explicit stop or failed-source reservation', async () => {
-    const h = harness(); await h.host.run();
+    const h = harness(); h.settings.futureInterval = 40; h.settings.earlyReviews = true; await h.host.run();
+    for (let i = 0; i < 4; i++) turn(h);
     h.b.messages.push({ is_user: true, mes: 'The author changes the long-term direction.' });
     h.metadata.taleFairyFutureReassessment = { source: source(h.b) };
     assert.equal((await h.host.run()).accepted, true);
@@ -430,8 +435,7 @@ test('edited/swiped source, chat switch, rebuild epoch, settings and disable rej
     for (const change of [h => { h.b.messages[0].mes = 'A different accepted swipe.'; },
         h => { h.b.chatId = 'other'; }, h => { h.metadata[f.PLANNING_EPOCH_KEY] = 'new rebuild'; },
         h => { h.b.requestSignature = 'different model'; }, h => { h.settings.futureEnabled = false; },
-        h => { h.b.referenceHash = 'changed premise'; }, h => { h.settings.futureCanon = false; },
-        h => { h.settings.futureCapacity = 10; }]) {
+        h => { h.b.referenceHash = 'changed premise'; }, h => { h.settings.futureCanon = false; }]) {
         let release; const h = harness(() => new Promise(resolve => { release = resolve; }));
         const work = h.host.run(); await until(() => release); change(h); release(reply([card()]));
         assert.equal((await work).accepted, false);
@@ -530,4 +534,33 @@ test('active route queue is serialized and response timeout starts only after gr
     await new Promise(resolve => setTimeout(resolve, 35));
     assert.equal(b.state.revision, 0); release(); await first;
     assert.equal((await second).accepted, true);
+});
+
+test('manual-only mode prevents automatic future jobs but preserves explicit updates', async () => {
+    const h = harness(); h.settings.automaticPlanning = false;
+    assert.equal((await h.host.run()).skipped, 'not-due');
+    for (let i = 0; i < 50; i++) turn(h);
+    assert.equal((await h.host.run()).skipped, 'not-due');
+    assert.equal(h.calls.length, 0);
+    assert.equal((await h.host.run({ manual: true })).accepted, true);
+    assert.equal(h.calls.length, 1);
+});
+
+test('custom count and per-card response targets are advisory and complete excess cards are preserved', async () => {
+    const h = harness(async () => reply(Array.from({ length: 18 }, (_, i) => card(`f1-${i}`))));
+    h.settings.futureCapacity = 17; h.settings.futureCardTokens = 300;
+    assert.equal((await h.host.run()).accepted, true);
+    assert.equal(h.metadata[f.FUTURE_KEY].cards.length, 18);
+    assert.equal(JSON.parse(h.calls[0][0]).response_target_tokens, 5100);
+});
+
+test('changing size targets while a future response runs preserves the paid result', async () => {
+    let release;
+    const h = harness(() => new Promise(resolve => { release = resolve; }));
+    const work = h.host.run(); await until(() => release);
+    h.settings.futureCapacity = 2; h.settings.futureCardTokens = 500;
+    release(reply([card()]));
+    assert.equal((await work).accepted, true);
+    assert.equal(h.calls.length, 1);
+    assert.equal(h.metadata[f.FUTURE_KEY].cards.length, 1);
 });

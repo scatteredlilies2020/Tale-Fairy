@@ -110,7 +110,7 @@ test('current planner hides inactive budgets and displays its effective review i
         assert.equal(root.querySelector(`[data-setting="${key}"]`).closest('label').hidden, true);
     }
     assert.equal(root.querySelector('[data-setting="full-review-interval"]').value, 12);
-    assert.equal(root.querySelector('[data-setting="full-review-interval"]').max, '20');
+    assert.equal(root.querySelector('[data-setting="full-review-interval"]').max, '');
     assert.equal(settings.fullReviewInterval, 12);
     assert.equal(settings.recentContextTokens, 12000);
     scope.campaignMode = () => false;

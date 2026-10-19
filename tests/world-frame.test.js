@@ -21,7 +21,7 @@ test('genre calibration is in the production director and the trailing response 
     const messages = plannerMessages(DIRECTOR_SYSTEM, '{}', DIRECTOR_SCHEMA, PLANNER_OUTPUT_MODE.PROMPT_ONLY);
     assert.ok(messages[0].content.endsWith(DIRECTOR_SCHEMA.description));
     assert.match(DIRECTOR_SCHEMA.description, /Match stakes to this RP, not franchise stereotypes/);
-    assert.match(DIRECTOR_SCHEMA.description, /maximum 600/);
+    assert.match(DIRECTOR_SCHEMA.description, /soft target 600/);
 });
 
 for (const fixture of worldFrameCases) test(`${fixture.id}: a concise genre-specific frame reaches the writer without scene cards`, async () => {

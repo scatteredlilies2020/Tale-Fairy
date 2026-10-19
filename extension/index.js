@@ -1,15 +1,15 @@
-import { sha256 } from './sha256.js?v=0.20.4';
+import { sha256 } from './sha256.js?v=0.20.5';
 import { normalizePlannerContext, plannerContextLimit, plannerInputCapacity, plannerOutputCapacity, plannerModeInputTokens } from './planner-capacity.js?context-guard=1&concise-prompts=1&portable-frame=1&horizon-links=3';
 import { renderFutureCards } from './future-cards.js?future-cards=1&future-controls=1&causal-futures=1';
-import { campaignAuthorInstructions, campaignPayloadBudget, campaignUsable, campaignMaterialUsable, campaignWriterUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=2&writer-fit=1&continuous-guidance=2';
-import { directorInput as ownedInput, directorPass as ownedPass, nextPlanRevision, DIRECTOR_SCHEMA as OWNED_SCHEMA, DIRECTOR_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './story-director.js?story-workshop=1&story-horizons=1&story-progression=1&rp-activities=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&full-rebuild=1&empty-fields=1&open-scope=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&no-phase=1&present-future=1&creative-planning=1&fresh-summary=1&world-frame=1&frame-stability=1&rp-world-frame=1&portable-frame=1&genre-frame=1&arc-focus=1&saga-hierarchy=1&chapter-labels=1&future-chapters=1&chapter-scope=2&story-persistence=1&future-controls=1&causal-futures=1&writer-target=2&writer-fit=1&continuous-guidance=2';
-import { fitStoryInputBudget } from './story-budget.js?follow-through=1&compaction=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1&horizon-links=3&story-structure=1&ensemble-pressure=1&story-cards=1&player-cards=1&creative-planning=1&portable-frame=1&future-controls=1&writer-target=2&writer-fit=1&continuous-guidance=2';
-import { readCampaignContinuity } from './campaign-continuity.js';
+import { campaignAuthorInstructions, campaignPayloadBudget, campaignUsable, campaignMaterialUsable, campaignWriterUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=2&writer-fit=1&continuous-guidance=2&resource-policy=1';
+import { directorInput as ownedInput, directorPass as ownedPass, nextPlanRevision, DIRECTOR_SCHEMA as OWNED_SCHEMA, DIRECTOR_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './story-director.js?story-workshop=1&story-horizons=1&story-progression=1&rp-activities=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&full-rebuild=1&empty-fields=1&open-scope=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&no-phase=1&present-future=1&creative-planning=1&fresh-summary=1&world-frame=1&frame-stability=1&rp-world-frame=1&portable-frame=1&genre-frame=1&arc-focus=1&saga-hierarchy=1&chapter-labels=1&future-chapters=1&chapter-scope=2&story-persistence=1&future-controls=1&causal-futures=1&writer-target=2&writer-fit=1&continuous-guidance=2&resource-policy=1';
+import { fitStoryInputBudget } from './story-budget.js?follow-through=1&compaction=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1&horizon-links=3&story-structure=1&ensemble-pressure=1&story-cards=1&player-cards=1&creative-planning=1&portable-frame=1&future-controls=1&writer-target=2&writer-fit=1&continuous-guidance=2&resource-policy=1';
+import { readCampaignContinuity } from './campaign-continuity.js?resource-policy=1';
 // Keep the public registration URL stable so external adapters share this registry.
-import { readEvidenceProviders, evidenceRevisionKey } from './evidence-providers.js?story-lifecycle=1';
+import { readEvidenceProviders, evidenceRevisionKey } from './evidence-providers.js?story-lifecycle=1&resource-policy=1';
 import { campaignEvidenceMessages, campaignReviewWindow } from './campaign-evidence.js?fresh-summary=1';
-import { campaignReviewedCount, campaignCheckpoint, campaignReconsideration, verifiedClosedSubjects } from './campaign-review.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=2&writer-fit=1';
-import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.36&token-budget=1&rp-plot=1&progress=1&follow-through=1&working-plan=1&recovery=1&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&planner-timeout=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&server-jobs=1&chapter-labels=1&future-chapters=1&future-controls=1&writer-target=2&writer-fit=1';
+import { campaignReviewedCount, campaignCheckpoint, campaignReconsideration, verifiedClosedSubjects } from './campaign-review.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=2&writer-fit=1&resource-policy=1';
+import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.36&token-budget=1&rp-plot=1&progress=1&follow-through=1&working-plan=1&recovery=1&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&planner-timeout=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&server-jobs=1&chapter-labels=1&future-chapters=1&future-controls=1&writer-target=2&writer-fit=1&resource-policy=1';
 import { campaignAttemptSummary, serverPlannerProgress } from './planner-progress.js?v=1&recovery=1&review-checkpoint=1&story-workshop=1&request-policy=2&story-director=1&planner-timeout=1&server-jobs=1&bounded-retries=1';
 import { finalizeNotebookCompactions, writeNotebookArchive } from './notebook-compaction.js?v=0.14.22';
 import { eventSource, event_types, extension_prompt_roles, extension_prompt_types, generateRaw, Generate, setExtensionPrompt, getRequestHeaders, getCharacterCardFields, saveSettingsDebounced } from '/script.js';
@@ -18,8 +18,8 @@ import { extension_settings } from '/scripts/extensions.js';
 import { ConnectionManagerRequestService } from '/scripts/extensions/shared.js';
 import { SECRET_KEYS, secret_state, writeSecret } from '/scripts/secrets.js';
 import { oai_settings, openai_setting_names, openai_settings, promptManager } from '/scripts/openai.js';
-import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, buildStoryEvidence, storyEvidenceQuery, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.22&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=2&writer-fit=1';
-import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultPlannerState as defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadPlannerState as loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.23&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=2&writer-fit=1&continuous-guidance=2';
+import { abstractIncrementalVisibleBranches, AnalysisValidationError, alignRetainedStateToTranscript, applyAnalysis, ANALYSIS_OUTPUT_CONTRACT, ANALYSIS_SCHEMA, buildAnalysisPrompt, buildStoryEvidence, storyEvidenceQuery, extractJson, INCREMENTAL_ANALYSIS_OUTPUT_CONTRACT, INCREMENTAL_ANALYSIS_SCHEMA, INCREMENTAL_SYSTEM, normalizeAnalysisActorUpdates, normalizeAnalysisDiagnostics, SYSTEM, transcriptHeadAlignmentErrors, validateAnalysisResult } from './analysis.js?v=0.14.22&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=2&writer-fit=1&resource-policy=1';
+import { applyPlannerAuthorLayer, buildPromptPayload, clearState, defaultPlannerState as defaultState, fingerprintMessages, generationRetrySource, guidanceSnapshot, isAnalysisSourceCurrent, isDirectionCurrent, isGuidanceUsable, isReplacementVerificationCurrent, isStateAligned, loadPlannerState as loadState, reconcileContinuityThreads, returnedReplyMatchesVerification, saveState, STATE_KEY, STATE_VERSION } from './state.js?v=0.14.23&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=2&writer-fit=1&continuous-guidance=2&resource-policy=1';
 import { isStoryGeneration, refreshGameMasterContract } from './game-master.js?v=0.14.22';
 import { selectSituationalOpenings } from './situations.js?v=0.13.9';
 import { DEFAULT_REFRESH_INTERVAL, markAssistantTurn, normalizePlannerSchedule, plannerPassDecision, plannerRefreshDecision, withRefreshReason } from './planner-scheduler.js?v=0.14.22';
@@ -43,25 +43,25 @@ import { clearPlannerRecoveryRepair, clearPlannerFailed, clearPlannerPending, ma
 import { exceedsAppendAllowance, mergePlannerIntents, normalizePlannerIntent } from './planner-coalescer.js?v=0.13.9';
 import { hasUsableCausalContext } from './causal-context.js?v=0.14.22';
 import { formatHiddenMotives } from './scratchpad-format.js?v=0.13.9';
-import { renderStoryCards } from './story-cards.js?story-cards=1&player-cards=1&no-phase=1&present-future=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&world-frame=1&saga-hierarchy=1&chapter-labels=1&continuous-guidance=2';
+import { renderStoryCards } from './story-cards.js?story-cards=1&player-cards=1&no-phase=1&present-future=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&world-frame=1&saga-hierarchy=1&chapter-labels=1&continuous-guidance=2&resource-policy=1';
 import { WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA } from './world-planner.js?v=0.14.22';
-import { buildWorldPlannerPrompt } from './analysis.js?v=0.14.22&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=2&writer-fit=1';
+import { buildWorldPlannerPrompt } from './analysis.js?v=0.14.22&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=2&writer-fit=1&resource-policy=1';
 import { defaultPreparedWorld, preparedWorldUsable, unchangedSourcePrefix, stampPreparedWorld } from './prepared-world.js?v=0.14.22';
 import { alignmentPromptFromMeta, transcriptHeadFromPrompt } from './detached-meta.js?v=0.13.9';
-import { canRetainSuccessfulPlan, createSafetyFallbackState } from './fallback-direction.js?v=0.14.22&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=2&writer-fit=1';
+import { canRetainSuccessfulPlan, createSafetyFallbackState } from './fallback-direction.js?v=0.14.22&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=2&writer-fit=1&resource-policy=1';
 import { classifyAssistantReply } from './response-usability.js?v=0.13.9';
-import { buildPlotAnchor, cachedGenerationContext, compactGenerationContextCache, compactGenerationPacket, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, legacyPlotInputKey, migrateCampaignBudgetKeys, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.34&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=2&writer-fit=1&continuous-guidance=2&compact-cache=1';
+import { buildPlotAnchor, cachedGenerationContext, compactGenerationContextCache, compactGenerationPacket, hasNewerPlannerState, generationContextEntries, generationPreviewDescription, GENERATION_CONTEXT_KEY, hasPlannerConditions, legacyPlotInputKey, migrateCampaignBudgetKeys, PLOT_ANCHOR_VERSION, plotCardInputs, plotInputKey, plotVariableInputs, plotWorldNames, rememberGenerationContext, REPLACEMENT_PENDING_KEY, replacementPendingForMessages } from './generation-context.js?v=0.14.34&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=2&writer-fit=1&continuous-guidance=2&compact-cache=1&resource-policy=1';
 import { getWorldInfoSettings, loadWorldInfo, selected_world_info, world_info, worldInfoCache } from '/scripts/world-info.js';
-import { ActivatedStoryContext, readHostStoryEvidence } from './rp-context.js?story-lifecycle=1';
+import { ActivatedStoryContext, readHostStoryEvidence } from './rp-context.js?story-lifecycle=1&resource-policy=1';
 import { campaignJobMeta, campaignJobMatches, recoverCampaignJob } from './campaign-jobs.js?server-jobs=1&future-chapters=1&writer-fit=1';
 import { FUTURE_KEY, FUTURE_ATTEMPT_KEY, FUTURE_RECEIPTS_KEY, PLANNING_EPOCH_KEY,
-    futureInterval, futureCapacity, futureOptions, futureReceipts, futureForDirector, validFuture, usableFuture } from './future-planner.js?v=0.20.0&future-chapters=1&chapter-labels=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1&chapter-scope=2&future-cards=1&future-controls=1&causal-futures=1&context-guard=1&writer-target=2&writer-fit=1';
-import { createFutureHost, serializeActivePlanner } from './future-host.js?v=0.20.0&future-chapters=1&chapter-labels=1&server-jobs=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&story-director=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1&chapter-scope=2&future-cards=1&future-controls=1&causal-futures=1&context-guard=1&writer-target=2&writer-fit=1';
+    futureInterval, futureCapacity, futureOptions, futureReceipts, futureForDirector, validFuture, usableFuture } from './future-planner.js?v=0.20.0&future-chapters=1&chapter-labels=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1&chapter-scope=2&future-cards=1&future-controls=1&causal-futures=1&context-guard=1&writer-target=2&writer-fit=1&resource-policy=1';
+import { createFutureHost, serializeActivePlanner } from './future-host.js?v=0.20.0&future-chapters=1&chapter-labels=1&server-jobs=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&story-director=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1&chapter-scope=2&future-cards=1&future-controls=1&causal-futures=1&context-guard=1&writer-target=2&writer-fit=1&resource-policy=1';
 
 const activatedStoryContext = new ActivatedStoryContext();
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.20.4';
+const RUNTIME_VERSION = '0.20.5';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -73,7 +73,7 @@ const PROMPT_KEY = `${EXTENSION_ID}_context`;
 const DIRECT_CUSTOM_CHOICE = '__direct_custom__';
 const DIRECT_OPENROUTER_CHOICE = '__direct_openrouter__';
 const INJECTION_POSITIONS = new Set(['before-main', 'after-main', 'before-character-definitions', 'after-character-definitions', 'before-example-messages', 'after-example-messages', 'before-an', 'after-an', 'before-chat-history', 'after-chat-history', 'before-jailbreak', 'after-jailbreak', 'at-depth']);
-const DEFAULT_SETTINGS = { enabled: true, futureEnabled: true, futureInterval: 40, futureCanon: true, futureCapacity: 6, plannerContextTokens: 32768, mode: 'balanced', analysisProfileId: '', analysisSource: 'active', analysisProvider: 'custom', analysisModel: '', analysisUrl: '', analysisSecretId: '', analysisReasoningMode: 'low', analysisTemperature: 1, directSettingsMigrated: false, directCustomModel: '', directCustomUrl: '', directCustomSecretId: '', directOpenRouterModel: '', directOpenRouterUrl: '', directOpenRouterSecretId: '', injectionPosition: 'at-depth', injectionDepth: 1, injectionRole: DEFAULT_INJECTION_ROLE, includeWorldInfo: false, showDirectorNotes: false, recentContextTokens: 6000, messageTokenLimit: 700, maxPromptTokens: 10000, continuityIntegration: true, summaryContextTokens: 1000, fullReviewInterval: DEFAULT_REFRESH_INTERVAL, contextSettingsVersion: 16 };
+const DEFAULT_SETTINGS = { enabled: true, automaticPlanning: true, earlyReviews: false, writerContextTokens: 2400, setupOutputTokens: 1400, reviewOutputTokens: 900, futureCardTokens: 150, futureEnabled: true, futureInterval: 40, futureCanon: true, futureCapacity: 6, plannerContextTokens: 32768, mode: 'balanced', analysisProfileId: '', analysisSource: 'active', analysisProvider: 'custom', analysisModel: '', analysisUrl: '', analysisSecretId: '', analysisReasoningMode: 'low', analysisTemperature: 1, directSettingsMigrated: false, directCustomModel: '', directCustomUrl: '', directCustomSecretId: '', directOpenRouterModel: '', directOpenRouterUrl: '', directOpenRouterSecretId: '', injectionPosition: 'at-depth', injectionDepth: 1, injectionRole: DEFAULT_INJECTION_ROLE, includeWorldInfo: false, showDirectorNotes: false, recentContextTokens: 6000, messageTokenLimit: 700, maxPromptTokens: 10000, continuityIntegration: true, summaryContextTokens: 1000, fullReviewInterval: DEFAULT_REFRESH_INTERVAL, contextSettingsVersion: 16 };
 let settings = null;
 let analysisPromise = null;
 let campaignSession = null;
@@ -235,7 +235,7 @@ function getSettings() {
     }
     settings.plannerContextTokens = normalizePlannerContext(settings.plannerContextTokens);
     settings.contextSettingsVersion = DEFAULT_SETTINGS.contextSettingsVersion;
-    settings.fullReviewInterval = normalizePlannerSchedule({ refreshInterval: settings.fullReviewInterval }).refreshInterval;
+    settings.fullReviewInterval = Math.max(1, Math.floor(Number(settings.fullReviewInterval) || DEFAULT_REFRESH_INTERVAL));
     settings.futureEnabled ??= true;
     settings.futureCanon ??= true;
     settings.futureCapacity = futureCapacity(settings.futureCapacity);
@@ -256,8 +256,11 @@ function getSettings() {
     settings.analysisReasoningMode = normalizeReasoningMode(settings.analysisReasoningMode);
     if (settings.analysisReasoningMode === 'default') settings.analysisReasoningMode = 'auto';
     settings.analysisTemperature = normalizePlannerTemperature(settings.analysisTemperature);
-    settings.maxPromptTokens = Math.max(3000, Math.min(DEFAULT_SETTINGS.maxPromptTokens, Number(settings.maxPromptTokens) || DEFAULT_SETTINGS.maxPromptTokens));
-    settings.summaryContextTokens = Math.max(0, Math.min(1000, Number(settings.summaryContextTokens) || 0));
+    settings.maxPromptTokens = Math.max(1, Math.floor(Number(settings.maxPromptTokens) || DEFAULT_SETTINGS.maxPromptTokens));
+    settings.summaryContextTokens = Math.max(0, Math.floor(Number(settings.summaryContextTokens) || 0));
+    for (const key of ['writerContextTokens', 'setupOutputTokens', 'reviewOutputTokens', 'futureCardTokens']) {
+        settings[key] = Math.max(1, Math.floor(Number(settings[key]) || DEFAULT_SETTINGS[key]));
+    }
     settings.routineInputTokens = normalizeInputBudget(settings.routineInputTokens, DEFAULT_ROUTINE_INPUT);
     settings.reviewInputTokens = normalizeInputBudget(settings.reviewInputTokens, DEFAULT_REVIEW_INPUT);
     return settings;
@@ -971,7 +974,7 @@ function readCampaignSnapshot() {
             .filter(name => typeof name === 'string' && name.trim()))],
         referenceHash,
         requestSignature: campaignFingerprint({ epoch: context.chatMetadata?.[PLANNING_EPOCH_KEY] || '', recovery: 1, reviewCheckpoint: 1, contract: OWNED_SCHEMA, prompt: OWNED_SYSTEM, settings: Object.fromEntries(['analysisSource', 'analysisProvider', 'analysisProfileId',
-            'analysisModel', 'analysisUrl', 'analysisSecretId', 'analysisReasoningMode', 'analysisTemperature', 'maxPromptTokens', 'plannerContextTokens', 'continuityIntegration', 'summaryContextTokens', 'futureEnabled', 'futureCanon', 'futureCapacity']
+            'analysisModel', 'analysisUrl', 'analysisSecretId', 'analysisReasoningMode', 'analysisTemperature', 'plannerContextTokens', 'continuityIntegration', 'futureEnabled', 'futureCanon']
             .map(key => [key, s[key]])) }),
         reference,
         continuity, evidence,
@@ -979,6 +982,7 @@ function readCampaignSnapshot() {
         evidenceKey: evidenceRevisionKey(evidence),
         continuityTokens: s.summaryContextTokens ?? 1000,
         inputBudget: plannerInputLimit(Number(s.maxPromptTokens) || 10000),
+        writerTarget: s.writerContextTokens || 2400, setupOutputTarget: s.setupOutputTokens || 1400, reviewOutputTarget: s.reviewOutputTokens || 900,
     };
     snapshot.futureCards = s.futureEnabled === true ? futureForDirector(context.chatMetadata?.[FUTURE_KEY], snapshot,
         campaignFingerprint, futureReceipts(context.chatMetadata, snapshot, campaignFingerprint), futureOptions(s)) : [];
@@ -1013,7 +1017,8 @@ function buildCampaignHostInput(snapshot) {
                 messages: campaignEvidenceMessages(selected, { narrative: true }), previousUsable, verifiedPlanEvidence, verifiedClosedIds, resetPlan: snapshot.rebuild, reconsiderHorizon,
                 continuity: snapshot.continuity, evidence: snapshot.evidence, continuityEnabled: snapshot.continuityEnabled,
                 continuityTokens: snapshot.continuityTokens, requireSagaHierarchy: true, futurePlanning: snapshot.futurePlanning,
-                futureCards: snapshot.futureCards }, snapshot.inputBudget);
+                futureCards: snapshot.futureCards, writerTarget: snapshot.writerTarget,
+                outputTarget: fresh ? snapshot.setupOutputTarget : snapshot.reviewOutputTarget }, snapshot.inputBudget);
         if (!best || input.inputTokens < best.inputTokens) best = input;
         if (input.inputTokens <= input.inputLimit) return input;
     }
@@ -1054,7 +1059,7 @@ function campaignCompletion(response) {
 function analyzeCampaignNow({ manual = false, rebuild = false, replacementRepair = false, acceptedPlay = false } = {}) {
     const context = currentContext();
     const chatId = String(context.getCurrentChatId?.() || '');
-    if (!chatId || !getSettings().enabled) return Promise.resolve(loadState(context.chatMetadata));
+    if (!chatId || !getSettings().enabled || !manual && getSettings().automaticPlanning === false) return Promise.resolve(loadState(context.chatMetadata));
     if (!manual && !acceptedPlay && !(context.chat || []).some(message => message?.is_user && String(message.mes || '').trim())) {
         return Promise.resolve(loadState(context.chatMetadata));
     }
@@ -1090,7 +1095,7 @@ function analyzeCampaignNow({ manual = false, rebuild = false, replacementRepair
     });
     // Publish before any async preflight or lock acquisition can re-enter.
     campaignHostWork = work;
-    showCampaignPhase(previous ? 'Waiting for previous planner to finish' : 'Preparing planner context');
+    showCampaignPhase(previous ? 'Waiting for previous planner to finish' : 'Checking planning cadence');
     return work.promise;
 }
 
@@ -1118,6 +1123,7 @@ async function runCampaignAnalysis(work) {
         guardEvidence: !OWNED_SCHEMA.name.startsWith('tale_fairy_story_director_'),
         fingerprint: campaignFingerprint, saveAttempt: saveCampaignAttempt, commit: commitCampaignPreparation,
         interval: () => Number(getSettings().fullReviewInterval) || DEFAULT_REFRESH_INTERVAL,
+        earlyReviews: () => getSettings().earlyReviews === true,
         onProgress: showCampaignPhase,
         generate: (prompt, systemPrompt, schema, { signal, snapshot, attempt, input }) => {
             if (campaignHostWork?.chatId === snapshot.chatId) campaignHostWork.runKey = attempt.runKey;
@@ -1158,7 +1164,7 @@ async function runCampaignAnalysis(work) {
             if (result.deferredDevelopments?.length) notices.push(`deferred ${result.deferredDevelopments.length} incomplete development(s)`);
             if (result.withheldMaterial) notices.push('dependent writer material withheld');
             const saved = loadState(currentContext().chatMetadata);
-            const budget = campaignPayloadBudget(saved.campaignPreparation, campaignAuthorInstructions(saved));
+            const budget = campaignPayloadBudget(saved.campaignPreparation, campaignAuthorInstructions(saved), { writerTarget: getSettings().writerContextTokens });
             if (budget.omitted) notices.push(`${budget.omitted} oversized writer block(s) withheld; preparation saved`);
             if (budget.orientationOmitted) notices.push('RP orientation withheld to preserve author instructions within the writer budget');
             if (budget.authorOverflow) notices.push('author instructions retained above the writer token target');
@@ -2134,7 +2140,6 @@ function scheduleTranscriptRefresh(reason, status = 'Refreshing…') {
     if (campaignMode(context)) {
         generationGuideSelection = null;
         updatePrompt(loadState(context.chatMetadata));
-        void analyzeCampaignNow();
         return;
     }
     if (replacementPlanningDeferred(context)) return;
@@ -2197,7 +2202,7 @@ function drainQueuedAnalysis() {
 
 function queueLatestAnalysis(value = {}) {
     const context = currentContext();
-    if (campaignMode(context)) return analyzeCampaignNow();
+    if (campaignMode(context)) return Promise.resolve(loadState(context.chatMetadata));
     if (replacementPlanningDeferred(context)) return analysisPromise;
     const intent = mergePlannerIntents(activeAnalysisIntent, {
         ...value,
@@ -2766,19 +2771,21 @@ async function requestAnalysisOnce(prompt, externalSignal, detachedMeta = null, 
             ? hostContext.chatCompletionSettings?.openai_max_context || hostContext.maxContext
             : selectedProfile?.openai_max_context || selectedPreset?.openai_max_context;
         const contextLimit = plannerContextLimit(getSettings().plannerContextTokens, providerContext);
-        const outputBudget = (reasoningMode, outputMode) => plannerOutputCapacity(plannerOutputTokenBudget(responseTokens, reasoningMode),
-            plannerModeInputTokens(plannerInputTokens, schema, outputMode), responseTokens, contextLimit);
+        const softOutputTarget = singleShot && /tale_fairy_(?:story_director|future_chapters)_/.test(schema.name);
+        const outputReserve = softOutputTarget ? 128 : responseTokens;
+        const outputBudget = (reasoningMode, outputMode) => plannerOutputCapacity(softOutputTarget ? contextLimit : plannerOutputTokenBudget(responseTokens, reasoningMode),
+            plannerModeInputTokens(plannerInputTokens, schema, outputMode), outputReserve, contextLimit);
         {
             const context = currentContext();
             // The active tokenizer is not authoritative for a different direct
             // model or connection profile. Those routes use the local reserve.
             const counter = model.active && typeof context.getTokenCountAsync === 'function'
                 ? context.getTokenCountAsync.bind(context) : null;
-            const inputLimit = plannerInputCapacity(plannerInputLimit(Number(getSettings().maxPromptTokens) || 10000), responseTokens, contextLimit);
+            const inputLimit = plannerInputCapacity(plannerInputLimit(Number(getSettings().maxPromptTokens) || 10000), outputReserve, contextLimit);
             const fitted = await waitForAbortable(fitStoryInputBudget(prompt, systemPrompt, schema, inputLimit, counter, { softTarget: true }), controller.signal);
             // Required reference and fresh play may exceed the sizing target,
             // but the complete input and visible output must fit the window.
-            plannerOutputCapacity(responseTokens, fitted.tokens, responseTokens, contextLimit);
+            plannerOutputCapacity(outputReserve, fitted.tokens, outputReserve, contextLimit);
             prompt = fitted.prompt;
             plannerInputTokens = fitted.tokens;
             controller.signal.throwIfAborted();
@@ -3299,7 +3306,7 @@ function campaignBackgroundSummary(entry) {
     return `Private background (provisional): ${entry.unfolding}\nGrounding / time: ${entry.basis}\nAccess · ${entry.access.route}: ${entry.access.basis}`;
 }
 
-function workingPlanSummary(preparation) {
+function workingPlanSummary(preparation, targets = {}) {
     const plan = preparation.workingPlan;
     if (!plan) return '';
     if (plan.storyStructure) {
@@ -3319,8 +3326,8 @@ function workingPlanSummary(preparation) {
                 + `${node.endsWhen ? `\nCan end when: ${node.endsWhen}` : ''}`
                 + `${node.links.length ? `\nRelated: ${node.links.map(id => rows.get(id)?.title).join('; ')}` : ''}`),
             `PUBLIC CONTEXT · ${map.selection.length} selected story concern(s). The outgoing preview shows the actual writer packet.`,
-            `REVIEW HORIZON · ${map.reviewAfter} accepted AI replies, capped by the review setting. Explicit direction and scene boundaries trigger earlier review. Last completed guidance remains available while preparation updates; current play takes precedence.`,
-            'BUDGETS · One request; 10,000 input soft target; 3,000 response allowance plus reasoning reserve. Writer target about 1,000, ceiling 2,400 including author notes (author-only overflow preserved). Whole public entries are withheld on overflow. Archives remain local.',
+            `REVIEW INTERVAL · ${targets.fullReviewInterval || 12} accepted AI replies. Model suggestion ${map.reviewAfter} is advisory; early signals are opt-in. Last completed guidance remains available while preparation updates; current play takes precedence.`,
+            `SOFT TARGETS · Input ${targets.maxPromptTokens || 10000}; setup response ${targets.setupOutputTokens || 1400}; review response ${targets.reviewOutputTokens || 900}; writer ${targets.writerContextTokens || 2400} tokens. Complete valid content is retained above targets. Archives remain local.`,
         ].join('\n\n');
     }
     return [
@@ -3355,8 +3362,8 @@ function workingPlanSummary(preparation) {
     ].join('\n\n');
 }
 
-function campaignBudgetSummary(preparation, instructions) {
-    const budget = campaignPayloadBudget(preparation, instructions);
+function campaignBudgetSummary(preparation, instructions, writerTarget) {
+    const budget = campaignPayloadBudget(preparation, instructions, { writerTarget });
     return `WRITER TOKEN TARGET · estimated ${budget.tokens}/${budget.target} including framing and saved instructions.`
         + (budget.overTarget ? ' Above the soft target; complete content retained.' : '');
 }
@@ -3439,11 +3446,11 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         scratchpadText(board, 'scratchpad-prepared', validCampaignState(preparation) ? [
             `CAMPAIGN PREPARATION · revision ${preparation.revision} · ${preparedReady(state, messagesFromChat(currentContext().chat || [])) ? 'compatible with current play' : 'source changed; not injected'}`,
             preparation.campaign,
-            workingPlanSummary(preparation),
+            workingPlanSummary(preparation, getSettings()),
             !preparation.workingPlan && preparation.rpBrief && `RP OPERATING BRIEF (private)\n${preparation.rpBrief}`,
             !preparation.workingPlan && `EPISODE · ${preparation.episode.status}: ${preparation.episode.subject}\n${preparation.episode.boundary}`,
             campaignSelectionSummary(preparation),
-            campaignBudgetSummary(preparation, campaignAuthorInstructions(state)),
+            campaignBudgetSummary(preparation, campaignAuthorInstructions(state), getSettings().writerContextTokens),
             ...(preparation.workingPlan ? [] : preparation.developments).map(item => [
                 `[${item.id}] ${preparation.realization?.[item.id] ? '' : preparation.preparationFormat === EVENT_POINTS_FORMAT
                     ? eventPointWire(item).plot_points.map(point => `Event opportunity: ${point.event}\nOpens: ${point.opens}`).join('\n\n') : item.premise}`,
@@ -3795,6 +3802,15 @@ async function mountUI() {
     root.querySelector('[data-setting="recent-budget"]').value = s.recentContextTokens;
     root.querySelector('[data-setting="summary-budget"]').value = s.summaryContextTokens;
     root.querySelector('[data-setting="budget"]').value = s.maxPromptTokens;
+    for (const [control, key] of [['writer-target', 'writerContextTokens'], ['setup-output-target', 'setupOutputTokens'], ['review-output-target', 'reviewOutputTokens'], ['future-card-target', 'futureCardTokens']]) {
+        const field = root.querySelector(`[data-setting="${control}"]`);
+        if (field) field.value = s[key];
+    }
+    for (const [control, key] of [['automatic-planning', 'automaticPlanning'], ['early-reviews', 'earlyReviews']]) {
+        const field = root.querySelector(`[data-setting="${control}"]`);
+        if (field) field.checked = s[key] === true;
+    }
+
     root.querySelector('[data-setting="planner-context"]').value = s.plannerContextTokens;
     root.querySelector('[data-setting="routine-budget"]').value = s.routineInputTokens;
     root.querySelector('[data-setting="review-budget"]').value = s.reviewInputTokens;
@@ -3857,6 +3873,14 @@ async function mountUI() {
         save();
     });
     root.querySelector('[data-setting="continuity"]').addEventListener('change', e => { invalidatePlanner(); s.continuityIntegration = e.target.checked; save(); });
+    for (const [control, key] of [['automatic-planning', 'automaticPlanning'], ['early-reviews', 'earlyReviews']]) {
+        root.querySelector(`[data-setting="${control}"]`)?.addEventListener('change', e => { s[key] = e.target.checked; save(); });
+    }
+    for (const [control, key] of [['writer-target', 'writerContextTokens'], ['setup-output-target', 'setupOutputTokens'], ['review-output-target', 'reviewOutputTokens'], ['future-card-target', 'futureCardTokens']]) {
+        root.querySelector(`[data-setting="${control}"]`)?.addEventListener('change', e => {
+            s[key] = Math.max(1, Math.floor(Number(e.target.value) || DEFAULT_SETTINGS[key])); e.target.value = s[key]; save(); renderBoard();
+        });
+    }
     root.querySelector('[data-setting="future-enabled"]').addEventListener('change', e => {
         s.futureEnabled = e.target.checked; save();
         if (!s.futureEnabled) void disableFuturePlanning();
@@ -3872,11 +3896,11 @@ async function mountUI() {
         s.futureCapacity = futureCapacity(e.target.value); e.target.value = s.futureCapacity; save(); renderFutureBoard();
     });
     root.querySelector('[data-setting="full-review-interval"]').addEventListener('change', e => { s.fullReviewInterval = campaignMode()
-        ? Math.min(20, Math.max(4, Math.floor(Number(e.target.value) || DEFAULT_REFRESH_INTERVAL)))
+        ? Math.max(1, Math.floor(Number(e.target.value) || DEFAULT_REFRESH_INTERVAL))
         : normalizePlannerSchedule({ refreshInterval: e.target.value }).refreshInterval; e.target.value = s.fullReviewInterval; save(); });
     root.querySelector('[data-setting="recent-budget"]').addEventListener('change', e => { invalidatePlanner(); s.recentContextTokens = Math.max(1000, Math.min(12000, Number(e.target.value) || DEFAULT_SETTINGS.recentContextTokens)); e.target.value = s.recentContextTokens; save(); });
-    root.querySelector('[data-setting="summary-budget"]').addEventListener('change', e => { invalidatePlanner(); s.summaryContextTokens = Math.max(0, Math.min(1000, Number(e.target.value) || 0)); e.target.value = s.summaryContextTokens; save(); });
-    root.querySelector('[data-setting="budget"]').addEventListener('change', e => { invalidatePlanner(); s.maxPromptTokens = Math.max(3000, Math.min(DEFAULT_SETTINGS.maxPromptTokens, Number(e.target.value) || DEFAULT_SETTINGS.maxPromptTokens)); e.target.value = s.maxPromptTokens; save(); });
+    root.querySelector('[data-setting="summary-budget"]').addEventListener('change', e => { s.summaryContextTokens = Math.max(0, Math.floor(Number(e.target.value) || 0)); e.target.value = s.summaryContextTokens; save(); });
+    root.querySelector('[data-setting="budget"]').addEventListener('change', e => { s.maxPromptTokens = Math.max(1, Math.floor(Number(e.target.value) || DEFAULT_SETTINGS.maxPromptTokens)); e.target.value = s.maxPromptTokens; save(); });
     root.querySelector('[data-setting="planner-context"]').addEventListener('change', e => { invalidatePlanner(); s.plannerContextTokens = normalizePlannerContext(e.target.value); e.target.value = s.plannerContextTokens; save(); });
     for (const [key, setting, fallback] of [['routine-budget', 'routineInputTokens', DEFAULT_ROUTINE_INPUT], ['review-budget', 'reviewInputTokens', DEFAULT_REVIEW_INPUT]]) {
         root.querySelector(`[data-setting="${key}"]`).addEventListener('change', e => { invalidatePlanner(); s[setting] = normalizeInputBudget(e.target.value, fallback); e.target.value = s[setting]; save(); });
@@ -3995,14 +4019,23 @@ function refreshControls(root = document.querySelector(`#${EXTENSION_ID}-setting
     if (futureCount) futureCount.value = futureCapacity(s.futureCapacity);
     const futureCadence = root.querySelector('[data-setting="future-interval"]');
     if (futureCadence) futureCadence.value = futureInterval(s.futureInterval);
-    reviewInterval.min = campaign ? '4' : '3';
-    reviewInterval.max = '20';
+    reviewInterval.min = campaign ? '1' : '3';
+    reviewInterval.max = campaign ? '' : '20';
     reviewInterval.value = s.fullReviewInterval;
     const campaignHelp = root.querySelector('[data-role="campaign-budget-help"]');
     if (campaignHelp) campaignHelp.hidden = !campaign;
     root.querySelector('[data-setting="recent-budget"]').value = s.recentContextTokens;
     root.querySelector('[data-setting="summary-budget"]').value = s.summaryContextTokens;
     root.querySelector('[data-setting="budget"]').value = s.maxPromptTokens;
+    for (const [control, key] of [['writer-target', 'writerContextTokens'], ['setup-output-target', 'setupOutputTokens'], ['review-output-target', 'reviewOutputTokens'], ['future-card-target', 'futureCardTokens']]) {
+        const field = root.querySelector(`[data-setting="${control}"]`);
+        if (field) field.value = s[key];
+    }
+    for (const [control, key] of [['automatic-planning', 'automaticPlanning'], ['early-reviews', 'earlyReviews']]) {
+        const field = root.querySelector(`[data-setting="${control}"]`);
+        if (field) field.checked = s[key] === true;
+    }
+
     root.querySelector('[data-setting="planner-context"]').value = s.plannerContextTokens;
     root.querySelector('[data-setting="routine-budget"]').value = s.routineInputTokens;
     root.querySelector('[data-setting="review-budget"]').value = s.reviewInputTokens;

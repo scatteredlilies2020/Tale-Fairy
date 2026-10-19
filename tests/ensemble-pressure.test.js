@@ -137,10 +137,9 @@ test('old replies cannot erase a foundation, while rebuild does not resurrect it
     assert.doesNotMatch(campaignPayload(fresh.state), /Rin/);
 });
 
-test('invalid or schema-oversized foundation rejects the pass without losing saved work', async () => {
+test('malformed foundation rejects the pass without losing saved work', async () => {
     const first = await run();
-    for (const foundation of [null, { reminder: 'New', changeReason: '', scratchpad: 42 },
-        { reminder: '界'.repeat(601), changeReason: 'Changed premise.', scratchpad: '' }]) {
+    for (const foundation of [null, { reminder: 'New', changeReason: '', scratchpad: 42 }]) {
         const failed = await run(first.state, raw => ({ ...raw, foundation }));
         assert.equal(failed.accepted, false);
         assert.equal(failed.state, first.state);

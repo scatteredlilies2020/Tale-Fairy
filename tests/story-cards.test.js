@@ -92,11 +92,10 @@ test('effects are stored once, omission retains, [] clears, and archives are unt
     assert.ok(!STORY_NODE_SCHEMA.required.includes('effects'), 'old saved cards remain valid');
 });
 
-test('malformed or oversized effects cannot erase good cards or dependent writer selections', async () => {
+test('malformed effects cannot erase good cards or dependent writer selections', async () => {
     const raw = cardCaseReply(fixture);
     for (const effects of [null, 'buff', [{ label: '', pressure: 'x' }], [{ label: 'X', pressure: '' }],
-        [{ label: 'x'.repeat(57), pressure: 'x' }], [{ label: 'X', pressure: 'x'.repeat(201) }],
-        Array.from({ length: 4 }, () => ({ label: 'X', pressure: 'x' })), [{ label: 'X', pressure: 'x', score: 3 }]]) {
+        [{ label: 'X', pressure: 'x', score: 3 }]]) {
         const previous = raw.upsert.map(stored);
         const next = merge(previous, [{ ...raw.upsert[0], effects }]);
         assert.deepEqual(next.nodes, previous);

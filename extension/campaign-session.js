@@ -1,7 +1,7 @@
-import { CampaignRuntime } from './campaign-runtime.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-chapters=1&future-controls=1&writer-target=2&writer-fit=1';
-import { campaignReviewInterval, campaignRefreshInterval } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=2&writer-fit=1';
+import { CampaignRuntime } from './campaign-runtime.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-chapters=1&future-controls=1&writer-target=2&writer-fit=1&resource-policy=1';
+import { campaignReviewInterval, campaignRefreshInterval } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=2&writer-fit=1&resource-policy=1';
 import { boundedPlannerResponse, PLANNER_RESPONSE_TIMEOUT_MS } from './planner-progress.js?v=1&review-checkpoint=1&story-workshop=1&request-policy=2&story-director=1&planner-timeout=1&server-jobs=1';
-import { storyReviewInterval, storyChangeSignal } from './story-structure.js?story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&world-frame=1&chapter-labels=1';
+import { storyReviewInterval, storyChangeSignal } from './story-structure.js?story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&world-frame=1&chapter-labels=1&resource-policy=1';
 
 export const CAMPAIGN_ATTEMPT_KEY = 'taleFairyCampaignAttempt';
 const turns = messages => messages.filter(message => !message.is_user).length;
@@ -11,8 +11,8 @@ const turns = messages => messages.filter(message => !message.is_user).length;
 export class CampaignSession {
     constructor({ read, prepare, generate, commit, fingerprint, saveAttempt, interval = () => 12, runPass,
         onProgress = () => {}, timeoutMs = PLANNER_RESPONSE_TIMEOUT_MS, evidenceRestart = false, guardEvidence = true, isDue,
-        generateGate = task => task() }) {
-        Object.assign(this, { read, fingerprint, saveAttempt, interval, isDue });
+        generateGate = task => task(), earlyReviews = () => false }) {
+        Object.assign(this, { read, fingerprint, saveAttempt, interval, isDue, earlyReviews });
         this.controller = null;
         this.pending = null;
         this.runtime = new CampaignRuntime({ read, fingerprint, guardEvidence, ...(runPass ? { runPass } : {}),
@@ -119,19 +119,16 @@ export class CampaignSession {
         }
         if (!manual && !this.isDue && previous?.chatId === snapshot.chatId) {
             const key = this.runtime.key(snapshot);
-            const unchangedBasis = previous.referenceHash === snapshot.referenceHash
-                && previous.requestSignature === (snapshot.requestSignature || '')
-                && previous.messageCount <= snapshot.messages.length
-                && previous.fingerprint === this.fingerprint(snapshot.messages.slice(0, previous.messageCount));
-            // A failure reserves this source, not the next full review cycle.
-            // Recover only after new accepted assistant play; no same-source,
-            // user-only, timer, or reload retry. Stop retains normal cadence.
             const structured = snapshot.state?.workingPlan?.storyStructure;
-            const earlyReview = structured && previous.status !== 'failed' && previous.status !== 'stopped'
-                && storyChangeSignal(snapshot.messages.slice(previous.messageCount));
-            const dueAfter = previous.status === 'failed' ? 1 : structured ? Math.max(1, storyReviewInterval(this.interval(), snapshot.state) - 1) : previous.status === 'stopped'
+            const dueAfter = structured ? storyReviewInterval(this.interval(), snapshot.state) : previous.status === 'stopped'
                 ? campaignReviewInterval(this.interval()) : campaignRefreshInterval(this.interval());
-            if (key === previous.key || !replacementRepair && unchangedBasis && !earlyReview && turns(snapshot.messages) - previous.assistantCount < dueAfter) {
+            const elapsed = turns(snapshot.messages) - previous.assistantCount;
+            // All terminal outcomes reserve a full interval. Provider failures,
+            // changed variables and repeated host notifications cannot create
+            // a one-request-per-reply loop. Manual actions remain immediate.
+            const earlyReview = this.earlyReviews() && previous.status === 'complete'
+                && elapsed >= Math.min(4, dueAfter) && storyChangeSignal(snapshot.messages.slice(previous.messageCount));
+            if (key === previous.key || !replacementRepair && (elapsed <= 0 || !earlyReview && elapsed < dueAfter)) {
                 return Promise.resolve({ accepted: false, state: snapshot.state, skipped: 'not-due' });
             }
         }

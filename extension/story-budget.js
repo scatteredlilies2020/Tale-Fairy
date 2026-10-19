@@ -133,10 +133,11 @@ export function fitStoryContext(material, authored, options = {}) {
     if (options.softTarget) {
         const payload = storyContextPayload(material, authored, options);
         const tokens = conservativeTokenCount(payload);
-        return { payload, tokens, requiredTokens: tokens, target: WRITER_CONTEXT_TOKEN_TARGET,
-            limit: WRITER_CONTEXT_TOKEN_TARGET, overTarget: Math.max(0, tokens - WRITER_CONTEXT_TOKEN_TARGET),
+        const target = Math.max(1, Math.floor(Number(options.writerTarget) || WRITER_CONTEXT_TOKEN_TARGET));
+        return { payload, tokens, requiredTokens: tokens, target,
+            limit: target, overTarget: Math.max(0, tokens - target),
             blocked: false, omitted: 0, orientationOmitted: false, authorTokens,
-            authorOverflow: authorTokens > WRITER_CONTEXT_TOKEN_TARGET };
+            authorOverflow: authorTokens > target };
     }
     if (options.strictBudget) {
         const payload = storyContextPayload(material, authored, options);

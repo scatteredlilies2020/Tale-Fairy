@@ -56,7 +56,7 @@ test('new future defaults and deliberately chosen canon/capacity settings surviv
         assert.equal(saved.futureCanon, false); assert.equal(saved.futureCapacity, capacity);
         assert.equal(settingsHarness(saved).getSettings().futureCapacity, capacity);
     }
-    assert.equal(settingsHarness({ futureCapacity: 999 }).getSettings().futureCapacity, 6);
+    assert.equal(settingsHarness({ futureCapacity: 999 }).getSettings().futureCapacity, 999);
 });
 
 test('safer planning defaults migrate once and later deliberate choices survive', () => {
@@ -76,4 +76,15 @@ test('safer planning defaults migrate once and later deliberate choices survive'
     const custom = settingsHarness({ contextSettingsVersion: 15, futureCapacity: 15, analysisReasoningMode: 'high' }).getSettings();
     assert.equal(custom.futureCapacity, 15);
     assert.equal(custom.analysisReasoningMode, 'high');
+});
+
+test('resource targets and review intervals are independently adjustable and survive reload', () => {
+    const values = { contextSettingsVersion: 16, automaticPlanning: false, earlyReviews: true,
+        maxPromptTokens: 25000, summaryContextTokens: 5000, writerContextTokens: 8000,
+        setupOutputTokens: 4000, reviewOutputTokens: 2500, futureCardTokens: 400,
+        futureCapacity: 20, fullReviewInterval: 80, futureInterval: 500 };
+    const settings = settingsHarness(values).getSettings();
+    const restored = settingsHarness(settings).getSettings();
+    for (const [key, value] of Object.entries(values)) assert.equal(restored[key], value, key);
+    assert.equal(settingsHarness().getSettings().earlyReviews, false);
 });

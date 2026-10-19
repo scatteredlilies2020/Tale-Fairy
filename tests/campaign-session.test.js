@@ -209,7 +209,7 @@ test('preflight failure replaces an old success record without sending and is de
     assert.equal((await new CampaignSession(f.options).request()).skipped, 'not-due');
 });
 
-test('failure recovers on new accepted assistant play, not user-only appends or reloads', async () => {
+test('failure waits for the configured review cadence rather than retrying on every reply', async () => {
     let fail = true;
     const f = fixture(async () => { if (fail) throw Error('provider failure'); return reply; });
     f.options.interval = () => 12;
@@ -221,6 +221,8 @@ test('failure recovers on new accepted assistant play, not user-only appends or 
     assert.equal(f.calls(), 1);
     f.current.messages.push({ is_user: false, mes: 'A new accepted result.' });
     fail = false;
+    assert.equal((await f.session.request()).skipped, 'not-due');
+    for (let i = 1; i < 12; i++) f.current.messages.push({ is_user: false, mes: `Accepted play ${i}` });
     assert.equal((await f.session.request()).accepted, true);
     assert.equal(f.calls(), 2);
     assert.equal((await f.session.request()).skipped, 'not-due');
