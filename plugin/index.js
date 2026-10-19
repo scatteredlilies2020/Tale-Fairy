@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 const PLUGIN = 'tale-fairy';
-const VERSION = '0.20.5';
+const VERSION = '0.20.6';
 const jobs = new Map();
 const MAX_FINISHED_JOBS = 40;
 const MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
@@ -38,7 +38,7 @@ function publicJob(job) {
         createdAt: job.createdAt,
         completedAt: job.completedAt || null,
         attempts: job.attempts || 0,
-        maxAttempts: job.meta.campaign ? job.retryDelays.length + 1 : 1,
+        maxAttempts: job.meta.campaign && Number.isFinite(job.maxNetworkAttempts) ? job.maxNetworkAttempts : job.meta.campaign ? null : 1,
         attemptStartedAt: job.attemptStartedAt || null,
         inactivityTimeoutMs: job.requestTimeoutMs,
         retryAt: job.retryAt || null,
@@ -360,12 +360,15 @@ async function collectAttempt(job, res, touchTimeout) {
 }
 
 function transientFailure(error, job) {
-    // An unfinished timed-out draft is discarded, including partial output.
-    // Other partial/invalid responses still stop instead of buying a repair.
+    // Only unfinished transport attempts retry. A complete invalid response
+    // stays terminal; retrying a connection never buys a semantic repair.
     if (job.controller.signal.reason?.name === 'TimeoutError') return true;
-    if (job.receivedBytes || job.text) return false;
-    return [408, 429, 502, 503, 504].includes(Number(error.status))
+    if (/\b(?:400|401|403|404|422)\b|unauthori[sz]ed|invalid (?:api )?key|invalid model/iu.test(error.message)) return false;
+    // Some host backends report upstream transport failure as HTTP 200.
+    if (error.message === 'true') return true;
+    return [408, 429, 500, 502, 503, 504].includes(Number(error.status))
         || error.name === 'TypeError' && /fetch failed|network|terminated/i.test(error.message)
+        || /connection (?:closed|reset)|socket hang up|failed to fetch|network error|bad gateway|temporarily unavailable/iu.test(error.message)
         || ['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN'].includes(error.cause?.code || error.code);
 }
 
@@ -378,8 +381,8 @@ async function run(job, res) {
                 job.error = '';
                 break;
             } catch (error) {
-                if (job.cancelled || !job.meta.campaign || job.attempts > job.retryDelays.length || !transientFailure(error, job)) throw error;
-                const delay = job.retryDelays[job.attempts - 1];
+                if (job.cancelled || !job.meta.campaign || job.attempts >= job.maxNetworkAttempts || !transientFailure(error, job)) throw error;
+                const delay = job.retryDelays[Math.min(job.attempts - 1, job.retryDelays.length - 1)] ?? 60000;
                 job.controller = new AbortController();
                 job.status = 'retry_wait';
                 job.error = error.message;
@@ -407,7 +410,7 @@ function sendError(res, error) {
     res.status(status).json({ ok: false, error: error.message || String(error) });
 }
 
-export async function init(router, { fetchImpl = fetch, retryDelays = [15000, 60000], requestTimeoutMs = REQUEST_TIMEOUT_MS } = {}) {
+export async function init(router, { fetchImpl = fetch, retryDelays = [15000, 60000], requestTimeoutMs = REQUEST_TIMEOUT_MS, maxNetworkAttempts = Infinity } = {}) {
     router.get('/health', (_req, res) => {
         res.json({ ok: true, plugin: PLUGIN, version: VERSION, detachedPlanner: true, campaignJobs: 1, futureJobs: 1 });
     });
@@ -475,6 +478,7 @@ export async function init(router, { fetchImpl = fetch, retryDelays = [15000, 60
                 backendHeaders: backend.headers,
                 fetchImpl,
                 retryDelays,
+                maxNetworkAttempts,
                 requestTimeoutMs,
                 attempts: 0,
                 controller: new AbortController(),

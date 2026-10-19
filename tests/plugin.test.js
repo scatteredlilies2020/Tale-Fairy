@@ -121,11 +121,33 @@ test('server advertises future jobs and preserves their separate owner through r
     assert.equal(invalid.statusCode, 400);
 });
 
+test('a pending campaign recovers after a long outage and completed submissions never generate twice', async () => {
+    const router = routerMock();
+    let calls = 0;
+    await init(router, { retryDelays: [1, 1], fetchImpl: async () => {
+        calls++;
+        return calls <= 7 ? calls % 2 ? new Response('offline', { status: 503 }) : new Response('{"error":true}')
+            : new Response(JSON.stringify({ choices: [{ message: { content: 'saved plan' }, finish_reason: 'stop' }] }));
+    } });
+    const body = campaignBody('outage-then-reuse'), first = responseMock();
+    await router.routes.get('POST /planner-jobs/generate')(request(body), first);
+    const job = await untilJob(router, first.payload.job.id, job => job.status === 'complete');
+    assert.equal(calls, 8);
+    assert.equal(job.maxAttempts, null);
+    for (let n = 0; n < 4; n++) {
+        const again = responseMock();
+        await router.routes.get('POST /planner-jobs/generate')(request(campaignBody('outage-then-reuse')), again);
+        assert.equal(again.payload.job.id, job.id);
+        assert.equal(again.payload.job.text, 'saved plan');
+    }
+    assert.equal(calls, 8);
+});
+
 test('server retries pending campaign after temporary failures without any browser; bounded at three requests', async () => {
     for (const succeeds of [true, false]) {
         let calls = 0;
         const router = routerMock();
-        await init(router, { retryDelays: [1, 1], fetchImpl: async () => {
+        await init(router, { maxNetworkAttempts: 3, retryDelays: [1, 1], fetchImpl: async () => {
             calls++;
             return succeeds && calls === 3
                 ? new Response(JSON.stringify({ choices: [{ message: { content: 'done' } }] }))
@@ -146,7 +168,7 @@ test('server retries pending campaign after temporary failures without any brows
 test('explicit server stop cancels a retry wait, including a repeated submission', async () => {
     let calls = 0;
     const router = routerMock();
-    await init(router, { retryDelays: [100, 100], fetchImpl: async () => { calls++; return new Response('', { status: 429 }); } });
+    await init(router, { maxNetworkAttempts: 3, retryDelays: [100, 100], fetchImpl: async () => { calls++; return new Response('', { status: 429 }); } });
     const res = responseMock(), body = campaignBody('campaign-stop');
     await router.routes.get('POST /planner-jobs/generate')(request(body), res);
     const id = res.payload.job.id;
@@ -162,7 +184,7 @@ test('explicit server stop cancels a retry wait, including a repeated submission
 test('server timeout can retry before output; auth, invalid output and partial streams cannot', async () => {
     const router = routerMock();
     let calls = 0;
-    await init(router, { retryDelays: [1, 1], requestTimeoutMs: 2, fetchImpl: async (_url, { signal }) => {
+    await init(router, { maxNetworkAttempts: 3, retryDelays: [1, 1], requestTimeoutMs: 2, fetchImpl: async (_url, { signal }) => {
         if (++calls === 1) return new Promise((_, reject) => signal.addEventListener('abort', () => reject(signal.reason), { once: true }));
         return new Response(JSON.stringify({ choices: [{ message: { content: 'done' } }] }));
     } });
@@ -183,18 +205,18 @@ test('server timeout can retry before output; auth, invalid output and partial s
     ]) {
         let count = 0;
         const local = routerMock();
-        await init(local, { retryDelays: [1, 1], fetchImpl: async () => { count++; return response(); } });
+        await init(local, { maxNetworkAttempts: 3, retryDelays: [1, 1], fetchImpl: async () => { count++; return response(); } });
         const result = responseMock();
         await local.routes.get('POST /planner-jobs/generate')(request(campaignBody(`campaign-no-retry-${name}`)), result);
         const job = await untilJob(local, result.payload.job.id, job => job.status === 'error');
-        assert.equal(job.attempts, 1, name);
-        assert.equal(count, 1, name);
+        assert.equal(job.attempts, name === 'partial' ? 3 : 1, name);
+        assert.equal(count, name === 'partial' ? 3 : 1, name);
     }
 });
 
 test('timeout retries an adapter that ignores abort, and its late response cannot replace the new attempt', async () => {
     const router = routerMock(), releases = [], signals = [];
-    await init(router, { retryDelays: [1, 1], requestTimeoutMs: 80, fetchImpl: (_url, { signal }) => {
+    await init(router, { maxNetworkAttempts: 3, retryDelays: [1, 1], requestTimeoutMs: 80, fetchImpl: (_url, { signal }) => {
         signals.push(signal);
         return new Promise(resolve => releases.push(resolve));
     } });
@@ -224,7 +246,7 @@ for (const kind of ['partial-stream', 'partial-json', 'heartbeat']) {
             clearInterval(heartbeat);
             try { body?.close(); } catch { /* Aborted iterators may already have cancelled the body. */ }
         });
-        await init(router, { retryDelays: [1, 1], requestTimeoutMs: 20, fetchImpl: async (_url, { signal }) => {
+        await init(router, { maxNetworkAttempts: 3, retryDelays: [1, 1], requestTimeoutMs: 20, fetchImpl: async (_url, { signal }) => {
                 if (++calls > 1) return new Response('{"choices":[{"message":{"content":"complete replacement"}}]}');
                 return new Response(new ReadableStream({ start(controller) {
                     body = controller;
@@ -251,7 +273,7 @@ for (const kind of ['partial-stream', 'partial-json', 'heartbeat']) {
 test('unresponsive attempts exhaust three tries and a deduplicated submission cannot start more', async () => {
     const router = routerMock();
     let calls = 0;
-    await init(router, { retryDelays: [1, 1], requestTimeoutMs: 10, fetchImpl: () => { calls++; return new Promise(() => {}); } });
+    await init(router, { maxNetworkAttempts: 3, retryDelays: [1, 1], requestTimeoutMs: 10, fetchImpl: () => { calls++; return new Promise(() => {}); } });
     const body = campaignBody('hung-exhausted'), res = responseMock();
     await router.routes.get('POST /planner-jobs/generate')(request(body), res);
     const job = await untilJob(router, res.payload.job.id, job => job.status === 'error');
@@ -291,7 +313,7 @@ test('ongoing content can take longer than the inactivity timeout without being 
 test('Stop releases an unresponsive active request without retrying', async () => {
     const router = routerMock();
     let calls = 0;
-    await init(router, { retryDelays: [1, 1], requestTimeoutMs: 10, fetchImpl: () => { calls++; return new Promise(() => {}); } });
+    await init(router, { maxNetworkAttempts: 3, retryDelays: [1, 1], requestTimeoutMs: 10, fetchImpl: () => { calls++; return new Promise(() => {}); } });
     const res = responseMock();
     await router.routes.get('POST /planner-jobs/generate')(request(campaignBody('hung-stop')), res);
     const id = res.payload.job.id;
@@ -302,10 +324,10 @@ test('Stop releases an unresponsive active request without retrying', async () =
     assert.equal(calls, 1);
 });
 
-test('partial non-stream responses are not retried', async () => {
+test('interrupted partial non-stream responses retry without treating the draft as complete', async () => {
     const router = routerMock();
     let calls = 0;
-    await init(router, { retryDelays: [1, 1], fetchImpl: async () => {
+    await init(router, { maxNetworkAttempts: 3, retryDelays: [1, 1], fetchImpl: async () => {
         calls++;
         return new Response(new ReadableStream({ start(controller) {
             controller.enqueue(new TextEncoder().encode('{"choices":['));
@@ -317,7 +339,7 @@ test('partial non-stream responses are not retried', async () => {
     const res = responseMock();
     await router.routes.get('POST /planner-jobs/generate')(request(body), res);
     await untilJob(router, res.payload.job.id, job => job.status === 'error');
-    assert.equal(calls, 1);
+    assert.equal(calls, 3);
 });
 
 test('a late response cannot resurrect explicitly cancelled server work', async () => {

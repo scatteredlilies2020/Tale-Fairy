@@ -7,7 +7,7 @@ export function plannerElapsed(milliseconds) {
 }
 
 export function serverPlannerProgress(job, now = Date.now()) {
-    const attempt = `attempt ${job.attempts || 1}/${job.maxAttempts || 3}`;
+    const attempt = `attempt ${job.attempts || 1}${job.maxAttempts ? `/${job.maxAttempts}` : ''}`;
     if (job.status === 'retry_wait') {
         const seconds = Math.max(0, Math.ceil((Date.parse(job.retryAt) - now) / 1000) || 0);
         return `Server planner retrying in ${seconds}s · ${attempt}${job.error ? ` · ${job.error}` : ''}`;

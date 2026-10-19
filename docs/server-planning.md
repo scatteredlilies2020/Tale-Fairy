@@ -21,13 +21,13 @@ Recovery neither buys a correction call nor extends guidance freshness. The exis
 
 ## Bounded retries, not an idle loop
 
-A pending server job gets at most **three total attempts**, with **15 seconds** before the second and **60 seconds** before the third. In v0.20.4, each attempt has a **two-minute inactivity timeout** for meaningful output. Content and reasoning reset this timer; heartbeat/comment traffic alone does not. There is no absolute server response deadline, so a slow response can finish while it is making progress. A timeout discards the unfinished draft and retries even after partial output. Temporary HTTP 408/429/502/503/504 and recognized network failures before response output also retry. Authentication/configuration errors, malformed model output, truncation and other partial-response failures stop. Repeated submission of the same retained run key returns the same job.
+A pending server job retries temporary connection failures until it succeeds or is explicitly stopped: 15 seconds before its first retry, then at most one attempt per 60 seconds. It keeps the same run key and source reservation throughout; these are attempts to finish pending work, not fresh reviews. Each attempt has a two-minute inactivity timeout for meaningful output. Content and reasoning reset it; heartbeats do not. Active generation has no absolute deadline. Connection loss can retry an unfinished draft, including partial output. Authentication/configuration errors, malformed output and truncation stop. Repeated submission of a retained run key returns the existing job, including its completed response, without another model request.
 
 The timeout races the upstream operation itself, so an adapter that ignores cancellation cannot hold the job open. Each attempt has isolated state; a late response cannot replace a newer attempt. The browser shows the attempt count, inactivity policy, and retry countdown with the preceding error. The previous saved plan stays available throughout, and retrying a timed-out draft can incur another provider charge.
 
 Browser health and job-status checks also stop after 15 seconds, including a stalled response body. An unavailable status endpoint still does not authorize a duplicate model request; the browser reports the failure and can collect the original job on a later poll.
 
-**Tale Fairy Stop** cancels the request or retry wait. SillyTavern's ordinary story-generation Stop is separate. Disabling Tale Fairy prevents recovery; obsolete-source checks prevent a discarded draft from being installed. No timer starts a fresh logical review after bounded retries are exhausted.
+**Tale Fairy Stop** cancels the request or retry wait. SillyTavern's ordinary story-generation Stop is separate. Disabling Tale Fairy prevents recovery; obsolete-source checks prevent a discarded draft from being installed. Retry timers belong only to an already accepted pending job. They never start a new logical review or regenerate a completed result.
 
 ## Installation and limits
 
@@ -54,6 +54,8 @@ Settings expose total input, optional memory, setup/review response, writer-cont
 The live diagnostic at inspection still reported v0.20.3; reload pages to load this release. Backend retry/watchdog updates additionally require restarting SillyTavern. No user conversations or provider settings are rewritten.
 
 ## Verification and deployment
+
+On 2026-10-19, **1,587 automated tests passed** for v0.20.6. A pending job recovered after seven simulated connection failures; repeated submission of its completed run key made no additional provider requests. Interrupted partial transport output retried, while invalid completed responses stayed terminal. No live provider generation was sent.
 
 On 2026-10-19, **1,586 automated tests passed** for v0.20.5. Forty accepted replies with repeated host notifications, changing references, model-shortened review suggestions, reloads and provider failures produced four current-planner attempts at a 12-reply interval. Future failures stayed reserved until their configured interval. Manual-only mode blocked automatic current and future calls while retaining explicit actions. Tests also covered settings round trips, custom input/writer/response/card targets, complete long prose and above-target card counts, retained paid work after target changes, and response headroom bounded by actual context capacity. No live provider generation was sent.
 
