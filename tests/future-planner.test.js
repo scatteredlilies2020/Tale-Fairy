@@ -333,6 +333,50 @@ test('brief future cards can leave unused note fields empty and survive the next
     }
 });
 
+test('omitted future notes become empty fields and survive saving and retention', async () => {
+    const defaults = { pressures: [], favors: '', prevents: '', timing: '', transition: '', outlook: '' };
+    for (const missing of [['favors'], Object.keys(defaults)]) {
+        const brief = card();
+        for (const key of missing) delete brief[key];
+        const h = harness(async () => reply([brief]));
+        assert.equal((await h.host.run()).accepted, true);
+        assert.equal(h.calls.length, 1, 'omitted notes need no repair request');
+        const saved = JSON.parse(JSON.stringify(h.metadata[f.FUTURE_KEY]));
+        const expected = { ...card(), ...Object.fromEntries(missing.map(key => [key, defaults[key]])) };
+        assert.deepEqual(saved.cards, [expected]);
+        assert.equal(f.validFuture(saved), true);
+        const retained = await planned(saved, [], { retain: [brief.id] });
+        assert.equal(retained.accepted, true, retained.error);
+        assert.deepEqual(retained.state.cards, [expected]);
+    }
+});
+
+test('future upserts replace omitted notes instead of inheriting outdated conditions', async () => {
+    const first = await planned(undefined, [card()]);
+    const revised = { id: card().id, title: card().title, category: 'Original', premise: 'New carriers offer a different route to the clinics.' };
+    const next = await planned(first.state, [revised]);
+    assert.equal(next.accepted, true, next.error);
+    assert.deepEqual(next.state.cards, [{ ...revised, pressures: [], favors: '', prevents: '', timing: '', transition: '', outlook: '' }]);
+    assert.deepEqual(first.state.cards, [card()], 'previous outlook stays immutable');
+});
+
+test('missing core future fields and explicitly invalid notes preserve the saved outlook', async () => {
+    const first = await planned(undefined, [card()]);
+    const invalid = [];
+    for (const key of ['id', 'title', 'category', 'premise']) {
+        const broken = card(); delete broken[key]; invalid.push(broken);
+    }
+    for (const key of ['pressures', 'favors', 'prevents', 'timing', 'transition', 'outlook']) {
+        for (const value of [null, 42, {}, key === 'pressures' ? '' : []]) invalid.push({ ...card(), [key]: value });
+    }
+    invalid.push({ ...card(), pressures: [{}] }, { ...card(), unexpected: '' });
+    for (const broken of invalid) {
+        const result = await planned(first.state, [broken]);
+        assert.equal(result.accepted, false, JSON.stringify(broken));
+        assert.equal(result.state, first.state);
+    }
+});
+
 test('schema, unknown identities, truncation and lost Canon category fail without changing saved outlook', async () => {
     const p = pure();
     const first = await f.futurePass({ state: p.s.state, input: p.input, source: p.source, generate: async () => reply([card('f1-convoys', 'Canon')]) });

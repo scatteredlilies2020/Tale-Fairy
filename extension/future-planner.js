@@ -177,6 +177,15 @@ export async function futurePass({ state, input, source, generate }) {
         const response = await generate(input.prompt, FUTURE_SYSTEM, FUTURE_SCHEMA, { stage: 'future' });
         if (['length', 'max_tokens', 'max_output_tokens'].includes(response.finishReason)) throw Error('Truncated future-planner response');
         const raw = parseComplete(response.text);
+        // A sketch may omit unused notes. Fill only absent optional fields;
+        // explicit invalid values and missing core fields still fail validation.
+        for (const card of Array.isArray(raw?.upsert) ? raw.upsert : []) {
+            if (!card || typeof card !== 'object' || Array.isArray(card)) continue;
+            for (const [key, fallback] of [['pressures', []], ['favors', ''], ['prevents', ''],
+                ['timing', ''], ['transition', ''], ['outlook', '']]) {
+                if (!Object.hasOwn(card, key)) card[key] = fallback;
+            }
+        }
         check(raw, FUTURE_SCHEMA.value, '$');
         const previous = new Map(input.previous.map(c => [c.id, c])), rows = new Map();
         const blocked = new Set(input.blockedIds), retired = new Set(raw.retire);
