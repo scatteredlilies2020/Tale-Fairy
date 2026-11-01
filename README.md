@@ -22,6 +22,8 @@ The **Story Board** shows your current stories as readable cards:
 
 Cards describe what a story is about and how it influences the world. Several stories can coexist without involving the same characters or being forced together.
 
+Effects apply ongoing pressure through causes and stakes. Characters can agree, refuse or change their minds. Reviews update effects when their basis changes, even while the story remains ongoing.
+
 ## Future Chapters
 
 Tale Fairy can also prepare possible future Chapters in a separate, private outlook. These can draw from canon or introduce original ideas.

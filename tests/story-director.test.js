@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { directorInput, directorPass, DIRECTOR_SYSTEM, DIRECTOR_SCHEMA, parseDirectorResponse, recentCardNames, continuityStorySummary } from '../extension/story-director.js';
-import { emptyCampaign, validCampaignState, campaignPayload, campaignPayloadBudget, campaignMaterialUsable, campaignWriterUsable, check } from '../extension/campaign-planner.js';
+import { emptyCampaign, validCampaignState, campaignPayload, campaignPayloadBudget, preCausalEffectPayload, campaignMaterialUsable, campaignWriterUsable, check } from '../extension/campaign-planner.js';
+import { generationContextEntries } from '../extension/generation-context.js';
 import { storyInputTokens, fitStoryInputBudget } from '../extension/story-budget.js';
 import { validateStoryStructure, ongoingStoryNodes, storyReviewInterval } from '../extension/story-structure.js';
 import { planTokens } from '../extension/working-plan.js';
@@ -94,6 +95,43 @@ test('legacy scene snapshots do not enter new preparation or its next review', a
     assert.ok(!next.prompt.includes(stale));
     assert.ok(!campaignPayload(result.state).includes(stale));
     assert.deepEqual(nodes(result), nodes(first));
+});
+
+test('an ongoing card can replace a fixed refusal with changed pressure or clear its effects', async () => {
+    const refusal = { label: 'Passage refused', pressure: 'Mira refuses passage and remains distrustful.' };
+    const permit = { label: 'Travel permit', pressure: 'The permit opens passage; limited seats make the party choose what to carry.' };
+    const initial = await run(emptyCampaign(), { ...response(), upsert: [proposal('r1-kitchen', { status: 'active', effects: [refusal] })] });
+    assert.equal(initial.accepted, true, initial.error);
+    const saved = JSON.stringify(initial.state);
+    const changed = await run(initial.state, { ...response(), upsert: [proposal('r1-kitchen', { status: 'active', effects: [permit] })] });
+    assert.equal(changed.accepted, true, changed.error);
+    assert.match(campaignPayload(changed.state), /limited seats/);
+    assert.doesNotMatch(campaignPayload(changed.state), /remains distrustful/);
+    assert.equal(nodes(changed)[0].status, 'active');
+    assert.equal(JSON.stringify(initial.state), saved);
+    const cleared = await run(changed.state, { ...response(), upsert: [proposal('r1-kitchen', { status: 'active', effects: [] })] });
+    assert.equal(cleared.accepted, true, cleared.error);
+    assert.deepEqual(nodes(cleared)[0].effects, []);
+    assert.equal(nodes(cleared)[0].status, 'active');
+    assert.match(DIRECTOR_SYSTEM, /Character responses remain open and can change with play/);
+    assert.match(DIRECTOR_SYSTEM, /Review effects separately from their card/);
+});
+
+test('saved effect packets still authenticate while outgoing guidance uses open responses', async () => {
+    const result = await run(emptyCampaign(), { ...response(), upsert: [proposal('r1-kitchen', {
+        effects: [{ label: 'Limited seating', pressure: 'The small table makes space a shared concern.' }],
+    })] });
+    assert.equal(result.accepted, true, result.error);
+    const historical = preCausalEffectPayload(result.state);
+    assert.match(historical, /Pressure the affected NPCs/);
+    const packet = { version: 1, selection: { preparedUsable: true }, payload: historical,
+        plannerState: { plannerContract: 15, campaignPreparation: result.state } };
+    assert.equal(generationContextEntries({ entries: [packet] }).length, 1);
+    const current = campaignPayload(result.state);
+    assert.match(current, /Character responses remain open/);
+    assert.doesNotMatch(current, /Pressure the affected NPCs/);
+    assert.match(current, /The small table makes space a shared concern/);
+    assert.equal(packet.payload, historical);
 });
 
 test('ordinary reviews explicitly retain useful unused stories and renew the public selection', async () => {

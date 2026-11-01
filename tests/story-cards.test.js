@@ -38,7 +38,9 @@ for (const example of storyCardCases) test(`card lifecycle and exact writer tran
         assert.deepEqual(packet.story_context[i].effects, card.effects);
         assert.equal(packet.story_context[i].status, card.status);
     }
-    assert.equal(packet.effect_basis, 'Effects: Continuing influences attached to story cards. Pressure the affected NPCs and world conditions in each effect’s stated direction, making its influence tangible in behavior, relationships, and opportunities.');
+    assert.match(packet.effect_basis, /Apply ongoing pressure through causes and stakes/);
+    assert.match(packet.effect_basis, /Character responses remain open and can change with play/);
+    assert.match(packet.effect_basis, /Revise or stop effects when play changes their basis/);
     assert.match(packet.review_signal, /<!--tf-review-->/);
     assert.doesNotMatch(first.writerPacket, /"(?:scratchpad|changeReason|owner|links|parentId)":/);
     const after = decode(closed.writerPacket);

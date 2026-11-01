@@ -102,15 +102,18 @@ export const STORY_GOALS_CONTRACT = 'story_goals are coexisting writer aims, not
 
 export const STORY_MOVEMENT_BASIS = 'World frame: The RP’s enduring character and sources of activity. Pressure the world to continually produce the activities, opportunities, and tensions described here.';
 export const STORY_CARD_BASIS = 'Story cards: Ongoing stories and intended developments. Pressure the NPCs and world to bring these developments into play and advance them through concrete actions, events, and consequences.';
-export const STORY_EFFECT_BASIS = 'Effects: Continuing influences attached to story cards. Pressure the affected NPCs and world conditions in each effect’s stated direction, making its influence tangible in behavior, relationships, and opportunities.';
+// Retained only to authenticate immutable saved packets.
+const LEGACY_STORY_EFFECT_BASIS = 'Effects: Continuing influences attached to story cards. Pressure the affected NPCs and world conditions in each effect’s stated direction, making its influence tangible in behavior, relationships, and opportunities.';
+export const EFFECT_PRESSURE_RULE = 'Apply ongoing pressure through causes and stakes. Character responses remain open and can change with play. Revise or stop effects when play changes their basis.';
+export const STORY_EFFECT_BASIS = `Effects: ${EFFECT_PRESSURE_RULE} Past reactions do not require repeated behavior.`;
 
-export function storyContextPayload(material, authored, { legacyContracts = false, followThrough = true, storyStructure = false, orientation = '', currentPlayBasis = true } = {}) {
+export function storyContextPayload(material, authored, { legacyContracts = false, followThrough = true, storyStructure = false, orientation = '', currentPlayBasis = true, legacyEffectBasis = false } = {}) {
     if (!material.length && !authored.length && !orientation) return '';
     return `<tale-fairy-context>\n${storyContextJson({
         ...(storyStructure && (material.length || orientation) ? { preparation_basis: orientation || material.some(entry => entry.status !== undefined)
             ? STORY_CARD_BASIS : 'Story expectations, not established events or player obligations. Current play takes precedence. Ignore completed, declined or contradicted developments.' } : {}),
         ...(storyStructure && material.some(entry => entry.effects?.length) ? {
-            effect_basis: STORY_EFFECT_BASIS,
+            effect_basis: currentPlayBasis && !legacyEffectBasis ? STORY_EFFECT_BASIS : LEGACY_STORY_EFFECT_BASIS,
         } : {}),
         // New-format cards opt in; immutable historical packets keep their bytes.
         ...(storyStructure && material.some(entry => entry.status !== undefined) ? {
