@@ -526,3 +526,44 @@ test('jobs are private to the current SillyTavern user', async () => {
     router.routes.get('GET /planner-jobs')(foreign, listed);
     assert.deepEqual(listed.payload.jobs, []);
 });
+
+for (const finishReason of ['stop', 'length']) test(`fork AI SDK streams preserve final text and ${finishReason} status`, async () => {
+    const text = '{"upsert":[],"retain":[],"retire":[]}';
+    const events = [
+        { type: 'reasoning-delta', text: 'Private reasoning' },
+        { type: 'text-delta', text: 'another swipe', index: 1 },
+        { type: 'text-delta', text: text.slice(0, 15) },
+        { type: 'text-delta', text: text.slice(15) },
+        { type: 'finish', finishReason },
+    ];
+    const stream = events.map(value => `data: ${JSON.stringify(value)}\n\n`).join('') + 'data: [DONE]\n\n';
+    const router = routerMock();
+    await init(router, { fetchImpl: async () => new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } }) });
+    const downstream = responseMock();
+    const body = plannerBody(`sdk-future-${finishReason}`);
+    await router.routes.get('POST /planner-jobs/generate')(request(body), downstream);
+    const listed = responseMock();
+    router.routes.get('GET /planner-jobs')(request({}, { query: { chatId: 'chat-1' } }), listed);
+    const job = listed.payload.jobs.find(job => job.runKey === body.meta.runKey);
+    assert.equal(job.status, finishReason === 'stop' ? 'complete' : 'error');
+    assert.equal(finishReason === 'stop' ? job.text : job.rejectedText, text);
+    if (finishReason === 'length') assert.match(job.error, /truncated/);
+    assert.ok(!JSON.stringify(job).includes('Private reasoning'));
+});
+
+for (const ending of [null, { type: 'finish-step', finishReason: 'stop' }, { type: 'finish', finishReason: 'stop', index: 1 }, { type: 'abort' }]) test(`incomplete fork planner stream stays unrecoverable: ${JSON.stringify(ending)}`, async () => {
+    const events = [{ type: 'text-delta', text: '{"upsert":[],"retain":[],"retire":[]}' }, ...(ending ? [ending] : [])];
+    const stream = events.map(value => `data: ${JSON.stringify(value)}\n\n`).join('');
+    const router = routerMock();
+    await init(router, { fetchImpl: async () => new Response(stream, { headers: { 'Content-Type': 'text/event-stream' } }) });
+    const downstream = responseMock();
+    const body = plannerBody(`sdk-incomplete-${JSON.stringify(ending)}`);
+    await router.routes.get('POST /planner-jobs/generate')(request(body), downstream);
+    assert.equal(downstream.statusCode, 500);
+    const listed = responseMock();
+    router.routes.get('GET /planner-jobs')(request({}, { query: { chatId: 'chat-1' } }), listed);
+    const job = listed.payload.jobs.find(job => job.runKey === body.meta.runKey);
+    assert.equal(job.status, 'error');
+    assert.equal(job.text, '');
+    assert.match(job.error, /closed before|aborted/);
+});

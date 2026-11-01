@@ -105,3 +105,14 @@ test('source changes during input preparation spend no model call; commit confli
     assert.equal((await conflict.runtime.request()).skipped, 'commit-conflict');
     assert.equal(conflict.calls(), 1); assert.equal(conflict.read().state.revision, 0);
 });
+
+test('accepted appends during asynchronous preparation preserve the complete captured source', async () => {
+    const gate = deferred(), f = fixture({ prepare: () => gate.promise });
+    f.change(c => ({ ...c, enabled: true }));
+    const running = f.runtime.request();
+    f.change(c => ({ ...c, messages: [...c.messages, 'next accepted reply'] }));
+    gate.resolve({ prompt: '{}', indices: [0] });
+    assert.equal((await running).accepted, true);
+    assert.equal(f.calls(), 1);
+    assert.equal(f.read().state.source.messageCount, 1);
+});

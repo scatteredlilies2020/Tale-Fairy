@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 
 const PLUGIN = 'tale-fairy';
-const VERSION = '0.20.6';
+const VERSION = '0.20.7';
 const jobs = new Map();
 const MAX_FINISHED_JOBS = 40;
 const MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
@@ -133,6 +133,9 @@ function completionText(payload) {
 }
 
 function streamCompletionText(payload) {
+    if (payload?.index != null && payload.index !== 0) return '';
+    if (payload?.type === 'text-delta') return typeof payload.text === 'string' ? payload.text : '';
+    if (isReasoningBlock(payload)) return '';
     const choice = payload?.choices?.[0];
     const choiceText = finalBlockText(choice?.delta?.content)
         || finalBlockText(choice?.message?.content)
@@ -174,6 +177,8 @@ async function readEventStream(upstream, job, touchTimeout) {
     let fallbackRaw = '';
     let sawEventData = false;
     let sawReasoning = false;
+    let sawSdkEvent = false;
+    let sdkFinished = false;
     let exhaustedOutputBudget = false;
     let totalBytes = 0;
     const eventStream = /text\/event-stream/i.test(upstream.headers.get('content-type') || '');
@@ -191,10 +196,15 @@ async function readEventStream(upstream, job, touchTimeout) {
         try { payload = JSON.parse(data); }
         catch { return; }
         if (payload?.error) throw new Error(payload.error?.message || String(payload.error));
+        if (payload?.index != null && payload.index !== 0) return;
+        if (['text-start', 'text-delta', 'text-end', 'reasoning-start', 'reasoning-delta', 'reasoning-end', 'finish'].includes(payload?.type)) sawSdkEvent = true;
+        if (payload?.type === 'finish') sdkFinished = true;
+        if (payload?.type === 'abort') throw new Error('Planner stream was aborted.');
         const choice = payload?.choices?.[0];
         const finishReason = String(choice?.finish_reason || payload?.finish_reason || '').toLowerCase();
         const incompleteReason = String(payload?.incomplete_details?.reason || payload?.response?.incomplete_details?.reason || '').toLowerCase();
         const reasoning = Boolean(choice?.delta?.reasoning_content || choice?.delta?.reasoning)
+            || (payload?.type === 'reasoning-delta' && Boolean(payload.text))
             || isReasoningBlock(payload)
             || (Array.isArray(payload?.response?.output) && payload.response.output.some(isReasoningBlock));
         sawReasoning ||= reasoning;
@@ -228,6 +238,7 @@ async function readEventStream(upstream, job, touchTimeout) {
     if (!sawEventData) fallbackRaw += finalDecoded;
     pending += finalDecoded;
     if (pending.trim()) consume(pending);
+    if (sawSdkEvent && !sdkFinished) throw new Error('Planner SDK stream closed before generation finished.');
     return { text: output.trim(), fallbackRaw: sawEventData ? '' : fallbackRaw, sawReasoning, exhaustedOutputBudget };
 }
 

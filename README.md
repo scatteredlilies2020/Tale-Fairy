@@ -50,3 +50,16 @@ For planning that can finish after you close the browser, see [background planni
 - Pending server jobs retry connection failures with delays up to 60 seconds until they finish or you stop them. Completed runs are reused on reconnect; status polling never generates another plan.
 - Completed story guidance stays available while planning updates, until a new result replaces it. Current play and your latest direction take precedence. Before the first plan is ready, or after deleting preparation, no generated guidance is sent.
 - Planner defaults use Low reasoning, six future Chapters, and a 32,768-token context window. Input, output and reasoning share that window. Set **Planner context window** to your endpoint’s actual capacity; smaller active-connection or profile limits also apply. Required references stay complete, and a request that cannot fit stops before contacting the provider.
+
+## SDK-backed SillyTavern forks
+
+The background planner supports both traditional completion streams and AI SDK
+streams used by some ST forks. It keeps final answer text separate from reasoning
+and requires the SDK completion signal before recovering a finished plan.
+Update the extension and its server plugin together, restart SillyTavern, then
+reload the browser.
+
+Forks must also preserve extension request controls when translating older
+request fields to their SDK format, including output limits, reasoning settings
+and selected credentials. Stream support alone does not provide that backend
+translation.

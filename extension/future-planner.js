@@ -244,7 +244,8 @@ export function futureForDirector(outlook, snapshot, fingerprint, receipts = [],
 
 export function futureSummary(outlook, attempt, stale = false) {
     const header = `Private future Chapters · ${attempt?.status || 'not yet planned'}${stale ? ' · source changed; withheld from current planning' : ''}`;
-    const error = attempt?.error ? `\nLast request: ${attempt.error}` : '';
+    const reason = attempt?.error || attempt?.skipped;
+    const error = reason ? `\nLast request: ${reason}` : '';
     if (outlook && !validFuture(outlook)) return header + error + '\nSaved outlook is invalid and withheld. Update future plans can replace it safely.';
     return header + error + (!outlook?.cards?.length ? '\nNo future Chapters saved.' : '\n\n' + outlook.cards.map(c =>
         `${c.title} [${c.category}]\n${c.premise}\nPressures: ${c.pressures.map(p => `${p.label}: ${p.pressure}`).join('; ') || 'None'}\nFavors: ${c.favors || 'Open'}\nPrevents/transforms: ${c.prevents || 'Open'}\nTiming: ${c.timing || 'Uncertain'}\nTransition: ${c.transition || 'Open'}\nOutlook: ${c.outlook || 'Provisional'}`).join('\n\n'));

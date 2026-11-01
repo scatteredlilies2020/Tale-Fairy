@@ -38,6 +38,14 @@ export class CampaignRuntime {
         const preflight = () => {
             const latest = this.read();
             if (this.key(latest) === key) return null;
+            // Preparation can yield while another accepted reply is appended.
+            // The captured transcript is still valid when its full prefix and
+            // configuration survive; edits and replacements remain invalid.
+            if (latest.enabled && latest.chatId === snapshot.chatId
+                && latest.referenceHash === snapshot.referenceHash
+                && (latest.requestSignature || '') === (snapshot.requestSignature || '')
+                && latest.messages.length > snapshot.messages.length
+                && this.fingerprint(latest.messages.slice(0, snapshot.messages.length)) === this.fingerprint(snapshot.messages)) return null;
             return { accepted: false, state: latest.state, skipped: 'source-changed-before-request',
                 evidenceChanged: this.guardEvidence && latest.evidenceKey !== snapshot.evidenceKey };
         };
