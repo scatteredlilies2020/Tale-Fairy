@@ -15,6 +15,14 @@ const manifest = JSON.parse(await readFile(new URL('../manifest.json', import.me
 const pluginPackage = JSON.parse(await readFile(new URL('../plugin/package.json', import.meta.url), 'utf8'));
 const pluginSource = await readFile(new URL('../plugin/index.js', import.meta.url), 'utf8');
 
+test('CM availability repairs late binding and repaints creative cards without a planning trigger', () => {
+    assert.match(source, /if \(bridge && bridge === continuityBoundBridge\) return/);
+    assert.match(source, /readCampaignContinuity\(context, bridge\);\s+renderBoard\(\);/);
+    assert.match(source, /bindContinuityBridge\(\);\s+refreshContinuityAvailability\(\);/);
+    assert.match(source, /onChange: \(\) => renderBoard\(\)/);
+    assert.doesNotMatch(source, /\$\{e\.confidence \|\| e\.status\}/);
+});
+
 test('fork compatibility does not require SillyTavern to export SHA-256', () => {
     assert.doesNotMatch(source, /from\s+['"]\/lib\.js['"]/u);
     assert.ok(source.includes(`import { sha256 } from './sha256.js?v=${manifest.version}';`));

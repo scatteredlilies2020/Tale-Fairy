@@ -1,12 +1,13 @@
-import { sha256 } from './sha256.js?v=0.20.9';
+import { sha256 } from './sha256.js?v=0.20.10';
 import { normalizePlannerContext, plannerContextLimit, plannerInputCapacity, plannerOutputCapacity, plannerModeInputTokens } from './planner-capacity.js?context-guard=1&concise-prompts=1&portable-frame=1&horizon-links=3';
 import { renderFutureCards } from './future-cards.js?future-cards=1&future-controls=1&causal-futures=1';
 import { campaignAuthorInstructions, campaignPayloadBudget, campaignUsable, campaignMaterialUsable, campaignWriterUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=2&writer-fit=1&continuous-guidance=2&resource-policy=1&causal-effects=1&world-initiative=1';
 import { directorInput as ownedInput, directorPass as ownedPass, nextPlanRevision, DIRECTOR_SCHEMA as OWNED_SCHEMA, DIRECTOR_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './story-director.js?story-workshop=1&story-horizons=1&story-progression=1&rp-activities=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&full-rebuild=1&empty-fields=1&open-scope=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&no-phase=1&present-future=1&creative-planning=1&fresh-summary=1&world-frame=1&frame-stability=1&rp-world-frame=1&portable-frame=1&genre-frame=1&arc-focus=1&saga-hierarchy=1&chapter-labels=1&future-chapters=1&chapter-scope=2&story-persistence=1&future-controls=1&causal-futures=1&writer-target=2&writer-fit=1&continuous-guidance=2&resource-policy=1&causal-effects=1&world-initiative=1';
 import { fitStoryInputBudget } from './story-budget.js?follow-through=1&compaction=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1&horizon-links=3&story-structure=1&ensemble-pressure=1&story-cards=1&player-cards=1&creative-planning=1&portable-frame=1&future-controls=1&writer-target=2&writer-fit=1&continuous-guidance=2&resource-policy=1&causal-effects=1&world-initiative=1';
-import { readCampaignContinuity } from './campaign-continuity.js?resource-policy=1';
+import { readCampaignContinuity } from './campaign-continuity.js?resource-policy=1&availability=1';
+import { createContinuityAvailabilityMonitor } from './continuity-availability.js';
 // Keep the public registration URL stable so external adapters share this registry.
-import { readEvidenceProviders, evidenceRevisionKey } from './evidence-providers.js?story-lifecycle=1&resource-policy=1';
+import { readEvidenceProviders, evidenceRevisionKey } from './evidence-providers.js?story-lifecycle=1&resource-policy=1&availability=1';
 import { campaignEvidenceMessages, campaignReviewWindow } from './campaign-evidence.js?fresh-summary=1';
 import { campaignReviewedCount, campaignCheckpoint, campaignReconsideration, verifiedClosedSubjects } from './campaign-review.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=2&writer-fit=1&resource-policy=1&causal-effects=1&world-initiative=1';
 import { CampaignSession, CAMPAIGN_ATTEMPT_KEY } from './campaign-session.js?v=0.14.36&token-budget=1&rp-plot=1&progress=1&follow-through=1&working-plan=1&recovery=1&review-checkpoint=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&planner-timeout=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&server-jobs=1&chapter-labels=1&future-chapters=1&future-controls=1&writer-target=2&writer-fit=1&resource-policy=1&pending-recovery=1&fork-sdk=1&causal-effects=1&world-initiative=1';
@@ -61,7 +62,7 @@ import { createFutureHost, serializeActivePlanner } from './future-host.js?v=0.2
 const activatedStoryContext = new ActivatedStoryContext();
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.20.9';
+const RUNTIME_VERSION = '0.20.10';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -107,6 +108,7 @@ let uiMountObserver = null;
 let uiMountTimeout = null;
 let lastSummaryAudit = { count: 0, includedTokens: 0, originalTokens: 0, labels: [] };
 let continuityUnsubscribe = null;
+let continuityBoundBridge = null;
 let continuityReplacementRevision = 0;
 const legacyUpgradeAttempts = new Set();
 const directModelCache = new Map();
@@ -3508,7 +3510,7 @@ function renderBoard(state = loadState(currentContext().chatMetadata)) {
         : analyzed ? `Tale Fairy v${RUNTIME_VERSION} · ${state.mode} mode · world context updated ${analyzedAt || 'recently'}` : '';
     scratchpadText(board, 'scratchpad-meta', meta, 'No world analysis yet. Run Guide now or Full rebuild.');
     const campaignRecall = campaign ? readCampaignSnapshot().evidence : null;
-    const continuityStatus = campaign ? campaignRecall.map(e => `${e.provider}: ${e.confidence || e.status}`).join('; ') || 'off'
+    const continuityStatus = campaign ? campaignRecall.map(e => `${e.provider}: ${e.status}${e.reason ? ` (${e.reason})` : ''}${e.status === 'current' ? ` · ${e.confidence} · ${e.summary?.length || 0} context characters` : ''}`).join('; ') || 'off'
         : analyzed ? continuityContextState(currentContext()).status : 'unavailable';
     const summaryAudit = state.summaryEvidence?.scannedAt ? state.summaryEvidence : lastSummaryAudit;
     const summaryStatus = !campaign && (summaryAudit.scannedAt || summaryAudit.count)
@@ -4080,10 +4082,14 @@ export async function livingWorldGuideGenerateInterceptor(_chat, _contextSize, _
 globalThis.livingWorldGuideGenerateInterceptor = livingWorldGuideGenerateInterceptor;
 
 function bindContinuityBridge() {
+    const bridge = getSettings().continuityIntegration ? globalThis.continuityMemoryBridge : null;
+    if (bridge && bridge === continuityBoundBridge) return;
     continuityUnsubscribe?.();
     continuityUnsubscribe = null;
-    const bridge = globalThis.continuityMemoryBridge;
-    if (!getSettings().continuityIntegration || typeof bridge?.subscribe !== 'function') return;
+    continuityBoundBridge = null;
+    continuityReplacementRevision = 0;
+    if (typeof bridge?.subscribe !== 'function') return;
+    continuityBoundBridge = bridge;
     continuityUnsubscribe = bridge.subscribe(snapshot => {
         const context = currentContext();
         if (!getSettings().continuityIntegration) return;
@@ -4095,6 +4101,7 @@ function bindContinuityBridge() {
         continuityReplacementRevision = revision;
         if (campaignMode(context)) {
             readCampaignContinuity(context, bridge);
+            renderBoard();
             // Creative cards read available memory on their next scheduled
             // review. A memory publication is not a planning trigger.
             if (OWNED_SCHEMA.name.startsWith('tale_fairy_story_director_')) return;
@@ -4381,7 +4388,18 @@ setTimeout(bindContinuityBridge, 0);
 recordRuntimeStage('runtime-loaded');
 // Startup and page restoration collect existing work without generating plans.
 setTimeout(() => void refreshCurrentPlanIfNeeded(), 0);
-setInterval(() => void recoverDetachedPlannerJobs(), 3000);
+const refreshContinuityAvailability = createContinuityAvailabilityMonitor({
+    read: () => ({ chatId: String(currentContext().getCurrentChatId?.() || ''),
+        enabled: getSettings().continuityIntegration !== false, bridge: globalThis.continuityMemoryBridge }),
+    onChange: () => renderBoard(),
+});
+setInterval(() => {
+    // CM may load after our two startup binding attempts. This cached check
+    // repairs the subscription and display, never refreshes memory or plans.
+    bindContinuityBridge();
+    refreshContinuityAvailability();
+    void recoverDetachedPlannerJobs();
+}, 3000);
 
 // Android may discard or freeze the page while SillyTavern itself remains
 // available. Release only this page's wait and Web Lock: the SillyTavern server

@@ -1,4 +1,4 @@
-import { readCampaignContinuity, fitCampaignContinuity } from './campaign-continuity.js?resource-policy=1';
+import { readCampaignContinuity, fitCampaignContinuity } from './campaign-continuity.js?resource-policy=1&availability=1';
 import { conservativeTokenCount } from './token-budget.js?story-budget=1';
 import { registeredEvidenceProviders } from './evidence-registry.js';
 export { registerEvidenceProvider } from './evidence-registry.js';

@@ -12,7 +12,7 @@ export function readCampaignContinuity(context, bridge, { enabled = true, replac
     if (!enabled) return { status: 'off' };
     if (replacement) return { status: 'replacement' };
     try {
-        if (![1, 2].includes(Number(bridge?.version)) || typeof bridge.getContextSnapshot !== 'function') return { status: 'unavailable' };
+        if (![1, 2].includes(Number(bridge?.version)) || typeof bridge.getContextSnapshot !== 'function') return { status: 'unavailable', reason: 'bridge-not-ready' };
         const snapshot = bridge.getContextSnapshot();
         const chatId = String(context.getCurrentChatId?.() || '');
         const messages = context.chat || [];
@@ -41,7 +41,7 @@ export function readCampaignContinuity(context, bridge, { enabled = true, replac
         const coverage = snapshot.coverage;
         if (Number(bridge.version) === 2 && (!Number.isInteger(coverage?.throughMessageIndex)
             || coverage.throughMessageIndex < -1 || coverage.throughMessageIndex >= (context.chat || []).length
-            || typeof coverage.signature !== 'string' || !coverage.signature)) return { status: 'unavailable' };
+            || typeof coverage.signature !== 'string' || !coverage.signature)) return { status: 'unavailable', reason: 'invalid-coverage' };
         const records = (Array.isArray(snapshot.planningEvidence) ? snapshot.planningEvidence : []).slice(0, 64)
             .filter(record => record && typeof record.id === 'string' && record.id
                 && typeof record.text === 'string' && record.text.trim())
@@ -53,7 +53,7 @@ export function readCampaignContinuity(context, bridge, { enabled = true, replac
             coverage, summary: typeof snapshot.prompt === 'string' ? snapshot.prompt : '', records });
         observed.set(bridge, { key, messageCount: messages.length, signature: sourceSignature(messages), memory });
         return structuredClone(memory);
-    } catch { return { status: 'unavailable' }; }
+    } catch (error) { return { status: 'unavailable', reason: error?.name === 'DataCloneError' ? 'snapshot-not-cloneable' : 'bridge-read-failed' }; }
 }
 
 // Optional memory never displaces complete author references or protected chat.

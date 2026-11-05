@@ -590,19 +590,23 @@ test('creative director commits its plan when Continuity Memory updates during a
 
 test('Continuity Memory publications only provide context for the next creative review', async () => {
     const h = browser(undefined, defaultPlannerState(), { director: true });
-    let subscriber, triggers = 0;
+    let subscriber, triggers = 0, paints = 0, subscriptions = 0;
     const snapshot = memorySnapshot();
-    Object.assign(h.scope, { continuityUnsubscribe: null, continuityReplacementRevision: 0,
+    Object.assign(h.scope, { continuityUnsubscribe: null, continuityBoundBridge: null, continuityReplacementRevision: 0,
+        renderBoard: () => { paints++; },
         analyzeCampaignNow: () => { triggers++; },
         continuityMemoryBridge: { version: 2, getContextSnapshot: () => snapshot,
-            subscribe: callback => { subscriber = callback; return () => {}; } } });
+            subscribe: callback => { subscriptions++; subscriber = callback; return () => {}; } } });
     h.settings.continuityIntegration = true;
     vm.runInContext(source.match(/function bindContinuityBridge\([^]*?^}/m)[0], h.scope);
     h.scope.bindContinuityBridge();
+    h.scope.bindContinuityBridge();
+    assert.equal(subscriptions, 1, 'polling must not duplicate subscriptions');
     subscriber(snapshot);
     snapshot.revision++; snapshot.prompt = 'Latest story background.';
     subscriber(snapshot);
     assert.equal(triggers, 0);
+    assert.equal(paints, 2, 'each current publication updates displayed memory availability');
     assert.match(h.scope.buildCampaignHostInput(h.scope.readCampaignSnapshot()).prompt, /Latest story background/);
 });
 
@@ -2721,7 +2725,7 @@ test('CM publication captures accepted source synchronously and uses campaign ca
     const h = browser(undefined, defaultPlannerState());
     let subscriber;
     const snapshot = memorySnapshot();
-    Object.assign(h.scope, { continuityUnsubscribe: null, continuityReplacementRevision: 0,
+    Object.assign(h.scope, { continuityUnsubscribe: null, continuityBoundBridge: null, continuityReplacementRevision: 0,
         reconcileStateWithContinuity: () => { throw Error('campaign must not mutate the legacy notebook'); },
         continuityMemoryBridge: { version: 2, getContextSnapshot: () => snapshot,
             subscribe: callback => { subscriber = callback; return () => {}; } } });
