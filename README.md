@@ -24,6 +24,8 @@ Cards describe what a story is about and how it influences the world. Several st
 
 Effects apply ongoing pressure through causes and stakes. Characters can agree, refuse or change their minds. Reviews update effects when their basis changes, even while the story remains ongoing.
 
+The writer is encouraged to initiate fitting activities, encounters, opportunities and complications from the World Frame and ongoing stories, rather than wait for the player to request every development. This guidance stays broad: the writer chooses events from current play, without an event-per-reply quota or compulsory escalation. Quiet interaction and player choice remain intact.
+
 ## Future Chapters
 
 Tale Fairy can also prepare possible future Chapters in a separate, private outlook. These can draw from canon or introduce original ideas.

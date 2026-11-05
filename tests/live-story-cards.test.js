@@ -22,7 +22,9 @@ test('live smoke harness sends the production prompt, not the authored answer', 
     assert.equal(pass.accepted, true);
     assert.equal(pass.validState, true);
     assert.deepEqual(pass.notices, []);
-    assert.ok(pass.writerTokens <= 1000);
+    // Broad initiative guidance adds a small shared contract, not scene scripts.
+    assert.ok(pass.writerTokens <= 1200);
+    assert.ok(pass.writerPacket.includes('initiative_basis'));
     const messages = smokeWriterMessages(fixture, pass.writerPacket, 'Lio listens over tea.');
     assert.ok(chatHasCurrentGuidance(messages, pass.writerPacket));
     assert.equal(messages.filter(x => x.content.includes('<tale-fairy-context>')).length, 1);

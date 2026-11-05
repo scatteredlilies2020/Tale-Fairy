@@ -102,12 +102,13 @@ export const STORY_GOALS_CONTRACT = 'story_goals are coexisting writer aims, not
 
 export const STORY_MOVEMENT_BASIS = 'World frame: The RP’s enduring character and sources of activity. Pressure the world to continually produce the activities, opportunities, and tensions described here.';
 export const STORY_CARD_BASIS = 'Story cards: Ongoing stories and intended developments. Pressure the NPCs and world to bring these developments into play and advance them through concrete actions, events, and consequences.';
+export const STORY_INITIATIVE_BASIS = 'Actively generate fitting activities, encounters, opportunities and complications from the world frame. Let people and institutions initiate developments without waiting for the player to prompt them. Bring ongoing stories into play through fresh developments and meaningful consequences, not merely repeated reminders of unresolved tension. Make ongoing pressures tangible when fitting; their expression can vary with current circumstances and relationships. Not every reply needs an event. Preserve quiet interaction, varied intensity and player choice; movement need not mean danger or escalation.';
 // Retained only to authenticate immutable saved packets.
 const LEGACY_STORY_EFFECT_BASIS = 'Effects: Continuing influences attached to story cards. Pressure the affected NPCs and world conditions in each effect’s stated direction, making its influence tangible in behavior, relationships, and opportunities.';
 export const EFFECT_PRESSURE_RULE = 'Apply ongoing pressure through causes and stakes. Character responses remain open and can change with play. Revise or stop effects when play changes their basis.';
 export const STORY_EFFECT_BASIS = `Effects: ${EFFECT_PRESSURE_RULE} Past reactions do not require repeated behavior.`;
 
-export function storyContextPayload(material, authored, { legacyContracts = false, followThrough = true, storyStructure = false, orientation = '', currentPlayBasis = true, legacyEffectBasis = false } = {}) {
+export function storyContextPayload(material, authored, { legacyContracts = false, followThrough = true, storyStructure = false, orientation = '', currentPlayBasis = true, legacyEffectBasis = false, initiativeBasis = true } = {}) {
     if (!material.length && !authored.length && !orientation) return '';
     return `<tale-fairy-context>\n${storyContextJson({
         ...(storyStructure && (material.length || orientation) ? { preparation_basis: orientation || material.some(entry => entry.status !== undefined)
@@ -120,6 +121,8 @@ export function storyContextPayload(material, authored, { legacyContracts = fals
             review_signal: 'When play completes or materially changes a card or world frame, end with a separate line: <!--tf-review-->. Otherwise omit. This requests review, not an outcome.',
         } : {}),
         ...(orientation ? { rp_orientation: orientation, movement_basis: STORY_MOVEMENT_BASIS } : {}),
+        ...(initiativeBasis && currentPlayBasis && storyStructure && (orientation || material.some(entry => entry.status !== undefined))
+            ? { initiative_basis: STORY_INITIATIVE_BASIS } : {}),
         ...(currentPlayBasis && storyStructure && (material.some(entry => entry.status !== undefined) || orientation) ? {
             current_play_basis: 'Current play and explicit user direction take precedence over this preparation. Disregard completed, declined or contradicted developments.',
         } : {}),
