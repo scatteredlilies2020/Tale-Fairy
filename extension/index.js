@@ -28,7 +28,7 @@ import { resolveInjectionPlacement } from './injection-placement.js?v=0.13.9';
 import { DEFAULT_INJECTION_ROLE, normalizeInjectionRole } from './injection-role.js?v=0.13.9';
 import { clearPromptManagerInjection, configurePromptManagerInjection } from './prompt-manager-injection.js?v=0.13.9';
 import { chatHasCurrentGuidance, ensureGuidanceInChat, ensureGuidanceInText, extractTaleFairyContext, requestContainsMarker, textHasCurrentGuidance } from './request-injection.js?v=0.14.22';
-import { normalizeModelListResponse } from './models.js?v=0.13.9';
+import { discoverDirectModels } from './models.js?model-discovery=2';
 import { buildReasoningRequest, isMandatoryReasoningError, isReasoningControlError, normalizeReasoningMode, plannerModelRejectsTemperature, plannerOutputTokenBudget, reasoningFallbackPayload, resolveReasoningMode } from './reasoning-policy.js?v=0.14.35&gemini4=1';
 import { readContinuityBridge, waitForContinuityBridge } from './continuity.js?v=0.14.22';
 import { isPlannerTimeoutError, plannerRetryDelay, shouldRetryPlannerError } from './retry-policy.js?v=0.13.9';
@@ -112,6 +112,7 @@ let continuityBoundBridge = null;
 let continuityReplacementRevision = 0;
 const legacyUpgradeAttempts = new Set();
 const directModelCache = new Map();
+const directModelDiscovery = new Map();
 const plannerOutputModeCache = new Map();
 const detachedPlannerJobIds = new Map();
 const plannerNativeFetch = globalThis.fetch?.taleFairyNativeFetch || globalThis.fetch.bind(globalThis);
@@ -560,7 +561,7 @@ function directModelCacheKey(s = getSettings()) {
     if (s.analysisSource !== 'direct' && s.analysisSource !== 'openrouter') return '';
     const fallbackUrl = s.analysisSource === 'openrouter' ? 'https://openrouter.ai/api/v1' : '';
     const url = String(s.analysisUrl || fallbackUrl).trim().replace(/\/+$/, '');
-    return `${s.analysisSource}:${url}`;
+    return JSON.stringify([s.analysisSource, url, String(s.analysisSecretId || '')]);
 }
 
 function setModelListStatus(root, message) {
@@ -575,7 +576,9 @@ function renderDirectModelOptions(root = document.querySelector(`#${EXTENSION_ID
 
     const s = getSettings();
     const direct = s.analysisSource === 'direct' || s.analysisSource === 'openrouter';
-    const models = directModelCache.get(directModelCacheKey(s)) || [];
+    const key = directModelCacheKey(s);
+    const models = directModelCache.get(key) || [];
+    const discovery = directModelDiscovery.get(key);
     const selected = String(s.analysisModel || '').trim();
     select.replaceChildren();
 
@@ -600,61 +603,51 @@ function renderDirectModelOptions(root = document.querySelector(`#${EXTENSION_ID
 
     select.value = selected;
     if (select.value !== selected) select.value = '';
-    select.disabled = !direct || models.length === 0;
-    if (button) button.disabled = !direct;
-    setModelListStatus(root, models.length ? `${models.length} models available.` : 'No model list fetched yet.');
+    select.disabled = !direct || Boolean(discovery?.pending) || models.length === 0;
+    if (button) button.disabled = !direct || Boolean(discovery?.pending);
+    setModelListStatus(root, discovery?.message || (models.length ? `${models.length} models available.` : 'No model list fetched yet.'));
 }
 
 async function fetchDirectModels(root = document.querySelector(`#${EXTENSION_ID}-settings`)) {
-    const s = getSettings();
+    const s = { ...getSettings() }; // Freeze request identity across connection/key edits.
     const openRouter = s.analysisSource === 'openrouter';
     if (!openRouter && s.analysisSource !== 'direct') return;
 
     const url = String(s.analysisUrl || (openRouter ? 'https://openrouter.ai/api/v1' : '')).trim();
-    const button = root?.querySelector('[data-action="fetch-models"]');
-    const select = root?.querySelector('[data-setting="model-list"]');
+    const key = directModelCacheKey(s);
+    if (directModelDiscovery.get(key)?.pending) return;
+    const discovery = { pending: false, message: '' };
+    directModelDiscovery.set(key, discovery);
     if (!url) {
-        setModelListStatus(root, 'Enter an API URL before fetching models.');
+        discovery.message = 'Enter an API URL before fetching models.';
+        renderDirectModelOptions(root);
         return;
     }
     try {
-        new URL(url);
+        if (!['http:', 'https:'].includes(new URL(url).protocol)) throw new Error('Unsupported protocol');
     } catch {
-        setModelListStatus(root, 'Enter a valid API URL before fetching models.');
+        discovery.message = 'Enter a valid HTTP(S) API URL before fetching models.';
+        renderDirectModelOptions(root);
         return;
     }
 
-    if (button) button.disabled = true;
-    if (select) select.disabled = true;
-    setModelListStatus(root, 'Fetching models…');
+    discovery.pending = true;
+    discovery.message = 'Fetching models…';
+    renderDirectModelOptions(root);
     try {
-        const body = {
-            chat_completion_source: openRouter ? 'openrouter' : 'custom',
-            secret_id: s.analysisSecretId || undefined,
-            ...(openRouter ? { api_url: url } : { custom_url: url }),
-        };
-        const response = await fetch('/api/backends/chat-completions/status', {
-            method: 'POST',
+        const models = await discoverDirectModels({
+            source: s.analysisSource, url, secretId: s.analysisSecretId,
             headers: currentContext().getRequestHeaders?.() || getRequestHeaders?.() || { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-            cache: 'no-cache',
         });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok || payload?.error) {
-            const detail = String(payload?.message || payload?.error?.message || response.statusText || 'request failed');
-            throw new Error(detail);
-        }
-        const models = normalizeModelListResponse(payload);
-        if (!models.length) throw new Error('the endpoint returned no models');
-        directModelCache.set(directModelCacheKey(s), models);
-        renderDirectModelOptions(root);
-        setModelListStatus(root, `${models.length} models loaded.`);
+        if (directModelDiscovery.get(key) !== discovery) return;
+        directModelCache.set(key, models);
+        discovery.message = `${models.length} models loaded.`;
     } catch (error) {
         console.warn(`[${EXTENSION_ID}] Could not fetch planner models`, error);
-        setModelListStatus(root, `Could not fetch models: ${error?.message || error}`);
+        discovery.message = `Could not fetch models: ${error?.message || error}`;
     } finally {
-        if (button) button.disabled = false;
-        if (select) select.disabled = !(directModelCache.get(directModelCacheKey(s)) || []).length;
+        discovery.pending = false;
+        if (directModelCacheKey() === key) renderDirectModelOptions(root);
     }
 }
 
@@ -3689,6 +3682,7 @@ function resetSettingsToDefaults(root = document.querySelector(`#${EXTENSION_ID}
     stopAnalysis();
     pendingRequestVerification = null;
     directModelCache.clear();
+    directModelDiscovery.clear();
     const s = getSettings();
     for (const key of Object.keys(s)) delete s[key];
     Object.assign(s, { ...DEFAULT_SETTINGS, fullReviewInterval: DEFAULT_REFRESH_INTERVAL });
@@ -4052,7 +4046,9 @@ function refreshControls(root = document.querySelector(`#${EXTENSION_ID}-setting
     if (directTitle) directTitle.textContent = source === 'openrouter' ? 'Direct OpenRouter planner API' : 'Direct OpenAI-compatible / proxy API';
     const saved = Boolean(s.analysisSecretId) && Object.values(secret_state || {}).some(list => Array.isArray(list) && list.some(item => item?.id === s.analysisSecretId));
     const keyStatus = root.querySelector('[data-role="key-status"]');
-    if (keyStatus) keyStatus.textContent = saved ? 'A password/key is saved in SillyTavern.' : 'No password/key saved; keyless endpoints are supported.';
+    if (keyStatus) keyStatus.textContent = saved ? 'A password/key is saved in SillyTavern.'
+        : source === 'openrouter' ? 'No planner key saved. The public model catalog needs no key; generation requires an OpenRouter key.'
+            : 'No password/key saved; keyless endpoints are supported.';
     renderDirectModelOptions(root);
 }
 
