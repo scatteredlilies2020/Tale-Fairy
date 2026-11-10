@@ -24,7 +24,7 @@ export const DIRECTOR_SCHEMA = { name: 'tale_fairy_story_director_v7', instructi
 // Optional for historical responses and saved swipe compatibility.
 DIRECTOR_SCHEMA.value.properties.futureDecisions = { type: 'array', items: object({
     id: text(100), action: { type: 'string', enum: ['adopt', 'retire'] },
-    chapterId: { type: 'string', maxLength: 80 }, reason: text(400),
+    chapterId: { type: 'string', minLength: 0, maxLength: 80 }, reason: text(400),
 }) };
 DIRECTOR_SCHEMA.value.properties.reassessFuture = { type: 'boolean' };
 // Keep the request self-contained for providers with different system handling.

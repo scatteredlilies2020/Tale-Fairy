@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import * as f from '../extension/future-planner.js';
 import { createFutureHost, serializeActivePlanner } from '../extension/future-host.js';
 import { emptyCampaign, campaignPayload } from '../extension/campaign-planner.js';
-import { directorInput, directorPass, DIRECTOR_SYSTEM } from '../extension/story-director.js';
+import { directorInput, directorPass, DIRECTOR_SYSTEM, DIRECTOR_SCHEMA } from '../extension/story-director.js';
 import { CampaignSession } from '../extension/campaign-session.js';
 
 const fingerprint = v => createHash('sha256').update(JSON.stringify(v)).digest('hex');
@@ -498,6 +498,23 @@ test('current adoption can choose a non-first prospect, validated against the ac
     assert.doesNotMatch(campaignPayload(r.state), /f1-convoys|prevents|Favors|futureDecisions/);
     raw.futureDecisions[0].chapterId = 'unknown'; assert.equal((await run()).futureDecisions.length, 0);
     raw.futureDecisions[0].id = 'invented'; assert.equal((await run()).futureDecisions.length, 0);
+});
+
+test('retiring a future prospect accepts the instructed blank chapter ID without losing the story plan', async () => {
+    const b = base();
+    const input = directorInput({ reference: b.reference, state: b.state, messages: [], futureCards: [card()], requireSagaHierarchy: true });
+    const raw = { reviewAfter: 12, upsert: [{ id: 'r1-village', kind: 'saga', parentId: '', status: 'active', links: [],
+        title: 'Village Life', owner: 'Village residents', description: 'Ordinary work and relationships continue across the village.' }],
+    retain: [], retire: [], select: [], futureDecisions: [
+        { id: 'f1-convoys', action: 'retire', chapterId: '', reason: 'The prospect no longer fits the current RP.' }],
+    reassessFuture: false };
+    assert.equal(DIRECTOR_SCHEMA.value.properties.futureDecisions.items.properties.chapterId.minLength, 0);
+    const result = await directorPass({ state: b.state, input, source: source(b),
+        generate: async () => ({ text: JSON.stringify(raw) }) });
+    assert.equal(result.accepted, true, result.error);
+    assert.equal(result.state.revision, 1);
+    assert.deepEqual(result.futureDecisions.map(({ id, action, chapterId }) => ({ id, action, chapterId })),
+        [{ id: 'f1-convoys', action: 'retire', chapterId: '' }]);
 });
 
 test('server recovery replays one saved future result, not current work or a new model call', async () => {
