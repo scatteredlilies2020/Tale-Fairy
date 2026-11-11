@@ -93,6 +93,7 @@ export const STORY_STRUCTURE_SCHEMA = object({
     nodes: { type: 'array', items: STORY_NODE_SCHEMA }, selection: { type: 'array', items: STORY_SELECTION_SCHEMA },
 });
 STORY_STRUCTURE_SCHEMA.properties.foundation = STORY_FOUNDATION_SCHEMA;
+STORY_STRUCTURE_SCHEMA.properties.effectMode = { type: 'string', enum: ['activity-opportunities'] };
 STORY_STRUCTURE_SCHEMA.properties.bridges = { type: 'array', items: object({
     ...STORY_BRIDGE_RESPONSE_SCHEMA.properties, title: text(160),
 }) };

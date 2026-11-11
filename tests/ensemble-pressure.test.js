@@ -37,7 +37,7 @@ for (const example of ensemblePressureCases) test(`exact writer packet: ${exampl
     assert.doesNotMatch(report.writerPacket, /"(?:scratchpad|changeReason|owner|links|parentId)":/);
     assert.equal(packet.story_context[0].status, 'proposed');
     assert.ok(!report.writerPacket.includes(example.scratchpad));
-    assert.match(packet.movement_basis, /broad foundations, not recurring scene instructions/);
+    assert.match(packet.movement_basis, /broad foundations.*not recurring scene instructions/);
     assert.match(packet.preparation_basis, /current concerns and reusable influences/);
     assert.equal(packet.effect_basis, undefined, 'do not spend writer space on unused effect framing');
     const request = JSON.stringify(report.plannerRequest);

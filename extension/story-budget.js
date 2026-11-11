@@ -112,24 +112,30 @@ export const INFLUENCE_CARD_BASIS = 'Current play takes precedence. Ignore compl
 export const INFLUENCE_MOVEMENT_BASIS = 'World frame and world_effects shape the kinds of activities, tone and stakes that naturally arise. They are broad foundations, not recurring scene instructions. One incident does not redefine the RP.';
 export const INFLUENCE_INITIATIVE_BASIS = 'Let people and institutions initiate fitting activities, opportunities and complications. Find fresh expressions of relevant influences through actual changes, relationships and consequences. Quiet interaction and ordinary cooperation are valid; there is no event-per-reply quota. Let accepted solutions work. Player choices and current scene direction govern uptake; neither a theme nor a future bridge dictates an outcome.';
 
-export function storyContextPayload(material, authored, { legacyContracts = false, followThrough = true, storyStructure = false, orientation = '', currentPlayBasis = true, legacyEffectBasis = false, initiativeBasis = true, weightedEffects = true, foundationEffects = [], bridges = [] } = {}) {
+// The prior weighted contract remains available only to authenticate old swipes.
+export const ACTIVITY_EFFECT_RULE = 'Effects are freely generated, scoped biases grounded in current causes. Weight favors opportunities for the named kind of play: +1 slight, +3 noticeable, +10 strongly favors matching opportunities; negatives discourage them, 0 adds none. These are qualitative, not calibrated probabilities or per-reply quotas. Generate fitting activities, encounters and opportunities through NPC/world initiative. Vary their participants, substance and consequences; use quiet or rewarding pursuits as well as challenges. These are reusable generators, not accepted jobs or obligations. Let individual activities finish; never replay completed objectives or invent replacement problems. Static facts and character attitudes are context, not standing reaction orders. Character responses remain open and can change with play. Respect scope, knowledge and current direction. Effects may stay quiet. Past reactions are not fresh evidence for repeating them. Revise or stop effects when play changes their basis. Legacy prose has no assigned numeric strength.';
+export const ACTIVITY_CARD_BASIS = 'Current play takes precedence. Ignore completed, declined or contradicted developments. Story cards describe current concerns and reusable influences. Use activity biases to generate fresh things to experience or pursue, alongside responses to the player. Specific developments remain revisable; completing one leaves its result intact.';
+export const ACTIVITY_MOVEMENT_BASIS = 'World frame and world_effects provide broad foundations for the RP’s recurring activities, tone and stakes, not recurring scene instructions. Generate distinct fitting opportunities beyond the latest problem. One incident does not redefine the RP.';
+export const ACTIVITY_INITIATIVE_BASIS = 'Let people and institutions initiate fitting work, pursuits, encounters and shared experiences without waiting for the player to invent every activity. Give opportunities actual substance, not repeated invitations or extra prerequisites. Use the RP’s broader premise, not only unfinished trouble. Quiet interaction and ordinary cooperation are valid; there is no event-per-reply quota. Let accepted solutions work. Player choices govern uptake; neither a theme nor a future bridge dictates an outcome.';
+
+export function storyContextPayload(material, authored, { legacyContracts = false, followThrough = true, storyStructure = false, orientation = '', currentPlayBasis = true, legacyEffectBasis = false, initiativeBasis = true, weightedEffects = true, activityBias = true, foundationEffects = [], bridges = [] } = {}) {
     const worldEffects = weightedEffects ? foundationEffects : [], currentBridges = weightedEffects ? bridges : [];
     const hasInfluences = worldEffects.length || currentBridges.length;
     if (!material.length && !authored.length && !orientation && !hasInfluences) return '';
     return `<tale-fairy-context>\n${storyContextJson({
-        ...(storyStructure && (material.length || orientation || hasInfluences) ? { preparation_basis: weightedEffects ? INFLUENCE_CARD_BASIS : orientation || material.some(entry => entry.status !== undefined)
+        ...(storyStructure && (material.length || orientation || hasInfluences) ? { preparation_basis: weightedEffects ? (activityBias ? ACTIVITY_CARD_BASIS : INFLUENCE_CARD_BASIS) : orientation || material.some(entry => entry.status !== undefined)
             ? STORY_CARD_BASIS : 'Story expectations, not established events or player obligations. Current play takes precedence. Ignore completed, declined or contradicted developments.' } : {}),
         ...(storyStructure && (hasInfluences || material.some(entry => entry.effects?.length)) ? {
-            effect_basis: weightedEffects ? WEIGHTED_EFFECT_RULE : currentPlayBasis && !legacyEffectBasis ? STORY_EFFECT_BASIS : LEGACY_STORY_EFFECT_BASIS,
+            effect_basis: weightedEffects ? (activityBias ? ACTIVITY_EFFECT_RULE : WEIGHTED_EFFECT_RULE) : currentPlayBasis && !legacyEffectBasis ? STORY_EFFECT_BASIS : LEGACY_STORY_EFFECT_BASIS,
         } : {}),
         // New-format cards opt in; immutable historical packets keep their bytes.
         ...(storyStructure && (hasInfluences || material.some(entry => entry.status !== undefined)) ? {
             review_signal: 'When play completes or materially changes a card or world frame, end with a separate line: <!--tf-review-->. Otherwise omit. This requests review, not an outcome.',
         } : {}),
-        ...(orientation ? { rp_orientation: orientation, movement_basis: weightedEffects ? INFLUENCE_MOVEMENT_BASIS : STORY_MOVEMENT_BASIS } : {}),
+        ...(orientation ? { rp_orientation: orientation, movement_basis: weightedEffects ? (activityBias ? ACTIVITY_MOVEMENT_BASIS : INFLUENCE_MOVEMENT_BASIS) : STORY_MOVEMENT_BASIS } : {}),
         ...(worldEffects.length ? { world_effects: worldEffects } : {}),
         ...(initiativeBasis && currentPlayBasis && storyStructure && (orientation || hasInfluences || material.some(entry => entry.status !== undefined))
-            ? { initiative_basis: weightedEffects ? INFLUENCE_INITIATIVE_BASIS : STORY_INITIATIVE_BASIS } : {}),
+            ? { initiative_basis: weightedEffects ? (activityBias ? ACTIVITY_INITIATIVE_BASIS : INFLUENCE_INITIATIVE_BASIS) : STORY_INITIATIVE_BASIS } : {}),
         ...(currentPlayBasis && storyStructure && (material.some(entry => entry.status !== undefined) || orientation || hasInfluences) ? {
             current_play_basis: 'Current play and explicit user direction take precedence over this preparation. Disregard completed, declined or contradicted developments.',
         } : {}),

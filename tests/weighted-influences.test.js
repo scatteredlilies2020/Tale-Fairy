@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { directorInput, directorPass, DIRECTOR_SCHEMA } from '../extension/story-director.js';
-import { campaignPayload, preWeightedCampaignPayload, emptyCampaign, validCampaignState } from '../extension/campaign-planner.js';
+import { campaignPayload, preActivityCampaignPayload, preWeightedCampaignPayload, emptyCampaign, validCampaignState } from '../extension/campaign-planner.js';
 import { generationContextEntries } from '../extension/generation-context.js';
 import { storyCardsHtml } from '../extension/story-cards.js';
 
@@ -64,7 +64,7 @@ test('theme influences work without any selected arc or a mandatory event', asyn
     assert.equal(result.accepted, true, result.error);
     assert.deepEqual(decode(result.state).world_effects, [thematic]);
     assert.equal(decode(result.state).story_context, undefined);
-    assert.match(storyCardsHtml(result.state.workingPlan), /Thematic influences/);
+    assert.match(storyCardsHtml(result.state.workingPlan), /Activity foundations/);
     assert.match(decode(result.state).movement_basis, /One incident does not redefine the RP/);
 });
 
@@ -140,4 +140,18 @@ test('generated scope, effect labels and bridge openings are escaped in the boar
     const html = storyCardsHtml(result.state.workingPlan);
     assert.doesNotMatch(html, /<script>|<img src=/);
     assert.match(html, /&lt;script&gt;|&lt;img/);
+});
+
+
+test('old weighted-condition packets authenticate without mutating or replaying their old policy', async () => {
+    const result = await pass(response([influence('Shared activities', 3)]));
+    const historical = preActivityCampaignPayload(result.state);
+    const packet = { version: 1, selection: { preparedUsable: true }, payload: historical,
+        plannerState: { plannerContract: 15, campaignPreparation: result.state } };
+    assert.equal(generationContextEntries({ entries: [packet] }).length, 1);
+    assert.doesNotMatch(historical, /opportunities for the named kind of play/);
+    assert.match(campaignPayload(result.state), /opportunities for the named kind of play/);
+    assert.match(campaignPayload(result.state), /Static facts and character attitudes are context/);
+    assert.match(storyCardsHtml(result.state.workingPlan), /Activity biases/);
+    assert.equal(packet.payload, historical);
 });

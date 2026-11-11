@@ -5,8 +5,8 @@ import { validateSelectedMaterial, selectedMaterialPacket } from './selected-mat
 import { RP_BRIEF_SCHEMA } from './rp-brief.js';
 import { validateBackground } from './background-progress.js?v=0.14.34&story-bridge=1';
 import { estimateTokenCount } from './token-budget.js';
-import { storyWriterMaterial } from './story-structure.js?story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&world-frame=1&chapter-labels=1&resource-policy=1&weighted-influences=1&future-bridges=1';
-import { fitStoryContext, storyContextPayload } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1&horizon-links=3&story-structure=1&ensemble-pressure=1&story-cards=1&player-cards=1&creative-planning=1&portable-frame=1&future-controls=1&writer-target=2&writer-fit=1&continuous-guidance=2&resource-policy=1&causal-effects=1&world-initiative=1&weighted-influences=1&future-bridges=1';
+import { storyWriterMaterial } from './story-structure.js?story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&world-frame=1&chapter-labels=1&resource-policy=1&weighted-influences=2&future-bridges=1';
+import { fitStoryContext, storyContextPayload } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1&horizon-links=3&story-structure=1&ensemble-pressure=1&story-cards=1&player-cards=1&creative-planning=1&portable-frame=1&future-controls=1&writer-target=2&writer-fit=1&continuous-guidance=2&resource-policy=1&causal-effects=1&world-initiative=1&weighted-influences=2&future-bridges=1';
 import { validateWorkingState } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&world-frame=1&chapter-labels=1&resource-policy=1';
 
 // Matches the existing host's planner-request marker so request interception
@@ -252,9 +252,9 @@ function campaignWriterMaterial(state, { legacyGoals = false } = {}) {
     return possible_developments;
 }
 
-export function campaignPayloadBudget(state, instructions = [], { horizonsOnly = false, strictBudget = true, softTarget = true, writerTarget = state?.writerTokenTarget || 2400, currentPlayBasis = true, legacyEffectBasis = false, initiativeBasis = true, weightedEffects = true } = {}) {
+export function campaignPayloadBudget(state, instructions = [], { horizonsOnly = false, strictBudget = true, softTarget = true, writerTarget = state?.writerTokenTarget || 2400, currentPlayBasis = true, legacyEffectBasis = false, initiativeBasis = true, weightedEffects = true, activityBias = true } = {}) {
     if (state?.workingPlan?.storyStructure) return fitStoryContext(horizonsOnly ? [] : storyWriterMaterial(state.workingPlan),
-        instructions.filter(text => typeof text === 'string' && text.trim()), { storyStructure: true, strictBudget, softTarget, writerTarget, currentPlayBasis, legacyEffectBasis, initiativeBasis, weightedEffects,
+        instructions.filter(text => typeof text === 'string' && text.trim()), { storyStructure: true, strictBudget, softTarget, writerTarget, currentPlayBasis, legacyEffectBasis, initiativeBasis, weightedEffects, activityBias,
             foundationEffects: horizonsOnly ? [] : state.workingPlan.storyStructure.foundation?.effects || [],
             bridges: horizonsOnly ? [] : state.workingPlan.storyStructure.bridges || [],
             orientation: horizonsOnly ? '' : state.workingPlan.storyStructure.foundation?.reminder || '' });
@@ -264,6 +264,11 @@ export function campaignPayloadBudget(state, instructions = [], { horizonsOnly =
 
 export function campaignPayload(state, instructions = [], options) {
     return campaignPayloadBudget(state, instructions, options).payload;
+}
+
+// Authenticate the first weighted-condition format without replaying its policy.
+export function preActivityCampaignPayload(state, instructions = [], options = {}) {
+    return campaignPayloadBudget(state, instructions, { ...options, activityBias: false }).payload;
 }
 
 // Exact pre-weighted bytes authenticate saved swipes; new requests rebuild them.

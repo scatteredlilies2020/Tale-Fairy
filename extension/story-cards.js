@@ -1,5 +1,5 @@
 // Presentation only: opening the board never changes story state or calls a model.
-import { ongoingStoryNodes, storyKindLabel } from './story-structure.js?story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&world-frame=1&chapter-labels=1&resource-policy=1&weighted-influences=1&future-bridges=1';
+import { ongoingStoryNodes, storyKindLabel } from './story-structure.js?story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&world-frame=1&chapter-labels=1&resource-policy=1&weighted-influences=2&future-bridges=1';
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 })[char]);
@@ -20,7 +20,7 @@ function orderedNodes(nodes) {
     return result;
 }
 
-function card(node, rows, selected, fresh) {
+function card(node, rows, selected, fresh, activities = false) {
     const status = Object.hasOwn(statuses, node.status) ? node.status : 'proposed';
     const ancestors = [], seen = new Set([node.id]);
     let parentInactive = false;
@@ -36,7 +36,7 @@ function card(node, rows, selected, fresh) {
         ${ancestors.length ? `<p class="tf-card-path">${ancestors.map(escape).join(' <span aria-hidden="true">›</span> ')}</p>` : ''}
         <h6 class="tf-card-title">${escape(node.title)}</h6>
         <p class="tf-card-description">${escape(node.interpretation || node.description)}</p>
-        ${effects.length ? `<div class="tf-card-effects"><span class="tf-card-label">${playing ? 'Ongoing effects' : 'Possible influences · inactive'}</span>
+        ${effects.length ? `<div class="tf-card-effects"><span class="tf-card-label">${playing ? activities ? 'Activity biases' : 'Ongoing effects' : 'Possible influences · inactive'}</span>
             ${effectList(effects)}</div>` : ''}
         ${field('Involves', node.owner)}
         ${field('Can end when', node.endsWhen)}
@@ -55,12 +55,12 @@ export function storyCardsHtml(plan, { fresh = true, omitted = 0, orientationOmi
     const selected = new Set((map.selection || []).map(entry => entry.id));
     const live = nodes.filter(node => ['active', 'proposed'].includes(node.status));
     const resting = nodes.filter(node => node.status === 'dormant');
-    const grid = list => `<div class="tf-story-grid">${list.map(node => card(node, rows, selected, fresh)).join('')}</div>`;
+    const grid = list => `<div class="tf-story-grid">${list.map(node => card(node, rows, selected, fresh, map.effectMode === 'activity-opportunities')).join('')}</div>`;
     const collection = (label, key, list) => list.length ? `<details class="tf-story-collection" data-disclosure="${key}"><summary>${label} <span>${list.length}</span></summary>${grid(list)}</details>` : '';
     return `<div class="tf-story-board">
         <div class="tf-board-topline"><span class="tf-card-label">World &amp; story</span><span>${live.length} open · ${resting.length} future</span></div>
         ${map.foundation?.reminder ? `<article class="tf-world-card"><header class="tf-card-header"><span class="tf-card-kind">World frame</span>${badge('Persistent', 'tf-card-selected')}</header>
-            <p class="tf-world-reminder">${escape(map.foundation.reminder)}</p>${map.foundation.effects?.length ? `<div class="tf-card-effects"><span class="tf-card-label">Thematic influences</span>${effectList(map.foundation.effects)}</div>` : ''}</article>` : ''}
+            <p class="tf-world-reminder">${escape(map.foundation.reminder)}</p>${map.foundation.effects?.length ? `<div class="tf-card-effects"><span class="tf-card-label">${map.effectMode === 'activity-opportunities' ? 'Activity foundations' : 'Thematic influences'}</span>${effectList(map.foundation.effects)}</div>` : ''}</article>` : ''}
         <p class="tf-board-note${fresh ? '' : ' tf-board-warning'}">${fresh
             ? 'Author-level view. Selected cards guide the writer; revelation and timing stay with the story.'
             : 'Review needed. This saved board no longer matches the current story context. Last completed guidance remains available while preparation updates; current play takes precedence.'}</p>

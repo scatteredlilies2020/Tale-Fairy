@@ -22,11 +22,11 @@ The **Story Board** shows your current stories as readable cards:
 
 Cards describe what a story is about and how it influences the world. Several stories can coexist without involving the same characters or being forced together.
 
-Effects are freely generated influences suited to your RP. Each new effect has a keyword or short name, a signed weight from -10 to +10, a brief meaning and causal basis, and a scope. Positive weights favor the named influence, negative weights discourage it, and zero adds no bias. A small weight is a gentle tendency; a large weight is a strong tendency. These are qualitative guidance, not calculated probabilities or guaranteed events.
+Effects are **activity biases**: freely generated kinds of play appropriate to your RP. They encourage the writer to create fitting things to do, encounter or experience through NPC and world initiative. They can support work, discovery, shared pursuits and everyday pleasures as well as challenges. TF generates the labels and substance from each RP; there is no preset catalogue.
 
-The World Frame can carry broad thematic influences. Chapters, Arcs and Subplots can carry more local ones. The writer creates varied expressions from current play, including ordinary or quiet scenes. Strong effects do not need to appear in every reply. TF reviews effects separately from their cards: a completed incident can remove an influence without ending its wider story, and repeated reactions do not establish fresh reasons to repeat them.
+Each bias has a signed weight from -10 to +10, a brief explanation of how matching opportunities arise and vary, and a scope. Positive weights encourage that kind of play; negative weights discourage it; zero adds no bias. These are qualitative guidance, not calculated probabilities, per-reply quotas or guaranteed events. The World Frame supplies broad activity foundations; cards can support more focused pursuits. Facts, character attitudes and constraints stay in descriptions rather than becoming recurring reaction orders.
 
-The writer is encouraged to initiate fitting activities, encounters and opportunities. Current play and author direction take precedence over saved guidance. Older cards remain readable; a new review can replace their prose effects with weighted influences.
+A bias describes a reusable family of activities, not an unfinished objective. Individual jobs and experiences can end while the broader source of opportunities continues. New manifestations should vary in substance, participants and consequences. Effects can stay quiet when unsuitable, and current play and author direction take precedence. TF reviews them separately from their cards; older condition effects can be replaced in the next review without deleting history or closing a genuinely ongoing story.
 
 ## Future Chapters
 
