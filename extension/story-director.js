@@ -1,25 +1,27 @@
 // One creative request. Memory supplies background, not a continuity audit.
 import { storyInput, nextPlanRevision, plannerInputLimit } from './bounded-story.js?working-plan=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&fresh-summary=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=2&writer-fit=1&resource-policy=1&causal-effects=1&world-initiative=1';
-import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check, validCampaignState } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=2&writer-fit=1&continuous-guidance=2&resource-policy=1&causal-effects=1&world-initiative=1';
+import { CAMPAIGN_MARKER, EVENT_POINTS_FORMAT, check, validCampaignState } from './campaign-planner.js?v=0.14.36&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=2&writer-fit=1&continuous-guidance=2&resource-policy=1&causal-effects=1&world-initiative=1&weighted-influences=1&future-bridges=1';
 import { WORKING_PLAN_VERSION, validateWorkingPlan, workingPlanProjection, planTokens } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&world-frame=1&chapter-labels=1&resource-policy=1';
 import { STORY_SELECTION_SCHEMA, STORY_STRUCTURE_SCHEMA, STORY_TERMINOLOGY, previousStoryNodes,
     STORY_NODE_RESPONSE_SCHEMA, STORY_SELECTION_RESPONSE_SCHEMA, storeStoryDescription, storyNodeForPlanner,
-    STORY_FOUNDATION_RESPONSE_SCHEMA, mergeStoryFoundation,
-    mergeStoryNodes, ongoingStoryNodes, storyAncestors, validateStoryStructure, storyWriterMaterial } from './story-structure.js?story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&world-frame=1&chapter-labels=1&resource-policy=1';
-import { fitStoryContext, WRITER_CONTEXT_TOKEN_LIMIT, storyInputTokens, EFFECT_PRESSURE_RULE } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1&horizon-links=3&story-structure=1&ensemble-pressure=1&story-cards=1&player-cards=1&creative-planning=1&portable-frame=1&future-controls=1&writer-target=2&writer-fit=1&continuous-guidance=2&resource-policy=1&causal-effects=1&world-initiative=1';
+    STORY_FOUNDATION_RESPONSE_SCHEMA, STORY_BRIDGE_RESPONSE_SCHEMA, WEIGHTED_EFFECTS_SCHEMA, mergeStoryFoundation,
+    mergeStoryNodes, ongoingStoryNodes, storyAncestors, validateStoryStructure, storyWriterMaterial } from './story-structure.js?story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&world-frame=1&chapter-labels=1&resource-policy=1&weighted-influences=1&future-bridges=1';
+import { fitStoryContext, WRITER_CONTEXT_TOKEN_LIMIT, storyInputTokens, WEIGHTED_EFFECT_RULE } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1&horizon-links=3&story-structure=1&ensemble-pressure=1&story-cards=1&player-cards=1&creative-planning=1&portable-frame=1&future-controls=1&writer-target=2&writer-fit=1&continuous-guidance=2&resource-policy=1&causal-effects=1&world-initiative=1&weighted-influences=1&future-bridges=1';
 import { jsonrepair } from './vendor/jsonrepair/regular/jsonrepair.js?v=3.15.0';
-import { FUTURE_CAUSAL_RULES } from './future-causality.js?causal-futures=1';
+import { FUTURE_CAUSAL_RULES } from './future-causality.js?causal-futures=1&weighted-influences=1&future-bridges=1';
 
 export { nextPlanRevision, plannerInputLimit };
 export const PLANNER_OUTPUT_LIMIT = 3000;
 const text = maxLength => ({ type: 'string', minLength: 1, ...(maxLength ? { maxLength } : {}) });
 const object = properties => ({ type: 'object', additionalProperties: false, required: Object.keys(properties), properties });
-export const DIRECTOR_SCHEMA = { name: 'tale_fairy_story_director_v7', instructionsRole: 'user', value: object({
+export const DIRECTOR_SCHEMA = { name: 'tale_fairy_story_director_v8', instructionsRole: 'user', value: object({
     reviewAfter: STORY_STRUCTURE_SCHEMA.properties.reviewAfter,
     foundation: STORY_FOUNDATION_RESPONSE_SCHEMA,
     upsert: { type: 'array', items: STORY_NODE_RESPONSE_SCHEMA },
     retain: { type: 'array', uniqueItems: true, items: text(80) },
     retire: { type: 'array', items: text(80) }, select: { type: 'array', items: STORY_SELECTION_RESPONSE_SCHEMA },
+    effectUpdates: { type: 'array', items: object({ id: text(80), effects: WEIGHTED_EFFECTS_SCHEMA }) },
+    bridges: { type: 'array', items: STORY_BRIDGE_RESPONSE_SCHEMA },
 }) };
 // Optional for historical responses and saved swipe compatibility.
 DIRECTOR_SCHEMA.value.properties.futureDecisions = { type: 'array', items: object({
@@ -59,17 +61,21 @@ Plan around arcs: sustained pursuits, questions or changes across scenes; a Subp
 
 Apply this significance test to new, retained and selected Arcs/Subplots alike: is this a sustained story or routine business? Unfinished alone is insufficient. Omit actual filler, including inherited cards; do not rename it an arc, park it as dormant, or invent complications and grander stakes to justify keeping it. Missing recent activity is never evidence that an active story is filler, dormant or finished. Supporting details belong within real arcs. Quiet play can keep just the Chapter; never invent filler to populate the hierarchy.
 
-description states the concern. effects: up to three {label, pressure} pairs affecting people or world conditions; [] for none. ${EFFECT_PRESSURE_RULE} Review effects separately from their card; past reactions are history. Keep scene actions and errands in chat. No numbers/schedules. endsWhen identifies closure with outcomes open; "" for ongoing concerns. parentId groups cards ("" for root); links connect without merging. owner names a character, group or process, including player characters; ownership grants no control.
+description states the present concern, not a spent objective. effects: a few {label, weight, pressure, scope} influences; [] for none. Generate labels freely from THIS RP; no predefined vocabulary. pressure explains meaning and present cause; scope identifies relevant circumstances or subjects. ${WEIGHTED_EFFECT_RULE} Review effects separately from their card; past reactions are history. Effects should survive individual scene steps: describe reusable tendencies or conditions, not a pending chore, exact incident, fixed reaction or countdown. Keep immediate logistics in descriptions and current play. Scope should name relevant matters or circumstances; an issue-specific concern does not cover every interaction in a relationship. Avoid duplicate influences across frame, cards and bridges; overlapping weights do not stack. Completed incidents may remove effects without ending their wider story. Keep legal authority, personal warmth, trust and ethical disagreement distinct; a concern need not color every interaction. Scene actions and errands stay in chat. endsWhen identifies closure with outcomes open; "" for ongoing concerns. parentId groups cards ("" for root); links connect without merging. owner grants no control over player characters.
 
-As story time advances, review every Chapter, Arc and Subplot for explicit or clearly implied closure. A passed festival window or ended school term can close its story without inventing participation or success. Do not keep expired preparation active or replay skipped routine steps. Respect the activity named: a week working at the hospital implies ordinary rounds, care and follow-ups. Bare elapsed time does not imply specific work, a difficult cure, diagnosis, return-to-duty clearance or a settled conflict. Infer ordinary completion only when the skip supports it; preserve meaningful unresolved stories and unchosen player outcomes. Drop incidental preparation without claiming its underlying problem is solved.
+As story time advances, review every Chapter, Arc and Subplot for explicit or clearly implied closure. A question answered in accepted play is finished; hypothetical later fallout or unspecified residual questions do not keep it open. Effects can continue on genuinely ongoing stories without preserving a resolved inquiry. Reassess titles after role or authority changes; preserve the id, not a misleading old role label. A passed festival window or ended school term can close its story without inventing participation or success. Do not keep expired preparation active or replay skipped routine steps. Respect the activity named: a week working at the hospital implies ordinary rounds, care and follow-ups. Bare elapsed time does not imply specific work, a difficult cure, diagnosis, return-to-duty clearance or a settled conflict. Infer ordinary completion only when the skip supports it; preserve meaningful unresolved stories and unchosen player outcomes. Drop incidental preparation without claiming its underlying problem is solved.
 
 previous_preparation is the current map, not the future outlook. upsert replaces changed cards; new ids use new_id_prefix. Active and dormant stories persist automatically when omitted; retain keeps unchanged proposals. Resolve stories ended explicitly or by clear implication of accepted play; use explicit retire for withdrawn proposals or actual filler, without claiming events occurred. To close a Chapter, explicitly end it, supply its successor and reconnect surviving Arcs. Never close it just to reorganize the board. Keep substantial current stories across focus changes, not stale cards with only hypothetical future relevance. Dormant suspends current unfinished business, not indefinite storage. Empty updates are valid.
 
 recent_card_names lists earlier idea names, newest first, to vary ideas and avoid repetition. Names establish no history or outcomes.
 
+foundation.effects contains weighted thematic influences from the RP's activities, tone and stakes, independent of local incidents or cast attitudes. Preserve an accurate reminder while reviewing these effects separately; [] is valid.
+
+effectUpdates supplies each selected retained card's current effects unless supplied in upsert. Preserve supported weighted influences, revise changed ones, or supply [] to clear without closing the card. Convert legacy prose thoughtfully, not with default scores. Return [] if no retained selected effects need review.
+
 select renews writer-facing cards from scratch; [] keeps only the RP reminder. Select relevant proposed/active currents and situations, including wider pressures that remain important during respite. Supply title, context (only parentId ancestors, outermost first; links are not parents), concise description and endsWhen. To select a dormant card, explicitly update it to active first; otherwise retain it without selection. Selected nodes' effects are included automatically, so do not repeat them here. development is an optional brief opportunity ("" otherwise). The writer shares your author-level view: include fitting hidden motives and secrets before characters know. It decides manifestation/revelation; character knowledge follows play. Distinguish proposals from established events. Ask what can meaningfully develop, not merely be mentioned again.
 
-private_future holds conditional prospects, NEVER history. Start at actual play; no invented past player actions. Bring fitting seeds into current cards, not whole outlooks, forced dates/outcomes or duplicate pressures.
+private_future holds conditional prospects, NEVER history. bridges renews optional connections each pass: {futureId,basis,opening,effects}; [] when none fits. Use only available ids. basis names present support; opening provides a flexible causal entry, with optional weighted influences. Only the bridge enters writer context. No prescribed scene, travel, player response or outcome; allow quiet play and other pursuits. Replace introductions already taken up with development. Adopt through futureDecisions only after accepted play or author direction makes the prospect current, never for merely writing a bridge. It may become an Arc within the Chapter or, on a broad transition, its successor; unrelated threads need not all finish. Remove spent bridges and superseded concerns. Request reassessFuture when changed causes or completed events invalidate the outlook.
 ${FUTURE_CAUSAL_RULES}
 On adoption, expand the active root and reconnect meaningful surviving Arcs. Optional futureDecisions:[{id,action:"adopt",chapterId:<active root id>,reason}] uses supplied ids only; "retire" with chapterId:"" withdraws without claiming an outcome. Other edits belong to the future planner; reassessFuture:true requests it for material long-range/time changes, not ordinary dialogue.
 
@@ -118,7 +124,8 @@ export function directorInput(args, maxTokens) {
         const { review_boundary: _boundary, omitted_context: _omitted, ...coverage } = context.coverage;
         const authored = (args.reference?.authorInstructions || []).filter(text => typeof text === 'string' && text.trim());
         const fixed = fitStoryContext([], authored, { storyStructure: true, softTarget: true, writerTarget: args.writerTarget,
-            orientation: previous_plan.storyStructure?.foundation?.reminder || '' });
+            orientation: previous_plan.storyStructure?.foundation?.reminder || '',
+            foundationEffects: previous_plan.storyStructure?.foundation?.effects || [] });
         return { ...context, response_target_tokens: args.outputTarget || (fresh ? 1400 : 900), writer_budget: { target: fixed.target, soft_target: true,
             reserved_tokens: fixed.requiredTokens, available_tokens: Math.max(0, fixed.limit - fixed.requiredTokens),
             includes: 'Author instructions, orientation, effects, selected stories and JSON framing. Aim for concise public descriptions; keep richer detail in private nodes. Preserve useful content even when it exceeds the target.' }, coverage: { ...coverage,
@@ -130,6 +137,7 @@ export function directorInput(args, maxTokens) {
         previous_preparation: {
             nodes: ongoingStoryNodes(previousStoryNodes(previous_plan)).map(storyNodeForPlanner),
             ...(previous_plan.storyStructure?.foundation ? { foundation: previous_plan.storyStructure.foundation } : {}),
+            ...(previous_plan.storyStructure?.bridges?.length ? { bridges: previous_plan.storyStructure.bridges } : {}),
         }, ...(!args.resetPlan && !args.previousUsable && args.reconsiderHorizon ? {
             reconsider_horizon: { nodes: ongoingStoryNodes(previousStoryNodes(args.reconsiderHorizon)).map(storyNodeForPlanner) },
         } : {}) };
@@ -249,6 +257,26 @@ export async function directorPass({ state, input, source, generate }) {
         const foundation = mergeStoryFoundation(input.previousPlan.storyStructure?.foundation, raw.foundation, check, notices);
         const merged = mergeStoryNodes(previousNodes, raw.upsert, raw.retire,
             { check, playerNames: input.playerNames, newIdPrefix: input.newIdPrefix, notices, rejectedIds });
+        if (raw.effectUpdates !== undefined) {
+            check(raw.effectUpdates, DIRECTOR_SCHEMA.value.properties.effectUpdates, '$.effectUpdates');
+            const reviewed = new Set();
+            for (const update of raw.effectUpdates) {
+                const node = merged.find(node => node.id === update.id);
+                if (!node || rejectedIds.has(update.id) || reviewed.has(update.id)
+                    || raw.upsert.some(item => item.id === update.id && Object.hasOwn(item, 'effects'))) {
+                    notices.push('Unsupported or conflicting effect update withheld'); continue;
+                }
+                node.effects = structuredClone(update.effects); reviewed.add(update.id);
+            }
+            for (const selected of raw.select) {
+                const node = merged.find(node => node.id === selected?.id);
+                if (node?.effects?.length && !reviewed.has(node.id)
+                    && !raw.upsert.some(item => item.id === node.id && Object.hasOwn(item, 'effects'))) {
+                    node.effects = [];
+                    notices.push('Unreviewed selected effects withheld; the story remains open.');
+                }
+            }
+        }
         const explicitEnds = new Set([
             ...raw.retire.filter(id => !raw.upsert.some(node => node?.id === id)),
             ...raw.upsert.filter(node => ['resolved', 'retired'].includes(node?.status)
@@ -321,19 +349,6 @@ export async function directorPass({ state, input, source, generate }) {
         if (input.writerFitDraft && protectedSelection(plan.storyStructure.selection) !== protectedSelection(input.writerFitDraft.select)) {
             throw Error('Writer fitting removed or changed selected cards or end conditions; saved preparation is intact.');
         }
-        const authored = input.writerInstructions || JSON.parse(input.prompt).source_reference?.authorInstructions || [];
-        const options = { storyStructure: true, softTarget: true, writerTarget: input.writerTarget, orientation: foundation?.reminder || '' };
-        const material = storyWriterMaterial(plan), writerBudget = fitStoryContext(material, authored, options);
-        const projection = workingPlanProjection(plan), selectedMaterial = [];
-        if (state.revision !== basisRevision) throw Error('Preparation changed during planning');
-        const archive = input.resetPlan ? [] : structuredClone(state.archive || []);
-        if (!input.resetPlan && state.revision) archive.push({ revision: state.revision, source: structuredClone(state.source),
-            workingPlan: structuredClone(state.workingPlan), planEvidence: structuredClone(state.planEvidence),
-            selectedMaterial: structuredClone(state.selectedMaterial), replaced: true });
-        const next = { revision: input.nextRevision, writerTokenTarget: writerBudget.target, ...projection, archive, source: structuredClone(source),
-            preparationFormat: EVENT_POINTS_FORMAT, workingPlanVersion: WORKING_PLAN_VERSION,
-            workingPlan: plan, planEvidence: {}, selectedMaterial };
-        if (!validCampaignState(next)) throw Error('Story preparation failed saved-state validation');
         const futureDecisions = [], futureIds = new Map((input.futureCards || []).map(c => [c.id, c]));
         if (raw.futureDecisions !== undefined) {
             check(raw.futureDecisions, DIRECTOR_SCHEMA.value.properties.futureDecisions, '$.futureDecisions');
@@ -345,6 +360,33 @@ export async function directorPass({ state, input, source, generate }) {
                 futureDecisions.push({ ...decision, title: futureIds.get(decision.id).title });
             }
         }
+        if (raw.bridges !== undefined) {
+            check(raw.bridges, DIRECTOR_SCHEMA.value.properties.bridges, '$.bridges');
+            const seen = new Set(), consumed = new Set(futureDecisions.map(decision => decision.id));
+            plan.storyStructure.bridges = raw.bridges.flatMap(bridge => {
+                const prospect = futureIds.get(bridge.futureId);
+                if (!prospect || consumed.has(bridge.futureId) || seen.has(bridge.futureId)) {
+                    notices.push('Unavailable or consumed future bridge withheld'); return [];
+                }
+                seen.add(bridge.futureId);
+                return [{ ...structuredClone(bridge), title: prospect.title }];
+            });
+        }
+        validateWorkingPlan(plan, check, input.playerNames);
+        const authored = input.writerInstructions || JSON.parse(input.prompt).source_reference?.authorInstructions || [];
+        const options = { storyStructure: true, softTarget: true, writerTarget: input.writerTarget, orientation: foundation?.reminder || '',
+            foundationEffects: foundation?.effects || [], bridges: plan.storyStructure.bridges || [] };
+        const material = storyWriterMaterial(plan), writerBudget = fitStoryContext(material, authored, options);
+        const projection = workingPlanProjection(plan), selectedMaterial = [];
+        if (state.revision !== basisRevision) throw Error('Preparation changed during planning');
+        const archive = input.resetPlan ? [] : structuredClone(state.archive || []);
+        if (!input.resetPlan && state.revision) archive.push({ revision: state.revision, source: structuredClone(state.source),
+            workingPlan: structuredClone(state.workingPlan), planEvidence: structuredClone(state.planEvidence),
+            selectedMaterial: structuredClone(state.selectedMaterial), replaced: true });
+        const next = { revision: input.nextRevision, writerTokenTarget: writerBudget.target, ...projection, archive, source: structuredClone(source),
+            preparationFormat: EVENT_POINTS_FORMAT, workingPlanVersion: WORKING_PLAN_VERSION,
+            workingPlan: plan, planEvidence: {}, selectedMaterial };
+        if (!validCampaignState(next)) throw Error('Story preparation failed saved-state validation');
         return { accepted: true, state: next, result, futureDecisions, reassessFuture: raw.reassessFuture === true,
             plannerNotices: [...new Set([...(input.writerFitNotices || []), ...notices])],
             withheldMaterial: input.writerFitWithheld || rejectedIds.size > 0 || withheldSelections > 0,

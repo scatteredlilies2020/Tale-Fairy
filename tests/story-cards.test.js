@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { storyCardCases, cardCaseReply } from '../scripts/story-card-cases.mjs';
 import { evaluateCardCase } from '../scripts/evaluate-story-cards.mjs';
 import { directorInput, directorPass, DIRECTOR_SYSTEM, DIRECTOR_SCHEMA } from '../extension/story-director.js';
-import { emptyCampaign, campaignPayload, campaignPayloadBudget, check } from '../extension/campaign-planner.js';
+import { emptyCampaign, campaignPayload, preWeightedCampaignPayload, campaignPayloadBudget, check } from '../extension/campaign-planner.js';
 import { mergeStoryNodes, storyWriterMaterial, writerReviewSignal, storyChangeSignal, STORY_NODE_SCHEMA, STORY_NODE_RESPONSE_SCHEMA } from '../extension/story-structure.js';
 import { storyCardsHtml, renderStoryCards } from '../extension/story-cards.js';
 import { fitStoryContext, WRITER_CONTEXT_TOKEN_LIMIT } from '../extension/story-budget.js';
@@ -38,7 +38,7 @@ for (const example of storyCardCases) test(`card lifecycle and exact writer tran
         assert.deepEqual(packet.story_context[i].effects, card.effects);
         assert.equal(packet.story_context[i].status, card.status);
     }
-    assert.match(packet.effect_basis, /Apply ongoing pressure through causes and stakes/);
+    assert.match(packet.effect_basis, /scoped biases grounded in current causes/);
     assert.match(packet.effect_basis, /Character responses remain open and can change with play/);
     assert.match(packet.effect_basis, /Revise or stop effects when play changes their basis/);
     assert.match(packet.review_signal, /<!--tf-review-->/);
@@ -119,7 +119,7 @@ test('legacy packets are byte-stable until a new-format update, including stored
     const plan = { direction: 'Legacy', storyStructure: { version: 1, reviewAfter: 12, nodes: [node], selection: [entry] } };
     const material = storyWriterMaterial(plan);
     assert.deepEqual(material, [{ kind: 'saga', title: 'Public title', description: 'Old explanation' }]);
-    assert.equal(campaignPayload({ workingPlan: plan }), '<tale-fairy-context>\n{"preparation_basis":"Story expectations, not established events or player obligations. Current play takes precedence. Ignore completed, declined or contradicted developments.","story_context":[{"kind":"saga","title":"Public title","description":"Old explanation"}]}\n</tale-fairy-context>');
+    assert.equal(preWeightedCampaignPayload({ workingPlan: plan }), '<tale-fairy-context>\n{"preparation_basis":"Story expectations, not established events or player obligations. Current play takes precedence. Ignore completed, declined or contradicted developments.","story_context":[{"kind":"saga","title":"Public title","description":"Old explanation"}]}\n</tale-fairy-context>');
     check(node, STORY_NODE_SCHEMA, '$.node');
 });
 

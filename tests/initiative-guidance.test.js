@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DIRECTOR_SYSTEM, directorInput, directorPass } from '../extension/story-director.js';
-import { emptyCampaign, campaignPayload, preInitiativeCampaignPayload, preCausalEffectPayload } from '../extension/campaign-planner.js';
+import { emptyCampaign, campaignPayload, preWeightedCampaignPayload, preInitiativeCampaignPayload, preCausalEffectPayload } from '../extension/campaign-planner.js';
 import { generationContextEntries } from '../extension/generation-context.js';
-import { storyContextPayload, storyContextJson, STORY_INITIATIVE_BASIS } from '../extension/story-budget.js';
+import { storyContextPayload, storyContextJson, STORY_INITIATIVE_BASIS, INFLUENCE_INITIATIVE_BASIS } from '../extension/story-budget.js';
 import { ensemblePressureCases, fixtureDirectorReply } from '../scripts/ensemble-pressure-cases.mjs';
 
 const decode = packet => JSON.parse(packet.replace(/<\/?tale-fairy-context>/g, ''));
@@ -24,10 +24,10 @@ test('world frame alone and current cards both receive initiative guidance, but 
     const options = { storyStructure: true, orientation: frame };
     const packet = decode(storyContextPayload([], [], options));
     assert.equal(packet.rp_orientation, frame);
-    assert.equal(packet.initiative_basis, STORY_INITIATIVE_BASIS);
+    assert.equal(packet.initiative_basis, INFLUENCE_INITIATIVE_BASIS);
     assert.equal(packet.story_context, undefined);
     const card = { title: 'Shared ambitions', status: 'active', effects: [{ label: 'Commitments', pressure: 'Promises draw people into contact.' }] };
-    assert.equal(decode(storyContextPayload([card], [], { storyStructure: true })).initiative_basis, STORY_INITIATIVE_BASIS);
+    assert.equal(decode(storyContextPayload([card], [], { storyStructure: true })).initiative_basis, INFLUENCE_INITIATIVE_BASIS);
     assert.equal(storyContextPayload([], [], { storyStructure: true }), '');
     assert.equal(decode(storyContextPayload([], ['Author instruction'], { storyStructure: true })).initiative_basis, undefined);
     assert.equal(decode(storyContextPayload([card], [], { ...options, currentPlayBasis: false })).initiative_basis, undefined);
@@ -46,10 +46,10 @@ test('old saved packets authenticate unchanged while new packets add initiative 
     const saved = JSON.stringify(result.state);
     const current = campaignPayload(result.state);
     const historical = preInitiativeCampaignPayload(result.state);
-    const oldData = decode(current);
+    const oldData = decode(preWeightedCampaignPayload(result.state));
     delete oldData.initiative_basis;
     assert.equal(historical, `<tale-fairy-context>\n${storyContextJson(oldData)}\n</tale-fairy-context>`);
-    assert.equal(decode(current).initiative_basis, STORY_INITIATIVE_BASIS);
+    assert.equal(decode(current).initiative_basis, INFLUENCE_INITIATIVE_BASIS);
     for (const payload of [historical, preCausalEffectPayload(result.state)]) {
         assert.equal(decode(payload).initiative_basis, undefined);
         const packet = { version: 1, selection: { preparedUsable: true }, payload,

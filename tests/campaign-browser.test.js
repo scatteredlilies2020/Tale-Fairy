@@ -823,7 +823,7 @@ test('host persists card effects without per-turn calls and stops them when the 
     await h.scope.analyzeCampaignNow();
     const packet = h.prepare().payload;
     assert.match(packet, /Shared kitchen/);
-    assert.match(packet, /Apply ongoing pressure through causes and stakes/);
+    assert.match(packet, /scoped biases grounded in current causes/);
     assert.match(packet, /Character responses remain open and can change with play/);
     for (let i = 0; i < 11; i++) {
         appendPlay(h); await h.scope.analyzeCampaignNow();

@@ -29,12 +29,29 @@ STORY_SELECTION_SCHEMA.properties.endsWhen = emptyText(240);
 export const STORY_EFFECTS_SCHEMA = { type: 'array', items: object({
     label: text(56), pressure: text(200),
 }) };
+// Optional on disk for historical maps. New planning responses supply a signed
+// weight and scope; pressure explains the meaning and present causal basis.
+STORY_EFFECTS_SCHEMA.items.properties.weight = { type: 'integer', minimum: -10, maximum: 10 };
+STORY_EFFECTS_SCHEMA.items.properties.scope = text(200);
+export const WEIGHTED_EFFECTS_SCHEMA = structuredClone(STORY_EFFECTS_SCHEMA);
+WEIGHTED_EFFECTS_SCHEMA.items.required.push('weight', 'scope');
+export function checkStoryEffects(effects, check, at) {
+    check(effects, STORY_EFFECTS_SCHEMA, at);
+    for (const [index, effect] of effects.entries()) {
+        if (Object.hasOwn(effect, 'weight') || Object.hasOwn(effect, 'scope')) {
+            check(effect, WEIGHTED_EFFECTS_SCHEMA.items, `${at}[${index}]`);
+        }
+    }
+}
 STORY_NODE_SCHEMA.properties.effects = STORY_EFFECTS_SCHEMA;
 export const STORY_FOUNDATION_SCHEMA = object({
     reminder: text(600), changeReason: emptyText(240), scratchpad: emptyText(1000),
 });
+STORY_FOUNDATION_SCHEMA.properties.effects = STORY_EFFECTS_SCHEMA;
 export const STORY_FOUNDATION_RESPONSE_SCHEMA = structuredClone(STORY_FOUNDATION_SCHEMA);
 STORY_FOUNDATION_RESPONSE_SCHEMA.properties.reminder.minLength = 0;
+STORY_FOUNDATION_RESPONSE_SCHEMA.properties.effects = WEIGHTED_EFFECTS_SCHEMA;
+STORY_FOUNDATION_RESPONSE_SCHEMA.required.push('effects');
 // New responses need one explanation. Keep the historical storage fields so
 // saved maps and authenticated regeneration packets remain readable.
 function conciseSchema(schema, limit) {
@@ -43,7 +60,11 @@ function conciseSchema(schema, limit) {
     return object({ ...properties, description: text(limit) });
 }
 export const STORY_NODE_RESPONSE_SCHEMA = conciseSchema(STORY_NODE_SCHEMA, 480);
+STORY_NODE_RESPONSE_SCHEMA.properties.effects = WEIGHTED_EFFECTS_SCHEMA;
 export const STORY_SELECTION_RESPONSE_SCHEMA = conciseSchema(STORY_SELECTION_SCHEMA, 480);
+export const STORY_BRIDGE_RESPONSE_SCHEMA = object({
+    futureId: text(100), basis: text(300), opening: text(300), effects: WEIGHTED_EFFECTS_SCHEMA,
+});
 for (const schema of [STORY_NODE_RESPONSE_SCHEMA.properties.kind, STORY_SELECTION_RESPONSE_SCHEMA.properties.context.items.properties.kind]) {
     schema.description = 'saga = Chapter; arc = Arc; thread = Subplot.';
 }
@@ -51,7 +72,12 @@ for (const schema of [STORY_NODE_RESPONSE_SCHEMA.properties.kind, STORY_SELECTIO
 
 export function storeStoryDescription(record, schema, check, at) {
     if (!record || typeof record !== 'object' || !Object.hasOwn(record, 'description')) return record;
-    check(record, schema, at);
+    // Historical complete responses remain readable without assigning invented
+    // numeric weights to their saved prose. New requests advertise weighted fields.
+    const storageSchema = { ...schema, properties: { ...schema.properties,
+        ...(schema.properties.effects ? { effects: STORY_EFFECTS_SCHEMA } : {}) } };
+    check(record, storageSchema, at);
+    if (record.effects) checkStoryEffects(record.effects, check, `${at}.effects`);
     const { description, ...rest } = record;
     return { ...rest, interpretation: description, stakes: '', expectation: '' };
 }
@@ -67,6 +93,9 @@ export const STORY_STRUCTURE_SCHEMA = object({
     nodes: { type: 'array', items: STORY_NODE_SCHEMA }, selection: { type: 'array', items: STORY_SELECTION_SCHEMA },
 });
 STORY_STRUCTURE_SCHEMA.properties.foundation = STORY_FOUNDATION_SCHEMA;
+STORY_STRUCTURE_SCHEMA.properties.bridges = { type: 'array', items: object({
+    ...STORY_BRIDGE_RESPONSE_SCHEMA.properties, title: text(160),
+}) };
 // Only successful new reviews adopt public kind names. Historical writer packets
 // must remain byte-stable so authenticated regeneration can still read them.
 STORY_STRUCTURE_SCHEMA.properties.terminology = { type: 'string', enum: [STORY_TERMINOLOGY] };
@@ -74,8 +103,12 @@ STORY_STRUCTURE_SCHEMA.properties.terminology = { type: 'string', enum: [STORY_T
 export function mergeStoryFoundation(previous, supplied, check, notices) {
     // Legacy replies remain readable; omission cannot erase an existing basis.
     if (supplied === undefined) return previous ? structuredClone(previous) : undefined;
-    check(supplied, STORY_FOUNDATION_RESPONSE_SCHEMA, '$.foundation');
+    check(supplied, { ...STORY_FOUNDATION_RESPONSE_SCHEMA,
+        required: STORY_FOUNDATION_RESPONSE_SCHEMA.required.filter(key => key !== 'effects'),
+        properties: { ...STORY_FOUNDATION_RESPONSE_SCHEMA.properties, effects: STORY_EFFECTS_SCHEMA } }, '$.foundation');
     const next = structuredClone(supplied);
+    if (supplied.effects === undefined && previous?.effects !== undefined) next.effects = structuredClone(previous.effects);
+    if (next.effects) checkStoryEffects(next.effects, check, '$.foundation.effects');
     if (!next.reminder.trim()) next.reminder = previous?.reminder || '';
     if (previous && next.reminder !== previous.reminder && !next.changeReason.trim()) {
         next.reminder = previous.reminder;
@@ -114,6 +147,10 @@ function invalidGraph(rows) {
 
 export function validateStoryStructure(structure, check) {
     check(structure, STORY_STRUCTURE_SCHEMA, '$.storyStructure');
+    if (structure.foundation?.effects) checkStoryEffects(structure.foundation.effects, check, '$.storyStructure.foundation.effects');
+    for (const [index, node] of structure.nodes.entries()) {
+        if (node.effects) checkStoryEffects(node.effects, check, `$.storyStructure.nodes[${index}].effects`);
+    }
     const rows = new Map(structure.nodes.map(node => [node.id, node]));
     if (rows.size !== structure.nodes.length) throw Error('Duplicate story id');
     // A card can concern a player character. Its organizing label does not
@@ -177,6 +214,7 @@ export function mergeStoryNodes(previous, upsert, retire, { check, newIdPrefix, 
             }
             node = storeStoryDescription(node, STORY_NODE_RESPONSE_SCHEMA, check, '$.upsert[]');
             check(node, STORY_NODE_SCHEMA, '$.upsert[]');
+            if (node.effects) checkStoryEffects(node.effects, check, '$.upsert[].effects');
             if (counts.get(node.id) !== 1) throw Error('Duplicate story update');
             if (!old.has(node.id) && !node.id.startsWith(newIdPrefix)) throw Error('New story requires the supplied id prefix');
             rows.set(node.id, structuredClone(node)); updates.add(node.id);

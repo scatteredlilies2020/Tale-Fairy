@@ -1,10 +1,11 @@
 // Presentation only: opening the board never changes story state or calls a model.
-import { ongoingStoryNodes, storyKindLabel } from './story-structure.js?story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&world-frame=1&chapter-labels=1&resource-policy=1';
+import { ongoingStoryNodes, storyKindLabel } from './story-structure.js?story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&world-frame=1&chapter-labels=1&resource-policy=1&weighted-influences=1&future-bridges=1';
 const escape = value => String(value ?? '').replace(/[&<>"']/g, char => ({
     '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 })[char]);
 const statuses = { proposed: 'Proposed', active: 'Active', dormant: 'Dormant', resolved: 'Resolved', retired: 'Retired' };
 const field = (label, value) => value ? `<div class="tf-card-detail"><span>${label}</span><p>${escape(value)}</p></div>` : '';
+const effectList = effects => `<ul>${effects.map(effect => `<li>${badge(effect.label, 'tf-effect-label')}${Number.isSafeInteger(effect.weight) ? badge(`${effect.weight > 0 ? '+' : ''}${effect.weight}`, 'tf-effect-weight') : ''}<p>${escape(effect.pressure)}</p>${effect.scope ? `<p><span class="tf-card-label">Scope:</span> ${escape(effect.scope)}</p>` : ''}</li>`).join('')}</ul>`;
 const badge = (label, modifier = '') => `<span class="tf-card-badge ${modifier}">${escape(label)}</span>`;
 
 function orderedNodes(nodes) {
@@ -36,7 +37,7 @@ function card(node, rows, selected, fresh) {
         <h6 class="tf-card-title">${escape(node.title)}</h6>
         <p class="tf-card-description">${escape(node.interpretation || node.description)}</p>
         ${effects.length ? `<div class="tf-card-effects"><span class="tf-card-label">${playing ? 'Ongoing effects' : 'Possible influences · inactive'}</span>
-            <ul>${effects.map(effect => `<li>${badge(effect.label, 'tf-effect-label')}<p>${escape(effect.pressure)}</p></li>`).join('')}</ul></div>` : ''}
+            ${effectList(effects)}</div>` : ''}
         ${field('Involves', node.owner)}
         ${field('Can end when', node.endsWhen)}
         ${links.length ? field('Connected to', links.join(' · ')) : ''}
@@ -59,13 +60,14 @@ export function storyCardsHtml(plan, { fresh = true, omitted = 0, orientationOmi
     return `<div class="tf-story-board">
         <div class="tf-board-topline"><span class="tf-card-label">World &amp; story</span><span>${live.length} open · ${resting.length} future</span></div>
         ${map.foundation?.reminder ? `<article class="tf-world-card"><header class="tf-card-header"><span class="tf-card-kind">World frame</span>${badge('Persistent', 'tf-card-selected')}</header>
-            <p class="tf-world-reminder">${escape(map.foundation.reminder)}</p></article>` : ''}
+            <p class="tf-world-reminder">${escape(map.foundation.reminder)}</p>${map.foundation.effects?.length ? `<div class="tf-card-effects"><span class="tf-card-label">Thematic influences</span>${effectList(map.foundation.effects)}</div>` : ''}</article>` : ''}
         <p class="tf-board-note${fresh ? '' : ' tf-board-warning'}">${fresh
             ? 'Author-level view. Selected cards guide the writer; revelation and timing stay with the story.'
-            : 'Review needed. This saved board no longer matches the current story context. Its guidance is withheld until new preparation is ready.'}</p>
+            : 'Review needed. This saved board no longer matches the current story context. Last completed guidance remains available while preparation updates; current play takes precedence.'}</p>
         ${omitted || orientationOmitted ? '<p class="tf-board-warning">The writer budget omits some selected material. The exact writer guidance preview shows what fits.</p>' : ''}
         ${live.length ? grid(live) : '<p class="tf-board-empty">Room for new stories. No open cards; the world frame can support quiet play.</p>'}
         ${collection('Future possibilities', 'dormant', resting)}
+        ${map.bridges?.length ? `<section class="tf-story-bridges"><p class="tf-card-label">Possible story connections</p>${map.bridges.map(bridge => `<article class="tf-story-card"><h6>${escape(bridge.title)}</h6>${field('Present basis', bridge.basis)}${field('Possible opening', bridge.opening)}${bridge.effects.length ? effectList(bridge.effects) : ''}</article>`).join('')}</section>` : ''}
         ${map.foundation?.scratchpad || map.foundation?.changeReason ? `<details class="tf-story-notes" data-disclosure="notes"><summary>Planner notes</summary>${field('Interpretation change', map.foundation.changeReason)}${field('Private scratchpad', map.foundation.scratchpad)}</details>` : ''}
     </div>`;
 }

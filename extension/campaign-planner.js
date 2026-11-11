@@ -5,8 +5,8 @@ import { validateSelectedMaterial, selectedMaterialPacket } from './selected-mat
 import { RP_BRIEF_SCHEMA } from './rp-brief.js';
 import { validateBackground } from './background-progress.js?v=0.14.34&story-bridge=1';
 import { estimateTokenCount } from './token-budget.js';
-import { storyWriterMaterial } from './story-structure.js?story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&world-frame=1&chapter-labels=1&resource-policy=1';
-import { fitStoryContext, storyContextPayload } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1&horizon-links=3&story-structure=1&ensemble-pressure=1&story-cards=1&player-cards=1&creative-planning=1&portable-frame=1&future-controls=1&writer-target=2&writer-fit=1&continuous-guidance=2&resource-policy=1&causal-effects=1&world-initiative=1';
+import { storyWriterMaterial } from './story-structure.js?story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&world-frame=1&chapter-labels=1&resource-policy=1&weighted-influences=1&future-bridges=1';
+import { fitStoryContext, storyContextPayload } from './story-budget.js?follow-through=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1&horizon-links=3&story-structure=1&ensemble-pressure=1&story-cards=1&player-cards=1&creative-planning=1&portable-frame=1&future-controls=1&writer-target=2&writer-fit=1&continuous-guidance=2&resource-policy=1&causal-effects=1&world-initiative=1&weighted-influences=1&future-bridges=1';
 import { validateWorkingState } from './working-plan.js?rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-life=1&future-entry=1&autonomous-life=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&world-frame=1&chapter-labels=1&resource-policy=1';
 
 // Matches the existing host's planner-request marker so request interception
@@ -101,7 +101,7 @@ export function check(value, schema, at = '$') {
                 : !value.trim() ? 'received blank text' : `received ${value.length} characters`;
             throw Error(`${at}: ${nonblank ? 'nonblank ' : ''}text${limit} required (${received})`);
         }
-    } else if (!Number.isSafeInteger(value) || value < schema.minimum) throw Error(`${at}: invalid integer`);
+    } else if (!Number.isSafeInteger(value) || value < schema.minimum || value > schema.maximum) throw Error(`${at}: invalid integer`);
 }
 
 export function emptyCampaign() {
@@ -252,9 +252,11 @@ function campaignWriterMaterial(state, { legacyGoals = false } = {}) {
     return possible_developments;
 }
 
-export function campaignPayloadBudget(state, instructions = [], { horizonsOnly = false, strictBudget = true, softTarget = true, writerTarget = state?.writerTokenTarget || 2400, currentPlayBasis = true, legacyEffectBasis = false, initiativeBasis = true } = {}) {
+export function campaignPayloadBudget(state, instructions = [], { horizonsOnly = false, strictBudget = true, softTarget = true, writerTarget = state?.writerTokenTarget || 2400, currentPlayBasis = true, legacyEffectBasis = false, initiativeBasis = true, weightedEffects = true } = {}) {
     if (state?.workingPlan?.storyStructure) return fitStoryContext(horizonsOnly ? [] : storyWriterMaterial(state.workingPlan),
-        instructions.filter(text => typeof text === 'string' && text.trim()), { storyStructure: true, strictBudget, softTarget, writerTarget, currentPlayBasis, legacyEffectBasis, initiativeBasis,
+        instructions.filter(text => typeof text === 'string' && text.trim()), { storyStructure: true, strictBudget, softTarget, writerTarget, currentPlayBasis, legacyEffectBasis, initiativeBasis, weightedEffects,
+            foundationEffects: horizonsOnly ? [] : state.workingPlan.storyStructure.foundation?.effects || [],
+            bridges: horizonsOnly ? [] : state.workingPlan.storyStructure.bridges || [],
             orientation: horizonsOnly ? '' : state.workingPlan.storyStructure.foundation?.reminder || '' });
     return fitStoryContext(horizonsOnly ? campaignHorizonMaterial(state) : campaignWriterMaterial(state), instructions.filter(text => typeof text === 'string' && text.trim()),
         { strictBudget, softTarget, writerTarget });
@@ -264,21 +266,26 @@ export function campaignPayload(state, instructions = [], options) {
     return campaignPayloadBudget(state, instructions, options).payload;
 }
 
+// Exact pre-weighted bytes authenticate saved swipes; new requests rebuild them.
+export function preWeightedCampaignPayload(state, instructions = [], options = {}) {
+    return campaignPayloadBudget(state, instructions, { ...options, weightedEffects: false }).payload;
+}
+
 // Authenticate immutable packets from before initiative guidance was added.
 // Normal outgoing requests always use the current campaignPayload.
 export function preInitiativeCampaignPayload(state, instructions = [], options = {}) {
-    return campaignPayloadBudget(state, instructions, { ...options, initiativeBasis: false }).payload;
+    return campaignPayloadBudget(state, instructions, { ...options, initiativeBasis: false, weightedEffects: false }).payload;
 }
 
 // Authenticate previous effect wording without replaying it to the writer.
 export function preCausalEffectPayload(state, instructions = [], options = {}) {
-    return campaignPayloadBudget(state, instructions, { ...options, legacyEffectBasis: true, initiativeBasis: false }).payload;
+    return campaignPayloadBudget(state, instructions, { ...options, legacyEffectBasis: true, initiativeBasis: false, weightedEffects: false }).payload;
 }
 
 // Authenticate immutable story-card packets made by the old hard-limit fitter.
 // New requests use a complete packet with a soft token target.
 export function boundedCampaignPayload(state, instructions = [], options = {}) {
-    return campaignPayloadBudget(state, instructions, { ...options, strictBudget: false, softTarget: false, currentPlayBasis: false }).payload;
+    return campaignPayloadBudget(state, instructions, { ...options, strictBudget: false, softTarget: false, currentPlayBasis: false, weightedEffects: false }).payload;
 }
 
 // Authenticate packets produced before the material-only handoff. Never use

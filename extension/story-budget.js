@@ -107,26 +107,37 @@ export const STORY_INITIATIVE_BASIS = 'Actively generate fitting activities, enc
 const LEGACY_STORY_EFFECT_BASIS = 'Effects: Continuing influences attached to story cards. Pressure the affected NPCs and world conditions in each effect’s stated direction, making its influence tangible in behavior, relationships, and opportunities.';
 export const EFFECT_PRESSURE_RULE = 'Apply ongoing pressure through causes and stakes. Character responses remain open and can change with play. Revise or stop effects when play changes their basis.';
 export const STORY_EFFECT_BASIS = `Effects: ${EFFECT_PRESSURE_RULE} Past reactions do not require repeated behavior.`;
+export const WEIGHTED_EFFECT_RULE = 'Effects are freely generated, scoped biases grounded in current causes. weight favors the named influence, not player benefit: +1 slight, +3 noticeable, +10 strongly favors supporting expressions with opposing ones rare; negatives reverse it, 0 adds none. These are qualitative, not calibrated probabilities or per-reply quotas. Character responses remain open and can change with play. Generate varied expressions; neutral or opposite responses can fit. Effects may stay quiet. Respect scope, knowledge and accepted outcomes. Revise or stop effects when play changes their basis. Past reactions are not fresh evidence for repeating them. Never replay completed objectives or invent replacement problems to preserve a weight. Legacy prose has no assigned numeric strength.';
+export const INFLUENCE_CARD_BASIS = 'Current play takes precedence. Ignore completed, declined or contradicted developments. Story cards describe current concerns and reusable influences. Develop fitting NPC/world activity from current circumstances. Any suggested development is revisable preparation; completing it does not require repeating it or manufacturing a successor problem.';
+export const INFLUENCE_MOVEMENT_BASIS = 'World frame and world_effects shape the kinds of activities, tone and stakes that naturally arise. They are broad foundations, not recurring scene instructions. One incident does not redefine the RP.';
+export const INFLUENCE_INITIATIVE_BASIS = 'Let people and institutions initiate fitting activities, opportunities and complications. Find fresh expressions of relevant influences through actual changes, relationships and consequences. Quiet interaction and ordinary cooperation are valid; there is no event-per-reply quota. Let accepted solutions work. Player choices and current scene direction govern uptake; neither a theme nor a future bridge dictates an outcome.';
 
-export function storyContextPayload(material, authored, { legacyContracts = false, followThrough = true, storyStructure = false, orientation = '', currentPlayBasis = true, legacyEffectBasis = false, initiativeBasis = true } = {}) {
-    if (!material.length && !authored.length && !orientation) return '';
+export function storyContextPayload(material, authored, { legacyContracts = false, followThrough = true, storyStructure = false, orientation = '', currentPlayBasis = true, legacyEffectBasis = false, initiativeBasis = true, weightedEffects = true, foundationEffects = [], bridges = [] } = {}) {
+    const worldEffects = weightedEffects ? foundationEffects : [], currentBridges = weightedEffects ? bridges : [];
+    const hasInfluences = worldEffects.length || currentBridges.length;
+    if (!material.length && !authored.length && !orientation && !hasInfluences) return '';
     return `<tale-fairy-context>\n${storyContextJson({
-        ...(storyStructure && (material.length || orientation) ? { preparation_basis: orientation || material.some(entry => entry.status !== undefined)
+        ...(storyStructure && (material.length || orientation || hasInfluences) ? { preparation_basis: weightedEffects ? INFLUENCE_CARD_BASIS : orientation || material.some(entry => entry.status !== undefined)
             ? STORY_CARD_BASIS : 'Story expectations, not established events or player obligations. Current play takes precedence. Ignore completed, declined or contradicted developments.' } : {}),
-        ...(storyStructure && material.some(entry => entry.effects?.length) ? {
-            effect_basis: currentPlayBasis && !legacyEffectBasis ? STORY_EFFECT_BASIS : LEGACY_STORY_EFFECT_BASIS,
+        ...(storyStructure && (hasInfluences || material.some(entry => entry.effects?.length)) ? {
+            effect_basis: weightedEffects ? WEIGHTED_EFFECT_RULE : currentPlayBasis && !legacyEffectBasis ? STORY_EFFECT_BASIS : LEGACY_STORY_EFFECT_BASIS,
         } : {}),
         // New-format cards opt in; immutable historical packets keep their bytes.
-        ...(storyStructure && material.some(entry => entry.status !== undefined) ? {
+        ...(storyStructure && (hasInfluences || material.some(entry => entry.status !== undefined)) ? {
             review_signal: 'When play completes or materially changes a card or world frame, end with a separate line: <!--tf-review-->. Otherwise omit. This requests review, not an outcome.',
         } : {}),
-        ...(orientation ? { rp_orientation: orientation, movement_basis: STORY_MOVEMENT_BASIS } : {}),
-        ...(initiativeBasis && currentPlayBasis && storyStructure && (orientation || material.some(entry => entry.status !== undefined))
-            ? { initiative_basis: STORY_INITIATIVE_BASIS } : {}),
-        ...(currentPlayBasis && storyStructure && (material.some(entry => entry.status !== undefined) || orientation) ? {
+        ...(orientation ? { rp_orientation: orientation, movement_basis: weightedEffects ? INFLUENCE_MOVEMENT_BASIS : STORY_MOVEMENT_BASIS } : {}),
+        ...(worldEffects.length ? { world_effects: worldEffects } : {}),
+        ...(initiativeBasis && currentPlayBasis && storyStructure && (orientation || hasInfluences || material.some(entry => entry.status !== undefined))
+            ? { initiative_basis: weightedEffects ? INFLUENCE_INITIATIVE_BASIS : STORY_INITIATIVE_BASIS } : {}),
+        ...(currentPlayBasis && storyStructure && (material.some(entry => entry.status !== undefined) || orientation || hasInfluences) ? {
             current_play_basis: 'Current play and explicit user direction take precedence over this preparation. Disregard completed, declined or contradicted developments.',
         } : {}),
         ...(material.length ? { ...(legacyContracts && followThrough ? { development_contract: DEVELOPMENT_CONTRACT } : {}), [storyStructure ? 'story_context' : 'possible_developments']: material } : {}),
+        ...(currentBridges.length ? {
+            bridge_basis: 'story_bridges are possible connections from present conditions to a later story. Open fitting opportunities through NPC/world activity, with acceptance, timing and outcomes left to play. They are not accepted events, an ordered itinerary, a requirement to finish every current thread, or permission to restore defeated causes. Once introduced, develop the resulting situation rather than repeating its invitation.',
+            story_bridges: currentBridges.map(({ title, basis, opening, effects }) => ({ toward: title, basis, opening, effects })),
+        } : {}),
         ...(legacyContracts && material.some(entry => entry.story_goal) ? { story_goal_contract: STORY_GOAL_CONTRACT } : {}),
         ...(legacyContracts && material.some(entry => entry.story_goals?.length) ? { story_goals_contract: STORY_GOALS_CONTRACT } : {}),
         ...(authored.length ? { author_instructions: authored } : {}),

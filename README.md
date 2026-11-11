@@ -22,17 +22,19 @@ The **Story Board** shows your current stories as readable cards:
 
 Cards describe what a story is about and how it influences the world. Several stories can coexist without involving the same characters or being forced together.
 
-Effects apply ongoing pressure through causes and stakes. Characters can agree, refuse or change their minds. Reviews update effects when their basis changes, even while the story remains ongoing.
+Effects are freely generated influences suited to your RP. Each new effect has a keyword or short name, a signed weight from -10 to +10, a brief meaning and causal basis, and a scope. Positive weights favor the named influence, negative weights discourage it, and zero adds no bias. A small weight is a gentle tendency; a large weight is a strong tendency. These are qualitative guidance, not calculated probabilities or guaranteed events.
 
-The writer is encouraged to initiate fitting activities, encounters, opportunities and complications from the World Frame and ongoing stories, rather than wait for the player to request every development. This guidance stays broad: the writer chooses events from current play, without an event-per-reply quota or compulsory escalation. Quiet interaction and player choice remain intact.
+The World Frame can carry broad thematic influences. Chapters, Arcs and Subplots can carry more local ones. The writer creates varied expressions from current play, including ordinary or quiet scenes. Strong effects do not need to appear in every reply. TF reviews effects separately from their cards: a completed incident can remove an influence without ending its wider story, and repeated reactions do not establish fresh reasons to repeat them.
+
+The writer is encouraged to initiate fitting activities, encounters and opportunities. Current play and author direction take precedence over saved guidance. Older cards remain readable; a new review can replace their prose effects with weighted influences.
 
 ## Future Chapters
 
 Tale Fairy can also prepare possible future Chapters in a separate, private outlook. These can draw from canon or introduce original ideas.
 
-They are possibilities, not a fixed itinerary, and are not sent directly to the writing AI. Choose a **soft card-count target (6 by default)** and whether to include canon-based prospects. **Update future plans** develops the outlook; the adjacent **Reroll future plans** replaces Original ideas while preserving useful Canon prospects. Disabling canon keeps saved canon prospects inactive, not deleted. You can also turn future planning off.
+They are possibilities, not a fixed itinerary, and the full private outlook is not sent directly to the writing AI. The regular guide can create a **story connection**: a present basis, an open way for a future prospect to enter play, and optional scoped influences. Connections are reviewed afresh; they do not choose player responses or make future events established history. A prospect becomes current after accepted play or author direction takes it up, as an Arc within the current Chapter or a broader Chapter transition. Unrelated stories need not all finish first. Choose a **soft card-count target (6 by default)** and whether to include canon-based prospects. **Update future plans** develops the outlook; the adjacent **Reroll future plans** replaces Original ideas while preserving useful Canon prospects. Disabling canon keeps saved canon prospects inactive, not deleted. You can also turn future planning off.
 
-Future planning follows the RP or simulation's own premise, scale and rules. Possibilities can branch, converge, coexist or develop independently. Different causes may support a similar event, but preventing it does not require a replacement crisis. Canon and Original prospects share a revisable order with no Canon-first priority; saved Canon cards can wait inactive without occupying every active slot.
+Future planning follows the RP or simulation's own premise, scale and rules. Possibilities can branch, converge, coexist or develop independently. Different causes may support a similar event, but preventing it does not require a replacement crisis. Changed roles, defeated actors and completed events can transform or invalidate canon-derived causes. TF can develop a different route only when surviving causes support it; it does not restore events simply to recover canon. Canon and Original prospects share a revisable order with no Canon-first priority; saved Canon cards can wait inactive without occupying every active slot.
 
 ## Getting started
 
