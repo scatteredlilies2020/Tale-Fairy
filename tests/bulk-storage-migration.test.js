@@ -9,7 +9,7 @@ import { createStorageMigrationManager, verifiedCompactCache, publicStorageMigra
 import { createStorageMigrationClient, storageMigrationLabel } from '../extension/storage-migration.js';
 import { generationCachePackets, compactGenerationPacket, generationContextEntries } from '../extension/generation-context.js';
 import { emptyCampaign, mergeCampaign, campaignPayload, campaignAuthorInstructions } from '../extension/campaign-planner.js';
-import { defaultState } from '../extension/state.js';
+import { defaultState, STATE_VERSION } from '../extension/state.js';
 import { init } from '../plugin/index.js';
 
 function fixture() {
@@ -244,6 +244,8 @@ test('bulk endpoints use authenticated user paths and status GET never starts wo
     const req = { user: { directories: dirs }, body: { directories: other, root: other.root } };
     const read = response(); routes.get('GET /storage-migration')(req, read);
     assert.equal(read.value.migration, null);
+    const health = response(); routes.get('GET /health')(req, health);
+    assert.equal(health.value.storageMaintenance, 1);
     const start = response(); routes.get('POST /storage-migration')(req, start);
     assert.equal(start.value.migration.status, 'running');
     let done;
@@ -253,6 +255,16 @@ test('bulk endpoints use authenticated user paths and status GET never starts wo
         await new Promise(resolve => setTimeout(resolve, 5));
     }
     assert.equal(done.status, 'complete');
+    const manual = response();
+    routes.get('POST /storage-migration')({ ...req, body: { ...req.body, retry: true, maintenance: true } }, manual);
+    assert.equal(manual.value.migration.maintenance, 1);
+    for (let count = 0; count < 100; count++) {
+        const res = response(); routes.get('GET /storage-migration')(req, res); done = res.value.migration;
+        if (done.status !== 'running') break;
+        await new Promise(resolve => setTimeout(resolve, 5));
+    }
+    assert.equal(done.guideCount, 1);
+    assert.equal(done.findings['legacy-plan'], 1);
     assert.equal(header(path.join(other.chats, 'other.jsonl')).chat_metadata.taleFairyGenerationContext.encoding, undefined);
     const unauthorized = response(); routes.get('POST /storage-migration')({ body: { root: dirs.root } }, unauthorized);
     assert.equal(unauthorized.code, 500);
@@ -292,4 +304,153 @@ test('a stuck status endpoint cannot poll forever', async () => {
     assert.equal(sleeps, 900);
     assert.equal(last.status, 'unavailable');
     assert.match(last.error, /server continues independently/);
+});
+
+test('explicit maintenance upgrades old state and packs retries with exact backups and a separate final audit', async t => {
+    const dirs = workspace(t), source = fixture();
+    source.chat_metadata.livingWorldGuide.version = 41;
+    source.chat_metadata.livingWorldGuide.plannerContract = 14;
+    source.chat_metadata.livingWorldGuide.beatDirective = { retired: true };
+    const file = writeChat(dirs, 'legacy-state.jsonl', source), original = fs.readFileSync(file);
+    const manager = createStorageMigrationManager();
+    const result = await manager.start(dirs, { retry: true, maintenance: true }).done;
+    assert.equal(result.maintenance, 1);
+    assert.equal(result.pass, 2);
+    assert.equal(result.remaining, 0);
+    assert.equal(result.issues.length, 0);
+    assert.deepEqual(result.repairs, { retryCaches: 1, stateUpgrades: 1 });
+    assert.equal(result.guideCount, 1, 'normalization is not story regeneration');
+    assert.equal(result.status, 'attention', 'content needing Guide cannot be reported all clean');
+    assert.equal(result.findingCounts['legacy-state'], 1);
+    assert.equal(result.findingCounts['legacy-plan'], 1);
+    assert.equal(result.checks.metadata, 1, 'verification passes do not double count findings');
+    const saved = header(file).chat_metadata;
+    assert.equal(saved.livingWorldGuide.version, STATE_VERSION);
+    assert.equal(saved.livingWorldGuide.plannerContract, 15);
+    assert.equal(saved.livingWorldGuide.canonBootstrapPending, true);
+    assert.equal(Object.hasOwn(saved.livingWorldGuide, 'beatDirective'), false);
+    assert.deepEqual(saved.livingWorldGuide.campaignPreparation, source.chat_metadata.livingWorldGuide.campaignPreparation, 'live preparation and archive are never clipped');
+    assert.deepEqual(saved.continuityMemory, source.chat_metadata.continuityMemory);
+    assert.deepEqual(generationContextEntries(saved.taleFairyGenerationContext), generationContextEntries(source.chat_metadata.taleFairyGenerationContext));
+    assert.deepEqual(gunzipSync(fs.readFileSync(path.join(dirs.root, result.files[0].backup))), original);
+    const mtime = fs.statSync(file).mtimeMs;
+    const statusFile = path.join(dirs.root, 'tale-fairy/storage-migrations/shared-plans-v1/status.json');
+    const receiptTime = fs.statSync(statusFile).mtimeMs;
+    assert.deepEqual(await createStorageMigrationManager().start(dirs).done, result, 'content attention stops on reopen too');
+    assert.equal(fs.statSync(statusFile).mtimeMs, receiptTime);
+    const again = await manager.start(dirs, { retry: true, maintenance: true }).done;
+    assert.equal(again.converted, 0);
+    assert.equal(again.pass, 1);
+    assert.equal(fs.statSync(file).mtimeMs, mtime);
+    assert.equal(again.guideCount, 1);
+    const report = publicStorageMigration(result);
+    assert.equal(report.findings['legacy-plan'], 1);
+    assert.equal(JSON.stringify(report).includes('legacy-state.jsonl'), false);
+    assert.equal(Object.hasOwn(report, 'files'), false);
+});
+
+test('maintenance is opt-in and an existing completed storage receipt does not trigger expanded work on startup', async t => {
+    const dirs = workspace(t), source = fixture();
+    source.chat_metadata.livingWorldGuide.version = 58;
+    const file = writeChat(dirs, 'import.jsonl', source);
+    const manager = createStorageMigrationManager();
+    const old = await manager.start(dirs).done;
+    assert.equal(old.status, 'complete');
+    assert.equal(header(file).chat_metadata.livingWorldGuide.version, 58);
+    assert.deepEqual(await createStorageMigrationManager().start(dirs).done, old);
+    assert.equal(old.maintenance, undefined);
+    const next = await manager.start(dirs, { retry: true, maintenance: true }).done;
+    assert.equal(next.maintenance, 1);
+    assert.equal(next.repairs.stateUpgrades, 1);
+});
+
+test('expanded maintenance covers legacy group current/past metadata and does not downgrade unsupported state', async t => {
+    const dirs = workspace(t), source = fixture();
+    source.chat_metadata.livingWorldGuide.version = 58;
+    const future = structuredClone(source.chat_metadata);
+    future.livingWorldGuide.version = 999;
+    future.livingWorldGuide.plannerContract = 99;
+    const file = path.join(dirs.groups, 'group.json');
+    fs.writeFileSync(file, JSON.stringify({ chat_metadata: source.chat_metadata, past_metadata: { old: source.chat_metadata, future } }));
+    const result = await createStorageMigrationManager().start(dirs, { maintenance: true }).done;
+    assert.equal(result.remaining, 0);
+    assert.equal(result.checks.metadata, 3);
+    assert.equal(result.repairs.stateUpgrades, 2);
+    assert.equal(result.repairs.retryCaches, 3);
+    assert.equal(result.findingCounts['unsupported-state'], 1);
+    const saved = JSON.parse(fs.readFileSync(file));
+    assert.deepEqual(saved.past_metadata.future.livingWorldGuide, future.livingWorldGuide);
+    assert.equal(saved.past_metadata.old.livingWorldGuide.version, STATE_VERSION);
+});
+
+test('state upgrades replace only Tale Fairy values, retaining raw unrelated headers and every message byte', async t => {
+    const dirs = workspace(t), state = fixture().chat_metadata.livingWorldGuide;
+    state.version = 58;
+    const prefix = '\uFEFF{ "chat_metadata" : {"ignored":1}, "chat_metadata" : { "continuityMemory":{"number":90071992547409931234,"zero":-0}, "livingWorldGuide" : ';
+    const suffix = ', "other": [  1, 2 ] }, "extra": true }\r\n{"mes":"Exact body"}\r\n';
+    const file = path.join(dirs.chats, 'raw-state.jsonl');
+    fs.writeFileSync(file, prefix + JSON.stringify(state) + suffix);
+    const result = await createStorageMigrationManager().start(dirs, { maintenance: true }).done;
+    assert.equal(result.repairs.stateUpgrades, 1);
+    assert.equal(fs.readFileSync(file, 'utf8'), prefix + JSON.stringify(header(file).chat_metadata.livingWorldGuide) + suffix);
+});
+
+test('state migration retains raw live preparation/archive and unknown unchanged state values', async t => {
+    const dirs = workspace(t), state = fixture().chat_metadata.livingWorldGuide;
+    state.version = 58;
+    const rawPlan = JSON.stringify(state.campaignPreparation).replace('"retained":true', '"retained":true,"large":90071992547409931234,"zero":-0');
+    const rawState = JSON.stringify({ ...state, campaignPreparation: 'PLAN_SENTINEL' })
+        .replace('"PLAN_SENTINEL"', rawPlan).replace(/}$/, ',"unknownExtra":{"n":90071992547409931234,"n":-0}}');
+    const file = path.join(dirs.chats, 'raw-plan.jsonl');
+    fs.writeFileSync(file, '{"chat_metadata":{"livingWorldGuide":' + rawState + '}}\n{"mes":"untouched"}');
+    const result = await createStorageMigrationManager().start(dirs, { maintenance: true }).done;
+    assert.equal(result.repairs.stateUpgrades, 1);
+    const raw = fs.readFileSync(file, 'utf8');
+    assert.ok(raw.includes('"campaignPreparation":' + rawPlan));
+    assert.ok(raw.includes('"unknownExtra":{"n":90071992547409931234,"n":-0}'));
+});
+
+test('damaged retries block the whole file repair without losing original legacy state', async t => {
+    const dirs = workspace(t), source = fixture();
+    source.chat_metadata.livingWorldGuide.version = 58;
+    source.chat_metadata.taleFairyGenerationContext.encoding = 'future-format';
+    const file = writeChat(dirs, 'bad.jsonl', source), original = fs.readFileSync(file);
+    const result = await createStorageMigrationManager().start(dirs, { maintenance: true }).done;
+    assert.equal(result.status, 'attention');
+    assert.equal(result.issues.length, 1);
+    assert.equal(result.converted, 0);
+    assert.deepEqual(fs.readFileSync(file), original);
+});
+
+test('interrupted explicit maintenance resumes its suite, while a running storage-only job cannot masquerade as maintenance', async t => {
+    const dirs = workspace(t);
+    writeChat(dirs, 'old.jsonl');
+    const manager = createStorageMigrationManager();
+    const old = manager.start(dirs);
+    assert.throws(() => manager.start(dirs, { retry: true, maintenance: true }), /storage-only conversion is running/);
+    await old.done;
+    const result = await manager.start(dirs, { retry: true, maintenance: true }).done;
+    const statusFile = path.join(dirs.root, 'tale-fairy/storage-migrations/shared-plans-v1/status.json');
+    fs.writeFileSync(statusFile, JSON.stringify({ ...result, status: 'running', completedAt: null }));
+    const resumed = await createStorageMigrationManager().start(dirs).done;
+    assert.equal(resumed.maintenance, 1);
+    assert.equal(resumed.checks.metadata, 1);
+    assert.notEqual(resumed.status, 'running');
+});
+
+test('manual client sends expanded intent, refuses old server results and stops for content attention', async () => {
+    let body, last, sleeps = 0;
+    const check = createStorageMigrationClient({ api: async (_route, options) => {
+        body = JSON.parse(options.body);
+        return { migration: { maintenance: 1, status: 'attention', remaining: 0, guideCount: 2 } };
+    }, sleep: async () => { sleeps++; }, onChange: state => { last = state; } });
+    await check({ retry: true, maintenance: true });
+    assert.deepEqual(body, { retry: true, maintenance: true });
+    assert.equal(last.status, 'attention');
+    assert.equal(sleeps, 0);
+    assert.match(storageMigrationLabel(last), /0 safe repairs pending · 2 need Guide now/);
+    const old = createStorageMigrationClient({ api: async () => ({ migration: { status: 'complete' } }), onChange: state => { last = state; } });
+    assert.equal(await old({ retry: true, maintenance: true }), null);
+    assert.equal(last.status, 'unavailable');
+    assert.match(last.error, /did not run the expanded/);
 });

@@ -6,6 +6,8 @@ import { isDeepStrictEqual } from 'node:util';
 import { setImmediate as yieldIO } from 'node:timers/promises';
 import { compactGenerationContextCache, compactGenerationPacket, generationCachePackets,
     generationContextEntries, GENERATION_CONTEXT_KEY } from '../extension/generation-context.js';
+import { CHAT_MAINTENANCE_VERSION, upgradeChatMetadata, inspectChatMetadata } from '../extension/chat-maintenance.js';
+import { STATE_KEY } from '../extension/state.js';
 
 export const STORAGE_MIGRATION = 'shared-plans-v1';
 const MAX_PASSES = 3;
@@ -36,21 +38,39 @@ export function verifiedCompactCache(cache) {
     return next;
 }
 
-function compactMetadata(metadata) {
-    if (!record(metadata) || !Object.hasOwn(metadata, GENERATION_CONTEXT_KEY)) return metadata;
-    const cache = metadata[GENERATION_CONTEXT_KEY];
-    const next = verifiedCompactCache(cache);
-    return next === cache ? metadata : { ...metadata, [GENERATION_CONTEXT_KEY]: next };
+function compactMetadata(metadata, maintenance) {
+    if (!record(metadata)) return metadata;
+    let next = maintenance ? upgradeChatMetadata(metadata) : metadata;
+    if (Object.hasOwn(metadata, GENERATION_CONTEXT_KEY)) {
+        const cache = verifiedCompactCache(metadata[GENERATION_CONTEXT_KEY]);
+        if (cache !== metadata[GENERATION_CONTEXT_KEY]) next = { ...next, [GENERATION_CONTEXT_KEY]: cache };
+    }
+    return next;
 }
 
-function compactHeader(header, legacyGroup) {
-    const metadata = compactMetadata(header.chat_metadata);
+function compactHeader(header, legacyGroup, maintenance) {
+    const metadata = compactMetadata(header.chat_metadata, maintenance);
     let next = metadata === header.chat_metadata ? header : { ...header, chat_metadata: metadata };
     if (legacyGroup && record(header.past_metadata)) {
-        const past = Object.fromEntries(Object.entries(header.past_metadata).map(([key, value]) => [key, compactMetadata(value)]));
+        const past = Object.fromEntries(Object.entries(header.past_metadata).map(([key, value]) => [key, compactMetadata(value, maintenance)]));
         if (Object.keys(past).some(key => past[key] !== header.past_metadata[key])) next = { ...next, past_metadata: past };
     }
     return next;
+}
+
+function metadataRecords(header, legacyGroup) {
+    return [['chat_metadata', header.chat_metadata], ...(legacyGroup && record(header.past_metadata)
+        ? Object.entries(header.past_metadata).map(([key, value]) => [`past_metadata/${key}`, value]) : [])].filter(([, value]) => record(value));
+}
+
+function repairCounts(before, after, legacyGroup) {
+    const old = new Map(metadataRecords(before, legacyGroup));
+    const counts = { retryCaches: 0, stateUpgrades: 0 };
+    for (const [key, metadata] of metadataRecords(after, legacyGroup)) {
+        if (old.get(key)?.[GENERATION_CONTEXT_KEY] !== metadata[GENERATION_CONTEXT_KEY]) counts.retryCaches++;
+        if (old.get(key)?.[STATE_KEY] !== metadata[STATE_KEY]) counts.stateUpgrades++;
+    }
+    return counts;
 }
 
 function inside(root, file) {
@@ -186,21 +206,37 @@ function propertySpan(text, start, key) {
         index = skipSpace(text, valueStop);
         if (text[index] === ',') index = skipSpace(text, index + 1);
     }
-    if (!found) throw Error('Retry storage field could not be located; original retained.');
+    if (!found) throw Error('Tale Fairy metadata field could not be located; original retained.');
     return found;
 }
 
-function replaceCacheValues(text, before, after, legacyGroup) {
+function replaceMetadataValues(text, before, after, legacyGroup) {
     const replacements = [];
-    function replace(keys, cache) {
+    function replace(keys, value, previous) {
         let span = { start: skipSpace(text, 0) };
         for (const key of keys) span = propertySpan(text, span.start, key);
-        replacements.push({ ...span, value: JSON.stringify(cache) });
+        let serialized = JSON.stringify(value);
+        if (keys.at(-1) === STATE_KEY && record(previous) && record(value)) {
+            // The normalizer clones the live preparation/archive. Preserve its
+            // exact raw JSON, and every other unchanged root value, rather than
+            // rounding historical numeric literals through JSON.stringify.
+            const retained = [];
+            for (const key of Object.keys(value)) if (Object.hasOwn(previous, key) && isDeepStrictEqual(previous[key], value[key])) {
+                const old = propertySpan(text, span.start, key), next = propertySpan(serialized, 0, key);
+                retained.push({ ...next, value: text.slice(old.start, old.end) });
+            }
+            for (const part of retained.sort((a, b) => b.start - a.start)) serialized = serialized.slice(0, part.start) + part.value + serialized.slice(part.end);
+        }
+        replacements.push({ ...span, value: serialized });
     }
-    if (before.chat_metadata !== after.chat_metadata) replace(['chat_metadata', GENERATION_CONTEXT_KEY], after.chat_metadata[GENERATION_CONTEXT_KEY]);
+    function replaceMetadata(keys, old, next) {
+        if (old === next) return;
+        for (const key of [GENERATION_CONTEXT_KEY, STATE_KEY]) if (old[key] !== next[key]) replace([...keys, key], next[key], old[key]);
+    }
+    replaceMetadata(['chat_metadata'], before.chat_metadata, after.chat_metadata);
     if (legacyGroup && before.past_metadata !== after.past_metadata) {
         for (const key of Object.keys(after.past_metadata)) {
-            if (before.past_metadata[key] !== after.past_metadata[key]) replace(['past_metadata', key, GENERATION_CONTEXT_KEY], after.past_metadata[key][GENERATION_CONTEXT_KEY]);
+            replaceMetadata(['past_metadata', key], before.past_metadata[key], after.past_metadata[key]);
         }
     }
     for (const span of replacements.sort((a, b) => b.start - a.start)) text = text.slice(0, span.start) + span.value + text.slice(span.end);
@@ -217,13 +253,13 @@ function convertFile(config, item, observed, nextHeader) {
     if (item.legacyGroup) {
         if (!Buffer.from(original.toString('utf8')).equals(original)) throw Error('Invalid UTF-8 metadata; original retained.');
         if (!isDeepStrictEqual(JSON.parse(original.toString('utf8').replace(/^\uFEFF/u, '')), observed.header)) throw Error('Group changed during migration; original retained.');
-        next = replaceCacheValues(original.toString('utf8'), observed.header, nextHeader, true);
+        next = replaceMetadataValues(original.toString('utf8'), observed.header, nextHeader, true);
     } else {
         const end = original.indexOf(10);
         const line = end < 0 ? original : original.subarray(0, end);
         if (!Buffer.from(line.toString('utf8')).equals(line)) throw Error('Invalid UTF-8 metadata; original retained.');
         if (!line.equals(observed.line)) throw Error('Chat changed during migration; original retained.');
-        next = Buffer.concat([replaceCacheValues(line.toString('utf8'), observed.header, nextHeader, false),
+        next = Buffer.concat([replaceMetadataValues(line.toString('utf8'), observed.header, nextHeader, false),
             end < 0 ? Buffer.alloc(0) : original.subarray(end)]);
     }
     // A recoverable exact original, compressed so backups do not duplicate the
@@ -257,7 +293,8 @@ export function publicStorageMigration(status) {
     if (!status) return null;
     const { migration, status: state, startedAt, completedAt, pass, checked, converted, remaining, beforeBytes, afterBytes } = status;
     return { migration, status: state, startedAt, completedAt, pass, checked, converted, remaining, beforeBytes, afterBytes,
-        issueCount: status.issues?.length || 0 };
+        issueCount: status.issues?.length || 0, ...(status.maintenance ? { maintenance: status.maintenance, repairs: status.repairs,
+            checks: status.checks, guideCount: status.guideCount, reviewCount: status.reviewCount, findings: status.findingCounts } : {}) };
 }
 
 export function createStorageMigrationManager() {
@@ -267,14 +304,22 @@ export function createStorageMigrationManager() {
             const config = locations(directories);
             return jobs.get(config.scope)?.state || savedStatus(config);
         },
-        start(directories, { retry = false, beforeConvert } = {}) {
+        start(directories, { retry = false, maintenance = false, beforeConvert } = {}) {
             const config = locations(directories);
             const running = jobs.get(config.scope);
-            if (running?.state.status === 'running') return running;
+            if (running?.state.status === 'running') {
+                if (maintenance && !running.state.maintenance) throw Error('A storage-only conversion is running. Wait for it to finish, then scan, repair & compress again.');
+                return running;
+            }
             const saved = running?.state || savedStatus(config);
             if (!retry && ['complete', 'attention'].includes(saved?.status)) return { state: saved, done: Promise.resolve(saved) };
+            // Resume an interrupted explicit maintenance run, but never expand
+            // a completed old receipt into an unsolicited startup sweep.
+            maintenance ||= saved?.status === 'running' && saved.maintenance === CHAT_MAINTENANCE_VERSION;
             const state = { migration: STORAGE_MIGRATION, scope: config.scope, status: 'running', startedAt: new Date().toISOString(),
                 completedAt: null, pass: 0, checked: 0, converted: 0, remaining: null, beforeBytes: 0, afterBytes: 0, issues: [], files: [] };
+            if (maintenance) Object.assign(state, { maintenance: CHAT_MAINTENANCE_VERSION, repairs: { retryCaches: 0, stateUpgrades: 0 },
+                checks: {}, guideCount: 0, reviewCount: 0, findingCounts: {}, findings: [] });
             const job = { state, done: null };
             jobs.set(config.scope, job);
             job.done = (async () => {
@@ -287,6 +332,7 @@ export function createStorageMigrationManager() {
                         const stamps = new Map(), present = new Set(scan.files.map(item => item.file));
                         for (const file of fileIssues.keys()) if (!present.has(file)) fileIssues.delete(file);
                         state.checked = 0; state.remaining = 0; state.issues = [...scan.issues, ...fileIssues.values()];
+                        if (maintenance) Object.assign(state, { checks: {}, guideCount: 0, reviewCount: 0, findingCounts: {}, findings: [] });
                         for (const item of scan.files) {
                             await yieldIO();
                             state.checked++;
@@ -294,7 +340,17 @@ export function createStorageMigrationManager() {
                                 safePath(config.root, item.file);
                                 stamps.set(item.file, fileStamp(item.file));
                                 const observed = readHeader(item.file, item.legacyGroup);
-                                const next = compactHeader(observed.header, item.legacyGroup);
+                                const next = compactHeader(observed.header, item.legacyGroup, maintenance);
+                                if (maintenance) for (const [location, metadata] of metadataRecords(observed.header, item.legacyGroup)) {
+                                    const report = inspectChatMetadata(metadata);
+                                    for (const [key, count] of Object.entries(report.checks)) state.checks[key] = (state.checks[key] || 0) + count;
+                                    state.guideCount += Number(report.needsGuide);
+                                    state.reviewCount += Number(report.needsReview);
+                                    for (const finding of report.findings) {
+                                        state.findingCounts[finding.code] = (state.findingCounts[finding.code] || 0) + finding.count;
+                                        state.findings.push({ file: path.relative(config.root, item.file), location, ...finding });
+                                    }
+                                }
                                 if (next === observed.header) { fileIssues.delete(item.file); continue; }
                                 state.remaining++;
                                 if (pass === MAX_PASSES) {
@@ -310,6 +366,10 @@ export function createStorageMigrationManager() {
                                 state.beforeBytes += sizes.beforeBytes;
                                 state.afterBytes += sizes.afterBytes;
                                 state.files.push({ file: path.relative(config.root, item.file), ...sizes });
+                                if (maintenance) {
+                                    const repairs = repairCounts(observed.header, next, item.legacyGroup);
+                                    for (const [key, count] of Object.entries(repairs)) state.repairs[key] += count;
+                                }
                             } catch (error) { fileIssues.set(item.file, { file: path.relative(config.root, item.file), error: error.message }); }
                             finally { state.issues = [...scan.issues, ...fileIssues.values()]; }
                         }
@@ -323,14 +383,14 @@ export function createStorageMigrationManager() {
                         });
                         if (changed) {
                             state.remaining = Math.max(1, state.remaining);
-                            if (pass === MAX_PASSES) state.issues.push({ error: 'Storage changed during verification; use Check all chat storage to retry.' });
+                            if (pass === MAX_PASSES) state.issues.push({ error: 'Storage changed during verification; use Scan, repair & compress to retry.' });
                         }
                         saveStatus(config, state);
                         // A fresh, full read-only pass must find no remaining
                         // conversions. Terminal receipts prevent startup loops.
                         if (!state.remaining) break;
                     }
-                    state.status = !state.remaining && !state.issues.length ? 'complete' : 'attention';
+                    state.status = !state.remaining && !state.issues.length && !state.guideCount && !state.reviewCount ? 'complete' : 'attention';
                 } catch (error) {
                     state.status = 'attention';
                     state.issues.push({ error: error.message });

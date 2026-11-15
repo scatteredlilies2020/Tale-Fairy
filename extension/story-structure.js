@@ -171,6 +171,11 @@ export function validateStoryStructure(structure, check) {
     }
 }
 
+export function hasLegacyEffects(record) {
+    return Array.isArray(record?.effects) && record.effects.some(effect => effect && typeof effect === 'object'
+        && (!Object.hasOwn(effect, 'weight') || !Object.hasOwn(effect, 'scope')));
+}
+
 export function previousStoryNodes(plan = {}) {
     if (plan.storyStructure?.version === STORY_STRUCTURE_VERSION) return structuredClone(plan.storyStructure.nodes);
     // Read old proposals without treating their invented stages as events.

@@ -15,7 +15,8 @@
       <div class="living-world-guide-status" role="status" aria-live="polite">Story context: <span data-role="injection-status">No request verified on this page</span></div>
       <div class="living-world-guide-status">Request tracker: <span data-role="attempt-status">No recorded planner request</span></div>
       <div class="living-world-guide-status" role="status" aria-live="polite">Storage: <span data-role="storage-migration">Waiting for server storage check.</span></div>
-      <button class="menu_button" type="button" data-action="check-storage" title="Check all this user's chats for old retry storage. No AI requests. Completed automatic checks stay stopped until explicitly rechecked.">Check all chat storage</button>
+      <button class="menu_button" type="button" data-action="check-storage" title="Scan all this user's chats, apply existing state migrations, verify and compress retry storage, and flag story conversions that need Guide now. No AI requests. Stops after bounded verification.">Scan, repair &amp; compress</button>
+      <details class="living-world-guide-status"><summary>Maintenance details</summary><div data-role="storage-details" style="white-space:pre-wrap;overflow-wrap:anywhere">Safe repairs and compression are automatic; story changes need Guide now. No AI requests.</div></details>
       <div class="living-world-guide-card">
         <details>
           <summary data-role="problem-count">Recent problems (0)</summary>

@@ -1,5 +1,6 @@
-import { sha256 } from './sha256.js?v=0.20.17';
-import { createStorageMigrationClient, storageMigrationLabel } from './storage-migration.js?v=0.20.17';
+import { sha256 } from './sha256.js?v=0.20.18';
+import { createStorageMigrationClient, storageMigrationLabel, storageMaintenanceDetails } from './storage-migration.js?v=0.20.18&chat-maintenance=1';
+import { upgradeChatMetadata } from './chat-maintenance.js?v=0.20.18&effect-migration=1&effect-retention=1&planner-input=1&episode-fields=1&token-budget=1&rp-plot=1&progress=1&response=2&history-budget=1&partial-updates=1&partial-evidence=1&creative=1&follow-through=1&compaction=1&working-plan=1&guidance-preview=1&draft-budget=1&recovery=1&review-checkpoint=1&commit-revision=1&rp-opportunities=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&rp-activities=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&full-rebuild=1&empty-fields=1&open-scope=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&planner-timeout=1&player-cards=1&no-phase=1&present-future=1&creative-planning=1&fresh-summary=1&world-frame=1&frame-stability=1&rp-world-frame=1&portable-frame=1&genre-frame=1&arc-focus=1&server-jobs=1&saga-hierarchy=1&chapter-labels=1&future-chapters=1&chapter-scope=2&future-cards=1&story-persistence=1&future-controls=1&causal-futures=1&context-guard=1&writer-target=2&writer-fit=1&continuous-guidance=2&compact-cache=1&gemini4=1&nonblocking-injection=1&bounded-retries=1&passive-browsing=1&resource-policy=1&pending-recovery=1&future-notes=1&fork-sdk=1&causal-effects=1&world-initiative=1&model-discovery=2&future-decision-blank=1&weighted-influences=2&future-bridges=1&context-chunks=1&shared-plans=1&bulk-storage=1&chat-maintenance=1';
 import { PROBLEM_LOG_KEY, problemHistory, appendProblem, clearProblems, attemptProblem, attemptProblemDismissed, problemMessage } from './problem-log.js?v=0.20.16';
 import { normalizePlannerContext, plannerContextLimit, plannerInputCapacity, plannerOutputCapacity, plannerModeInputTokens } from './planner-capacity.js?context-guard=1&concise-prompts=1&portable-frame=1&horizon-links=3';
 import { renderFutureCards } from './future-cards.js?future-cards=1&future-controls=1&causal-futures=1&problem-log=1';
@@ -65,7 +66,7 @@ import { createFutureHost, serializeActivePlanner } from './future-host.js?v=0.2
 const activatedStoryContext = new ActivatedStoryContext();
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.20.17';
+const RUNTIME_VERSION = '0.20.18';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -451,6 +452,8 @@ function installDetachedPlannerTransport() {
 }
 
 let storageMigrationState = null;
+let storageMaintenanceAvailable = false;
+let storageMaintenancePending = false;
 const checkAllChatStorage = createStorageMigrationClient({
     api: plannerServerApi,
     onChange: state => { storageMigrationState = state; renderStorageMigration(); },
@@ -460,8 +463,47 @@ function renderStorageMigration() {
     const root = document.querySelector(`#${EXTENSION_ID}-settings`);
     const status = root?.querySelector('[data-role="storage-migration"]');
     if (status) status.textContent = storageMigrationLabel(storageMigrationState);
+    const details = root?.querySelector('[data-role="storage-details"]');
+    if (details) details.textContent = storageMaintenanceDetails(storageMigrationState)
+        + (storageMaintenanceAvailable ? '' : ' Restart ST with the updated plugin to enable expanded maintenance.');
     const button = root?.querySelector('[data-action="check-storage"]');
-    if (button) button.disabled = storageMigrationState?.status === 'running';
+    if (button) button.disabled = storageMaintenancePending || storageMigrationState?.status === 'running' || !storageMaintenanceAvailable;
+}
+
+async function runChatMaintenance() {
+    await detachedPlannerReady;
+    if (!storageMaintenanceAvailable || storageMaintenancePending) return;
+    if (analysisPromise || campaignHostWork || campaignSession?.pending || futureHost?.pending) {
+        storageMigrationState = { status: 'unavailable', error: 'Wait for active planning to finish before running maintenance.' };
+        renderStorageMigration();
+        return;
+    }
+    storageMaintenancePending = true;
+    renderStorageMigration();
+    try {
+        const context = currentContext();
+        const chatId = String(context.getCurrentChatId?.() || '');
+        if (chatId) await context.saveMetadata?.();
+        const snapshot = JSON.stringify(context.chatMetadata);
+        const result = await checkAllChatStorage({ retry: true, maintenance: true });
+        const active = currentContext();
+        // Mirror only a verified, unchanged active chat. Do not save a stale
+        // browser snapshot over a concurrent edit or a different chat.
+        if (result?.maintenance === 1 && !result.issueCount && !result.remaining && chatId
+            && String(active.getCurrentChatId?.() || '') === chatId && JSON.stringify(active.chatMetadata) === snapshot) {
+            let metadata = upgradeChatMetadata(active.chatMetadata);
+            const cache = compactGenerationContextCache(metadata?.[GENERATION_CONTEXT_KEY]);
+            if (cache !== metadata?.[GENERATION_CONTEXT_KEY]) metadata = { ...metadata, [GENERATION_CONTEXT_KEY]: cache };
+            if (metadata !== active.chatMetadata) active.updateChatMetadata(metadata);
+            updatePrompt(loadState(metadata));
+            renderBoard();
+        }
+    } catch (error) {
+        storageMigrationState = { status: 'unavailable', error: `Maintenance stopped: ${error.message}` };
+    } finally {
+        storageMaintenancePending = false;
+        renderStorageMigration();
+    }
 }
 
 async function initializeDetachedPlanner() {
@@ -470,6 +512,7 @@ async function initializeDetachedPlanner() {
         detachedPlannerEnabled = health?.detachedPlanner === true;
         detachedCampaignEnabled = health?.campaignJobs === 1;
         detachedFutureEnabled = health?.futureJobs === 1;
+        storageMaintenanceAvailable = health?.storageMaintenance === 1;
         if (health?.storageMigration === 1) void checkAllChatStorage();
         else {
             storageMigrationState = { status: 'unavailable', error: 'Update the server plugin and restart ST for bulk conversion; open-chat conversion remains available.' };
@@ -3905,7 +3948,7 @@ async function mountUI() {
     uiMountPromise = (async () => {
     // Load the template relative to this module so the extension works from
     // third-party/Tale-Fairy as well as any legacy installation directory.
-    const response = await fetch(new URL(`./settings.html?v=${RUNTIME_VERSION}&progress=1&working-plan=1&soft-targets=1&story-map=1&story-goal=2&full-rebuild=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&fresh-summary=1&future-cards=1&future-controls=1&causal-futures=1&continuous-guidance=2`, import.meta.url));
+    const response = await fetch(new URL(`./settings.html?v=${RUNTIME_VERSION}&progress=1&working-plan=1&soft-targets=1&story-map=1&story-goal=2&full-rebuild=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&fresh-summary=1&future-cards=1&future-controls=1&causal-futures=1&continuous-guidance=2&chat-maintenance=1`, import.meta.url));
     if (!response.ok) {
         throw new Error(`Could not load Tale Fairy settings: ${response.status} ${response.statusText}`);
     }
@@ -4060,7 +4103,7 @@ async function mountUI() {
     });
     root.querySelector('[data-action="stop"]').addEventListener('click', stopAnalysis);
     root.querySelector('[data-action="clear-problems"]')?.addEventListener('click', clearPlannerProblems);
-    root.querySelector('[data-action="check-storage"]')?.addEventListener('click', () => void checkAllChatStorage({ retry: true }));
+    root.querySelector('[data-action="check-storage"]')?.addEventListener('click', () => void runChatMaintenance());
     root.querySelector('[data-action="reset-settings"]').addEventListener('click', () => resetSettingsToDefaults(root));
     root.querySelector('[data-action="reset"]').addEventListener('click', resetState);
     root.querySelector('[data-action="note"]').addEventListener('click', async () => {
