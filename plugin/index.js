@@ -1,8 +1,10 @@
 import crypto from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
+import { createStorageMigrationManager, publicStorageMigration } from './storage-migration.js';
 
 const PLUGIN = 'tale-fairy';
-const VERSION = '0.20.16';
+const VERSION = '0.20.17';
+const storageMigration = createStorageMigrationManager();
 const jobs = new Map();
 const MAX_FINISHED_JOBS = 40;
 const MAX_RESPONSE_BYTES = 32 * 1024 * 1024;
@@ -423,7 +425,21 @@ function sendError(res, error) {
 
 export async function init(router, { fetchImpl = fetch, retryDelays = [15000, 60000], requestTimeoutMs = REQUEST_TIMEOUT_MS, maxNetworkAttempts = Infinity } = {}) {
     router.get('/health', (_req, res) => {
-        res.json({ ok: true, plugin: PLUGIN, version: VERSION, detachedPlanner: true, campaignJobs: 1, futureJobs: 1 });
+        res.json({ ok: true, plugin: PLUGIN, version: VERSION, detachedPlanner: true, campaignJobs: 1, futureJobs: 1, storageMigration: 1 });
+    });
+
+    router.post('/storage-migration', (req, res) => {
+        try {
+            // Paths always come from authenticated ST user directories, never
+            // request data. Concurrent tabs join one finite, server-owned run.
+            const job = storageMigration.start(req.user?.directories, { retry: req.body?.retry === true });
+            res.json({ ok: true, migration: publicStorageMigration(job.state) });
+        } catch (error) { sendError(res, error); }
+    });
+
+    router.get('/storage-migration', (req, res) => {
+        try { res.json({ ok: true, migration: publicStorageMigration(storageMigration.status(req.user?.directories)) }); }
+        catch (error) { sendError(res, error); }
     });
 
     router.post('/planner-jobs/generate', async (req, res) => {

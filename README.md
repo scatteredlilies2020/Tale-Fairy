@@ -53,7 +53,9 @@ For a bias named **Shared musical exploration**, scoped to club leisure, matchin
 
 ## Retry storage
 
-Retry snapshots store identical plans once in a shared table. Existing retry caches migrate automatically when the chat opens; each retry restores an independent copy with its original guidance and validation. Live campaign history stays intact. This lossless storage change does not shorten AI prompts or require a generation.
+Retry snapshots store identical plans once in a shared table. With the updated server plugin, a finite background migration checks **all of the signed-in user's chats**, including unopened and group chats. It converts old retry storage, verifies every changed file, then makes a fresh full pass. **Zero stale files and zero issues** save a durable completion receipt: scanning and browser polling stop, including after reloads/restarts. Interrupted runs resume on the next page load; unreadable, unsupported or changing files are reported as needing attention instead of silently counted as complete. Automatic retries are bounded, never an endless sweep.
+
+**Storage** in the extension panel shows progress and completion. **Check all chat storage** explicitly rechecks after importing older chats or fixing a reported file issue. Each changed file has an exact, verified gzip recovery copy under the user's `tale-fairy/storage-migrations/shared-plans-v1/backups` directory; backups are not automatically deleted. Other metadata and message bytes stay untouched. Original live campaign history stays intact, and each retry restores an independent plan with its original guidance and validation. Open-chat migration remains the fallback without the server plugin. This storage-only change makes no AI requests and does not shorten AI prompts or require a rebuild.
 
 ## Future Chapters
 

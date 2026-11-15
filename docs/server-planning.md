@@ -33,7 +33,15 @@ Browser health and job-status checks also stop after 15 seconds, including a sta
 
 The updated backend must be loaded as SillyTavern's `plugins/tale-fairy` server plugin, with server plugins enabled. Restart SillyTavern after updating it, then reload desktop/phone pages. Older or unavailable plugins leave the extension browser-bound. The health endpoint reports `campaignJobs: 1` when this capability is loaded.
 
-The SillyTavern process must remain running. Jobs are held in server memory, not a persistent queue: a server restart, shutdown or OS process kill loses them. The server retains its latest 40 terminal jobs globally. This release handles browser closure, not machine shutdown or unlimited result retention. Provider credentials and forwarded authentication headers are never included in public job metadata; request input and guards are visible only to the owning SillyTavern user.
+The SillyTavern process must remain running. Planner jobs are held in server memory, not a persistent queue: a server restart, shutdown or OS process kill loses them. The server retains its latest 40 terminal planner jobs globally. This release handles browser closure, not machine shutdown or unlimited result retention. Provider credentials and forwarded authentication headers are never included in public job metadata; request input and guards are visible only to the owning SillyTavern user.
+
+## Finite bulk retry-storage migration — v0.20.17
+
+The health capability `storageMigration: 1` enables one automatic server-owned conversion of the authenticated user's single/group chat storage, including legacy group metadata. `POST /storage-migration` starts or joins it; `GET /storage-migration` only reads aggregate progress. Neither route accepts user-supplied filesystem paths or sends provider requests. Multiple tabs share one run; closing a page does not stop server work.
+
+After conversion, a fresh inventory/read verifies **zero remaining stale caches and zero file issues** before writing `tale-fairy/storage-migrations/shared-plans-v1/status.json` beneath that user's data directory. A complete receipt prevents further automatic sweeps, including after a server restart. Client polling stops on completion, errors or a finite wait limit. A maximum of three passes prevents concurrent edits from causing an endless loop; uncertain files produce a terminal `attention` result, never false completion. Interrupted, nonterminal receipts resume on the next page load. Explicit **Check all chat storage** (`POST` with `retry: true`) rechecks imported old chats or retries fixed issues.
+
+The converter validates every retry round trip and the same authenticated packet set, changes only retry-cache JSON values, preserves other metadata and message bytes, creates and reads back an exact gzip backup, rechecks source bytes immediately before atomic replacement, and verifies the written file. It never follows linked storage paths or deletes backups. The backend's synchronous replace critical section does not yield to ST chat saves. Recoverable originals and detailed local results stay under the migration directory; public status exposes only counts and sizes. A local administrator can use `node scripts/migrate-chat-storage.js --user-root <absolute-user-data-directory>` (add `--recheck` only for an intentional new sweep).
 
 ## Story hierarchy
 

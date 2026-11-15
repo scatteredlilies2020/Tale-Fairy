@@ -222,7 +222,7 @@ function sharedPacket(packet, plans) {
     return restored;
 }
 
-function generationCachePackets(cache) {
+export function generationCachePackets(cache) {
     if (cache && Object.hasOwn(cache, 'encoding')) {
         if (cache.encoding !== SHARED_PLANS || cache.version !== 1
             || !Array.isArray(cache.entries) || !Array.isArray(cache.plans)) return [null];

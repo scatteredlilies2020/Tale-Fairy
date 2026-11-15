@@ -1,4 +1,5 @@
-import { sha256 } from './sha256.js?v=0.20.16';
+import { sha256 } from './sha256.js?v=0.20.17';
+import { createStorageMigrationClient, storageMigrationLabel } from './storage-migration.js?v=0.20.17';
 import { PROBLEM_LOG_KEY, problemHistory, appendProblem, clearProblems, attemptProblem, attemptProblemDismissed, problemMessage } from './problem-log.js?v=0.20.16';
 import { normalizePlannerContext, plannerContextLimit, plannerInputCapacity, plannerOutputCapacity, plannerModeInputTokens } from './planner-capacity.js?context-guard=1&concise-prompts=1&portable-frame=1&horizon-links=3';
 import { renderFutureCards } from './future-cards.js?future-cards=1&future-controls=1&causal-futures=1&problem-log=1';
@@ -64,7 +65,7 @@ import { createFutureHost, serializeActivePlanner } from './future-host.js?v=0.2
 const activatedStoryContext = new ActivatedStoryContext();
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.20.16';
+const RUNTIME_VERSION = '0.20.17';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -449,15 +450,36 @@ function installDetachedPlannerTransport() {
     Object.defineProperty(globalThis.fetch, 'taleFairyNativeFetch', { value: plannerNativeFetch });
 }
 
+let storageMigrationState = null;
+const checkAllChatStorage = createStorageMigrationClient({
+    api: plannerServerApi,
+    onChange: state => { storageMigrationState = state; renderStorageMigration(); },
+});
+
+function renderStorageMigration() {
+    const root = document.querySelector(`#${EXTENSION_ID}-settings`);
+    const status = root?.querySelector('[data-role="storage-migration"]');
+    if (status) status.textContent = storageMigrationLabel(storageMigrationState);
+    const button = root?.querySelector('[data-action="check-storage"]');
+    if (button) button.disabled = storageMigrationState?.status === 'running';
+}
+
 async function initializeDetachedPlanner() {
     try {
         const health = await plannerServerApi('/health');
         detachedPlannerEnabled = health?.detachedPlanner === true;
         detachedCampaignEnabled = health?.campaignJobs === 1;
         detachedFutureEnabled = health?.futureJobs === 1;
+        if (health?.storageMigration === 1) void checkAllChatStorage();
+        else {
+            storageMigrationState = { status: 'unavailable', error: 'Update the server plugin and restart ST for bulk conversion; open-chat conversion remains available.' };
+            renderStorageMigration();
+        }
         if (!detachedCampaignEnabled) console.warn(`[${EXTENSION_ID}] Pending campaign recovery requires the updated server plugin; restart SillyTavern after updating Tale Fairy.`);
     } catch (error) {
         detachedPlannerEnabled = false;
+        storageMigrationState = { status: 'unavailable', error: 'Server plugin could not be reached; no bulk conversion was started.' };
+        renderStorageMigration();
         console.warn(`[${EXTENSION_ID}] Browser-independent planner is unavailable; restart SillyTavern after updating Tale Fairy.`, error);
     }
     return detachedPlannerEnabled;
@@ -4038,6 +4060,7 @@ async function mountUI() {
     });
     root.querySelector('[data-action="stop"]').addEventListener('click', stopAnalysis);
     root.querySelector('[data-action="clear-problems"]')?.addEventListener('click', clearPlannerProblems);
+    root.querySelector('[data-action="check-storage"]')?.addEventListener('click', () => void checkAllChatStorage({ retry: true }));
     root.querySelector('[data-action="reset-settings"]').addEventListener('click', () => resetSettingsToDefaults(root));
     root.querySelector('[data-action="reset"]').addEventListener('click', resetState);
     root.querySelector('[data-action="note"]').addEventListener('click', async () => {
@@ -4061,6 +4084,7 @@ async function mountUI() {
     const planning = Boolean(analysisPromise || campaignHostWork || campaignSession?.pending);
     renderAnalysisActivity(planning ? 'Planning…' : 'Ready', planning);
     renderInjectionActivity();
+    renderStorageMigration();
     renderBoard();
     return true;
     })().finally(() => { uiMountPromise = null; });
