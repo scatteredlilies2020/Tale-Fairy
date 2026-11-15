@@ -67,6 +67,8 @@ Future planning follows the RP or simulation's own premise, scale and rules. Pos
 
 Add author instructions to steer the planning. Use **Guide now / Re-evaluate** to refresh it, or **Full rebuild** to clear generated plans and start fresh while keeping your instructions.
 
+**Recent problems** shows timestamped current-guide and future-outlook errors for this chat. **Clear problem log** dismisses those errors without deleting preparation, changing request reservations, stopping active work, or retrying a paid request. A new failed attempt is recorded again. Saved failures remain dismissed after a reload.
+
 For planning that can finish after you close the browser, see [background planning setup](docs/server-planning.md#installation-and-limits).
 
 ## Good to know

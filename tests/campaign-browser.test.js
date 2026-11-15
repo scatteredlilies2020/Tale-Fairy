@@ -2538,6 +2538,21 @@ test('preflight errors release page-local work and leave a later manual pass usa
     assert.match(h.statuses.at(-1), /^Campaign preparation ready · \d+s$/);
 });
 
+test('a recovery skip without a server status cannot strand the preflight timer', async () => {
+    const h = browser();
+    h.scope.showAnalysisPhase = () => { h.scope.analysisPhaseTimer = 42; };
+    h.scope.renderAnalysisActivity = (message, running) => {
+        h.statuses.push(message);
+        if (!running) h.scope.analysisPhaseTimer = null;
+    };
+    h.scope.recoverDetachedCampaignJobs = async () => ({ active: true, recovered: false });
+    await h.scope.analyzeCampaignNow({ manual: true });
+    assert.equal(h.requests.length, 0, 'uncertain server state never buys a duplicate');
+    assert.equal(h.scope.campaignHostWork, null);
+    assert.equal(h.scope.analysisPhaseTimer, null);
+    assert.match(h.statuses.at(-1), /Planner idle.*Guide now can retry/);
+});
+
 test('planner prompt changes invalidate attempt identity without changing accepted-source identity', () => {
     const h = browser();
     const before = h.scope.readCampaignSnapshot();

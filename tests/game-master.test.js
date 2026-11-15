@@ -307,7 +307,7 @@ test('outbound injection updates its own status without clearing planner progres
         document: { querySelector: selector => !mounted ? null : selector.includes('injection-status') ? injection : root },
     });
     vm.runInNewContext(['clearAnalysisPhase', 'renderAnalysisActivity', 'renderInjectionActivity'].map(runtimeFunction).join('\n'), sandbox);
-    sandbox.renderAnalysisActivity('Waiting for planner model · 12s', true);
+    sandbox.renderAnalysisActivity('Waiting for planner model · 12s', true, true);
     const controlsBefore = [...disabled];
     await sandbox.fetch('/api/backends/chat-completions/generate', {
         body: JSON.stringify({ type: 'normal', messages: [{ role: 'user', content: 'I observe.' }] }),

@@ -29,7 +29,7 @@ function cardHtml(card, inactive = false) {
     </article>`;
 }
 
-export function futureCardsHtml(outlook, attempt, { stale = false, invalid = false, includeCanon = true, capacity = 10 } = {}) {
+export function futureCardsHtml(outlook, attempt, { stale = false, invalid = false, includeCanon = true, capacity = 10, problemDismissed = false } = {}) {
     const cards = Array.isArray(outlook?.cards) ? outlook.cards : [];
     const parked = Array.isArray(outlook?.parkedCanon) ? outlook.parkedCanon : [];
     const active = cards.filter(c => c && (includeCanon || c.category !== 'Canon')).slice(0, capacity);
@@ -38,7 +38,7 @@ export function futureCardsHtml(outlook, attempt, { stale = false, invalid = fal
         <div class="tf-board-topline"><span class="tf-card-label">Private possibilities</span><span>${escape(status)}</span></div>
         <p class="tf-board-empty">Provisional order, not an event queue. Possibilities may change, coexist or never happen.</p>
         ${stale ? '<p class="tf-board-warning">Source changed. These saved possibilities await review.</p>' : ''}
-        ${attempt?.error ? `<p class="tf-board-warning">Last request: ${escape(attempt.error)}</p>` : ''}
+        ${attempt?.error && !problemDismissed ? `<p class="tf-board-warning">Last request: ${escape(attempt.error)}</p>` : ''}
         ${parked.length || !includeCanon && cards.some(c => c?.category === 'Canon') || active.length < cards.length ? '<p class="tf-board-warning">Inactive prospects stay saved. Update to reassess their place; canon and capacity settings still apply.</p>' : ''}
         ${invalid ? '<p class="tf-board-warning">Saved outlook is invalid and withheld. Use Update future plans to replace it.</p>'
             : cards.length || parked.length ? `<div class="tf-story-grid">${[...cards, ...parked].map(c => cardHtml(c, !active.includes(c))).join('')}</div>`

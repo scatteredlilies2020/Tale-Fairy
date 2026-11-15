@@ -57,7 +57,7 @@ function recovery(status = 'complete') {
             retain: [], retire: [], select: [] }) };
     const acknowledgements = [], requests = [], commits = [];
     const scope = {
-        detachedPlannerRecovering: false, campaignSession: null, campaignHostWork: null,
+        detachedPlannerRecovering: false, detachedCampaignRecovery: null, campaignSession: null, campaignHostWork: null,
         detachedPlannerReady: Promise.resolve(true), detachedCampaignEnabled: true, analysisStopSequence: 0,
         getSettings: () => ({ enabled: current.enabled }), currentContext: () => ({ getCurrentChatId: () => current.chatId }),
         detachedPlannerJobs: async () => acknowledgements.includes(job.id) ? [] : [job],
@@ -66,11 +66,27 @@ function recovery(status = 'complete') {
         saveCampaignAttempt: async attempt => { current.attempt = attempt; },
         acknowledgeDetachedPlannerJob: async id => acknowledgements.push(id),
         plannerServerApi: async (path, options) => requests.push({ path, ...options }),
-        serverPlannerProgress, renderAnalysisActivity() {}, loadState: () => current.state,
+        serverPlannerProgress, renderAnalysisActivity() {}, recordPlannerProblem() {}, loadState: () => current.state,
     };
-    install(scope, 'recoverDetachedCampaignJobs');
+    install(scope, 'collectDetachedCampaignJobs', 'recoverDetachedCampaignJobs');
     return { current, job, scope, requests, commits, acknowledgements, run: () => scope.recoverDetachedCampaignJobs() };
 }
+
+test('manual preflight awaits the existing collector instead of inventing an active job', async () => {
+    const h = recovery();
+    let release, lists = 0;
+    h.scope.detachedPlannerJobs = () => { lists++; return new Promise(resolve => { release = resolve; }); };
+    const background = h.run();
+    await new Promise(resolve => setImmediate(resolve));
+    const manual = h.scope.recoverDetachedCampaignJobs({ duringPreflight: true });
+    release([]);
+    for (const result of await Promise.all([background, manual])) {
+        assert.equal(result.active, false);
+        assert.equal(result.recovered, false);
+    }
+    assert.equal(lists, 1);
+    assert.equal(h.scope.detachedCampaignRecovery, null);
+});
 
 test('host reopening validates and commits server work once without any new generation', async () => {
     const h = recovery();

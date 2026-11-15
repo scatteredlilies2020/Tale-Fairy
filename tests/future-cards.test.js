@@ -11,6 +11,15 @@ const card = () => ({ id: 'f1-winter', title: 'The Missing Winter Convoys', cate
     prevents: 'Restored deliveries could prevent the crisis.', transition: '', outlook: '' });
 const saved = cards => ({ version: 1, revision: 1, cards });
 
+test('dismissed future problems hide the warning without changing saved requests or cards', () => {
+    const state = saved([card()]), attempt = { status: 'failed', error: 'Endpoint unavailable' };
+    assert.match(futureCardsHtml(state, attempt), /Endpoint unavailable/);
+    const html = futureCardsHtml(state, attempt, { problemDismissed: true });
+    assert.doesNotMatch(html, /Endpoint unavailable|Last request:/);
+    assert.match(html, /The Missing Winter Convoys/);
+    assert.equal(attempt.error, 'Endpoint unavailable');
+});
+
 test('canon-off and overflow prospects remain visibly saved but inactive', () => {
     const canon = { ...card(), id: 'f1-canon', category: 'Canon', title: 'Canon possibility' };
     const state = { ...saved([card(), canon]), parkedCanon: [{ ...canon, id: 'f1-parked', title: 'Parked possibility' }] };
@@ -121,7 +130,7 @@ test('host renders cards after excluding adopted prospects and withholds corrupt
         document: { querySelector: selector => selector.includes('data-role="future-cards"') ? target : null },
         readCampaignSnapshot: () => ({}), futureReceipts: () => [{ id: 'f1-adopted' }],
         campaignFingerprint() {}, usableFuture: () => true, validFuture, renderFutureCards, futureOptions, getSettings: () => ({}),
-        futureHost: null, EXTENSION_ID: 'test' };
+        futureHost: null, EXTENSION_ID: 'test', PROBLEM_LOG_KEY: 'problems', attemptProblemDismissed() { return false; }, renderPlannerProblems() {} };
     vm.createContext(scope);
     vm.runInContext(source.match(/function renderFutureBoard\([^]*?^}/m)[0], scope);
     scope.renderFutureBoard();

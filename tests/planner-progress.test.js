@@ -71,6 +71,11 @@ test('campaign timer ticks, keeps total elapsed across stages and stops on compl
     scope.renderAnalysisActivity('Saved', false);
     assert.equal(tick, null);
     assert.equal(buttons.get('[data-action="stop"]'), true);
+    scope.showCampaignPhase('Checking planning cadence');
+    scope.renderAnalysisActivity('Server planner running · attempt 1', true);
+    assert.equal(tick, null, 'server progress cancels the stale preflight timer');
+    assert.equal(scope.analysisPhaseTimer, null);
+    assert.equal(buttons.get('[data-action="guide"]'), true, 'real server work remains busy');
     scope.showCampaignPhase('Waiting');
     scope.analysisRunId++;
     tick();

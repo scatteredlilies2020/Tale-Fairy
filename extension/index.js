@@ -1,6 +1,7 @@
-import { sha256 } from './sha256.js?v=0.20.13';
+import { sha256 } from './sha256.js?v=0.20.14';
+import { PROBLEM_LOG_KEY, problemHistory, appendProblem, clearProblems, attemptProblem, attemptProblemDismissed, problemMessage } from './problem-log.js?v=0.20.14';
 import { normalizePlannerContext, plannerContextLimit, plannerInputCapacity, plannerOutputCapacity, plannerModeInputTokens } from './planner-capacity.js?context-guard=1&concise-prompts=1&portable-frame=1&horizon-links=3';
-import { renderFutureCards } from './future-cards.js?future-cards=1&future-controls=1&causal-futures=1';
+import { renderFutureCards } from './future-cards.js?future-cards=1&future-controls=1&causal-futures=1&problem-log=1';
 import { campaignAuthorInstructions, campaignPayloadBudget, campaignUsable, campaignMaterialUsable, campaignWriterUsable, emptyCampaign, validCampaignState, eventPointWire, EVENT_POINTS_FORMAT } from './campaign-planner.js?v=0.14.36&token-budget=1&rp-plot=1&follow-through=1&working-plan=1&rp-understanding=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-structure=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&present-future=1&creative-planning=1&world-frame=1&portable-frame=1&chapter-labels=1&future-controls=1&writer-target=2&writer-fit=1&continuous-guidance=2&resource-policy=1&causal-effects=1&world-initiative=1&weighted-influences=2&future-bridges=1';
 import { directorInput as ownedInput, directorPass as ownedPass, nextPlanRevision, DIRECTOR_SCHEMA as OWNED_SCHEMA, DIRECTOR_SYSTEM as OWNED_SYSTEM, PLANNER_OUTPUT_LIMIT, plannerInputLimit } from './story-director.js?effect-migration=1&effect-retention=1&story-workshop=1&story-horizons=1&story-progression=1&rp-activities=1&story-bridge=1&story-outlook=1&story-throughline=1&story-lifecycle=1&story-life=1&future-entry=1&persistent-entry=1&autonomous-life=1&request-policy=2&concise-prompts=1&relaxed-conditions=1&rp-departures=1&horizon-links=3&story-director=1&story-structure=1&full-rebuild=1&empty-fields=1&open-scope=1&concise-arcs=1&ensemble-pressure=1&story-cards=1&player-cards=1&no-phase=1&present-future=1&creative-planning=1&fresh-summary=1&world-frame=1&frame-stability=1&rp-world-frame=1&portable-frame=1&genre-frame=1&arc-focus=1&saga-hierarchy=1&chapter-labels=1&future-chapters=1&chapter-scope=2&story-persistence=1&future-controls=1&causal-futures=1&writer-target=2&writer-fit=1&continuous-guidance=2&resource-policy=1&causal-effects=1&world-initiative=1&future-decision-blank=1&weighted-influences=2&future-bridges=1';
 import { fitStoryInputBudget } from './story-budget.js?follow-through=1&compaction=1&soft-targets=1&story-map=1&story-goal=2&story-horizons=1&story-throughline=1&story-life=1&concise-prompts=1&horizon-links=3&story-structure=1&ensemble-pressure=1&story-cards=1&player-cards=1&creative-planning=1&portable-frame=1&future-controls=1&writer-target=2&writer-fit=1&continuous-guidance=2&resource-policy=1&causal-effects=1&world-initiative=1&weighted-influences=2&future-bridges=1';
@@ -62,7 +63,7 @@ import { createFutureHost, serializeActivePlanner } from './future-host.js?v=0.2
 const activatedStoryContext = new ActivatedStoryContext();
 
 const EXTENSION_ID = 'living-world-guide';
-const RUNTIME_VERSION = '0.20.13';
+const RUNTIME_VERSION = '0.20.14';
 const PLANNER_SERVER_BASE = '/api/plugins/tale-fairy';
 const PLANNER_BACKEND_PATHS = new Set([
     '/api/backends/chat-completions/generate',
@@ -120,6 +121,7 @@ let detachedPlannerEnabled = false;
 let detachedCampaignEnabled = false;
 let detachedFutureEnabled = false;
 let detachedPlannerRecovering = false;
+let detachedCampaignRecovery = null;
 let replyRepairTimer = null;
 let replyRepairInFlight = false;
 // Routine output targets 1200–1800 tokens; leave room for corrections and
@@ -864,12 +866,16 @@ function getFutureHost() {
         cancelJob: id => plannerServerApi(`/planner-jobs/${encodeURIComponent(id)}`, { method: 'DELETE', body: '{}' }),
         ackJob: acknowledgeDetachedPlannerJob, ackRun: acknowledgeDetachedPlannerRun,
         render: renderFutureBoard,
-        status: message => { const e = document.querySelector('[data-role="future-status"]'); if (e) e.textContent = message; },
+        status: message => {
+            if (/unavailable|failed/iu.test(message)) recordPlannerProblem('Future outlook', message);
+            const e = document.querySelector('[data-role="future-status"]'); if (e) e.textContent = message;
+        },
     });
 }
 
 function renderFutureBoard() {
     const context = currentContext(), outlook = context.chatMetadata?.[FUTURE_KEY];
+    renderPlannerProblems();
     const target = document.querySelector('[data-role="future-cards"]');
     if (target) {
         const snapshot = readCampaignSnapshot();
@@ -879,6 +885,7 @@ function renderFutureBoard() {
             ? outlook.cards.filter(c => !excluded.has(c?.id)) : outlook.cards };
         renderFutureCards(target, visible, context.chatMetadata?.[FUTURE_ATTEMPT_KEY], {
             ...futureOptions(getSettings()),
+            problemDismissed: attemptProblemDismissed(context.chatMetadata?.[PROBLEM_LOG_KEY], 'Future outlook', context.chatMetadata?.[FUTURE_ATTEMPT_KEY]),
             invalid: Boolean(outlook && !validFuture(outlook)),
             stale: Boolean(outlook?.revision && !usableFuture({ ...snapshot, state: outlook }, campaignFingerprint)),
         });
@@ -890,7 +897,9 @@ function renderFutureBoard() {
     root?.querySelector('[data-action="stop"]')?.toggleAttribute('disabled', !running && !campaignHostWork && !analysisPromise);
     const status = root?.querySelector('[data-role="future-status"]');
     if (status) status.textContent = !getSettings().futureEnabled ? 'Disabled · saved outlook retained'
-        : running ? 'Planning future Chapters…' : context.chatMetadata?.[FUTURE_ATTEMPT_KEY]?.status || 'Not yet planned';
+        : running ? 'Planning future Chapters…'
+        : attemptProblemDismissed(context.chatMetadata?.[PROBLEM_LOG_KEY], 'Future outlook', context.chatMetadata?.[FUTURE_ATTEMPT_KEY])
+        ? 'Previous problem dismissed · saved outlook retained' : context.chatMetadata?.[FUTURE_ATTEMPT_KEY]?.status || 'Not yet planned';
 }
 
 function scheduleFuturePlanning(options = {}) {
@@ -1027,6 +1036,7 @@ async function saveCampaignAttempt(attempt) {
     if (String(context.getCurrentChatId?.() || '') !== attempt.chatId) throw Error('Chat changed before campaign attempt could be recorded.');
     plannerStorage()?.setItem(`${CAMPAIGN_ATTEMPT_KEY}:${attempt.chatId}`, JSON.stringify(attempt));
     context.updateChatMetadata({ ...context.chatMetadata, [CAMPAIGN_ATTEMPT_KEY]: attempt });
+    renderPlannerProblems();
     renderCampaignAttempt();
     // Reserve the attempt durably before spending the provider request.
     if (typeof context.saveMetadata === 'function') await context.saveMetadata();
@@ -1073,6 +1083,7 @@ function analyzeCampaignNow({ manual = false, rebuild = false, replacementRepair
         return runCampaignAnalysis(work);
     }).catch(error => {
         if (stopSequence === analysisStopSequence && chatId === String(currentContext().getCurrentChatId?.() || '')) {
+            recordPlannerProblem('Current guide', error);
             const busy = error?.name === 'PlannerBusyInAnotherTabError';
             renderAnalysisActivity(busy
                 ? 'Planner running in another page · existing preparation unchanged'
@@ -1083,6 +1094,9 @@ function analyzeCampaignNow({ manual = false, rebuild = false, replacementRepair
         if (campaignHostWork === work) {
             campaignHostWork = null;
             if (stopSequence === analysisStopSequence && chatId === String(currentContext().getCurrentChatId?.() || '')) {
+                // A skipped recovery/preflight must not leave an orphaned
+                // phase timer disabling Guide now after its owner finishes.
+                if (analysisPhaseTimer) renderAnalysisActivity('Planner idle · saved preparation unchanged; Guide now can retry', false);
                 updatePrompt(loadState(currentContext().chatMetadata));
                 renderBoard();
             }
@@ -2021,7 +2035,57 @@ function renderCampaignAttempt() {
     const context = currentContext();
     const active = campaignHostWork?.chatId === String(context.getCurrentChatId?.() || '')
         && campaignHostWork.stopSequence === analysisStopSequence;
-    status.textContent = campaignAttemptSummary(context.chatMetadata?.[CAMPAIGN_ATTEMPT_KEY], active);
+    status.textContent = !active && attemptProblemDismissed(context.chatMetadata?.[PROBLEM_LOG_KEY], 'Current guide', context.chatMetadata?.[CAMPAIGN_ATTEMPT_KEY])
+        ? 'Previous problem dismissed · saved preparation retained'
+        : campaignAttemptSummary(context.chatMetadata?.[CAMPAIGN_ATTEMPT_KEY], active);
+}
+
+function savePlannerProblems(history) {
+    const context = currentContext();
+    if (!context.getCurrentChatId?.()) return;
+    context.updateChatMetadata({ ...context.chatMetadata, [PROBLEM_LOG_KEY]: history });
+    scheduleVerificationPersistence(currentContext());
+}
+
+function recordPlannerProblem(source, error) {
+    const message = problemMessage(error), context = currentContext();
+    const history = problemHistory(context.chatMetadata?.[PROBLEM_LOG_KEY]);
+    const id = `${source}:${analysisRunId}:${sha256(message)}`;
+    if (!history.seen.includes(id)) savePlannerProblems(appendProblem(history, { id, source, message }));
+    renderPlannerProblems();
+}
+
+function renderPlannerProblems() {
+    const metadata = currentContext().chatMetadata;
+    let history = problemHistory(metadata?.[PROBLEM_LOG_KEY]);
+    let changed = false;
+    for (const [source, key] of [['Current guide', CAMPAIGN_ATTEMPT_KEY], ['Future outlook', FUTURE_ATTEMPT_KEY]]) {
+        const problem = attemptProblem(source, metadata?.[key]);
+        if (problem && !history.seen.includes(problem.id)) {
+            history = appendProblem(history, problem);
+            changed = true;
+        }
+    }
+    if (changed) savePlannerProblems(history);
+    const root = document.querySelector(`#${EXTENSION_ID}-settings`);
+    const count = root?.querySelector('[data-role="problem-count"]');
+    if (count) count.textContent = `Recent problems (${history.entries.length})`;
+    const log = root?.querySelector('[data-role="problem-log"]');
+    if (log) log.textContent = history.entries.length ? [...history.entries].reverse()
+        .map(entry => `${new Date(entry.at).toLocaleString()} · ${entry.source}\n${entry.message}`).join('\n\n')
+        : 'No problems recorded for this chat.';
+    root?.querySelector('[data-action="clear-problems"]')?.toggleAttribute('disabled', !history.entries.length);
+}
+
+function clearPlannerProblems() {
+    // Dismiss the display only. Keep attempt identity/status and live jobs so
+    // clearing errors cannot trigger a duplicate request or lose recovery.
+    savePlannerProblems(clearProblems(currentContext().chatMetadata?.[PROBLEM_LOG_KEY]));
+    const serverRunning = document.querySelector(`#${EXTENSION_ID}-settings [data-action="guide"]`)?.disabled;
+    if (!campaignHostWork && !analysisPromise && !serverRunning) renderAnalysisActivity('Problem log cleared · saved preparation retained', false);
+    renderPlannerProblems();
+    renderCampaignAttempt();
+    renderFutureBoard();
 }
 
 function clearAnalysisPhase() {
@@ -2036,8 +2100,9 @@ function renderInjectionActivity(message = injectionStatus) {
     // Never touch the planner timer or its Stop/Guide/Rebuild controls here.
 }
 
-function renderAnalysisActivity(message, running = false) {
-    if (!running) clearAnalysisPhase();
+function renderAnalysisActivity(message, running = false, preservePhase = false) {
+    // A real server status supersedes the browser's elapsed preflight label.
+    if (!preservePhase) clearAnalysisPhase();
     const root = document.querySelector(`#${EXTENSION_ID}-settings`);
     if (!root) return;
     const status = root.querySelector('[data-role="analysis-status"]');
@@ -2054,7 +2119,7 @@ function showAnalysisPhase(label, runId, startedAt) {
             clearAnalysisPhase();
             return;
         }
-        renderAnalysisActivity(`${label} · ${elapsedLabel(Date.now() - startedAt)}`, true);
+        renderAnalysisActivity(`${label} · ${elapsedLabel(Date.now() - startedAt)}`, true, true);
     };
     update();
     analysisPhaseTimer = setInterval(update, 1000);
@@ -2362,7 +2427,18 @@ async function cancelDetachedPlannerJobs(chatId, { preserveFuture = false } = {}
     }
 }
 
-async function recoverDetachedCampaignJobs({ duringPreflight = false } = {}) {
+function recoverDetachedCampaignJobs(options = {}) {
+    // A Guide click must await an in-flight collector's actual result, not
+    // mistake the collector itself for a live provider job and drop the click.
+    if (detachedCampaignRecovery) return detachedCampaignRecovery;
+    const work = collectDetachedCampaignJobs(options);
+    detachedCampaignRecovery = work;
+    return work.finally(() => {
+        if (detachedCampaignRecovery === work) detachedCampaignRecovery = null;
+    });
+}
+
+async function collectDetachedCampaignJobs({ duringPreflight = false } = {}) {
     if (detachedPlannerRecovering) return { active: true, recovered: false };
     if (!getSettings().enabled) return { active: false, recovered: false };
     if (campaignSession?.pending || campaignHostWork && !duringPreflight) return { active: true, recovered: false };
@@ -2411,7 +2487,10 @@ async function recoverDetachedCampaignJobs({ duringPreflight = false } = {}) {
     } catch (error) {
         // An unavailable status endpoint is not permission to duplicate an
         // uncertain server request. Retry collection on the next browser poll.
-        if (stillHere()) renderAnalysisActivity(`Server recovery unavailable · ${error.message}`, false);
+        if (stillHere()) {
+            recordPlannerProblem('Server recovery', error);
+            renderAnalysisActivity(`Server recovery unavailable · ${error.message}`, false);
+        }
         return { active: true, recovered: false };
     } finally {
         detachedPlannerRecovering = false;
@@ -3928,13 +4007,14 @@ async function mountUI() {
     });
     root.querySelector('[data-action="plan-future"]').addEventListener('click', async () => {
         try { await planFutureNow(); }
-        catch (error) { root.querySelector('[data-role="future-status"]').textContent = `Future planning failed: ${error.message}`; }
+        catch (error) { recordPlannerProblem('Future outlook', error); root.querySelector('[data-role="future-status"]').textContent = `Future planning failed: ${error.message}`; }
     });
     root.querySelector('[data-action="reroll-future"]').addEventListener('click', async () => {
         try { await planFutureNow('reroll'); }
-        catch (error) { root.querySelector('[data-role="future-status"]').textContent = `Future reroll failed: ${error.message}`; }
+        catch (error) { recordPlannerProblem('Future outlook', error); root.querySelector('[data-role="future-status"]').textContent = `Future reroll failed: ${error.message}`; }
     });
     root.querySelector('[data-action="stop"]').addEventListener('click', stopAnalysis);
+    root.querySelector('[data-action="clear-problems"]')?.addEventListener('click', clearPlannerProblems);
     root.querySelector('[data-action="reset-settings"]').addEventListener('click', () => resetSettingsToDefaults(root));
     root.querySelector('[data-action="reset"]').addEventListener('click', resetState);
     root.querySelector('[data-action="note"]').addEventListener('click', async () => {
