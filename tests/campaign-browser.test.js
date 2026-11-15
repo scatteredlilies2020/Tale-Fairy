@@ -16,7 +16,10 @@ import { completionText } from '../extension/completion-response.js';
 import { readEvidenceProviders, evidenceRevisionKey, registerEvidenceProvider } from '../extension/evidence-providers.js';
 import { readCampaignContinuity } from '../extension/campaign-continuity.js';
 import { materialHorizons } from '../extension/selected-material.js';
-import { storyInputTokens } from '../extension/story-budget.js';
+import { storyInputTokens, measureStoryInput } from '../extension/story-budget.js';
+import { chunkPlannerContext, READING_SCHEMA } from '../extension/planner-chunks.js';
+import { plannerContextLimit } from '../extension/planner-capacity.js';
+import { plannerOutputTokenBudget } from '../extension/reasoning-policy.js';
 import { originalUnderstanding } from './helpers/rp-fixtures.js';
 import { extractTaleFairyContext, ensureGuidanceInChat, chatHasCurrentGuidance } from '../extension/request-injection.js';
 import { legacyPlotInputKey, GENERATION_CONTEXT_KEY, generationContextEntries } from '../extension/generation-context.js';
@@ -186,12 +189,14 @@ function browser(send = async args => plannedResponse(args), initialState = defa
         loadState: loadPlannerState, defaultState: defaultPlannerState,
         plannerStorage: () => ({ getItem: key => shared.get(key), setItem: (key, value) => shared.set(key, value), removeItem: key => shared.delete(key) }),
         withPlannerTabLock: (_id, task) => task(),
+        chunkPlannerContext, measureStoryInput, plannerContextLimit, plannerOutputTokenBudget,
+        plannerReasoningMode: () => h.settings.analysisReasoningMode,
         requestAnalysisOnce: async (prompt, signal, meta, spec) => {
             requests.push({ prompt, signal, meta, spec });
             return spec.parseResponse(await send({ prompt, signal, meta, spec }));
         },
     });
-    for (const name of ['emptyGuidancePreview', 'showCampaignPhase', 'readCampaignSnapshot', 'buildCampaignHostInput', 'saveCampaignAttempt', 'campaignCompletion', 'runCampaignAnalysis', 'analyzeCampaignNow', 'startCampaignPlanning', 'applyCampaignInstruction', 'rebuildGuideState', 'analyzeNow']) {
+    for (const name of ['waitForAbortable', 'preparePlannerContext', 'emptyGuidancePreview', 'showCampaignPhase', 'readCampaignSnapshot', 'buildCampaignHostInput', 'saveCampaignAttempt', 'campaignCompletion', 'runCampaignAnalysis', 'analyzeCampaignNow', 'startCampaignPlanning', 'applyCampaignInstruction', 'rebuildGuideState', 'analyzeNow']) {
         vm.runInContext(source.match(new RegExp(`(?:export )?(?:async )?function ${name}\\([^]*?^}`, 'm'))[0].replace(/^export /u, ''), h.scope);
     }
     if (future) {
@@ -227,6 +232,32 @@ const futureReply = prompt => ({ upsert: [{ id: `${JSON.parse(prompt).new_id_pre
     transition: 'Clinic requests can arrive during the aftermath.', outlook: 'Provisional.' }], retain: [], retire: [],
     order: [`${JSON.parse(prompt).new_id_prefix}winter`] });
 const bothReply = ({ prompt, spec }) => JSON.stringify(spec.schema.name === 'tale_fairy_future_chapters_v3' ? futureReply(prompt) : directorReply(prompt));
+
+for (const mode of ['Guide now', 'automatic', 'Full rebuild']) test(`${mode} chunks oversized CM for both owners behind one action`, async () => {
+    const h = browser(async args => args.spec.schema.name === READING_SCHEMA.name
+        ? JSON.stringify({ notes: 'Accepted village history; current play supersedes it. Provisional royal ambitions remain proposals.' })
+        : bothReply(args), defaultState(), { director: true, future: true });
+    const story = 'Accepted neighborhood history and unresolved royal questions. '.repeat(5000) + 'LAST HISTORY DETAIL';
+    const memory = { ...memorySnapshot(), prompt: `<continuity>\nStory so far:\n${story}\n</continuity>` };
+    const original = structuredClone(memory);
+    h.settings.continuityIntegration = true;
+    h.scope.continuityMemoryBridge = { version: 2, getContextSnapshot: () => memory };
+    if (mode === 'Full rebuild') await h.scope.rebuildGuideState();
+    else await h.scope.analyzeCampaignNow({ manual: mode !== 'automatic' });
+    await h.scope.futureHost?.pending;
+    const readings = h.requests.filter(r => r.spec.schema.name === READING_SCHEMA.name);
+    const finals = h.requests.filter(r => r.spec.schema.name !== READING_SCHEMA.name);
+    assert.ok(readings.length >= 4);
+    assert.equal(finals.length, 2, 'one final generation per owner, no merge generation');
+    assert.ok(readings.every(r => r.meta === null && r.spec.responseTokens >= 128), 'notes cannot become detached final-plan jobs');
+    assert.ok(finals.every(r => r.meta?.campaign && JSON.parse(r.prompt).context_reading));
+    assert.ok(finals.every(r => JSON.parse(r.prompt).accepted_messages.length > 0));
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'complete');
+    assert.equal(h.context.chatMetadata.taleFairyFutureAttempt.status, 'complete');
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.requestCount + h.context.chatMetadata.taleFairyFutureAttempt.requestCount, h.requests.length);
+    assert.deepEqual(memory, original);
+    assert.equal(h.state().campaignPreparation.revision, 1);
+});
 
 test('first Guide starts both independent calls from the same source and never adds a merge call', async () => {
     const gates = [];
@@ -2046,18 +2077,19 @@ test('full rebuild deletes preparation before requesting and stays empty on fail
     h.context.chat.push({ is_user: true, name: 'Neri', mes: 'Required new contribution. '.repeat(10000) });
     await h.scope.rebuildGuideState();
     assert.equal(h.state().campaignPreparation, null);
-    assert.equal(h.requests.length, 3);
-    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.requestCount, 1);
+    assert.equal(h.requests.length, 2, 'oversized exact accepted play stops before buying context readings or a final call');
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.requestCount, 0);
     assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'failed');
+    assert.match(h.context.chatMetadata.taleFairyCampaignAttempt.error, /protected context/);
     assert.match(h.statuses.at(-1), /No preparation available/);
     h.context.chat.pop(); fail = false;
     await h.scope.rebuildGuideState();
-    assert.equal(h.requests.length, 4);
+    assert.equal(h.requests.length, 3);
     assert.equal(h.state().campaignPreparation.revision, 1);
     assert.deepEqual(h.state().campaignPreparation.archive, []);
     assert.equal(h.state().canonBootstrapPending, false);
     await h.scope.analyzeCampaignNow();
-    assert.equal(h.requests.length, 4, 'successful rebuild does not schedule an immediate ordinary duplicate');
+    assert.equal(h.requests.length, 3, 'successful rebuild does not schedule an immediate ordinary duplicate');
 });
 
 test('full rebuild clears archives, legacy data and retry caches before sending while keeping author preferences', async () => {

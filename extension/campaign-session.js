@@ -11,7 +11,7 @@ const turns = messages => messages.filter(message => !message.is_user).length;
 export class CampaignSession {
     constructor({ read, prepare, generate, commit, fingerprint, saveAttempt, interval = () => 12, runPass,
         onProgress = () => {}, timeoutMs = PLANNER_RESPONSE_TIMEOUT_MS, evidenceRestart = false, guardEvidence = true, isDue,
-        generateGate = task => task(), earlyReviews = () => false }) {
+        generateGate = task => task(), earlyReviews = () => false, prepareContext = async prompt => prompt }) {
         Object.assign(this, { read, fingerprint, saveAttempt, interval, isDue, earlyReviews });
         this.controller = null;
         this.pending = null;
@@ -51,22 +51,36 @@ export class CampaignSession {
                     }
                 };
                 guard();
-                this.attempt = { ...this.attempt, requestCount: this.attempt.requestCount + 1,
-                    ...(correction.stage ? { stage: correction.stage, stages: [...(this.attempt.stages || []), correction.stage] } : {}),
-                    ...(correction.recoveryReason ? { recoveryReason: String(correction.recoveryReason).slice(0, 1000) } : {}) };
-                await saveAttempt(this.attempt);
-                guard();
-                onProgress(correction.stage === 'writer-fit' ? `Fitting complete writer context within quota · request ${this.attempt.requestCount}`
-                    : correction.recoveryReason ? `Correcting planner response automatically · request ${this.attempt.requestCount}`
-                    : correction.stage === 'director' ? 'Updating story map and public context'
-                    : correction.stage === 'horizon' ? 'Preparing wider story possibilities · stage 1 of 2'
-                    : correction.stage === 'scene' ? 'Preparing current scene and selecting material · stage 2 of 2' : 'Preparing planner request');
                 // Queue time for the host's shared active route must not consume
-                // the next request's response timeout. Recheck after the grant.
-                const result = await generateGate(() => {
+                // a response timeout. Each reading/final call gets its own timeout
+                // and source guard; the entire one-click pass commits only once.
+                const result = await generateGate(async () => {
                     guard();
-                    return boundedPlannerResponse(() => generate(prompt, system, schema,
-                        { signal: this.controller.signal, snapshot: this.attemptSnapshot, attempt: this.attempt, input: correction.input || this.attemptInput }), this.controller, timeoutMs);
+                    const input = correction.input || this.attemptInput;
+                    const send = async (body, instructions, contract, extra = {}) => {
+                        guard();
+                        const stage = extra.contextReading ? 'context-reading' : correction.stage;
+                        this.attempt = { ...this.attempt, requestCount: this.attempt.requestCount + 1,
+                            stage: stage || '',
+                            ...(stage ? { stages: [...(this.attempt.stages || []), stage] } : {}),
+                            ...(correction.recoveryReason ? { recoveryReason: String(correction.recoveryReason).slice(0, 1000) } : {}) };
+                        await saveAttempt(this.attempt);
+                        guard();
+                        onProgress(extra.contextReading ? `Reading oversized planner context · request ${this.attempt.requestCount}`
+                            : correction.stage === 'writer-fit' ? `Fitting complete writer context within quota · request ${this.attempt.requestCount}`
+                            : correction.recoveryReason ? `Correcting planner response automatically · request ${this.attempt.requestCount}`
+                            : correction.stage === 'director' ? 'Updating story map and public context'
+                            : correction.stage === 'horizon' ? 'Preparing wider story possibilities · stage 1 of 2'
+                            : correction.stage === 'scene' ? 'Preparing current scene and selecting material · stage 2 of 2' : 'Preparing planner request');
+                        const response = await boundedPlannerResponse(() => generate(body, instructions, contract,
+                            { ...extra, signal: this.controller.signal, snapshot: this.attemptSnapshot, attempt: this.attempt, input }), this.controller, timeoutMs);
+                        guard();
+                        return response;
+                    };
+                    const prepared = await prepareContext(prompt, system, schema, { input,
+                        signal: this.controller.signal, onProgress,
+                        generate: (body, instructions, contract, extra) => send(body, instructions, contract, { ...extra, contextReading: true }) });
+                    return send(prepared, system, schema);
                 });
                 onProgress('Validating planner response');
                 return result;
@@ -143,7 +157,10 @@ export class CampaignSession {
             const latest = this.read();
             if (this.attempt && latest.attempt?.runKey === this.attempt.runKey && latest.chatId === snapshot.chatId) {
                 await this.saveAttempt({ ...latest.attempt,
-                    status: this.detached ? 'pending' : controller.signal.aborted && controller.signal.reason?.name !== 'TimeoutError' ? 'stopped' : result.accepted ? 'complete' : 'failed',
+                    // Reading requests have no detached final-plan job. Do not
+                    // advertise their partial notes as recoverable preparation.
+                    status: this.detached && latest.attempt.stage !== 'context-reading' ? 'pending'
+                        : controller.signal.aborted && controller.signal.reason?.name !== 'TimeoutError' ? 'stopped' : result.accepted ? 'complete' : 'failed',
                     finishedAt: Date.now(), durationMs: Math.max(0, Date.now() - this.attempt.at),
                     error: String(result.error || '').slice(0, 1000), skipped: result.skipped || '' });
             }

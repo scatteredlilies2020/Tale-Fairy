@@ -19,7 +19,9 @@ Chapter is Tale Fairy's broad story unit, including what a franchise calls an ar
 | Delete guide state | No; clears generated state | No; clears generated state |
 | Stop | Stops/cancels pending current work | Stops/cancels pending future work |
 
-First/rebuild calls share the same accepted transcript, references and available memory snapshot. Neither waits for the other's answer. Direct API and connection-profile requests can run in parallel. The active SillyTavern connection uses shared generation settings, so Tale Fairy serializes its planner requests; queued time does not consume the response timeout. The next regular review can use the newly saved outlook. There is **no extra integration, repair or critic AI call**.
+First/rebuild calls share the same accepted transcript, references and available memory snapshot. Neither waits for the other's answer. Direct API and connection-profile requests can run in parallel. The active SillyTavern connection uses shared generation settings, so Tale Fairy serializes its planner passes; queued time does not consume the response timeout. The next regular review can use the newly saved outlook. There is **no extra integration or critic AI call**.
+
+The table counts final planning calls. Oversized CM history or RP references add automatic reading calls before either owner's final call, behind the same button or automatic event. Fragments fill the measured input capacity after reserving output/thinking room; if the resulting source-labelled notes still do not fit, further calls consolidate them. Notes are lossy background, not accepted-message evidence. Source storage, author instructions, exact recent messages and saved preparation are not rewritten. Protected context that cannot fit stops before paid readings. Every call shares the run's cancellation/source guards and gets its own response timeout. Only a validated final plan is saved. Intermediate notes have no detached final-plan recovery job: keep the page open while reading; interrupted readings are restarted by a later manual run, not automatically retried in a loop.
 
 ## Deliberate but provisional cards
 

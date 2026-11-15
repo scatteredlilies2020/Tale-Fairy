@@ -1,4 +1,4 @@
-import { CampaignSession } from './campaign-session.js?future-chapters=1&chapter-labels=1&server-jobs=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&story-director=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1&future-controls=1&writer-target=2&writer-fit=1&resource-policy=1&pending-recovery=1&causal-effects=1&world-initiative=1';
+import { CampaignSession } from './campaign-session.js?future-chapters=1&chapter-labels=1&server-jobs=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&story-director=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1&future-controls=1&writer-target=2&writer-fit=1&resource-policy=1&pending-recovery=1&causal-effects=1&world-initiative=1&context-chunks=1';
 import { campaignJobMeta, campaignJobMatches, recoverCampaignJob } from './campaign-jobs.js?future-chapters=1&server-jobs=1&writer-fit=1';
 import { campaignUsable } from './campaign-planner.js?chapter-labels=1&portable-frame=1&world-frame=1&creative-planning=1&present-future=1&player-cards=1&story-cards=1&ensemble-pressure=1&concise-arcs=1&story-structure=1&relaxed-conditions=1&concise-prompts=1&autonomous-life=1&future-entry=1&story-life=1&story-lifecycle=1&story-horizons=1&story-progression=1&story-workshop=1&story-bridge=1&story-outlook=1&story-throughline=1&persistent-entry=1&future-controls=1&writer-target=2&writer-fit=1&resource-policy=1&causal-effects=1&world-initiative=1&weighted-influences=2&future-bridges=1';
 import { FUTURE_KEY, FUTURE_ATTEMPT_KEY, PLANNING_EPOCH_KEY, FUTURE_SCHEMA, FUTURE_SYSTEM, futureOutputLimit, futureOptions,
@@ -101,13 +101,18 @@ export function createFutureHost(api) {
             session ||= new CampaignSession({ read, fingerprint: api.fingerprint, saveAttempt, commit, guardEvidence: false,
                 isDue: s => futureDue(s, api.fingerprint, api.settings().futureInterval, api.settings().earlyReviews === true), runPass: futurePass,
                 generateGate: api.generateGate,
+                prepareContext: api.prepareContext && ((prompt, system, schema, options) => api.prepareContext(prompt, system, schema,
+                    { ...options, outputTokens: futureOutputLimit(options.input.options?.capacity) })),
                 prepare: s => futureInput(api.buildCommon({ ...s, state: s.baseState }), s, api.fingerprint),
                 onProgress: message => api.status?.(message),
-                generate: (prompt, system, schema, { signal, snapshot, attempt, input }) => {
-                    const meta = campaignJobMeta(snapshot, attempt, input, api.fingerprint);
-                    meta.campaign.kind = 'future';
+                generate: (prompt, system, schema, { signal, snapshot, attempt, input, contextReading, responseTokens }) => {
+                    // Intermediate notes must never be recovered as a final plan.
+                    const meta = contextReading ? null : campaignJobMeta(snapshot, attempt, input, api.fingerprint);
+                    if (meta) meta.campaign.kind = 'future';
                     return api.generate(prompt, signal, meta, { singleShot: true, gatedActive: true, systemPrompt: system, schema,
-                        responseTokens: futureOutputLimit(input.options?.capacity), label: 'future Chapters', cacheNamespace: 'future-chapters-v3' });
+                        responseTokens: contextReading ? responseTokens : futureOutputLimit(input.options?.capacity),
+                        label: contextReading ? 'planner context reading' : 'future Chapters',
+                        cacheNamespace: contextReading ? schema.name : 'future-chapters-v3' });
                 } });
             // Use the shared accepted snapshot even when current planning has
             // already saved; its state is deliberately not a future CAS guard.

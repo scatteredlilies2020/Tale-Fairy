@@ -24,7 +24,7 @@ export function storyInputTokens(prompt, system, schema) {
     return envelope.tokens + conservativeTokenCount(JSON.stringify(prompt));
 }
 
-async function measureStoryInput(prompt, system, schema, tokenCounter) {
+export async function measureStoryInput(prompt, system, schema, tokenCounter) {
     let tokens = storyInputTokens(prompt, system, schema);
     if (typeof tokenCounter === 'function') {
         try {

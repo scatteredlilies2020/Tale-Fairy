@@ -6,7 +6,8 @@ import { AnalysisValidationError, WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA } f
 import * as reasoning from '../extension/reasoning-policy.js';
 import * as output from '../extension/output-negotiation.js';
 import { claimPlannerRecoveryRepair } from '../extension/planner-lifecycle.js';
-import { fitStoryInputBudget } from '../extension/story-budget.js';
+import { fitStoryInputBudget, measureStoryInput } from '../extension/story-budget.js';
+import { chunkPlannerContext } from '../extension/planner-chunks.js';
 import { plannerInputLimit } from '../extension/working-plan.js';
 import { serializeActivePlanner } from '../extension/future-host.js';
 import * as capacity from '../extension/planner-capacity.js';
@@ -28,7 +29,7 @@ function harness(results, { route = 'direct', configured = 'low', activeEffort =
         return result;
     };
     const scope = {
-        ...reasoning, ...output, ...capacity, AnalysisValidationError, claimPlannerRecoveryRepair, WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA, fitStoryInputBudget, plannerInputLimit,
+        ...reasoning, ...output, ...capacity, AnalysisValidationError, claimPlannerRecoveryRepair, WORLD_PLANNER_SYSTEM, WORLD_PLANNER_SCHEMA, fitStoryInputBudget, measureStoryInput, chunkPlannerContext, plannerInputLimit,
         plannerStorage: () => null, AbortController, DOMException, console: { warn() {} }, serializeActivePlanner,
         EXTENSION_ID: 'test', detachedPlannerReady: Promise.resolve(), detachedPlannerEnabled: false,
         PLANNER_SYSTEM_PROMPT: 'planner', INCREMENTAL_SYSTEM_PROMPT: 'routine',
@@ -62,13 +63,40 @@ function harness(results, { route = 'direct', configured = 'low', activeEffort =
     vm.createContext(scope);
     vm.runInContext(take('function plannerReasoningMode(', 'function analysisErrorMessage(')
         + take('async function negotiatePlannerOutput(', 'function normalizeUserNote(')
-        + take('async function requestAnalysisOnce(', 'export async function analyzeNow('), scope);
+        + take('async function preparePlannerContext(', 'export async function analyzeNow('), scope);
     return {
         requests,
         run: ({ prompt = 'current evidence', ...spec } = {}, signal = new AbortController().signal) => scope.requestAnalysisOnce(prompt, signal, null, { parseResponse, ...spec }),
         runPass: (meta = {}, recovery = null) => scope.requestAnalysis('current evidence', new AbortController().signal, meta, recovery),
+        prepare: (prompt, system, schema, options) => scope.preparePlannerContext(prompt, system, schema, options),
     };
 }
+
+for (const route of ['active', 'profile', 'direct']) test(`${route} context reading uses effective capacity, correct tokenizer and thinking headroom`, async () => {
+    const tokenCounter = async text => route === 'active' ? Math.ceil(text.length / 2) : 999999;
+    const contextLimit = route === 'direct' ? 16384 : 8192;
+    const h = harness([{ valid: true }], { route, contextBudget: 16384, providerContext: 8192, tokenCounter });
+    const schema = { name: 'tale_fairy_story_director_test', value: { type: 'object' } };
+    const system = 'Plan from history without inventing accepted events.';
+    let readings = 0;
+    const result = await h.prepare(JSON.stringify({ story_summary: { text: 'Accepted history. '.repeat(5000) },
+        accepted_messages: [{ index: 3, content: 'I decline.' }] }), system, schema, {
+        signal: new AbortController().signal, outputTokens: 3000,
+        generate: async (body, instructions, contract, { responseTokens }) => {
+            readings++;
+            const count = await measureStoryInput(body, instructions, contract, route === 'active' ? tokenCounter : null);
+            const reserve = Math.max(responseTokens, Math.min(reasoning.plannerOutputTokenBudget(responseTokens, 'low'), Math.floor((contextLimit - 512) / 2)));
+            assert.ok(count + reserve + 512 <= contextLimit);
+            return { text: '{"notes":"Accepted history, not a new event."}', finishReason: 'stop' };
+        },
+    });
+    assert.ok(readings > 1);
+    assert.ok(await measureStoryInput(result, system, schema, route === 'active' ? tokenCounter : null) + 3000 + 512 <= contextLimit);
+    assert.deepEqual(JSON.parse(result).accepted_messages, [{ index: 3, content: 'I decline.' }]);
+    assert.equal(h.requests.length, 0, 'preparer sends only through its explicit guarded callback');
+    await h.run({ prompt: result, systemPrompt: system, schema, singleShot: true, responseTokens: 3000 });
+    assert.equal(h.requests.length, 1);
+});
 
 test('protected context can exceed the sizing target when the combined request fits', async () => {
     for (const route of ['direct', 'profile', 'active']) {

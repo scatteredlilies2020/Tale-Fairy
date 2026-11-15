@@ -6,6 +6,11 @@ import { emptyCampaign, mergeCampaign } from '../extension/campaign-planner.js';
 const output = { campaign: 'Travel and shared work.', episode: { subject: 'Errand', status: 'finished', boundary: 'The errand is done.' }, developments: [] };
 const reply = { text: JSON.stringify(output), finishReason: 'stop' };
 const settle = () => new Promise(resolve => setImmediate(resolve));
+const readingContext = async (prompt, system, schema, { generate }) => {
+    await generate('read one', 'reading instructions', { name: 'reading' }, { responseTokens: 512 });
+    await generate('read two', 'reading instructions', { name: 'reading' }, { responseTokens: 512 });
+    return prompt;
+};
 function fixture(generate = async () => reply) {
     const current = { enabled: true, chatId: 'story', referenceHash: 'reference', state: emptyCampaign(),
         messages: [{ is_user: false, mes: 'Opening.' }], attempt: null };
@@ -29,6 +34,64 @@ function twoStageFixture(onSend = () => {}, stages = ['horizon', 'scene']) {
         } });
     return f;
 }
+
+test('one transaction counts every reading and final call with independent response timeouts', async () => {
+    const seen = [];
+    const f = fixture(async (_p, _s, _c, options) => {
+        seen.push({ count: options.attempt.requestCount, reading: options.contextReading, input: options.input });
+        assert.equal(f.commits(), 0, 'no intermediate response can install a plan');
+        await new Promise(resolve => setTimeout(resolve, 80));
+        return reply;
+    });
+    f.session = new CampaignSession({ ...f.options, prepareContext: readingContext, timeoutMs: 200 });
+    assert.equal((await f.session.request()).accepted, true);
+    assert.deepEqual(seen.map(x => x.count), [1, 2, 3]);
+    assert.deepEqual(seen.map(x => x.reading), [true, true, undefined]);
+    assert.ok(seen.every(x => x.input.prompt === '{}'));
+    assert.equal(f.current.attempt.requestCount, 3);
+    assert.equal(f.commits(), 1);
+    assert.equal((await f.session.request()).skipped, 'not-due');
+});
+
+for (const change of ['chat', 'reference', 'settings', 'transcript', 'plan']) test(`source change during reading (${change}) prevents later paid calls and final commit`, async () => {
+    const f = fixture(async () => {
+        if (change === 'chat') f.current.chatId = 'another';
+        if (change === 'reference') f.current.referenceHash = 'new';
+        if (change === 'settings') f.current.requestSignature = 'new';
+        if (change === 'transcript') f.current.messages[0].mes = 'Edited';
+        if (change === 'plan') f.current.state.revision++;
+        return reply;
+    });
+    f.session = new CampaignSession({ ...f.options, prepareContext: readingContext });
+    assert.equal((await f.session.request()).accepted, false);
+    assert.equal(f.calls(), 1);
+    assert.equal(f.commits(), 0);
+});
+
+for (const detach of [false, true]) test(`Stop/page closure during reading never leaves recoverable final-plan work (detach=${detach})`, async () => {
+    let sent;
+    const started = new Promise(resolve => { sent = resolve; });
+    const f = fixture(async () => { sent(); return new Promise(() => {}); });
+    f.session = new CampaignSession({ ...f.options, prepareContext: readingContext });
+    const pending = f.session.request();
+    await started;
+    f.session.stop('Stopped while reading', { detach });
+    assert.equal((await pending).accepted, false);
+    assert.equal(f.calls(), 1);
+    assert.equal(f.commits(), 0);
+    assert.equal(f.current.attempt.status, 'stopped');
+});
+
+test('a timed-out reading retains saved preparation and reserves the automatic interval', async () => {
+    const f = fixture(async () => new Promise(() => {}));
+    const before = structuredClone(f.current.state);
+    f.session = new CampaignSession({ ...f.options, prepareContext: readingContext, timeoutMs: 15 });
+    assert.equal((await f.session.request()).accepted, false);
+    assert.deepEqual(f.current.state, before);
+    assert.equal(f.current.attempt.status, 'failed');
+    assert.equal(f.calls(), 1);
+    assert.equal((await f.session.request()).skipped, 'not-due');
+});
 
 test('page closure releases browser wait but records recoverable pending work, not explicit Stop', async () => {
     let sent;
