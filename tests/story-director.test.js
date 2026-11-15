@@ -99,9 +99,10 @@ test('legacy scene snapshots do not enter new preparation or its next review', a
 
 test('an ongoing card can replace a fixed refusal with changed pressure or clear its effects', async () => {
     const refusal = { label: 'Passage refused', pressure: 'Mira refuses passage and remains distrustful.' };
-    const permit = { label: 'Travel permit', pressure: 'The permit opens passage; limited seats make the party choose what to carry.' };
-    const initial = await run(emptyCampaign(), { ...response(), upsert: [proposal('r1-kitchen', { status: 'active', effects: [refusal] })] });
+    const permit = { label: 'Travel permit', weight: 2, scope: 'Journeys through the pass', pressure: 'The permit opens passage; limited seats make the party choose what to carry.' };
+    const initial = await run(emptyCampaign(), { ...response(), upsert: [proposal('r1-kitchen', { status: 'active', effects: [] })] });
     assert.equal(initial.accepted, true, initial.error);
+    nodes(initial)[0].effects = [refusal]; // A saved pre-weighted card, not a new model response.
     const saved = JSON.stringify(initial.state);
     const changed = await run(initial.state, { ...response(), upsert: [proposal('r1-kitchen', { status: 'active', effects: [permit] })] });
     assert.equal(changed.accepted, true, changed.error);
@@ -118,10 +119,9 @@ test('an ongoing card can replace a fixed refusal with changed pressure or clear
 });
 
 test('saved effect packets still authenticate while outgoing guidance uses open responses', async () => {
-    const result = await run(emptyCampaign(), { ...response(), upsert: [proposal('r1-kitchen', {
-        effects: [{ label: 'Limited seating', pressure: 'The small table makes space a shared concern.' }],
-    })] });
+    const result = await run();
     assert.equal(result.accepted, true, result.error);
+    nodes(result)[0].effects = [{ label: 'Limited seating', pressure: 'The small table makes space a shared concern.' }];
     const historical = preCausalEffectPayload(result.state);
     assert.match(historical, /Pressure the affected NPCs/);
     const packet = { version: 1, selection: { preparedUsable: true }, payload: historical,
@@ -522,7 +522,7 @@ test('three detailed cards keep their effects and selected opportunities within 
         { label: 'Hospital demands', pressure: 'Staff shortages create competing requests from colleagues and recovering patients. The hospital can offer meaningful work and difficult priorities without choosing the player’s actions.' },
         { label: 'Village scrutiny', pressure: 'Officials compare testimony, medical reports and diplomatic claims. Their differing interests can affect access and resources while conclusions remain open to accepted play.' },
         { label: 'Personal ties', pressure: 'Friends, dependents and neighbors have plans of their own. Invitations and ordinary responsibilities can sustain quiet relationship development alongside wider village concerns.' },
-    ];
+    ].map(effect => ({ ...effect, weight: 2, scope: 'Shared village activities' }));
     const development = 'A colleague can bring an unresolved practical concern into an ordinary conversation. Its timing and the player’s participation stay open, and it need not interrupt a quiet moment or force a new assignment.';
     const endsWhen = 'The participants settle or deliberately set aside this particular concern. Its outcome remains open; finishing it need not end the wider relationships, daily responsibilities or independent village activity.';
     const raw = response();
@@ -598,7 +598,7 @@ test('duplicate selections are withheld, display hierarchy is corrected and over
 
 test('aggregate card and inherited effect size does not discard later selections', async () => {
     const first = await run(emptyCampaign(), { ...response(), upsert: [proposal('r1-kitchen', {
-        effects: [{ label: 'Community ties', pressure: '共'.repeat(200) }],
+        effects: [{ label: 'Community ties', weight: 2, scope: 'Village gatherings', pressure: '共'.repeat(200) }],
     })] });
     const raw = { ...response(), upsert: [proposal(), proposal('r2-travel'), proposal('r2-music')],
         foundation: { reminder: '世界'.repeat(80), changeReason: '', scratchpad: '' },
@@ -646,7 +646,7 @@ test('writer allocation reserves complete author instructions and orientation be
 test('protected content above the target saves complete preparation in one request', async () => {
     const first = await run(), before = structuredClone(first.state);
     const raw = { ...response(), foundation: { reminder: '世界'.repeat(250), changeReason: '', scratchpad: '' },
-        upsert: [proposal('r1-kitchen', { effects: [{ label: 'Community access', pressure: '共'.repeat(200) }] })] };
+        upsert: [proposal('r1-kitchen', { effects: [{ label: 'Community access', weight: 2, scope: 'Village visits', pressure: '共'.repeat(200) }] })] };
     const result = await run(first.state, raw);
     assert.equal(result.accepted, true, result.error);
     assert.equal(result.state.revision, first.state.revision + 1);
@@ -722,7 +722,7 @@ test('saved graph tampering fails validation without normalizing it away', async
 test('adjustable writer and response targets preserve complete prose above historical field lengths', async () => {
     const reminder = 'Independent communities develop through shared interests and changing circumstances. '.repeat(25);
     const description = 'Shared recipes support friendships without deciding player participation. '.repeat(30);
-    const effects = Array.from({ length: 5 }, (_, i) => ({ label: `Continuing influence ${i}`, pressure: description }));
+    const effects = Array.from({ length: 5 }, (_, i) => ({ label: `Continuing influence ${i}`, weight: 2, scope: 'Shared recipes', pressure: description }));
     const raw = { ...response(), foundation: { reminder, changeReason: '', scratchpad: description },
         upsert: [proposal('r1-kitchen', { interpretation: description, effects })],
         select: [selected('r1-kitchen', { interpretation: description })] };

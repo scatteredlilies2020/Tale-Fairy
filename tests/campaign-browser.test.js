@@ -618,7 +618,7 @@ test('player-centered cards survive planning, dependent selections, reload and w
             { ...template, id: `${prefix}life`, kind: 'saga', parentId: '', status: 'active', owner: 'Neri', title: 'Neri and the neighborhood' },
             { ...template, id: `${prefix}music`, kind: 'arc', parentId: `${prefix}life`, owner: 'Neri', title: 'Music and friendship' },
             { ...template, id: `${prefix}supper`, kind: 'thread', parentId: `${prefix}music`, owner: 'Mara', title: 'Shared supper',
-                links: [`${prefix}life`], effects: [{ label: 'Shared invitations', pressure: 'Neighbors offer company and music without deciding Neri’s response.' }] },
+                links: [`${prefix}life`], effects: [{ label: 'Shared invitations', weight: 2, scope: 'Neighborhood gatherings', pressure: 'Neighbors offer company and music without deciding Neri’s response.' }] },
         ];
         raw.select = raw.upsert.map((node, index) => ({ ...raw.select[0], id: node.id, title: node.title,
             context: raw.upsert.slice(0, index).map(parent => ({ kind: parent.kind, title: parent.title })) }));
@@ -809,7 +809,7 @@ test('story map reviews on a wider horizon and retains private stories across qu
 });
 
 test('host persists card effects without per-turn calls and stops them when the review closes the card', async () => {
-    const effect = { label: 'Shared kitchen', pressure: 'Neighbors have practical reasons to trade recipes and help with preparations.' };
+    const effect = { label: 'Shared kitchen', weight: 2, scope: 'Shared cooking', pressure: 'Neighbors have practical reasons to trade recipes and help with preparations.' };
     const h = browser(async ({ prompt }) => {
         const raw = ensembleDirectorReply(prompt);
         for (const node of raw.upsert.filter(node => node.kind !== 'saga')) node.effects = [effect];
@@ -846,10 +846,44 @@ test('host persists card effects without per-turn calls and stops them when the 
     assert.match(h.prepare().payload, /rp_orientation/);
 });
 
+for (const manual of [false, true]) test(`${manual ? 'Guide now' : 'scheduled automatic review'} converts saved legacy effects through the host`, async () => {
+    const weighted = { label: 'Shared kitchen', weight: 3, scope: 'Neighborhood cooking',
+        pressure: 'Neighbors exchange recipes and practical help.' };
+    let migratedId;
+    const h = browser(async ({ prompt }) => {
+        const raw = ensembleDirectorReply(prompt);
+        if (h.requests.length === 2) {
+            const previous = JSON.parse(prompt).previous_preparation;
+            assert.deepEqual(previous.required_effect_migration, { foundation: true, node_ids: [migratedId] });
+            raw.upsert = []; raw.select = [];
+            raw.retain = previous.nodes.map(node => node.id);
+            raw.foundation.effects = [weighted];
+            raw.effectUpdates = [{ id: migratedId, effects: [weighted] }];
+        }
+        return envelope(raw);
+    }, defaultState(), { director: true });
+    h.settings.fullReviewInterval = 12;
+    await h.scope.analyzeCampaignNow({ manual: true });
+    const saved = h.state(), plan = saved.campaignPreparation.workingPlan.storyStructure;
+    migratedId = plan.nodes[0].id;
+    const legacy = [{ label: 'Old kitchen condition', pressure: 'An unscored historical effect.' }];
+    plan.nodes[0].effects = legacy;
+    plan.foundation.effects = legacy;
+    assert.equal(validCampaignState(saved.campaignPreparation), true);
+    h.context.chatMetadata = saveState(h.context.chatMetadata, saved);
+    h.scope.campaignSession = null;
+    if (!manual) appendPlay(h, 12);
+    await h.scope.analyzeCampaignNow({ manual });
+    assert.equal(h.requests.length, 2, 'one conversion request, no repair call');
+    const converted = h.state().campaignPreparation.workingPlan.storyStructure;
+    assert.deepEqual(converted.nodes.find(node => node.id === migratedId).effects, [weighted]);
+    assert.deepEqual(converted.foundation.effects, [weighted]);
+});
+
 test('accepted writer signal schedules one early review without deciding closure itself', async () => {
     const h = browser(async ({ prompt }) => {
         const raw = ensembleDirectorReply(prompt);
-        for (const node of raw.upsert) node.effects = [{ label: 'Shared kitchen', pressure: 'Neighbors exchange practical help.' }];
+        for (const node of raw.upsert) node.effects = [{ label: 'Shared kitchen', weight: 2, scope: 'Shared cooking', pressure: 'Neighbors exchange practical help.' }];
         return envelope(raw);
     }, defaultState(), { director: true });
     h.settings.fullReviewInterval = 20; h.settings.earlyReviews = true;
@@ -1084,7 +1118,7 @@ test('active director keeps oversized public prose complete after save, reload a
         })) });
         const raw = directorReply(prompt), card = raw.upsert[0];
         raw.foundation = { reminder: '世界'.repeat(80), changeReason: '', scratchpad: '' };
-        card.effects = [{ label: 'Community access', pressure: '橋'.repeat(50) }];
+        card.effects = [{ label: 'Community access', weight: 2, scope: 'Village gatherings', pressure: '橋'.repeat(50) }];
         raw.select[0].description = '物語'.repeat(230);
         reply = structuredClone(raw);
         return envelope(raw);

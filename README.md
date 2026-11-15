@@ -28,6 +28,29 @@ Each bias has a signed weight from -10 to +10, a brief explanation of how matchi
 
 A bias describes a reusable family of activities, not an unfinished objective. Individual jobs and experiences can end while the broader source of opportunities continues. New manifestations should vary in substance, participants and consequences. Effects can stay quiet when unsuitable, and current play and author direction take precedence. TF reviews them separately from their cards; older condition effects can be replaced in the next review without deleting history or closing a genuinely ongoing story.
 
+Every new preparation, whether from **Guide now**, an **automatic review**, or **Full rebuild**, must leave all continuing effects weighted and scoped, including offscreen cards and the World Frame. An incomplete conversion rejects the update and preserves the saved preparation. Supported weighted effects survive omission unchanged; only an explicit update replaces or clears them. Cards may have no effects. Historical saved packets remain readable without rewriting history.
+
+### Understanding every weight
+
+The planner and writer prompt explicitly anchors **+1 as slight**, **+3 as noticeable**, **+10 as strongly favoring matching opportunities**, and **0 as no added bias**. Negative values discourage matching opportunities. All integers between -10 and +10 are valid. Intermediate descriptions below are illustrative interpretations, not separately programmed thresholds, probabilities, or event frequencies.
+
+For a bias named **Shared musical exploration**, scoped to club leisure, matching opportunities could include exchanging songs, trying instruments, composing together, or an optional jam session. A positive weight favors opportunities like these, not guaranteed player participation or successful performances. A negative weight discourages introducing that same activity family; it does not create hostility, sabotage, or a ban on music.
+
+| Positive weight | Illustrative encouragement | Negative weight | Illustrative discouragement |
+| --- | --- | --- | --- |
+| +1 | Slight nudge | -1 | Slight restraint |
+| +2 | Mild encouragement | -2 | Mild discouragement |
+| +3 | Noticeable encouragement | -3 | Noticeable discouragement |
+| +4 | Clear encouragement | -4 | Clear discouragement |
+| +5 | Moderate emphasis | -5 | Moderate restraint |
+| +6 | Substantial emphasis | -6 | Substantial restraint |
+| +7 | Strong emphasis | -7 | Strong restraint |
+| +8 | Very strong emphasis | -8 | Very strong restraint |
+| +9 | Near-maximum encouragement | -9 | Near-maximum discouragement |
+| +10 | Strongest encouragement allowed | -10 | Strongest discouragement allowed |
+
+**0:** no added push either way. Musical opportunities can still arise naturally from the RP. At every weight, scope, current play, author direction, and player agency take precedence. Even +10 is not an every-reply quota, and -10 is not a prohibition.
+
 ## Future Chapters
 
 Tale Fairy can also prepare possible future Chapters in a separate, private outlook. These can draw from canon or introduce original ideas.

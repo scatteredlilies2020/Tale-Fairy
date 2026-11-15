@@ -18,11 +18,11 @@ const response = (effects = []) => ({ reviewAfter: 12, foundation: foundation([]
     retain: [], retire: [], select: [selection()], effectUpdates: [], bridges: [] });
 const future = { id: 'f1-selection', title: 'The candidates meet', category: 'Canon',
     premise: 'PRIVATE_FUTURE_OUTCOME must stay out of the writer packet.' };
-async function pass(raw, state = emptyCampaign(), futureCards = []) {
+async function pass(raw, state = emptyCampaign(), futureCards = [], flags = {}) {
     const messages = [{ index: 0, role: 'user', content: 'The decree has been rendered and signed. I am governor now.' },
         { index: 1, role: 'assistant', content: 'The household acknowledges the appointment.' }];
     const input = directorInput({ state, reference: { premise: 'An open-ended fantasy RP.' }, messages,
-        previousUsable: state.revision > 0, futureCards });
+        previousUsable: state.revision > 0, futureCards, ...flags });
     let calls = 0;
     const result = await directorPass({ state, input, source: { chatId: 'example', messageCount: 2, referenceHash: 'r', fingerprint: 'f' },
         generate: async () => { calls++; return { text: JSON.stringify(raw), finishReason: 'stop' }; } });
@@ -31,15 +31,23 @@ async function pass(raw, state = emptyCampaign(), futureCards = []) {
 }
 const decode = state => JSON.parse(campaignPayload(state).replace(/<\/?tale-fairy-context>/g, ''));
 
+async function legacyState(effects) {
+    const result = await pass(response());
+    assert.equal(result.accepted, true, result.error);
+    result.state.workingPlan.storyStructure.nodes[0].effects = structuredClone(effects);
+    assert.equal(validCampaignState(result.state), true, 'historical prose remains readable');
+    return result;
+}
+
 test('signed weights and generated scopes survive planning, storage, writer transport and display', async () => {
     const effects = [influence('Shared musical exploration', 1), influence('Local cooperation', 10),
-        influence('Outside interference', -3), influence('A neutral condition', 0)];
+        influence('Outside interference', -10), influence('A neutral condition', 0), influence('Strong opportunities', 8)];
     const result = await pass(response(effects));
     assert.equal(result.accepted, true, result.error);
     assert.equal(validCampaignState(result.state), true);
     assert.deepEqual(decode(result.state).story_context[0].effects, effects);
     const html = storyCardsHtml(result.state.workingPlan);
-    for (const value of ['+1', '+10', '-3', 'Scope:', 'Shared musical exploration']) assert.ok(html.includes(value));
+    for (const value of ['+1', '+8', '+10', '-10', 'Scope:', 'Shared musical exploration']) assert.ok(html.includes(value));
     assert.match(decode(result.state).effect_basis, /not calibrated probabilities or per-reply quotas/);
     assert.match(decode(result.state).effect_basis, /Past reactions are not fresh evidence/);
     assert.ok(DIRECTOR_SCHEMA.value.properties.upsert.items.properties.effects.items.required.includes('weight'));
@@ -69,7 +77,7 @@ test('theme influences work without any selected arc or a mandatory event', asyn
 });
 
 test('effects change independently of a continuing card and never mutate the previous snapshot', async () => {
-    const initial = await pass(response([{ label: 'Authority unsettled', pressure: 'A decision has not yet arrived.' }]));
+    const initial = await legacyState([{ label: 'Authority unsettled', pressure: 'A decision has not yet arrived.' }]);
     const before = JSON.stringify(initial.state);
     const updated = await pass({ ...response(), upsert: [], effectUpdates: [{ id: 'r1-domain', effects: [influence('Settled authority', 4)] }] }, initial.state);
     assert.equal(updated.accepted, true, updated.error);
@@ -82,13 +90,90 @@ test('effects change independently of a continuing card and never mutate the pre
     assert.equal(decode(cleared.state).story_context[0].effects, undefined);
 });
 
-test('a new-format review cannot silently carry unreviewed selected effects forward', async () => {
-    const initial = await pass(response([influence('A temporary influence')]));
-    const updated = await pass({ ...response(), upsert: [] }, initial.state);
-    assert.equal(updated.accepted, true, updated.error);
-    assert.equal(updated.state.workingPlan.storyStructure.nodes[0].status, 'active');
-    assert.equal(decode(updated.state).story_context[0].effects, undefined);
-    assert.match(updated.plannerNotices.join(' '), /Unreviewed selected effects withheld/);
+test('selected cards send every saved effect without a separate review decision, even above target', async () => {
+    const effects = Array.from({ length: 8 }, (_, i) => ({ ...influence(`Retained activity ${i}`),
+        pressure: `Activity ${i}: ${'Shared village activities provide varied opportunities. '.repeat(30)}` }));
+    const initial = await pass(response(effects));
+    assert.equal(initial.accepted, true, initial.error);
+    const before = structuredClone(initial.state);
+    for (const effectUpdates of [[], undefined]) {
+        const updated = await pass({ ...response(), upsert: [], effectUpdates }, initial.state);
+        assert.equal(updated.accepted, true, updated.error);
+        assert.equal(updated.state.workingPlan.storyStructure.nodes[0].status, 'active');
+        assert.deepEqual(decode(updated.state).story_context[0].effects, effects);
+        assert.deepEqual(updated.state.workingPlan.storyStructure.nodes[0].effects, effects);
+        assert.ok(updated.budgetNotices.some(notice => notice.includes('above soft target')));
+        assert.deepEqual(updated.plannerNotices, []);
+        assert.deepEqual(initial.state, before);
+    }
+});
+
+test('ordinary automatic/manual reviews require complete migration, including offscreen cards and foundation', async () => {
+    const legacy = [{ label: 'Old condition', pressure: 'A former descriptive concern.' }];
+    const initial = await legacyState(legacy), state = initial.state;
+    state.workingPlan.storyStructure.foundation.effects = structuredClone(legacy);
+    state.workingPlan.storyStructure.nodes.push({ ...structuredClone(state.workingPlan.storyStructure.nodes[0]), id: 'r1-offscreen', kind: 'arc',
+        parentId: 'r1-domain', status: 'dormant' });
+    assert.equal(validCampaignState(state), true);
+    const before = structuredClone(state);
+    const input = directorInput({ state, reference: {}, messages: [], previousUsable: true });
+    assert.deepEqual(JSON.parse(input.prompt).previous_preparation.required_effect_migration,
+        { foundation: true, node_ids: ['r1-domain', 'r1-offscreen'] });
+
+    const raw = { ...response(), upsert: [], select: [], foundation: foundation([influence('Shared opportunities', 8)]),
+        effectUpdates: [{ id: 'r1-domain', effects: [influence('Household exchanges', 3)] }] };
+    const incomplete = await pass(raw, state);
+    assert.equal(incomplete.accepted, false);
+    assert.match(incomplete.error, /conversion incomplete for r1-offscreen/);
+    assert.deepEqual(incomplete.state, before);
+    assert.deepEqual(state, before);
+
+    const converted = await pass({ ...raw, effectUpdates: [...raw.effectUpdates,
+        { id: 'r1-offscreen', effects: [influence('Independent village pursuits', 2)] }] }, state);
+    assert.equal(converted.accepted, true, converted.error);
+    for (const node of converted.state.workingPlan.storyStructure.nodes) {
+        assert.equal(typeof node.effects[0].weight, 'number');
+        assert.ok(node.effects[0].scope);
+    }
+    assert.equal(converted.state.workingPlan.storyStructure.foundation.effects[0].weight, 8);
+    assert.deepEqual(state, before);
+});
+
+test('omitting legacy effects cannot silently keep them or assign default scores; explicit clearing is allowed', async () => {
+    const initial = await legacyState([{ label: 'Legacy condition', pressure: 'Old facts.' }]);
+    initial.state.workingPlan.storyStructure.foundation.effects = [{ label: 'Old frame', pressure: 'Old premise facts.' }];
+    const raw = { ...response(), upsert: [], foundation: { reminder: '', changeReason: '', scratchpad: '' } };
+    const omitted = await pass(raw, initial.state);
+    assert.equal(omitted.accepted, false);
+    assert.match(omitted.error, /conversion incomplete for foundation/);
+    assert.deepEqual(omitted.state, initial.state);
+    const cleared = await pass({ ...raw, foundation: foundation([]),
+        effectUpdates: [{ id: 'r1-domain', effects: [] }] }, initial.state);
+    assert.equal(cleared.accepted, true, cleared.error);
+    assert.deepEqual(cleared.state.workingPlan.storyStructure.nodes[0].effects, []);
+    assert.deepEqual(cleared.state.workingPlan.storyStructure.foundation.effects, []);
+});
+
+test('fresh setup and full rebuild reject newly generated prose-only effects', async () => {
+    const legacy = [{ label: 'Unscored concern', pressure: 'A description without an activity weight.' }];
+    const initial = await legacyState(legacy);
+    for (const [state, flags] of [[emptyCampaign(), {}], [initial.state, { resetPlan: true }]]) {
+        const before = structuredClone(state);
+        const freshResponse = effects => {
+            const raw = response(effects), id = `r${state.revision + 1}-domain`;
+            raw.upsert[0].id = raw.select[0].id = id;
+            return raw;
+        };
+        for (const raw of [freshResponse(legacy), { ...freshResponse(), foundation: foundation(legacy) }]) {
+            const result = await pass(raw, state, [], flags);
+            assert.equal(result.accepted, false);
+            assert.match(result.error, /Weighted activity conversion incomplete/);
+            assert.deepEqual(result.state, before);
+        }
+        const result = await pass(freshResponse([influence('Fresh activity', 8)]), state, [], flags);
+        assert.equal(result.accepted, true, result.error);
+        assert.equal(result.state.workingPlan.storyStructure.nodes[0].effects[0].weight, 8);
+    }
 });
 
 test('a canon bridge sends only its grounded opening and does not adopt a future by itself', async () => {
@@ -123,7 +208,7 @@ test('unknown, duplicate or consumed future bridges are withheld', async () => {
 });
 
 test('pre-weighted saved packets authenticate unchanged and rebuild with current interpretation rules', async () => {
-    const first = await pass(response([{ label: 'Legacy influence', pressure: 'An older cause description.' }]));
+    const first = await legacyState([{ label: 'Legacy influence', pressure: 'An older cause description.' }]);
     const historical = preWeightedCampaignPayload(first.state);
     assert.match(historical, /Apply ongoing pressure through causes and stakes/);
     const packet = { version: 1, selection: { preparedUsable: true }, payload: historical,

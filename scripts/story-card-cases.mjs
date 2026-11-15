@@ -1,6 +1,6 @@
 // Deliberately authored examples, not model output or assertions about exact canon.
 // All named settings here are alternate RP premises, with player choices left open.
-const effect = (label, pressure) => ({ label, pressure });
+const effect = (label, pressure) => ({ label, weight: 2, pressure, scope: 'Shared activities' });
 const card = (id, kind, title, owner, description, effects, endsWhen = '', parentId = '', status = 'active') =>
     ({ id, kind, title, owner, description, effects, endsWhen, parentId, status, links: [] });
 

@@ -7,7 +7,7 @@ import { storyChangeSignal, storyGuidanceFresh } from '../extension/story-struct
 
 const node = (id, kind, parentId, title, endsWhen, pressure) => ({ id, kind, parentId, title, endsWhen, status: 'active',
     owner: 'The club', description: 'School music and relationships develop through club life.', links: [],
-    effects: [{ label: 'Ongoing concern', pressure }] });
+    effects: [{ label: 'Ongoing concern', weight: 2, scope: 'School music and club life', pressure }] });
 const cards = [
     node('r1-term', 'saga', '', 'The autumn term', 'The autumn term ends.', 'Autumn classes frame club commitments.'),
     node('r1-festival', 'arc', 'r1-term', 'Preparing the October festival', 'The October festival window passes.', 'Festival preparation competes for rehearsal time.'),

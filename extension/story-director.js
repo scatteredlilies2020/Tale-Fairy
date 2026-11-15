@@ -67,11 +67,11 @@ As story time advances, review every Chapter, Arc and Subplot for explicit or cl
 
 previous_preparation is the current map, not the future outlook. upsert replaces changed cards; new ids use new_id_prefix. Active and dormant stories persist automatically when omitted; retain keeps unchanged proposals. Resolve stories ended explicitly or by clear implication of accepted play; use explicit retire for withdrawn proposals or actual filler, without claiming events occurred. To close a Chapter, explicitly end it, supply its successor and reconnect surviving Arcs. Never close it just to reorganize the board. Keep substantial current stories across focus changes, not stale cards with only hypothetical future relevance. Dormant suspends current unfinished business, not indefinite storage. Empty updates are valid.
 
-recent_card_names lists earlier idea names, newest first, to vary ideas and avoid repetition. Names establish no history or outcomes.
+recent_card_names: older titles, newest first. Vary ideas; infer no history or outcomes.
 
 foundation.effects provides a few independent, reusable activity families from the RP's whole premise and sources of initiative, beyond the currently open problem. Each should give the writer a reason to create fitting things to do, encounter or experience. Preserve the reminder while reviewing these generators separately; [] is valid. Current facts, statuses and attitudes belong in descriptions, not weighted foundations.
 
-effectUpdates supplies each selected retained card's current effects unless supplied in upsert. Preserve supported weighted influences, revise changed ones, or supply [] to clear without closing the card. Rework descriptive and attitude-based legacy effects into fitting activity generators; do not merely attach scores or rename the same concern. Return [] if no retained selected effects need review.
+effectUpdates replaces retained effects, not cards. EVERY run (automatic, Guide now, Full rebuild) must convert ALL legacy effects, including offscreen cards and foundation.effects, into weighted activities with scope, not scored concerns. Incomplete conversion rejects the update. Omission preserves effects; selection sends them automatically. Preserve supported weighted effects; [] explicitly clears obsolete ones without closing cards. No changes: [].
 
 select renews writer-facing cards from scratch; [] keeps only the RP reminder. Select relevant proposed/active currents and situations, including wider pressures that remain important during respite. Supply title, context (only parentId ancestors, outermost first; links are not parents), concise description and endsWhen. To select a dormant card, explicitly update it to active first; otherwise retain it without selection. Selected nodes' effects are included automatically, so do not repeat them here. development is an optional brief opportunity ("" otherwise). The writer shares your author-level view: include fitting hidden motives and secrets before characters know. It decides manifestation/revelation; character knowledge follows play. Distinguish proposals from established events. Ask what can meaningfully develop, not merely be mentioned again.
 
@@ -122,6 +122,9 @@ export function directorInput(args, maxTokens) {
     }, maxTokens, { system: DIRECTOR_SYSTEM, schema: DIRECTOR_SCHEMA, project: payload => {
         const { previous_plan, prior_story_map: _map, ...context } = payload;
         const { review_boundary: _boundary, omitted_context: _omitted, ...coverage } = context.coverage;
+        const previousNodes = ongoingStoryNodes(previousStoryNodes(previous_plan));
+        const legacyNodeIds = previousNodes.filter(hasLegacyEffects).map(node => node.id);
+        const legacyFoundation = hasLegacyEffects(previous_plan.storyStructure?.foundation);
         const authored = (args.reference?.authorInstructions || []).filter(text => typeof text === 'string' && text.trim());
         const fixed = fitStoryContext([], authored, { storyStructure: true, softTarget: true, writerTarget: args.writerTarget,
             orientation: previous_plan.storyStructure?.foundation?.reminder || '',
@@ -135,9 +138,12 @@ export function directorInput(args, maxTokens) {
         // older chat. Adding it only to leftover space starves long campaigns.
         ...(args.futureCards?.length ? { private_future: args.futureCards } : {}),
         previous_preparation: {
-            nodes: ongoingStoryNodes(previousStoryNodes(previous_plan)).map(storyNodeForPlanner),
+            nodes: previousNodes.map(storyNodeForPlanner),
             ...(previous_plan.storyStructure?.foundation ? { foundation: previous_plan.storyStructure.foundation } : {}),
             ...(previous_plan.storyStructure?.bridges?.length ? { bridges: previous_plan.storyStructure.bridges } : {}),
+            ...(legacyFoundation || legacyNodeIds.length ? { required_effect_migration: {
+                foundation: legacyFoundation, node_ids: legacyNodeIds,
+            } } : {}),
         }, ...(!args.resetPlan && !args.previousUsable && args.reconsiderHorizon ? {
             reconsider_horizon: { nodes: ongoingStoryNodes(previousStoryNodes(args.reconsiderHorizon)).map(storyNodeForPlanner) },
         } : {}) };
@@ -164,6 +170,21 @@ function stableJson(value) {
     if (Array.isArray(value)) return value.map(stableJson);
     if (value && typeof value === 'object') return Object.fromEntries(Object.keys(value).sort().map(key => [key, stableJson(value[key])]));
     return value;
+}
+
+function hasLegacyEffects(record) {
+    return (record?.effects || []).some(effect => !Object.hasOwn(effect, 'weight') || !Object.hasOwn(effect, 'scope'));
+}
+
+// Historical storage stays readable. Only newly generated preparation must
+// finish conversion, atomically, without guessing strengths or deleting effects.
+function requireWeightedEffects(foundation, nodes) {
+    for (const [owner, record] of [['foundation', foundation], ...nodes.map(node => [node.id, node])]) {
+        try { check(record?.effects || [], WEIGHTED_EFFECTS_SCHEMA, `${owner}.effects`); }
+        catch {
+            throw Error(`Weighted activity conversion incomplete for ${owner}: provide integer weights -10 through +10 and scopes for every effect, or explicitly clear obsolete effects with []. Saved preparation is unchanged.`);
+        }
+    }
 }
 
 function protectedDraft(raw) {
@@ -268,14 +289,8 @@ export async function directorPass({ state, input, source, generate }) {
                 }
                 node.effects = structuredClone(update.effects); reviewed.add(update.id);
             }
-            for (const selected of raw.select) {
-                const node = merged.find(node => node.id === selected?.id);
-                if (node?.effects?.length && !reviewed.has(node.id)
-                    && !raw.upsert.some(item => item.id === node.id && Object.hasOwn(item, 'effects'))) {
-                    node.effects = [];
-                    notices.push('Unreviewed selected effects withheld; the story remains open.');
-                }
-            }
+            // Selection sends all saved effects. Only an explicit update may
+            // replace or clear them; omission is not a withdrawal decision.
         }
         const explicitEnds = new Set([
             ...raw.retire.filter(id => !raw.upsert.some(node => node?.id === id)),
@@ -297,6 +312,7 @@ export async function directorPass({ state, input, source, generate }) {
         }
         for (const record of [...raw.upsert, ...raw.select]) if (record?.id) retainedIds.add(record.id);
         const nodes = ongoingStoryNodes(merged, retainedIds), mergedRows = new Map(merged.map(node => [node.id, node]));
+        requireWeightedEffects(foundation, nodes);
         // Current host passes enforce the hierarchy; old archived formats and
         // historical fixture readers remain compatible. Never fabricate links.
         if (input.requireSagaHierarchy) validateSagaHierarchy(nodes);
