@@ -22,7 +22,7 @@ import { plannerContextLimit } from '../extension/planner-capacity.js';
 import { plannerOutputTokenBudget } from '../extension/reasoning-policy.js';
 import { originalUnderstanding } from './helpers/rp-fixtures.js';
 import { extractTaleFairyContext, ensureGuidanceInChat, chatHasCurrentGuidance } from '../extension/request-injection.js';
-import { legacyPlotInputKey, GENERATION_CONTEXT_KEY, generationContextEntries } from '../extension/generation-context.js';
+import { legacyPlotInputKey, GENERATION_CONTEXT_KEY, generationContextEntries, compactGenerationContextCache } from '../extension/generation-context.js';
 import { campaignPayload, campaignPayloadBudget, boundedCampaignPayload, contractedCampaignPayload, objectiveGuidancePayload, legacyCampaignPayload, validCampaignState } from '../extension/campaign-planner.js';
 
 const source = readFileSync(new URL('../extension/index.js', import.meta.url), 'utf8');
@@ -1193,7 +1193,8 @@ test('old hard-limit caches authenticate and restore complete content above the 
     await h.scope.analyzeCampaignNow();
     h.prepare();
     const metadata = JSON.parse(JSON.stringify(h.context.chatMetadata));
-    const packet = metadata[GENERATION_CONTEXT_KEY].entries.at(-1);
+    const packet = generationContextEntries(metadata[GENERATION_CONTEXT_KEY]).at(-1);
+    metadata[GENERATION_CONTEXT_KEY] = { version: 1, entries: [packet] };
     packet.plannerState.campaignPreparation.workingPlan.storyStructure.selection[0].interpretation = '物語'.repeat(230);
     packet.plannerState.campaignPreparation.workingPlan.storyStructure.nodes[0].effects = [{ label: 'Access', pressure: '橋'.repeat(190) }];
     metadata[STATE_KEY] = saveState({}, packet.plannerState)[STATE_KEY];
@@ -1497,7 +1498,7 @@ test('legacy scene packets still expire when their lifetime shortens, without re
     h.context.chatMetadata = JSON.parse(JSON.stringify(h.context.chatMetadata));
     assert.equal(h.prepare().payload, packet.payload);
     const cache = h.context.chatMetadata[GENERATION_CONTEXT_KEY];
-    const scoped = structuredClone(cache.entries.at(-1));
+    const scoped = structuredClone(generationContextEntries(cache).at(-1));
     scoped.selection.horizonsOnly = true;
     scoped.payload = packet.payload;
     assert.equal(generationContextEntries({ entries: [scoped] }).length, 1);
@@ -1510,7 +1511,7 @@ test('a saved horizon-only packet authenticates and restores its conditional ent
     await h.scope.analyzeCampaignNow();
     for (let i = 0; i < 8; i++) h.context.chat.push({ is_user: false, name: 'Mara', mes: `Later accepted play ${i}.` });
     const original = h.prepare().payload;
-    const packet = structuredClone(h.context.chatMetadata[GENERATION_CONTEXT_KEY].entries.at(-1));
+    const packet = structuredClone(generationContextEntries(h.context.chatMetadata[GENERATION_CONTEXT_KEY]).at(-1));
     packet.selection.horizonsOnly = true;
     packet.payload = campaignPayload(packet.plannerState.campaignPreparation, [], { horizonsOnly: true });
     assert.equal(generationContextEntries({ entries: [packet] }).length, 1);
@@ -2379,7 +2380,7 @@ test('shared selection survives actual metadata, cache authentication and retrie
         assert.equal(reopened.prepare(type).payload, selected.payload);
         assert.equal(reopened.requests.length, 0);
     }
-    const tampered = structuredClone(metadata[GENERATION_CONTEXT_KEY]);
+    const tampered = { entries: generationContextEntries(metadata[GENERATION_CONTEXT_KEY]) };
     tampered.entries[0].plannerState.campaignPreparation.selectedMaterial[0].available = 'Altered proposal.';
     assert.equal(generationContextEntries(tampered).length, 0, 'changed selected content cannot authenticate the original packet');
 });
@@ -2877,7 +2878,8 @@ test('single-goal saved packets still authenticate byte-for-byte and upgrade on 
         assert.equal(selected.reused, true, type);
         assert.equal(selected.payload, packet.payload, 'authenticated old bytes are rebuilt as material-only guidance');
         assert.equal(reopened.requests.length, 0);
-        assert.deepEqual(reopened.context.chatMetadata, structuredClone(metadata));
+        assert.deepEqual(reopened.context.chatMetadata, { ...structuredClone(metadata),
+            [GENERATION_CONTEXT_KEY]: structuredClone(compactGenerationContextCache(cache)) });
     }
     const upgrade = browser(undefined, old);
     upgrade.context.chatMetadata = structuredClone(metadata);
@@ -2915,7 +2917,8 @@ test('reload and retry authenticate old scene packets but inject only story mate
         assert.equal(selected.payload, campaignPayload(legacy.campaignPreparation));
         assert.match(selected.payload, /possible_developments/);
         assert.doesNotMatch(selected.payload, /OLD SCRIPTED|FIXED ENDING|At noon/);
-        assert.deepEqual(reopened.context.chatMetadata, before, 'formatting never rewrites saved progress or packet archives');
+        assert.deepEqual(reopened.context.chatMetadata, { ...before,
+            [GENERATION_CONTEXT_KEY]: structuredClone(compactGenerationContextCache(cache)) }, 'only storage changes; saved progress and packet bytes stay intact');
         assert.equal(reopened.requests.length, 0);
         reopened.context.chat[0].mes = 'A different accepted opening.';
         assert.doesNotMatch(reopened.prepare(type).payload, /Compose a piece worth keeping|OLD SCRIPTED|FIXED ENDING/,
@@ -2950,7 +2953,8 @@ test('0.14.32 packets authenticate exactly but reload and every retry rebuild on
         assert.equal(selected.payload, campaignPayload(old.campaignPreparation));
         assert.match(selected.payload, /An original tune has potential/);
         assert.doesNotMatch(selected.payload, /long_term_direction|development_guidance|objective|Compose a piece worth keeping/);
-        assert.deepEqual(reopened.context.chatMetadata, before);
+        assert.deepEqual(reopened.context.chatMetadata, { ...before,
+            [GENERATION_CONTEXT_KEY]: structuredClone(compactGenerationContextCache(cache)) });
         assert.equal(reopened.requests.length, 0);
         reopened.context.chat[0].mes = 'A different opening.';
         assert.doesNotMatch(reopened.prepare(type).payload, /An original tune has potential/);

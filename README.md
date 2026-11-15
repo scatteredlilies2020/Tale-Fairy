@@ -51,6 +51,10 @@ For a bias named **Shared musical exploration**, scoped to club leisure, matchin
 
 **0:** no added push either way. Musical opportunities can still arise naturally from the RP. At every weight, scope, current play, author direction, and player agency take precedence. Even +10 is not an every-reply quota, and -10 is not a prohibition.
 
+## Retry storage
+
+Retry snapshots store identical plans once in a shared table. Existing retry caches migrate automatically when the chat opens; each retry restores an independent copy with its original guidance and validation. Live campaign history stays intact. This lossless storage change does not shorten AI prompts or require a generation.
+
 ## Future Chapters
 
 Tale Fairy can also prepare possible future Chapters in a separate, private outlook. These can draw from canon or introduce original ideas.

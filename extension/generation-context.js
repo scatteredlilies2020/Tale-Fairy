@@ -150,19 +150,27 @@ export function migrateCampaignBudgetKeys(metadata, { chatId, messages, inputs }
     set('livingWorldGuide', migrateSources(metadata.livingWorldGuide));
     set('taleFairyCampaignAttempt', migrateSources(metadata.taleFairyCampaignAttempt));
     const cache = metadata[GENERATION_CONTEXT_KEY];
-    if (Array.isArray(cache?.entries)) {
+    const cached = generationCachePackets(cache);
+    if (Array.isArray(cache?.entries) && cached.every(Boolean)) {
         // Only the current pre-reply/full source needs cache migration. Older
         // archived packets remain intact and can migrate when revisited.
         const sources = [messages, ...(!messages.at(-1)?.is_user ? [messages.slice(0, -1)] : [])];
         const keys = sources.map(source => [legacyPlotInputKey(chatId, source, inputs), plotInputKey(chatId, source, inputs)]);
-        const entries = cache.entries.map(packet => {
+        const entries = cached.map(packet => {
             if (packet.chatId !== chatId) return packet;
             const pair = keys.find(([old]) => old === packet.inputKey);
             if (!pair) return packet;
             const migrated = migrateSources(packet);
             return { ...migrated, inputKey: pair[1], selection: { ...migrated.selection, inputKey: pair[1] } };
         });
-        if (entries.some((entry, i) => entry !== cache.entries[i])) set(GENERATION_CONTEXT_KEY, { ...cache, entries });
+        if (entries.some((entry, i) => entry !== cached[i])) {
+            const plain = { ...cache, entries };
+            if (cache.encoding === SHARED_PLANS) {
+                delete plain.encoding;
+                delete plain.plans;
+            }
+            set(GENERATION_CONTEXT_KEY, compactGenerationContextCache(plain));
+        }
     }
     return next;
 }
@@ -189,14 +197,77 @@ export function compactGenerationPacket(packet) {
     };
 }
 
+const SHARED_PLANS = 'shared-plans-v1';
+const PLAN_REFERENCE = '$taleFairyPlan';
+const jsonCopy = value => JSON.parse(JSON.stringify(value));
+const isPlanObject = value => value && typeof value === 'object' && !Array.isArray(value);
+
+// References exist only in these two slots, under an explicitly versioned
+// envelope. Never interpret similar-looking user content in an ordinary cache.
+function sharedPacket(packet, plans) {
+    if (!isPlanObject(packet)) return null;
+    const restored = jsonCopy(packet);
+    if (packet.plannerState?.plannerContract !== 15) return restored;
+    for (const key of ['plannerState', 'selection']) {
+        const reference = packet[key]?.campaignPreparation;
+        if (reference == null) continue;
+        if (!isPlanObject(reference)) return null;
+        const index = reference[PLAN_REFERENCE];
+        if (Object.keys(reference).length !== 1 || !Number.isSafeInteger(index) || index < 0
+            || !Object.hasOwn(plans, index) || !isPlanObject(plans[index])) return null;
+        // Each caller/slot gets its own plan: restoring one retry must never
+        // mutate another retry, the table, or the live campaign state.
+        restored[key].campaignPreparation = jsonCopy(plans[index]);
+    }
+    return restored;
+}
+
+function generationCachePackets(cache) {
+    if (cache && Object.hasOwn(cache, 'encoding')) {
+        if (cache.encoding !== SHARED_PLANS || cache.version !== 1
+            || !Array.isArray(cache.entries) || !Array.isArray(cache.plans)) return [null];
+        return cache.entries.map(packet => sharedPacket(packet, cache.plans));
+    }
+    return Array.isArray(cache?.entries) ? cache.entries : [cache];
+}
+
 export function compactGenerationContextCache(cache) {
+    // Already packed (or a newer/unknown encoding): leave saved bytes alone.
+    // In particular, migration must not rewrite corrupt or future formats.
+    if (cache && Object.hasOwn(cache, 'encoding')) return cache;
     if (!Array.isArray(cache?.entries)) return compactGenerationPacket(cache);
     const entries = cache.entries.map(compactGenerationPacket);
-    return entries.some((entry, index) => entry !== cache.entries[index]) ? { ...cache, entries } : cache;
+    const plain = entries.some((entry, index) => entry !== cache.entries[index]) ? { ...cache, entries } : cache;
+    if (cache.version !== 1 || Object.hasOwn(cache, 'plans')) return plain;
+    // Leave malformed inline slots inspectable in their original format,
+    // rather than creating an envelope that its own decoder would reject.
+    if (entries.some(packet => packet?.plannerState?.plannerContract === 15
+        && ['plannerState', 'selection'].some(key => packet[key]?.campaignPreparation != null
+            && !isPlanObject(packet[key].campaignPreparation)))) return plain;
+    const plans = [], indices = new Map();
+    const packed = entries.map(packet => {
+        if (packet?.plannerState?.plannerContract !== 15) return packet;
+        let next = packet;
+        for (const key of ['plannerState', 'selection']) {
+            const plan = packet[key]?.campaignPreparation;
+            if (!isPlanObject(plan)) continue;
+            const serialized = JSON.stringify(plan);
+            if (!indices.has(serialized)) {
+                indices.set(serialized, plans.length);
+                plans.push(plan);
+            }
+            next = { ...next, [key]: { ...packet[key], campaignPreparation: { [PLAN_REFERENCE]: indices.get(serialized) } } };
+        }
+        return next;
+    });
+    if (!plans.length) return plain;
+    const encoded = { ...plain, encoding: SHARED_PLANS, plans, entries: packed };
+    const bytes = value => new TextEncoder().encode(JSON.stringify(value)).length;
+    return bytes(encoded) < bytes(plain) ? encoded : plain;
 }
 
 export function generationContextEntries(cache) {
-    const entries = Array.isArray(cache?.entries) ? cache.entries : [cache];
+    const entries = generationCachePackets(cache);
     return entries.filter(item => item?.version === 1 && item.selection && typeof item.payload === 'string'
         && (item.plannerState?.plannerContract === 15
             ? (item.selection.horizonsOnly ? [campaignPayload] : [campaignPayload, preActivityCampaignPayload, preWeightedCampaignPayload, preInitiativeCampaignPayload, preCausalEffectPayload, boundedCampaignPayload, contractedCampaignPayload, preFollowThroughCampaignPayload, preBudgetCampaignPayload, objectiveGuidancePayload, legacyCampaignPayload]).some(serialize => item.payload === serialize(item.selection.preparedUsable && validCampaignState(item.plannerState.campaignPreparation)
@@ -205,8 +276,12 @@ export function generationContextEntries(cache) {
 }
 
 export function rememberGenerationContext(history, packet) {
-    return { version: 1, entries: [...generationContextEntries(history).filter(item => item.inputKey !== packet.inputKey), packet]
-        .slice(-GENERATION_CACHE_LIMIT).map(compactGenerationPacket) };
+    if (history && Object.hasOwn(history, 'encoding') && generationCachePackets(history).some(item => !item)) {
+        throw new Error('Tale Fairy retry cache has an unsupported or damaged storage format; saved retries were not overwritten.');
+    }
+    return compactGenerationContextCache({ version: 1,
+        entries: [...generationContextEntries(history).filter(item => item.inputKey !== packet.inputKey), packet]
+            .slice(-GENERATION_CACHE_LIMIT) });
 }
 
 // The pending replacement is still the same input with either no reply yet,

@@ -94,10 +94,10 @@ test('loading oversized retry metadata preserves guidance, proofs, messages and 
     assert.deepEqual(reopened.state().campaignPreparation, state.campaignPreparation);
     assert.deepEqual(reopened.context.chat, messages());
     for (let index = 0; index < cache.entries.length; index++) {
-        const before = cache.entries[index], after = compact.entries[index];
-        assert.deepEqual({ ...after,
+        const before = cache.entries[index], after = generationContextEntries(compact)[index];
+        assert.deepEqual(structuredClone({ ...after,
             selection: { ...after.selection, campaignPreparation: before.selection.campaignPreparation },
-            plannerState: { ...after.plannerState, campaignPreparation: before.plannerState.campaignPreparation } }, before);
+            plannerState: { ...after.plannerState, campaignPreparation: before.plannerState.campaignPreparation } }), structuredClone(before));
     }
     assert.equal(JSON.stringify(metadata), original, 'migration never mutates saved inputs');
     assert.equal(reopened.scope.migrateCampaignReferences(), false);
@@ -263,7 +263,8 @@ function legacyBudgetPlan(h, budget = 20) {
     const source = metadata.livingWorldGuide.campaignPreparation.source;
     source.referenceHash = referenceHash;
     metadata.taleFairyCampaignAttempt = { ...source, assistantCount: 1, status: 'complete', key: 'old-runtime-key' };
-    const packet = metadata[GENERATION_CONTEXT_KEY].entries[0];
+    const packet = generationContextEntries(metadata[GENERATION_CONTEXT_KEY])[0];
+    metadata[GENERATION_CONTEXT_KEY] = { version: 1, entries: [packet] };
     packet.inputKey = legacyPlotInputKey('story', h.context.chat, inputs);
     packet.selection.inputKey = packet.inputKey;
     packet.selection.campaignPreparation.source.referenceHash = referenceHash;
