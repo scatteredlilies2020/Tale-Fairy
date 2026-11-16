@@ -39,7 +39,8 @@ for (const example of ensemblePressureCases) test(`exact writer packet: ${exampl
     assert.ok(!report.writerPacket.includes(example.scratchpad));
     assert.match(packet.movement_basis, /broad foundations.*not recurring scene instructions/);
     assert.match(packet.preparation_basis, /current concerns and reusable influences/);
-    assert.equal(packet.effect_basis, undefined, 'do not spend writer space on unused effect framing');
+    assert.ok(packet.effect_basis, 'weighted World Frame activities reach the writer even without card effects');
+    assert.equal(packet.world_effects.length, 1);
     const request = JSON.stringify(report.plannerRequest);
     for (const player of example.playerNames) assert.ok(request.includes(player));
     assert.ok(request.includes(example.premise));
@@ -130,7 +131,7 @@ test('old replies cannot erase a foundation, while rebuild does not resurrect it
     const oldResponse = await run(first.state, raw => { delete raw.foundation; return raw; });
     assert.equal(oldResponse.accepted, true, oldResponse.error);
     assert.deepEqual(oldResponse.state.workingPlan.storyStructure.foundation, first.state.workingPlan.storyStructure.foundation);
-    const fresh = await run(first.state, raw => ({ ...raw, foundation: { reminder: 'An entirely new original-world premise.', changeReason: '', scratchpad: '' } }), { resetPlan: true });
+    const fresh = await run(first.state, raw => ({ ...raw, foundation: { effects: [{ label: 'Shared pursuits', weight: 2, pressure: 'Independent interests invite fitting shared experiences.', scope: 'Ordinary participation in this RP' }], reminder: 'An entirely new original-world premise.', changeReason: '', scratchpad: '' } }), { resetPlan: true });
     assert.equal(fresh.accepted, true, fresh.error);
     assert.equal(JSON.parse(fresh.input.prompt).previous_preparation.foundation, undefined);
     assert.equal(fresh.state.archive.length, 0);
@@ -144,7 +145,7 @@ test('malformed foundation rejects the pass without losing saved work', async ()
         assert.equal(failed.accepted, false);
         assert.equal(failed.state, first.state);
     }
-    const empty = await run(emptyCampaign(), raw => ({ ...raw, foundation: { reminder: '', changeReason: '', scratchpad: '' } }));
+    const empty = await run(emptyCampaign(), raw => ({ ...raw, foundation: { effects: [{ label: 'Shared pursuits', weight: 2, pressure: 'Independent interests invite fitting shared experiences.', scope: 'Ordinary participation in this RP' }], reminder: '', changeReason: '', scratchpad: '' } }));
     assert.equal(empty.accepted, false, 'there is no previous reminder to retain');
 });
 

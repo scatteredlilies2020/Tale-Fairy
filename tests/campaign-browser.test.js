@@ -215,7 +215,9 @@ const directorReply = prompt => {
     const saga = input.previous_preparation?.nodes.find(node => node.kind === 'saga');
     const sagaId = saga?.id || `${prefix}neighborhood`;
     const id = `${prefix}kitchen`;
-    return { direction: 'Explore music, friendships and neighborhood life.', reviewAfter: 12, upsert: [{ id,
+    return { foundation: { reminder: 'Neighborhood activities and shared projects sustain this RP.', changeReason: '', scratchpad: '',
+        effects: [{ label: 'Shared pursuits', weight: 2, scope: 'Neighborhood gatherings', pressure: 'Shared interests invite informal exchanges.' }] },
+    direction: 'Explore music, friendships and neighborhood life.', reviewAfter: 12, upsert: [{ id,
         kind: 'arc', parentId: sagaId, status: 'proposed', links: [], title: 'An open neighborhood supper', owner: 'Community cooks',
         description: 'Shared cooking and a communal recipe book connect neighboring households.' },
         ...(!saga ? [{ id: sagaId, kind: 'saga', parentId: '', status: 'active', links: [],
@@ -532,7 +534,7 @@ const retainedDirectorReply = prompt => {
 const ensembleDirectorReply = prompt => {
     const raw = retainedDirectorReply(prompt);
     const previous = JSON.parse(prompt).previous_preparation.foundation;
-    raw.foundation = { reminder: previous ? '' : 'Independent communities, livelihoods and relationships sustain a broad ensemble; quiet scenes need no forced interruption.',
+    raw.foundation = { ...raw.foundation, reminder: previous ? '' : 'Independent communities, livelihoods and relationships sustain a broad ensemble; quiet scenes need no forced interruption.',
         changeReason: '', scratchpad: 'PRIVATE divergence: proposed harbor politics are not witnessed history.' };
     for (const card of [...raw.upsert, ...raw.select]) card.endsWhen = 'The current shared project is completed or set aside.';
     return raw;
@@ -911,6 +913,29 @@ for (const manual of [false, true]) test(`${manual ? 'Guide now' : 'scheduled au
     assert.deepEqual(converted.foundation.effects, [weighted]);
 });
 
+for (const mode of ['Guide now', 'automatic', 'Full rebuild']) test(`${mode} rejects an empty World Frame without a repair request`, async () => {
+    let clear = false;
+    const h = browser(async ({ prompt }) => {
+        const raw = ensembleDirectorReply(prompt);
+        if (clear) raw.foundation.effects = [];
+        return envelope(raw);
+    }, defaultState(), { director: true });
+    h.settings.fullReviewInterval = 12;
+    await h.scope.analyzeCampaignNow({ manual: true });
+    const before = structuredClone(h.state().campaignPreparation);
+    clear = true;
+    if (mode === 'Full rebuild') await h.scope.rebuildGuideState();
+    else {
+        if (mode === 'automatic') appendPlay(h, 12);
+        await h.scope.analyzeCampaignNow({ manual: mode === 'Guide now' });
+    }
+    assert.equal(h.requests.length, 2, 'never buys a second model request to repair the response');
+    assert.equal(h.context.chatMetadata.taleFairyCampaignAttempt.status, 'failed');
+    assert.match(h.context.chatMetadata.taleFairyCampaignAttempt.error, /World Frame needs at least one weighted activity/);
+    if (mode === 'Full rebuild') assert.equal(h.state().campaignPreparation, null, 'an explicit rebuild starts empty');
+    else assert.deepEqual(h.state().campaignPreparation, before, 'failed review preserves the saved preparation');
+});
+
 test('accepted writer signal schedules one early review without deciding closure itself', async () => {
     const h = browser(async ({ prompt }) => {
         const raw = ensembleDirectorReply(prompt);
@@ -963,7 +988,8 @@ for (const change of [
     await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 2, 'explicit changes bypass the long cadence');
     assert.deepEqual(h.state().campaignPreparation.workingPlan.storyStructure.nodes.map(node => node.kind), ['saga']);
-    assert.equal(h.prepare().payload, '');
+    assert.doesNotMatch(h.prepare().payload, /neighborhood supper|story_context/);
+    assert.match(h.prepare().payload, /world_effects/);
     await h.scope.analyzeCampaignNow();
     assert.equal(h.requests.length, 2, 'the accepted change is reviewed once');
 });
@@ -1084,7 +1110,8 @@ test('legacy proposals migrate whole and their old planning state remains archiv
     assert.equal(saved.workingPlan.storyStructure.nodes[0].expectation, `${'a'.repeat(600)} ${'b'.repeat(600)}`);
     assert.deepEqual(saved.archive.at(-1).workingPlan, old.workingPlan);
     assert.match(h.prepare().payload, /neighborhood supper/);
-    assert.doesNotMatch(h.prepare().payload, /xxx|yyy|aaa|bbb|trajectory|initiative|If /);
+    assert.doesNotMatch(h.prepare().payload, /xxx|yyy|aaa|bbb|trajectory|If /);
+    assert.doesNotMatch(h.prepare().payload, /"initiative":/);
 });
 
 test('story-map inspector shows private organization and separates the actual writer preview', async () => {
@@ -1148,7 +1175,7 @@ test('active director keeps oversized public prose complete after save, reload a
             interpretation: 'Neighborhood suppers connect households through shared recipes.', stakes: '', expectation: '',
         })) });
         const raw = directorReply(prompt), card = raw.upsert[0];
-        raw.foundation = { reminder: '世界'.repeat(80), changeReason: '', scratchpad: '' };
+        raw.foundation = { ...raw.foundation, reminder: '世界'.repeat(80), changeReason: '', scratchpad: '' };
         card.effects = [{ label: 'Community access', weight: 2, scope: 'Village gatherings', pressure: '橋'.repeat(50) }];
         raw.select[0].description = '物語'.repeat(230);
         reply = structuredClone(raw);
@@ -1219,7 +1246,7 @@ test('retaining an existing orientation reports readiness, not falsely withheld 
     let calls = 0;
     const h = browser(async ({ prompt }) => {
         const raw = directorReply(prompt);
-        raw.foundation = { reminder: calls++ ? 'A different RP.' : 'Neighborhood activities and shared projects sustain this RP.', changeReason: '', scratchpad: '' };
+        raw.foundation = { ...raw.foundation, reminder: calls++ ? 'A different RP.' : 'Neighborhood activities and shared projects sustain this RP.', changeReason: '', scratchpad: '' };
         return envelope(raw);
     }, defaultState(), { director: true });
     await h.scope.analyzeCampaignNow({ manual: true });

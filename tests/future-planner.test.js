@@ -490,7 +490,7 @@ test('edited/swiped source, chat switch, rebuild epoch, settings and disable rej
 test('current adoption can choose a non-first prospect, validated against the actual active root', async () => {
     const b = base();
     const input = directorInput({ reference: b.reference, state: b.state, messages: [], futureCards: [novel('f1-unrelated'), card()], requireSagaHierarchy: true });
-    const raw = { reviewAfter: 12, upsert: [{ id: 'r1-winter', kind: 'saga', parentId: '', status: 'active', links: [],
+    const raw = { reviewAfter: 12, foundation: { effects: [{ label: 'Shared pursuits', weight: 2, pressure: 'Independent interests invite fitting shared experiences.', scope: 'Ordinary participation in this RP' }], reminder: 'Village life and shared interests.', changeReason: '', scratchpad: '' }, upsert: [{ id: 'r1-winter', kind: 'saga', parentId: '', status: 'active', links: [],
         title: 'The Missing Winter Convoys', owner: 'Border clinics', description: card().premise }], retain: [], retire: [], select: [],
         futureDecisions: [{ id: 'f1-convoys', action: 'adopt', chapterId: 'r1-winter', reason: 'Play now follows the clinic request.' }], reassessFuture: true };
     const run = () => directorPass({ state: b.state, input, source: source(b), generate: async () => ({ text: JSON.stringify(raw) }) });
@@ -503,7 +503,7 @@ test('current adoption can choose a non-first prospect, validated against the ac
 test('retiring a future prospect accepts the instructed blank chapter ID without losing the story plan', async () => {
     const b = base();
     const input = directorInput({ reference: b.reference, state: b.state, messages: [], futureCards: [card()], requireSagaHierarchy: true });
-    const raw = { reviewAfter: 12, upsert: [{ id: 'r1-village', kind: 'saga', parentId: '', status: 'active', links: [],
+    const raw = { reviewAfter: 12, foundation: { effects: [{ label: 'Shared pursuits', weight: 2, pressure: 'Independent interests invite fitting shared experiences.', scope: 'Ordinary participation in this RP' }], reminder: 'Village life and shared interests.', changeReason: '', scratchpad: '' }, upsert: [{ id: 'r1-village', kind: 'saga', parentId: '', status: 'active', links: [],
         title: 'Village Life', owner: 'Village residents', description: 'Ordinary work and relationships continue across the village.' }],
     retain: [], retire: [], select: [], futureDecisions: [
         { id: 'f1-convoys', action: 'retire', chapterId: '', reason: 'The prospect no longer fits the current RP.' }],

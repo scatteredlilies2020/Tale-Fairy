@@ -13,7 +13,7 @@ function fixture() {
         messages: [{ index: 0, role: 'assistant', content: current.messages[0].mes }], playerNames: [], requireSagaHierarchy: true });
     const meta = campaignJobMeta(current, current.attempt, input, fingerprint);
     const job = { chatId: 'chat', runKey: 'run', status: 'complete', meta, text: JSON.stringify({ reviewAfter: 12,
-        foundation: { reminder: 'A light school music club RP.', changeReason: '', scratchpad: '' },
+        foundation: { effects: [{ label: 'Shared pursuits', weight: 2, pressure: 'Independent interests invite fitting shared experiences.', scope: 'Ordinary participation in this RP' }], reminder: 'A light school music club RP.', changeReason: '', scratchpad: '' },
         upsert: [{ id: 'r1-year', kind: 'saga', parentId: '', title: 'Our year in the music club', status: 'active',
             owner: 'The club', description: 'Making music and sharing the school year together.', endsWhen: '', links: [], effects: [] }],
         retain: [], retire: [], select: [] }) };

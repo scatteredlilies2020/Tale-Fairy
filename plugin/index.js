@@ -3,7 +3,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { createStorageMigrationManager, publicStorageMigration } from './storage-migration.js';
 
 const PLUGIN = 'tale-fairy';
-const VERSION = '0.20.18';
+const VERSION = '0.20.19';
 const storageMigration = createStorageMigrationManager();
 const jobs = new Map();
 const MAX_FINISHED_JOBS = 40;

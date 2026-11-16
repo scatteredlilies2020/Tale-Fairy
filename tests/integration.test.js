@@ -95,6 +95,7 @@ test('creative contract updates invalidate the browser entry and schema imports'
 });
 
 for (const [marker, seeds] of [
+    ['world-frame-activities', ['story-director.js', 'story-structure.js', 'chat-maintenance.js', 'storage-migration.js']],
     ['chat-maintenance', ['chat-maintenance.js', 'storage-migration.js']],
     ['shared-plans', ['generation-context.js']],
     ['context-chunks', ['planner-chunks.js', 'campaign-session.js', 'future-host.js']],

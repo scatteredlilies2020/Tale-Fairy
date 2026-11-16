@@ -7,7 +7,8 @@ import { emptyCampaign } from '../extension/campaign-planner.js';
 import { plannerMessages, PLANNER_OUTPUT_MODE } from '../extension/output-negotiation.js';
 
 const reply = (reminder, changeReason = '') => ({ text: JSON.stringify({ reviewAfter: 12,
-    foundation: { reminder, changeReason, scratchpad: '' }, upsert: [], retain: [], retire: [], select: [],
+    foundation: { reminder, changeReason, scratchpad: '', effects: [{ label: 'Shared pursuits', weight: 2,
+        scope: 'Fitting shared experiences', pressure: 'Independent interests invite participation.' }] }, upsert: [], retain: [], retire: [], select: [],
 }), finishReason: 'stop' });
 
 test('genre calibration is in the production director and the trailing response contract', () => {

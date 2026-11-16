@@ -18,6 +18,8 @@ const selected = (id = 'r1-kitchen', extra = {}) => ({ id, title: 'Neighborhood 
     interpretation: 'Shared meals can build ties without erasing different tastes.', stakes: 'Belonging and family traditions.',
     expectation: 'Cooking, recipe exchanges and friendships developing across visits.', development: 'A communal recipe book gives the cooks a shared project.', ...extra });
 const response = () => ({ reviewAfter: 12,
+    foundation: { reminder: 'Village life and shared interests sustain this RP.', changeReason: '', scratchpad: '',
+        effects: [{ label: 'Shared pursuits', weight: 2, scope: 'Village gatherings', pressure: 'Shared interests invite informal exchanges.' }] },
     upsert: [proposal()], retain: [], retire: [], select: [selected()] });
 async function run(state = emptyCampaign(), raw = response(), extra = {}) {
     const input = directorInput({ reference, state, messages, playerNames: ['Ren'], previousUsable: state.revision > 0, ...extra });
@@ -47,13 +49,15 @@ test('one request saves story context, not next-turn scripts, private state or a
     assert.match(payload, /Current play takes precedence\. Ignore completed, declined or contradicted developments\./);
     assert.match(payload, /story_context.*interpretation.*stakes.*expectation/);
     assert.match(payload, /recipe book/);
-    assert.doesNotMatch(payload, /If |when|next|later|action|r1-kitchen|Community cooks|upsert|parentId|status|reviewAfter|possible_developments/);
+    const packet = JSON.parse(payload.replace(/<\/?tale-fairy-context>/g, ''));
+    assert.doesNotMatch(JSON.stringify(packet.story_context), /If |when|next|later|action|r1-kitchen|Community cooks|upsert|parentId|status|reviewAfter|possible_developments/);
+    assert.doesNotMatch(payload, /"(?:upsert|parentId|reviewAfter|possible_developments)":/);
     assert.doesNotMatch(DIRECTOR_SYSTEM, /\u2014/);
     assert.ok(storyInputTokens('', DIRECTOR_SYSTEM, DIRECTOR_SCHEMA) < 6500, 'portable contract leaves input headroom including future handoff, genre calibration, hierarchy, Chapter persistence and time-skip closure');
 });
 
 test('phase-free preparation keeps a stable world frame and valid writer guidance', async () => {
-    const raw = { ...response(), foundation: {
+    const raw = { ...response(), foundation: { ...response().foundation,
         reminder: 'Village friendships, shared interests and neighboring communities offer continuing discoveries.',
         changeReason: '', scratchpad: '',
     } };
@@ -72,7 +76,7 @@ test('phase-free preparation keeps a stable world frame and valid writer guidanc
 
 test('legacy scene snapshots do not enter new preparation or its next review', async () => {
     const stale = 'Rin honors her dead at the Memorial Stone before a hospital shift, with a sealed envelope unopened.';
-    const raw = { ...response(), direction: stale, foundation: {
+    const raw = { ...response(), direction: stale, foundation: { ...response().foundation,
         reminder: 'Village relationships and independent pursuits sustain the wider RP.', changeReason: '', scratchpad: '',
     } };
     const first = await run(emptyCampaign(), raw);
@@ -141,7 +145,9 @@ test('ordinary reviews explicitly retain useful unused stories and renew the pub
     assert.equal(validCampaignState(result.state), true);
     assert.deepEqual(nodes(result), nodes(first));
     assert.deepEqual(selections(result), []);
-    assert.equal(campaignPayload(result.state), '');
+    const packet = JSON.parse(campaignPayload(result.state).replace(/<\/?tale-fairy-context>/g, ''));
+    assert.equal(packet.story_context, undefined);
+    assert.deepEqual(packet.world_effects, response().foundation.effects);
     const prompt = JSON.parse(result.input.prompt);
     assert.equal(prompt.previous_preparation.nodes[0].id, 'r1-kitchen');
     assert.equal(prompt.previous_plan, undefined);
@@ -601,7 +607,7 @@ test('aggregate card and inherited effect size does not discard later selections
         effects: [{ label: 'Community ties', weight: 2, scope: 'Village gatherings', pressure: '共'.repeat(200) }],
     })] });
     const raw = { ...response(), upsert: [proposal(), proposal('r2-travel'), proposal('r2-music')],
-        foundation: { reminder: '世界'.repeat(80), changeReason: '', scratchpad: '' },
+        foundation: { ...response().foundation, reminder: '世界'.repeat(80), changeReason: 'Explicit author direction changes the broader premise.', scratchpad: '' },
         select: ['r1-kitchen', 'r2-travel', 'r2-music'].map(id => selected(id, {
             interpretation: '菜'.repeat(470), stakes: '', expectation: '',
         })) };
@@ -625,7 +631,7 @@ test('aggregate card and inherited effect size does not discard later selections
 });
 
 test('writer allocation reserves complete author instructions and orientation before public prose', async () => {
-    const first = await run(emptyCampaign(), { ...response(), foundation: {
+    const first = await run(emptyCampaign(), { ...response(), foundation: { ...response().foundation,
         reminder: 'Neighborhood interests sustain ongoing play.', changeReason: '', scratchpad: '',
     } });
     const instructions = ['Preserve <secret author knowledge> and player choices.'];
@@ -645,7 +651,7 @@ test('writer allocation reserves complete author instructions and orientation be
 
 test('protected content above the target saves complete preparation in one request', async () => {
     const first = await run(), before = structuredClone(first.state);
-    const raw = { ...response(), foundation: { reminder: '世界'.repeat(250), changeReason: '', scratchpad: '' },
+    const raw = { ...response(), foundation: { ...response().foundation, reminder: '世界'.repeat(250), changeReason: 'Explicit author direction changes the broader premise.', scratchpad: '' },
         upsert: [proposal('r1-kitchen', { effects: [{ label: 'Community access', weight: 2, scope: 'Village visits', pressure: '共'.repeat(200) }] })] };
     const result = await run(first.state, raw);
     assert.equal(result.accepted, true, result.error);
@@ -661,7 +667,7 @@ test('protected content above the target saves complete preparation in one reque
 for (const change of ['private-story', 'orientation', 'effects', 'remove-card', 'end-condition']) {
     test(`legacy in-flight fitting still validates protected ${change}`, async () => {
         const state = emptyCampaign(), input = directorInput({ reference, state, messages });
-        const draft = { ...response(), foundation: { reminder: 'Neighborhood life.', changeReason: '', scratchpad: '' } };
+        const draft = { ...response(), foundation: { ...response().foundation, reminder: 'Neighborhood life.', changeReason: '', scratchpad: '' } };
         const raw = structuredClone(draft);
         if (change === 'private-story') raw.upsert[0].interpretation = 'A different private story.';
         if (change === 'orientation') raw.foundation.reminder = 'A different world.';
@@ -723,7 +729,7 @@ test('adjustable writer and response targets preserve complete prose above histo
     const reminder = 'Independent communities develop through shared interests and changing circumstances. '.repeat(25);
     const description = 'Shared recipes support friendships without deciding player participation. '.repeat(30);
     const effects = Array.from({ length: 5 }, (_, i) => ({ label: `Continuing influence ${i}`, weight: 2, scope: 'Shared recipes', pressure: description }));
-    const raw = { ...response(), foundation: { reminder, changeReason: '', scratchpad: description },
+    const raw = { ...response(), foundation: { ...response().foundation, reminder, changeReason: '', scratchpad: description },
         upsert: [proposal('r1-kitchen', { interpretation: description, effects })],
         select: [selected('r1-kitchen', { interpretation: description })] };
     const result = await run(emptyCampaign(), raw, { writerTarget: 512, outputTarget: 6500 });

@@ -16,7 +16,7 @@ const cards = [
 ];
 const selection = nodes => nodes.map(card => ({ id: card.id, title: card.title, context: [], description: card.description, endsWhen: card.endsWhen, development: '' }));
 const raw = (upsert, retain = [], select = selection(upsert.filter(card => card.status === 'active'))) => ({
-    reviewAfter: 12, foundation: { reminder: 'A light music club RP built around rehearsals, school events and friendships.', scratchpad: '', changeReason: '' },
+    reviewAfter: 12, foundation: { effects: [{ label: 'Shared pursuits', weight: 2, pressure: 'Independent interests invite fitting shared experiences.', scope: 'Ordinary participation in this RP' }], reminder: 'A light music club RP built around rehearsals, school events and friendships.', scratchpad: '', changeReason: '' },
     upsert, retain, retire: [], select,
 });
 async function run(state, messages, response) {

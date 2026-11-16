@@ -120,7 +120,7 @@ export function cardCaseReply(fixture, prefix = 'r1-') {
         parentId: node.parentId ? prefix + node.parentId : '', links: node.links.map(id => prefix + id) }));
     const rows = new Map(upsert.map(node => [node.id, node]));
     return { direction: fixture.direction, reviewAfter: 12,
-        foundation: { reminder: fixture.reminder, changeReason: '', scratchpad: fixture.notes },
+        foundation: { effects: [{ label: 'Shared pursuits', weight: 2, pressure: 'Independent interests invite fitting shared experiences.', scope: 'Ordinary participation in this RP' }], reminder: fixture.reminder, changeReason: '', scratchpad: fixture.notes },
         upsert, retire: [], select: upsert.filter(node => ['proposed', 'active'].includes(node.status)).map(node => {
             const context = [];
             for (let parent = rows.get(node.parentId); parent; parent = rows.get(parent.parentId)) context.unshift({ kind: parent.kind, title: parent.title });

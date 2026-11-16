@@ -51,7 +51,7 @@ function recovery(status = 'complete') {
     const input = directorInput({ state: current.state, reference: { premise: 'Light music club RP.' }, messages: [], requireSagaHierarchy: true });
     const job = { id: 'job', chatId: 'chat', runKey: 'run', status, attempts: 2,
         meta: campaignJobMeta(current, current.attempt, input, JSON.stringify),
-        text: JSON.stringify({ reviewAfter: 12, foundation: { reminder: 'Light music club RP.', changeReason: '', scratchpad: '' },
+        text: JSON.stringify({ reviewAfter: 12, foundation: { effects: [{ label: 'Shared pursuits', weight: 2, pressure: 'Independent interests invite fitting shared experiences.', scope: 'Ordinary participation in this RP' }], reminder: 'Light music club RP.', changeReason: '', scratchpad: '' },
             upsert: [{ id: 'r1-year', kind: 'saga', parentId: '', status: 'active', title: 'A year together',
                 owner: 'The club', description: 'Making music and sharing club life.', endsWhen: '', links: [], effects: [] }],
             retain: [], retire: [], select: [] }) };

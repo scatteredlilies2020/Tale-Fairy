@@ -14,7 +14,7 @@ const card = (effects = []) => ({ id: 'r1-domain', kind: 'saga', parentId: '', s
 const selection = () => ({ id: 'r1-domain', title: 'Life under the new governor', context: [],
     description: 'The new arrangement leaves room for relationships, ordinary work and independent interests.', endsWhen: '', development: '' });
 const foundation = effects => ({ reminder: 'A fantasy sandbox with household life and competing ambitions.', effects, changeReason: '', scratchpad: '' });
-const response = (effects = []) => ({ reviewAfter: 12, foundation: foundation([]), upsert: [card(effects)],
+const response = (effects = []) => ({ reviewAfter: 12, foundation: foundation([influence('Independent shared pursuits', 2)]), upsert: [card(effects)],
     retain: [], retire: [], select: [selection()], effectUpdates: [], bridges: [] });
 const future = { id: 'f1-selection', title: 'The candidates meet', category: 'Canon',
     premise: 'PRIVATE_FUTURE_OUTCOME must stay out of the writer packet.' };
@@ -38,6 +38,59 @@ async function legacyState(effects) {
     assert.equal(validCampaignState(result.state), true, 'historical prose remains readable');
     return result;
 }
+
+test('World Frame activities may change with an unchanged reminder and support every integer -10 through +10', async () => {
+    const first = await pass(response());
+    const before = structuredClone(first.state);
+    assert.equal(DIRECTOR_SCHEMA.value.properties.foundation.properties.effects.minItems, 1);
+    for (let weight = -10; weight <= 10; weight++) {
+        const effects = [influence('Revised shared pursuits', weight, 'Newly relevant shared interests')];
+        const raw = { ...response(), foundation: foundation(effects), upsert: [], select: [] };
+        const result = await pass(raw, first.state);
+        assert.equal(result.accepted, true, result.error);
+        assert.equal(result.state.workingPlan.storyStructure.foundation.reminder, before.workingPlan.storyStructure.foundation.reminder);
+        assert.deepEqual(decode(result.state).world_effects, effects);
+        assert.ok(storyCardsHtml(result.state.workingPlan).includes(`>${weight > 0 ? '+' : ''}${weight}</span>`));
+        assert.deepEqual(result.state.archive.at(-1).workingPlan, before.workingPlan);
+    }
+    assert.deepEqual(first.state, before);
+});
+
+test('fresh setup, automatic/manual review and full rebuild cannot remove all World Frame activities', async () => {
+    const initial = await pass(response());
+    for (const [state, flags] of [[emptyCampaign(), {}], [initial.state, {}], [initial.state, { resetPlan: true }]]) {
+        const before = structuredClone(state);
+        const rejected = await pass({ ...response(), foundation: foundation([]) }, state, [], flags);
+        assert.equal(rejected.accepted, false);
+        assert.match(rejected.error, /World Frame needs at least one weighted activity/);
+        assert.equal(rejected.state, state);
+        assert.deepEqual(state, before);
+    }
+    const omitted = response();
+    delete omitted.foundation;
+    assert.equal((await pass(omitted)).accepted, false, 'fresh setup must create a World Frame');
+    const retained = await pass(omitted, initial.state);
+    assert.equal(retained.accepted, true, retained.error);
+    assert.deepEqual(retained.state.workingPlan.storyStructure.foundation, initial.state.workingPlan.storyStructure.foundation);
+});
+
+test('a saved empty World Frame is readable and authentic but the next Guide must populate it', async () => {
+    const initial = await pass(response());
+    initial.state.workingPlan.storyStructure.foundation.effects = [];
+    const before = structuredClone(initial.state);
+    assert.equal(validCampaignState(initial.state), true, 'historical readers stay compatible');
+    const packet = { version: 1, selection: { preparedUsable: true }, payload: campaignPayload(initial.state),
+        plannerState: { plannerContract: 15, campaignPreparation: initial.state } };
+    assert.equal(generationContextEntries({ entries: [packet] }).length, 1);
+    const input = directorInput({ state: initial.state, reference: {}, messages: [], previousUsable: true });
+    assert.equal(JSON.parse(input.prompt).previous_preparation.required_effect_migration.foundation, true);
+    const result = await pass(response(), initial.state);
+    assert.equal(result.accepted, true, result.error);
+    assert.equal(result.state.workingPlan.storyStructure.foundation.effects.length, 1);
+    assert.deepEqual(result.state.archive.at(-1).workingPlan, before.workingPlan);
+    assert.deepEqual(initial.state, before);
+    assert.equal(generationContextEntries({ entries: [packet] }).length, 1);
+});
 
 test('signed weights and generated scopes survive planning, storage, writer transport and display', async () => {
     const effects = [influence('Shared musical exploration', 1), influence('Local cooperation', 10),
@@ -139,7 +192,7 @@ test('ordinary automatic/manual reviews require complete migration, including of
     assert.deepEqual(state, before);
 });
 
-test('omitting legacy effects cannot silently keep them or assign default scores; explicit clearing is allowed', async () => {
+test('legacy conversion cannot assign default scores; cards may clear but World Frames need replacements', async () => {
     const initial = await legacyState([{ label: 'Legacy condition', pressure: 'Old facts.' }]);
     initial.state.workingPlan.storyStructure.foundation.effects = [{ label: 'Old frame', pressure: 'Old premise facts.' }];
     const raw = { ...response(), upsert: [], foundation: { reminder: '', changeReason: '', scratchpad: '' } };
@@ -149,9 +202,14 @@ test('omitting legacy effects cannot silently keep them or assign default scores
     assert.deepEqual(omitted.state, initial.state);
     const cleared = await pass({ ...raw, foundation: foundation([]),
         effectUpdates: [{ id: 'r1-domain', effects: [] }] }, initial.state);
-    assert.equal(cleared.accepted, true, cleared.error);
-    assert.deepEqual(cleared.state.workingPlan.storyStructure.nodes[0].effects, []);
-    assert.deepEqual(cleared.state.workingPlan.storyStructure.foundation.effects, []);
+    assert.equal(cleared.accepted, false);
+    assert.match(cleared.error, /World Frame needs at least one weighted activity/);
+    assert.deepEqual(cleared.state, initial.state);
+    const replaced = await pass({ ...raw, foundation: foundation([influence('Independent pursuits', 2)]),
+        effectUpdates: [{ id: 'r1-domain', effects: [] }] }, initial.state);
+    assert.equal(replaced.accepted, true, replaced.error);
+    assert.deepEqual(replaced.state.workingPlan.storyStructure.nodes[0].effects, []);
+    assert.equal(replaced.state.workingPlan.storyStructure.foundation.effects.length, 1);
 });
 
 test('fresh setup and full rebuild reject newly generated prose-only effects', async () => {

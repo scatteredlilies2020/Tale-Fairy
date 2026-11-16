@@ -86,7 +86,7 @@ export function fixtureDirectorReply(fixture, { prefix = 'r1-', previous } = {})
     const { title, kind, owner, description, endsWhen } = fixture.card;
     return {
         direction: 'Current quiet scene within the continuing RP.', reviewAfter: 12,
-        foundation: { reminder: previous?.foundation ? '' : fixture.reminder, changeReason: '', scratchpad: fixture.scratchpad },
+        foundation: { effects: [{ label: 'Shared pursuits', weight: 2, pressure: 'Independent interests invite fitting shared experiences.', scope: 'Ordinary participation in this RP' }], reminder: previous?.foundation ? '' : fixture.reminder, changeReason: '', scratchpad: fixture.scratchpad },
         upsert: previous?.nodes?.length ? [] : [{ id, kind, parentId: '', status: 'proposed', title, owner, description, endsWhen, links: [] }],
         retire: [], select: [{ id, title, context: [], description, development: '', endsWhen }],
     };

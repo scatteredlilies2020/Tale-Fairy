@@ -64,7 +64,8 @@ async function main() {
     const naruto = worldFrameCases.find(x => x.id === 'naruto');
     const passive = 'Across Naruto’s shinobi lands, villages commission missions, train successors, practice medicine and negotiate with rivals while civilians build livelihoods through trade, craft and travel. Mission income, clan inheritance, bloodline ambitions and the military value of chakra pull institutions and personal loyalties in competing directions. Memorial customs, festivals and everyday care sustain bonds across generations despite the losses of shinobi service.';
     const inherited = await liveCardPass(naruto, emptyCampaign(), [], async () => ({ finishReason: 'stop', text: JSON.stringify({
-        reviewAfter: 12, foundation: { reminder: passive, scratchpad: '', changeReason: '' },
+        reviewAfter: 12, foundation: { reminder: passive, scratchpad: '', changeReason: '',
+            effects: [{ label: 'Shinobi missions', weight: 3, scope: 'Village assignments', pressure: 'Village needs invite team missions.' }] },
         upsert: [], retain: [], retire: [], select: [],
     }) }));
     if (!inherited.accepted) throw Error('Invalid inherited fixture.');

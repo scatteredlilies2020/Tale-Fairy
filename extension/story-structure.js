@@ -50,7 +50,8 @@ export const STORY_FOUNDATION_SCHEMA = object({
 STORY_FOUNDATION_SCHEMA.properties.effects = STORY_EFFECTS_SCHEMA;
 export const STORY_FOUNDATION_RESPONSE_SCHEMA = structuredClone(STORY_FOUNDATION_SCHEMA);
 STORY_FOUNDATION_RESPONSE_SCHEMA.properties.reminder.minLength = 0;
-STORY_FOUNDATION_RESPONSE_SCHEMA.properties.effects = WEIGHTED_EFFECTS_SCHEMA;
+// Historical storage may be empty; every new World Frame needs an activity.
+STORY_FOUNDATION_RESPONSE_SCHEMA.properties.effects = { ...WEIGHTED_EFFECTS_SCHEMA, minItems: 1 };
 STORY_FOUNDATION_RESPONSE_SCHEMA.required.push('effects');
 // New responses need one explanation. Keep the historical storage fields so
 // saved maps and authenticated regeneration packets remain readable.

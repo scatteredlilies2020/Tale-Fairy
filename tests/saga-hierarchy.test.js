@@ -32,7 +32,7 @@ test('strict director pass preserves the saved plan on missing Chapter and accep
     let calls = 0;
     const run = nodes => directorPass({ state, input, source: { chatId: 'synthetic', referenceHash: 'ref', fingerprint: 'fp', messageCount: 1 },
         generate: async () => { calls++; return { finishReason: 'stop', text: JSON.stringify({ reviewAfter: 12,
-            foundation: { reminder: 'A light music club RP.', changeReason: '', scratchpad: '' },
+            foundation: { effects: [{ label: 'Shared pursuits', weight: 2, pressure: 'Independent interests invite fitting shared experiences.', scope: 'Ordinary participation in this RP' }], reminder: 'A light music club RP.', changeReason: '', scratchpad: '' },
             upsert: nodes, retain: [], retire: [], select: [] }) }; } });
     const rejected = await run([{ ...arc, parentId: '' }]);
     assert.equal(rejected.accepted, false);

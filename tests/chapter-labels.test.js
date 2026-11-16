@@ -22,7 +22,7 @@ const pass = (state, raw) => directorPass({ state,
     generate: async () => ({ text: JSON.stringify(raw), finishReason: 'stop' }),
 });
 const reply = (upsert = nodes) => ({ reviewAfter: 12, upsert, retain: nodes.map(node => node.id), retire: [], select: selection,
-    foundation: { reminder: 'A Naruto diplomatic sandbox RP.', scratchpad: '', changeReason: '' } });
+    foundation: { effects: [{ label: 'Shared pursuits', weight: 2, pressure: 'Independent interests invite fitting shared experiences.', scope: 'Ordinary participation in this RP' }], reminder: 'A Naruto diplomatic sandbox RP.', scratchpad: '', changeReason: '' } });
 
 test('old boards immediately show Chapter, Arc and Subplot without editing titles or saved state', () => {
     const plan = legacyPlan(), before = structuredClone(plan);

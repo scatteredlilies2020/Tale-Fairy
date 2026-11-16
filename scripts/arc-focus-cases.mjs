@@ -48,7 +48,7 @@ export const arcFocusCases = [
 
 export async function seedArcFocus(fixture) {
     const first = await liveCardPass(fixture, emptyCampaign(), [], async () => ({ finishReason: 'stop', text: JSON.stringify({
-        reviewAfter: 12, foundation: { reminder: fixture.reminder, changeReason: '', scratchpad: '' },
+        reviewAfter: 12, foundation: { effects: [{ label: 'Shared pursuits', weight: 2, pressure: 'Independent interests invite fitting shared experiences.', scope: 'Ordinary participation in this RP' }], reminder: fixture.reminder, changeReason: '', scratchpad: '' },
         upsert: fixture.nodes, retain: [], retire: [], select: [],
     }) }));
     if (!first.accepted || !first.validState) throw Error('Invalid synthetic arc-focus seed.');

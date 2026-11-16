@@ -14,7 +14,7 @@ async function storyMetadata() {
     const state = emptyCampaign();
     const effects = Array.from({ length: 21 }, (_, i) => ({ label: `Activity ${i}`, weight: i - 10,
         scope: 'Related activities in this setting', pressure: 'Established opportunities influence relevant play.' }));
-    const raw = { reviewAfter: 12, foundation: { reminder: 'An open-ended fantasy household RP.', effects: [], changeReason: '', scratchpad: '' },
+    const raw = { reviewAfter: 12, foundation: { reminder: 'An open-ended fantasy household RP.', effects: [effects[12]], changeReason: '', scratchpad: '' },
         upsert: [{ id: 'r1-house', kind: 'saga', parentId: '', status: 'active', title: 'Household life', owner: 'The household',
             description: 'Relationships and ordinary interests can evolve.', effects, endsWhen: '', links: [] }],
         retain: [], retire: [], select: [], effectUpdates: [], bridges: [] };
@@ -34,6 +34,23 @@ test('all 21 integer weights are already current and maintenance never rewrites 
     assert.equal(report.checks.futurePlans, 1);
     assert.equal(upgradeChatMetadata(metadata), metadata);
     assert.deepEqual(metadata, original);
+});
+
+test('maintenance flags missing or empty World Frame activities without guessing a repair or changing history', async () => {
+    for (const kind of ['empty', 'missing-effects', 'missing-foundation']) {
+        const metadata = await storyMetadata();
+        const structure = metadata.livingWorldGuide.campaignPreparation.workingPlan.storyStructure;
+        if (kind === 'empty') structure.foundation.effects = [];
+        if (kind === 'missing-effects') delete structure.foundation.effects;
+        if (kind === 'missing-foundation') delete structure.foundation;
+        const before = structuredClone(metadata);
+        const report = inspectChatMetadata(metadata);
+        assert.equal(report.needsGuide, true, kind);
+        assert.equal(report.findings.find(item => item.code === 'empty-world-activities').count, 1);
+        assert.equal(upgradeChatMetadata(metadata), metadata);
+        assert.deepEqual(metadata, before);
+    }
+    assert.match(storageMaintenanceDetails({ maintenance: 1, findings: { 'empty-world-activities': 1 } }), /World Frames missing weighted activities: 1/);
 });
 
 test('weighted audit covers foundation and offscreen/dormant/proposed records, not terminal history', async () => {

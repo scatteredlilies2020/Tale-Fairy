@@ -42,7 +42,7 @@ export function storageMigrationLabel(state) {
 export function storageMaintenanceDetails(state) {
     if (!state?.maintenance) return 'The manual scan also checks older state/plan formats, weighted activities, retry integrity and future plans. No AI requests.';
     const names = { 'legacy-state': 'older/pending planner state', 'legacy-plan': 'older plan format',
-        'unweighted-activities': 'story records missing weights/scopes', 'invalid-plan': 'invalid saved plans',
+        'unweighted-activities': 'story records missing weights/scopes', 'empty-world-activities': 'World Frames missing weighted activities', 'invalid-plan': 'invalid saved plans',
         'unsupported-state': 'unsupported state versions', 'invalid-future': 'invalid future plans', 'rejected-retries': 'unauthenticated retry packets (retained)' };
     const findings = Object.entries(state.findings || {}).filter(([, count]) => count).map(([code, count]) => `${names[code] || code}: ${count}`);
     return [findings.length ? findings.join(' · ') : 'No content findings recorded.',
